@@ -4,13 +4,24 @@
 
 Ce repository est un projet **Ansible** qui déploie une stack AI/automatisation auto-hébergée sur un VPS unique avec Docker Compose. Le projet est conçu comme un **template portable** : toutes les valeurs sont des variables Jinja2, aucun nom de projet ou serveur n'est hardcodé.
 
+## Accès GitHub
+
+- **Repository** : `Mobutoo/VPAI` (privé)
+- **Remote** : `git@github-seko:Mobutoo/vpai.git`
+- **Host SSH** : `github-seko` (configuré dans `~/.ssh/config`, utilise la clé `~/.ssh/id_ed25519_seko`)
+- **Branche principale** : `main`
+- **Compte GitHub** : Mobutoo
+
+> **Important** : Toujours utiliser `github-seko` comme host dans les commandes git, jamais `github.com` directement. C'est un alias SSH pour le bon couple clé/compte.
+
 ## Documents de Référence
 
 **Lire OBLIGATOIREMENT avant de coder :**
 
-1. `PRD.md` — Vision produit, wizard de configuration (variables), objectifs, contraintes, architecture fonctionnelle
-2. `TECHNICAL-SPEC.md` — Architecture technique détaillée, configs, réseaux Docker, limites ressources, CI/CD
-3. `GOLDEN-PROMPT.md` — Plan de développement en 6 phases avec checklists de review
+1. `PRD.md` — Vision produit, wizard de configuration (variables), objectifs, contraintes, architecture fonctionnelle. **⚠️ Fichier sensible, dans `.gitignore`, jamais pushé sur GitHub.**
+2. `PRD.md.example` — Version template du PRD avec les champs à remplir (pushée sur GitHub)
+3. `TECHNICAL-SPEC.md` — Architecture technique détaillée, configs, réseaux Docker, limites ressources, CI/CD
+4. `GOLDEN-PROMPT.md` — Plan de développement en 6 phases avec checklists de review et **REX des erreurs rencontrées**
 
 ## Stack Technique
 
@@ -99,9 +110,10 @@ Ce repository est un projet **Ansible** qui déploie une stack AI/automatisation
 ├── scripts/                    # Scripts helper
 ├── templates/                  # Templates partagés (docker-compose.yml.j2)
 ├── docs/                       # Documentation opérationnelle
-├── PRD.md                      # Product Requirements Document
+├── PRD.md                      # Product Requirements Document (LOCAL ONLY, dans .gitignore)
+├── PRD.md.example              # Template PRD avec champs à remplir (pushé sur GitHub)
 ├── TECHNICAL-SPEC.md           # Spécification technique
-├── GOLDEN-PROMPT.md            # Plan de développement
+├── GOLDEN-PROMPT.md            # Plan de développement + REX erreurs
 ├── ansible.cfg
 ├── requirements.yml
 ├── Makefile
@@ -163,3 +175,69 @@ Zerobyte n'est **pas** déployé par ce projet. Il tourne déjà sur le serveur 
 
 ### Uptime Kuma sur Seko-VPN
 Même logique : déjà déployé. Ce projet documente les monitors à créer manuellement.
+
+---
+
+## Pièges Connus et Règles de Qualité (REX)
+
+Ces règles ont été découvertes lors du développement initial. **Les respecter élimine 100% des erreurs de lint rencontrées.**
+
+### Encodage et Fins de Ligne
+
+- **TOUS les fichiers YAML/Jinja2 doivent être en UTF-8 avec fins de ligne LF (Unix)**
+- **Jamais de CRLF (Windows)** : yamllint échoue avec `wrong new line character: expected \n`
+- **Jamais de Windows-1252** : yamllint crash avec `UnicodeDecodeError: 'utf-8' codec can't decode byte 0x97`
+- **Attention au tiret long** : `—` (em dash, U+2014) est le piège principal. En Windows-1252 c'est le byte `0x97` qui casse le parsing UTF-8
+- **Vérification** : `file roles/*/tasks/main.yml` doit afficher `UTF-8 Unicode text` pour tous les fichiers, jamais `ISO-8859` ou `CRLF`
+- **Fix si besoin** : `find roles/ -name '*.yml' -exec sed -i 's/\r$//' {} \;` pour les CRLF
+
+### ansible-lint — Pièges Spécifiques
+
+- **`name[template]`** : Les templates Jinja2 dans le champ `name:` d'un play doivent être **à la fin** de la chaîne
+  - ❌ `- name: "Deploy {{ project_name }} — Full Stack"`
+  - ✅ `- name: "Deploy Full Stack — {{ project_display_name }}"`
+- **`schema[meta]`** : Le `role_name` dans `meta/main.yml` doit correspondre au pattern `^[a-z][a-z0-9_]+$`
+  - ❌ `role_name: headscale-node` (tirets interdits)
+  - ✅ `role_name: headscale_node` (underscores OK, le dossier peut garder le tiret)
+- **`syntax-check`** : ansible-lint exécute un syntax-check sans inventaire. Les variables comme `project_display_name` sont indéfinies → configurer `extra_vars` dans `.ansible-lint`
+- **`offline: true`** : Obligatoire dans `.ansible-lint` si pas de Galaxy configuré, sinon erreur `Required config 'url' for 'galaxy' galaxy_server plugin`
+- **`playbooks_dir`** : Propriété supprimée dans ansible-lint 26.x, ne plus l'utiliser
+
+### yamllint — Configuration Requise
+
+- **`octal-values`** : ansible-lint exige `forbid-implicit-octal: true` et `forbid-explicit-octal: true` dans `.yamllint.yml`
+- **`secrets.yml`** : Le fichier Vault chiffré doit être dans le `ignore:` de `.yamllint.yml` ET exclu du `find` dans le Makefile
+
+### Makefile — Commande Lint
+
+- **Ne PAS utiliser** `yamllint .` directement — cela scanne les fichiers Vault chiffrés et crash
+- **Utiliser** `find` avec exclusions et `xargs` :
+  ```makefile
+  find . \( -name '*.yml' -o -name '*.yaml' \) \
+    ! -path './.git/*' ! -path './.venv/*' \
+    ! -path '*/molecule/*' ! -path '*/collections/*' \
+    ! -name 'secrets.yml' -print0 | xargs -0 yamllint -c .yamllint.yml
+  ```
+- **Grouper les `-o`** dans `find` avec `\( ... \)`, sinon le comportement est incorrect
+
+### Grafana Alloy
+
+- **Format HCL** (HashiCorp Configuration Language), pas YAML Prometheus
+- **Monter `/proc` et `/sys`** en read-only pour les métriques node_exporter :
+  ```yaml
+  volumes:
+    - /proc:/host/proc:ro
+    - /sys:/host/sys:ro
+  ```
+- **Healthcheck** : `wget -qO- http://localhost:12345/-/ready`
+
+### DIUN
+
+- **Préférer un fichier de config** (`diun.yml.j2`) plutôt que des variables d'environnement — plus lisible et plus flexible pour la notification conditionnelle
+- **Docker socket** monté en read-only : `/var/run/docker.sock:/var/run/docker.sock:ro`
+
+### Environnement de Développement (WSL)
+
+- **venv Python** : Utiliser `.venv/` pour installer ansible-lint et yamllint (`python3 -m venv .venv`)
+- **Activer le venv** avant `make lint` : `source .venv/bin/activate && make lint`
+- **`.venv/`** est dans `.gitignore`

@@ -57,3 +57,4 @@ roles/*/molecule/default/.molecule/
 # --- Hetzner ---
 terraform.tfstate*
 .terraform/
+PRD.md

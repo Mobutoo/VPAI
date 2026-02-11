@@ -1,9 +1,10 @@
 # Golden Prompt — Développement Complet de la Stack AI Self-Hosted
 
-> **Version** : 1.0.0  
-> **Date** : 11 février 2026  
-> **Usage** : Copier-coller ce prompt dans Claude Code pour lancer le développement.  
+> **Version** : 2.0.0
+> **Date** : 11 février 2026
+> **Usage** : Copier-coller ce prompt dans Claude Code pour lancer le développement.
 > **Workflow** : Claude Code exécute → Opus 4.6 review → itération si nécessaire.
+> **Changelog v2** : Intégration du REX (retour d'expérience) — toutes les erreurs rencontrées lors du premier développement sont documentées et les gardes-fous ajoutés pour un résultat propre en one-shot.
 
 ---
 
@@ -21,6 +22,17 @@ Tu es un ingénieur DevOps/SRE senior. Tu vas développer un projet Ansible comp
 6. **Molecule tests** : Chaque rôle a un test Molecule minimal (converge + verify).
 7. **Pas de réseau par défaut Docker** : Utiliser les réseaux nommés définis dans la spec (frontend, backend, monitoring, egress).
 8. **Documentation** : Chaque rôle a un `README.md` avec description, variables, dépendances, et exemples.
+
+### Règles qualité fichiers (REX v2 — CRITIQUES)
+
+> **Ces règles ont été découvertes lors du premier développement. Les ignorer causera des échecs de `make lint`.**
+
+9. **Encodage UTF-8 + LF obligatoire** : Tous les fichiers `.yml`, `.j2`, `.sh` doivent être en UTF-8 avec fins de ligne LF (Unix). Jamais de CRLF (Windows) ni de Windows-1252. Le tiret long `—` (em dash, U+2014) est le piège principal : s'assurer qu'il est bien encodé en UTF-8 (3 bytes: `E2 80 94`) et pas en Windows-1252 (1 byte: `0x97`).
+10. **`name[template]` ansible-lint** : Dans le champ `name:` d'un play Ansible, les expressions Jinja2 `{{ }}` doivent être **à la fin** de la chaîne. Écrire `"Deploy Full Stack — {{ project_display_name }}"` et non `"Deploy {{ project_display_name }} — Full Stack"`.
+11. **`role_name` dans meta/main.yml** : Doit correspondre au pattern `^[a-z][a-z0-9_]+$`. Utiliser des underscores (`headscale_node`) même si le dossier a un tiret (`headscale-node/`).
+12. **Alloy en HCL** : Grafana Alloy utilise le format HCL (HashiCorp Configuration Language), pas YAML. Monter `/proc:/host/proc:ro` et `/sys:/host/sys:ro` pour les métriques node_exporter.
+13. **DIUN via fichier config** : Préférer un template `diun.yml.j2` monté dans le container plutôt que des variables d'environnement — plus lisible et flexible.
+14. **Makefile lint** : Ne jamais utiliser `yamllint .` directement. Utiliser `find` avec exclusions (`! -name 'secrets.yml'`, `! -path './.venv/*'`) et `xargs`. Grouper les `-o` dans find avec `\( ... \)`.
 
 ### Structure cible
 
@@ -441,6 +453,241 @@ Opus 4.6 — Checklist de review FINALE :
 3. `make deploy-preprod` → Soak 48h
 4. `make deploy-prod` → Monitoring 24h
 5. Configurer manuellement Zerobyte et Uptime Kuma sur Seko-VPN (suivre RUNBOOK.md)
+
+---
+
+---
+
+## REX — Retour d'Expérience du Premier Développement
+
+> **Objectif** : Documenter chaque erreur rencontrée lors du développement initial pour qu'un redéploiement from scratch produise un résultat propre en one-shot, avec `make lint` vert du premier coup.
+
+### Erreur 1 — Encodage Windows-1252 au lieu de UTF-8
+
+**Symptôme** : `make lint` crash avec `UnicodeDecodeError: 'utf-8' codec can't decode byte 0x97 in position 13`
+
+**Cause racine** : 18 fichiers YAML des phases 1-3 (roles redis, openclaw, n8n, postgresql, litellm, qdrant — tasks, defaults, handlers de chacun) contenaient le caractère em dash `—` encodé en Windows-1252 (byte `0x97`) au lieu d'UTF-8 (bytes `E2 80 94`). Cela venait de l'environnement d'édition WSL/Windows.
+
+**Fix** :
+```bash
+python3 -c "
+import glob
+for f in glob.glob('roles/*/tasks/main.yml') + glob.glob('roles/*/defaults/main.yml') + glob.glob('roles/*/handlers/main.yml'):
+    data = open(f, 'rb').read()
+    if b'\x97' in data:
+        open(f, 'wb').write(data.decode('windows-1252').encode('utf-8'))
+"
+```
+
+**Garde-fou** : Après création de chaque fichier, vérifier avec `file <path>` qu'il indique `UTF-8 Unicode text` et pas `ISO-8859` ou `Non-ISO extended-ASCII`.
+
+### Erreur 2 — Fins de ligne CRLF au lieu de LF
+
+**Symptôme** : yamllint signale `wrong new line character: expected \n` sur la ligne 1 de 25+ fichiers
+
+**Cause racine** : Les fichiers créés depuis un environnement Windows/WSL avaient des fins de ligne CRLF (`\r\n`). yamllint n'accepte que LF (`\n`).
+
+**Fix** :
+```bash
+find roles/ -name '*.yml' -exec sed -i 's/\r$//' {} \;
+```
+
+**Garde-fou** : Configurer `.editorconfig` avec `end_of_line = lf` (déjà fait). Lors de l'écriture de fichiers, toujours vérifier l'absence de `\r`.
+
+### Erreur 3 — `playbooks_dir` déprécié dans ansible-lint 26.x
+
+**Symptôme** : `Invalid configuration file .ansible-lint. Additional properties are not allowed ('playbooks_dir' was unexpected)`
+
+**Cause racine** : La propriété `playbooks_dir` a été supprimée dans ansible-lint 26.x. La configuration initiale l'incluait.
+
+**Fix** : Supprimer la ligne `playbooks_dir: playbooks/` de `.ansible-lint`.
+
+**Garde-fou** : Ne pas utiliser `playbooks_dir` dans `.ansible-lint`. Utiliser la section `kinds:` pour le mapping des fichiers.
+
+### Erreur 4 — ansible-lint syntax-check sans inventaire
+
+**Symptôme** : `syntax-check: Error processing keyword 'name': 'project_display_name' is undefined`
+
+**Cause racine** : ansible-lint exécute `ansible-playbook --syntax-check` sans charger l'inventaire. Les variables comme `project_display_name` ne sont pas disponibles.
+
+**Fix** : Ajouter `extra_vars` dans `.ansible-lint` :
+```yaml
+extra_vars:
+  project_display_name: "VPAI"
+  target_env: "prod"
+```
+
+**Garde-fou** : Toujours inclure les variables utilisées dans les `name:` des plays dans `extra_vars` de `.ansible-lint`.
+
+### Erreur 5 — Galaxy server non configuré
+
+**Symptôme** : `ERROR: Required config 'url' for 'galaxy' galaxy_server plugin not provided`
+
+**Cause racine** : ansible-lint tente d'installer les dépendances Galaxy au démarrage. Sans configuration Galaxy, cela échoue.
+
+**Fix** : Ajouter `offline: true` dans `.ansible-lint`.
+
+**Garde-fou** : Toujours mettre `offline: true` dans `.ansible-lint` pour un développement local sans Galaxy.
+
+### Erreur 6 — name[template] : Jinja2 pas à la fin du name
+
+**Symptôme** : `name[template]: Jinja templates should only be at the end of 'name'`
+
+**Cause racine** : Le play principal avait `name: "Deploy {{ project_display_name }} — Full Stack"`. ansible-lint exige que les templates Jinja2 soient en fin de chaîne.
+
+**Fix** : Inverser → `name: "Deploy Full Stack — {{ project_display_name }}"`.
+
+**Garde-fou** : Toujours placer les `{{ }}` à la fin des champs `name:` des plays et tâches.
+
+### Erreur 7 — schema[meta] : tiret dans role_name
+
+**Symptôme** : `schema[meta]: $.galaxy_info.role_name 'headscale-node' does not match '^[a-z][a-z0-9_]+$'`
+
+**Cause racine** : Le role_name Galaxy n'accepte pas les tirets, seulement les underscores.
+
+**Fix** : Mettre `role_name: headscale_node` dans `meta/main.yml` (le dossier garde `headscale-node/`).
+
+**Garde-fou** : Pour tous les rôles avec tiret dans le nom de dossier (`backup-config`, `smoke-tests`, `uptime-config`, `headscale-node`), utiliser un underscore dans `role_name` du meta.
+
+### Erreur 8 — yamllint octal-values non configuré
+
+**Symptôme** : `WARNING Found incompatible custom yamllint configuration (.yamllint.yml), please either remove the file or edit it to comply with: octal-values.forbid-implicit-octal must be true`
+
+**Cause racine** : ansible-lint exige des règles octal-values dans la config yamllint pour éviter les ambiguïtés YAML (ex: `0777` interprété comme entier octal).
+
+**Fix** : Ajouter dans `.yamllint.yml` :
+```yaml
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+```
+
+**Garde-fou** : Toujours inclure cette section dans `.yamllint.yml` dès le départ.
+
+### Erreur 9 — Makefile `yamllint .` sur fichier Vault chiffré
+
+**Symptôme** : `UnicodeDecodeError` sur `secrets.yml` qui est chiffré avec Ansible Vault (header `$ANSIBLE_VAULT;1.1;AES256`)
+
+**Cause racine** : `yamllint .` parcourt tous les fichiers YAML, y compris le vault chiffré qui contient des bytes non-UTF-8. La directive `ignore` de `.yamllint.yml` ne protège pas contre ce crash car yamllint tente de lire le fichier avant de vérifier les ignores.
+
+**Fix** : Remplacer `yamllint .` par un `find` avec `! -name 'secrets.yml'` :
+```makefile
+find . \( -name '*.yml' -o -name '*.yaml' \) \
+  ! -path './.git/*' ! -path './.venv/*' \
+  ! -path '*/molecule/*' ! -path '*/collections/*' \
+  ! -name 'secrets.yml' -print0 | xargs -0 yamllint -c .yamllint.yml
+```
+
+**Garde-fou** : Ne jamais utiliser `yamllint .` ou `yamllint <dir>`. Toujours passer par `find | xargs`.
+
+### Checklist Pré-Lint (à exécuter avant `make lint`)
+
+```bash
+# 1. Vérifier encodage UTF-8 (pas de ISO-8859 ni Windows-1252)
+find roles/ templates/ playbooks/ inventory/ -name '*.yml' -o -name '*.j2' | \
+  xargs file | grep -v 'UTF-8\|ASCII'
+# → Doit être VIDE. Si des fichiers apparaissent, les re-encoder.
+
+# 2. Vérifier fins de ligne LF (pas de CRLF)
+find roles/ templates/ playbooks/ inventory/ -name '*.yml' -o -name '*.j2' | \
+  xargs file | grep 'CRLF'
+# → Doit être VIDE. Si des fichiers apparaissent : sed -i 's/\r$//' <file>
+
+# 3. Vérifier absence de :latest
+grep -r ':latest\|:stable' inventory/group_vars/all/versions.yml
+# → Doit être VIDE.
+
+# 4. Vérifier les role_name dans meta (pas de tirets)
+grep -r 'role_name:.*-' roles/*/meta/main.yml
+# → Doit être VIDE.
+
+# 5. Vérifier les name[template] (Jinja2 pas au début/milieu)
+grep -rn 'name:.*{{.*}}.*[a-zA-Z]' playbooks/*.yml
+# → Doit être VIDE (pas de texte APRÈS les {{ }}).
+```
+
+---
+
+## Fichiers de Configuration de Référence
+
+### `.ansible-lint` (version validée)
+
+```yaml
+---
+profile: production
+strict: true
+
+enable_list:
+  - fqcn
+  - no-changed-when
+  - no-handler
+  - yaml
+
+skip_list:
+  - galaxy[no-changelog]
+
+warn_list:
+  - experimental
+  - role-name[path]
+
+exclude_paths:
+  - .github/
+  - .venv/
+  - collections/
+  - molecule/
+
+offline: true
+
+extra_vars:
+  project_display_name: "VPAI"
+  target_env: "prod"
+
+use_default_rules: true
+
+kinds:
+  - playbook: "playbooks/*.yml"
+  - tasks: "roles/*/tasks/*.yml"
+  - handlers: "roles/*/handlers/*.yml"
+  - vars: "roles/*/vars/*.yml"
+  - defaults: "roles/*/defaults/*.yml"
+  - meta: "roles/*/meta/*.yml"
+```
+
+### `.yamllint.yml` (version validée)
+
+```yaml
+---
+extends: default
+
+rules:
+  line-length:
+    max: 160
+    level: warning
+  truthy:
+    allowed-values: ['true', 'false', 'yes', 'no']
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  document-start: disable
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  braces:
+    max-spaces-inside: 1
+  brackets:
+    max-spaces-inside: 1
+  indentation:
+    spaces: 2
+    indent-sequences: consistent
+
+ignore: |
+  .github/
+  molecule/
+  .venv/
+  collections/
+  roles/*/molecule/
+  inventory/group_vars/all/secrets.yml
+```
 
 ---
 

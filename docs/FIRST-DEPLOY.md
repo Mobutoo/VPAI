@@ -149,11 +149,96 @@ ls -la
 ### 4.4 Cles S3 Hetzner (pour les backups)
 
 1. Toujours dans la Hetzner Console
-2. Va dans **Object Storage** > **Manage credentials** (ou cree un bucket d'abord)
-3. Clique **Generate credentials**
-4. **Note** l'Access Key et le Secret Key
+2. Va dans **Object Storage** (menu de gauche)
+3. Clique **Create Bucket** si tu n'en as pas encore :
+   - Nom : `vpai-backups` (ou le nom de ton choix)
+   - Region : `fsn1` (Falkenstein) — meme DC que la preprod = transfert gratuit
+4. Va dans **Manage credentials** (en haut de la page Object Storage)
+5. Clique **Generate credentials**
+6. **Note** l'Access Key et le Secret Key
 
-### 4.5 Cle pre-authentification Headscale
+> **Attention** : Les credentials S3 ne sont affichees qu'une seule fois. Si tu les perds, il faut en regenerer.
+
+### 4.5 Cles API OVH (pour la gestion DNS automatique)
+
+> **Necessaire uniquement si ton domaine est chez OVH.**
+> Caddy utilise le DNS challenge Let's Encrypt pour generer les certificats TLS.
+> L'API OVH permet de creer automatiquement les enregistrements DNS necessaires.
+
+#### Etape 1 : Creer le token sur le portail OVH
+
+1. Ouvre ce lien (droits pre-remplis pour la zone DNS) :
+
+   **https://api.ovh.com/createToken/?GET=/domain/zone/*&POST=/domain/zone/*&PUT=/domain/zone/*&DELETE=/domain/zone/*/record/***
+
+   > Ce lien pre-configure les droits minimaux : lecture/ecriture/suppression uniquement
+   > sur les zones DNS. Aucun acces a tes serveurs, emails, ou facturation.
+
+2. Connecte-toi avec ton **compte OVH** (identifiant NIC-handle ou email + mot de passe)
+
+3. Remplis le formulaire :
+
+   | Champ | Valeur |
+   |-------|--------|
+   | **Script name** | `vpai-dns` |
+   | **Script description** | `VPAI - Gestion DNS automatique pour TLS` |
+   | **Validity** | **Unlimited** (recommande) |
+
+   Les droits sont deja pre-remplis par le lien. Verifie qu'ils contiennent :
+
+   | Methode | Chemin |
+   |---------|--------|
+   | GET | `/domain/zone/*` |
+   | POST | `/domain/zone/*` |
+   | PUT | `/domain/zone/*` |
+   | DELETE | `/domain/zone/*/record/*` |
+
+4. Clique **Create keys**
+
+5. **La page affiche 3 valeurs** — note-les IMMEDIATEMENT :
+
+   ```
+   Application Key:    xxxxxxxxxxxxxxxx
+   Application Secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   Consumer Key:       xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+   ```
+
+> **IMPORTANT** : Ces 3 valeurs ne sont affichees qu'une seule fois !
+> Si tu fermes la page sans les copier, tu devras en recreer.
+
+#### Etape 2 : Verifier que le token fonctionne
+
+```bash
+# Teste avec curl (remplace les valeurs)
+curl -s \
+  -H "X-Ovh-Application: TA_APPLICATION_KEY" \
+  -H "X-Ovh-Consumer: TA_CONSUMER_KEY" \
+  https://eu.api.ovh.com/1.0/domain/zone/ | jq '.'
+
+# Doit afficher la liste de tes domaines, ex: ["mondomaine.com"]
+```
+
+> **Signature OVH** : Pour les requetes POST/PUT/DELETE, l'API OVH requiert une signature
+> calculee avec le secret. Ansible et Caddy gerent cela automatiquement via les librairies OVH.
+> Le test curl ci-dessus ne fonctionne que pour les GET simples.
+
+#### Pour restreindre a un seul domaine (optionnel, plus securise)
+
+Si tu veux limiter les droits a un seul domaine (ex: `ai.mondomaine.com`), utilise ce lien en remplacant `mondomaine.com` :
+
+```
+https://api.ovh.com/createToken/?GET=/domain/zone/mondomaine.com/*&POST=/domain/zone/mondomaine.com/*&PUT=/domain/zone/mondomaine.com/*&DELETE=/domain/zone/mondomaine.com/record/*&GET=/domain/zone/mondomaine.com
+```
+
+#### Delais et limites
+
+- **Creation du token** : instantanee
+- **Propagation DNS** : les modifications DNS prennent generalement **1 a 5 minutes** pour propager via l'API OVH
+- **Rate limiting** : l'API OVH autorise environ **60 requetes par minute** par token — largement suffisant
+- **Validite** : si tu as choisi "Unlimited", le token n'expire jamais. Sinon, il faudra le recreer a l'expiration
+- **Revocation** : tu peux revoquer le token a tout moment sur https://eu.api.ovh.com/console/ > **Manage credentials**
+
+### 4.6 Cle pre-authentification Headscale
 
 Sur ton serveur VPN (Seko-VPN), via SSH :
 
@@ -167,7 +252,7 @@ headscale preauthkeys create --namespace prod --reusable --expiration 24h
 
 > **Copie la cle** affichee. Elle expire dans 24h, donc fais cette etape juste avant le deploiement.
 
-### 4.6 Webhook de notification (optionnel mais recommande)
+### 4.7 Webhook de notification (optionnel mais recommande)
 
 #### Option Telegram (recommande pour la simplicite)
 

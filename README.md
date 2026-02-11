@@ -60,18 +60,16 @@ cd VPAI
 # Install dependencies
 chmod +x bootstrap.sh && ./bootstrap.sh
 
-# Configure your deployment
-cp PRD.md.example PRD.md
-# Edit PRD.md — fill in your domain, IPs, project name, etc.
-
-# Create and fill the Ansible Vault with your secrets
-make vault-init
+# Run the interactive wizard (generates config + vault)
+bash scripts/wizard.sh
 
 # Deploy
 make deploy-preprod                           # Pre-production first
 make smoke-test URL=https://your-domain.com   # Validate
 make deploy-prod                              # Production
 ```
+
+> **First time?** Follow the complete step-by-step guide: **[docs/FIRST-DEPLOY.md](docs/FIRST-DEPLOY.md)**
 
 ## Project Structure
 
@@ -119,6 +117,7 @@ VPAI uses four isolated Docker networks for defense in depth:
 
 | Document | Description |
 |----------|-------------|
+| **[docs/FIRST-DEPLOY.md](docs/FIRST-DEPLOY.md)** | **Step-by-step first deployment guide (start here!)** |
 | `PRD.md.example` | Configuration template — copy and fill with your values |
 | `TECHNICAL-SPEC.md` | Architecture, configs, networks, resource limits |
 | `docs/RUNBOOK.md` | Day-to-day operations, troubleshooting, procedures |

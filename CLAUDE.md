@@ -21,7 +21,7 @@ Ce repository est un projet **Ansible** qui déploie une stack AI/automatisation
 1. `PRD.md` — Vision produit, wizard de configuration (variables), objectifs, contraintes, architecture fonctionnelle. **⚠️ Fichier sensible, dans `.gitignore`, jamais pushé sur GitHub.**
 2. `PRD.md.example` — Version template du PRD avec les champs à remplir (pushée sur GitHub)
 3. `TECHNICAL-SPEC.md` — Architecture technique détaillée, configs, réseaux Docker, limites ressources, CI/CD
-4. `GOLDEN-PROMPT.md` — Plan de développement en 6 phases avec checklists de review et **REX des erreurs rencontrées**
+4. `docs/GOLDEN-PROMPT.md` — Plan de développement en 6 phases avec checklists de review et **REX des erreurs rencontrées**
 
 ## Stack Technique
 
@@ -113,7 +113,7 @@ Ce repository est un projet **Ansible** qui déploie une stack AI/automatisation
 ├── PRD.md                      # Product Requirements Document (LOCAL ONLY, dans .gitignore)
 ├── PRD.md.example              # Template PRD avec champs à remplir (pushé sur GitHub)
 ├── TECHNICAL-SPEC.md           # Spécification technique
-├── GOLDEN-PROMPT.md            # Plan de développement + REX erreurs
+├── docs/GOLDEN-PROMPT.md       # Plan de développement + REX erreurs
 ├── ansible.cfg
 ├── requirements.yml
 ├── Makefile
@@ -148,14 +148,14 @@ ansible-inventory --list                              # Vérifier l'inventaire
 
 ## Ordre de Développement
 
-Suivre les 6 phases du `GOLDEN-PROMPT.md` dans l'ordre. Chaque phase a un checkpoint de review.
+Suivre les 6 phases du `docs/GOLDEN-PROMPT.md` dans l'ordre. Chaque phase a un checkpoint de review.
 
-**Phase 1** → common, hardening, docker, headscale-node  
-**Phase 2** → caddy, postgresql, redis, qdrant  
-**Phase 3** → n8n, openclaw, litellm  
-**Phase 4** → monitoring (VM + Loki + Alloy + Grafana), diun  
-**Phase 5** → backup-config, uptime-config, smoke-tests  
-**Phase 6** → CI/CD workflows, documentation, polish  
+**Phase 1** → common, hardening, docker, headscale-node
+**Phase 2** → caddy, postgresql, redis, qdrant
+**Phase 3** → n8n, openclaw, litellm
+**Phase 4** → monitoring (VM + Loki + Alloy + Grafana), diun
+**Phase 5** → backup-config, uptime-config, smoke-tests
+**Phase 6** → CI/CD workflows, documentation, polish
 
 ## Points d'Attention Spécifiques
 

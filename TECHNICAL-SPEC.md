@@ -654,84 +654,87 @@ CREATE EXTENSION IF NOT EXISTS "vector";
 
 ---
 
-## 5. Zerobyte — Configuration Backup
+## 5. Zerobyte — Backup Architecture & GFS Retention
+
+> **Zerobyte is the central orchestrator** for all backups. It runs on Seko-VPN,
+> pulls data via VPN, and pushes to S3. **No backup data is stored on Seko-VPN.**
+> Full strategy: `docs/BACKUP-STRATEGY.md`
 
 ### 5.1 Architecture Backup
 
 ```
-┌──────────────┐         ┌──────────────┐         ┌──────────────┐
-│  Seko-AI     │◄──VPN──►│  Seko-VPN    │────S3──►│   Hetzner    │
-│  (prod OVH)  │         │  (Zerobyte)  │         │  Object S3   │
-│              │         │              │         │  (fsn1)      │
-│  PostgreSQL  │         │  Zerobyte UI │         │              │
-│  Redis       │         │  :4096       │         │  bucket:     │
-│  Qdrant      │         │              │         │  {{ s3_bucket}}│
-│  n8n data    │         │  Scheduling  │         │              │
-│  Configs     │         │  Retention   │         │              │
-│              │         │  Encryption  │         │              │
-└──────────────┘         └──────────────┘         └──────────────┘
+Data Sources                  Orchestrator                 Storage
+============                  ============                 =======
+
+┌──────────────┐              ┌──────────────┐             ┌──────────────────────┐
+│  VPS VPAI    │◄──VPN pull──►│  Seko-VPN    │──S3 API──► │  Hetzner S3          │
+│  (prod OVH)  │              │  Zerobyte    │             │                      │
+│              │              │  :4096       │             │  vpai-backups/       │
+│  Future VPS  │◄──VPN pull──►│              │             │   Restic encrypted   │
+│  Applicatif  │              │  Orchestrate │             │   GFS: 7d/4w/6m/2y  │
+│              │              │  Encrypt     │             │                      │
+│  Future      │◄──VPN pull──►│  Deduplicate │             │  vpai-shared/        │
+│  equipment   │              │              │             │   Raw files          │
+└──────────────┘              └──────────────┘             │   Seed data, exports │
+                                                           └──────────┬───────────┘
+                                                                      │ monthly sync
+                                                           ┌──────────▼───────────┐
+                                                           │  NAS TrueNAS (T+6m)  │
+                                                           │  10-12 TB ZFS mirror │
+                                                           │  Long-term archive   │
+                                                           └──────────────────────┘
 ```
 
-### 5.2 Volumes Zerobyte
+### 5.2 S3 Buckets
 
-| Volume Name | Type | Source (via VPN) | Données |
-|-------------|------|-----------------|---------|
+| Bucket | Variable | Purpose | Format |
+|--------|----------|---------|--------|
+| `{{ s3_bucket_backups }}` | `s3_bucket_backups` | Disaster recovery | Restic encrypted |
+| `{{ s3_bucket_shared }}` | `s3_bucket_shared` | Seed data, exports, docs | Raw files |
+
+Both share the same plan (4.99 EUR/month, 1 TB included).
+
+### 5.3 Volumes Zerobyte
+
+| Volume Name | Type | Source (via VPN) | Data |
+|-------------|------|-----------------|------|
 | `{{ project_name }}-postgres` | Directory (mount VPN) | `/opt/{{ project_name }}/backups/pg_dump/` | pg_dump custom format |
 | `{{ project_name }}-redis` | Directory (mount VPN) | `/opt/{{ project_name }}/data/redis/` | RDB dump |
 | `{{ project_name }}-qdrant` | Directory (mount VPN) | `/opt/{{ project_name }}/backups/qdrant/` | API snapshots |
 | `{{ project_name }}-n8n` | Directory (mount VPN) | `/opt/{{ project_name }}/backups/n8n/` | Workflow exports |
-| `{{ project_name }}-configs` | Directory (mount VPN) | `/opt/{{ project_name }}/configs/` | Tous les fichiers de config |
+| `{{ project_name }}-configs` | Directory (mount VPN) | `/opt/{{ project_name }}/configs/` | All config files |
+| `{{ project_name }}-grafana` | Directory (mount VPN) | `/opt/{{ project_name }}/backups/grafana/` | Dashboard JSON |
 
-### 5.3 Jobs Zerobyte
+### 5.4 Jobs Zerobyte (GFS Retention)
 
-| Job | Schedule | Rétention | Pre-script (sur Seko-AI) |
-|-----|----------|-----------|--------------------------|
-| DB Backup | Daily 03:00 | 7 daily, 4 weekly, 3 monthly | `pg_dump -Fc > /opt/.../pg_dump/latest.dump` |
-| Redis Snapshot | Daily 03:05 | 7 daily | `redis-cli -a $PASS BGSAVE` |
-| Qdrant Snapshot | Daily 03:10 | 7 daily, 4 weekly | `curl -X POST http://localhost:6333/snapshots` |
-| n8n Export | Daily 03:15 | 7 daily, 4 weekly, 3 monthly | `n8n export:workflow --all --output=/opt/.../n8n/` |
-| Config Backup | Daily 03:20 | 7 daily, 4 weekly | (pas de pre-script) |
-| Grafana Export | Weekly dim 03:00 | 4 weekly | API export dashboards |
+| Job | Schedule | Repository | GFS Retention | Pre-script |
+|-----|----------|------------|---------------|------------|
+| DB Full | Daily 03:00 | vpai-backups (Restic) | 7d / 4w / 6m / 2y | `pg_dump -Fc` (3 DBs) |
+| Redis | Daily 03:05 | vpai-backups (Restic) | 7d / 4w | `redis-cli BGSAVE` |
+| Qdrant | Daily 03:10 | vpai-backups (Restic) | 7d / 4w / 6m | Snapshot API |
+| n8n Export | Daily 03:15 | vpai-backups (Restic) | 7d / 4w / 6m / 2y | `n8n export:workflow` |
+| Configs | Daily 03:20 | vpai-backups (Restic) | 7d / 4w | (direct copy) |
+| Grafana | Weekly Sun 03:00 | vpai-backups (Restic) | 4w / 6m | API export |
+| Seed Export | Daily 03:30 | vpai-shared (raw) | Latest only | Copy latest dumps |
 
-### 5.4 Pre-scripts (exécutés sur Seko-AI via SSH/VPN)
-
-```bash
-#!/bin/bash
-# roles/backup-config/templates/pre-backup.sh.j2
-# Exécuté par cron sur Seko-AI AVANT le backup Zerobyte
-
-set -euo pipefail
-
-BACKUP_DIR="/opt/{{ project_name }}/backups"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-
-# PostgreSQL dump
-docker exec {{ project_name }}_postgresql \
-  pg_dump -U postgres -Fc --file=/tmp/backup.dump {{ project_name }}
-docker cp {{ project_name }}_postgresql:/tmp/backup.dump \
-  "${BACKUP_DIR}/pg_dump/latest.dump"
-
-# Redis BGSAVE
-docker exec {{ project_name }}_redis \
-  redis-cli -a "{{ redis_password }}" BGSAVE
-sleep 5
-cp /opt/{{ project_name }}/data/redis/dump.rdb \
-  "${BACKUP_DIR}/redis/dump-${TIMESTAMP}.rdb"
-
-# Qdrant snapshots
-curl -s -X POST "http://localhost:6333/snapshots" \
-  -H "api-key: {{ qdrant_api_key }}" | \
-  jq -r '.result.name' > "${BACKUP_DIR}/qdrant/latest-snapshot.txt"
-
-# n8n workflow export
-docker exec {{ project_name }}_n8n \
-  n8n export:workflow --all \
-  --output="/home/node/.n8n/backups/workflows.json"
-docker cp {{ project_name }}_n8n:/home/node/.n8n/backups/workflows.json \
-  "${BACKUP_DIR}/n8n/workflows-${TIMESTAMP}.json"
-
-echo "[$(date)] Pre-backup completed successfully"
+Restic forget command (applied by Zerobyte after each backup):
 ```
+restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --keep-yearly 2 --prune
+```
+
+### 5.5 Pre-backup Script
+
+See `roles/backup-config/templates/pre-backup.sh.j2` for the full script.
+Runs at 02:55 via cron, before Zerobyte pulls at 03:00.
+
+### 5.6 Data Tiering
+
+| Tier | Location | Retention | Content |
+|------|----------|-----------|---------|
+| **HOT** | VPS local NVMe | 3 days | Recent dumps |
+| **WARM** | S3 vpai-backups (Restic) | GFS: up to 2 years | All technical backups |
+| **WARM** | S3 vpai-shared (raw) | Latest + 30 days | Seed data, exports |
+| **COLD** | NAS TrueNAS (T+6 months) | Permanent | Restic mirror + archives |
 
 ---
 

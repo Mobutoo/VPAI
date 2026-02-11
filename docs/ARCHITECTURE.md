@@ -44,8 +44,13 @@ graph TB
         UptimeKuma["Uptime Kuma"]
     end
 
-    subgraph S3["Hetzner Object Storage"]
-        Bucket["S3 Bucket"]
+    subgraph S3["Hetzner Object Storage (4.99 EUR/month)"]
+        BackupBucket["vpai-backups<br/>(Restic encrypted)"]
+        SharedBucket["vpai-shared<br/>(raw files)"]
+    end
+
+    subgraph Preprod["Preprod (Hetzner CX23 — 3.49 EUR/month)"]
+        PreprodStack["VPAI Mirror<br/>(seeded from S3)"]
     end
 
     Internet -->|":443 HTTPS"| Caddy
@@ -73,7 +78,9 @@ graph TB
 
     VPS <-->|"Headscale VPN"| VPN
     Zerobyte -->|"pull via VPN"| VPS
-    Zerobyte -->|"push"| Bucket
+    Zerobyte -->|"push Restic"| BackupBucket
+    Zerobyte -->|"push raw"| SharedBucket
+    SharedBucket -->|"seed data"| PreprodStack
     UptimeKuma -->|"monitor via VPN"| VPS
 ```
 
@@ -160,16 +167,17 @@ sequenceDiagram
     Caddy-->>User: HTTPS response
 ```
 
-## 5. Backup Flow
+## 5. Backup & Data Tiering
 
 ```mermaid
 sequenceDiagram
     participant Cron as Cron (02:55)
     participant Script as pre-backup.sh
     participant Docker as Docker Containers
-    participant VPN as VPN Mount
+    participant Local as /opt/vpai/backups/
     participant Zerobyte as Zerobyte (03:00)
-    participant S3 as Hetzner S3
+    participant S3Back as S3: vpai-backups
+    participant S3Share as S3: vpai-shared
     participant UK as Uptime Kuma
 
     Cron->>Script: Trigger
@@ -177,15 +185,43 @@ sequenceDiagram
     Script->>Docker: redis-cli BGSAVE
     Script->>Docker: qdrant snapshot
     Script->>Docker: n8n export:workflow
-    Script->>VPN: Write to /opt/vpai/backups/
+    Script->>Local: Write dumps
+    Script->>S3Share: Copy latest seed-data (for preprod)
     Script->>UK: Heartbeat ping
 
-    Note over Zerobyte: 03:00 — Scheduled job
-    Zerobyte->>VPN: Pull backup files
-    Zerobyte->>S3: Push encrypted backup
+    Note over Zerobyte: 03:00 — Scheduled jobs (GFS retention)
+    Zerobyte->>Local: Pull backup files (via VPN)
+    Zerobyte->>S3Back: Push Restic encrypted (7d/4w/6m/2y)
 ```
 
-## 6. Startup Order
+### Data Temperature Tiers
+
+| Tier | Location | Access | Content | Lifecycle |
+|------|----------|--------|---------|-----------|
+| **HOT** | VPS local NVMe | Daily, fast | Active databases, working files | Always |
+| **WARM** | S3 Hetzner (4.99 EUR/month) | On-demand, API | Restic backups, seed data, recent docs | GFS retention |
+| **COLD** | NAS TrueNAS (T+6 months) | Local/VPN, archive | Long-term archive, media library | Permanent |
+
+### S3 Bucket Separation
+
+| Bucket | Purpose | Format | Browsable |
+|--------|---------|--------|:---------:|
+| `vpai-backups` | Disaster recovery | Restic encrypted chunks | No |
+| `vpai-shared` | Seed data, exports, documents | Raw files | Yes (Nextcloud) |
+
+> Full details: `docs/BACKUP-STRATEGY.md`
+
+## 6. Infrastructure Timeline
+
+| Phase | Components Added | New Monthly Cost |
+|-------|-----------------|-----------------|
+| **T0 (Now)** | Preprod CX23, S3 Hetzner (2 buckets) | +8.48 EUR |
+| **T+6 Weeks** | VPS Applicatif (Nextcloud, media) | +6-12 EUR |
+| **T+6 Months** | NAS TrueNAS 10-12 TB (on-premises) | +5 EUR + 300 EUR one-time |
+
+> Full details: `docs/BACKUP-STRATEGY.md` (section 8) and `docs/PREPROD-STRATEGY.md`
+
+## 7. Startup Order
 
 ```mermaid
 graph TD

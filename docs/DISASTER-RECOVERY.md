@@ -73,21 +73,43 @@ Update DNS A records to point to the new server IP:
 
 ### Step 3: Restore Data from S3 (30 min)
 
-On Seko-VPN:
-1. Open Zerobyte UI
-2. Select the latest successful backup
-3. Restore all volumes to the new VPS via VPN mount
+**Option A — Via Zerobyte UI (recommended):**
+
+1. Open Zerobyte UI on Seko-VPN (:4096)
+2. Go to repository `vpai-backups` (Restic)
+3. Select the latest successful snapshot
+4. Restore to the new VPS via VPN mount
+5. Zerobyte handles Restic decryption and deduplication automatically
+
+**Option B — Direct Restic restore (if Zerobyte unavailable):**
+
+```bash
+# On the new VPS (or any machine with S3 access):
+export RESTIC_REPOSITORY="s3:fsn1.your-objectstorage.com/vpai-backups"
+export RESTIC_PASSWORD="<restic-encryption-password>"
+export AWS_ACCESS_KEY_ID="<s3-access-key>"
+export AWS_SECRET_ACCESS_KEY="<s3-secret-key>"
+
+# List available snapshots
+restic snapshots
+
+# Restore latest snapshot
+restic restore latest --target /opt/vpai/backups/
+```
+
+**Option C — From NAS mirror (if S3 unavailable, T+6 months):**
+
+```bash
+# NAS has a monthly mirror of Restic repo
+# Mount NAS via VPN, then restore with restic
+export RESTIC_REPOSITORY="/mnt/nas/backups-mirror/vpai"
+restic restore latest --target /opt/vpai/backups/
+```
 
 On the new VPS:
 ```bash
 # Stop services before restoring data
 cd /opt/vpai && docker compose down
-
-# Data is restored via Zerobyte to:
-# /opt/vpai/backups/pg_dump/  (PostgreSQL)
-# /opt/vpai/data/redis/        (Redis)
-# /opt/vpai/backups/qdrant/    (Qdrant)
-# /opt/vpai/backups/n8n/       (n8n)
 
 # Restore PostgreSQL
 for DB in n8n openclaw litellm; do

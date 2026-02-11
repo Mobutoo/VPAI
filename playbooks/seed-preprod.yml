@@ -1,0 +1,239 @@
+---
+# playbooks/seed-preprod.yml — Seed preprod with production data
+#
+# Downloads latest data from S3 shared bucket, restores into preprod,
+# and anonymizes sensitive data (credentials, webhooks, API keys).
+#
+# Usage:
+#   ansible-playbook playbooks/seed-preprod.yml -e "target_env=preprod"
+#   ansible-playbook playbooks/seed-preprod.yml -e "target_env=preprod" -e "seed_db=n8n"
+
+- name: "Seed preprod with production data — {{ project_display_name }}"
+  hosts: "{{ target_env | default('preprod') }}"
+  gather_facts: true
+
+  vars:
+    seed_dir: "/tmp/vpai-seed-{{ ansible_date_time.epoch }}"
+    seed_db: ""
+
+  pre_tasks:
+    - name: Validate target environment is preprod
+      ansible.builtin.assert:
+        that: target_env == 'preprod'
+        fail_msg: "This playbook must only run against preprod (target_env=preprod)"
+
+    - name: Display seed info
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          SEED PREPROD — {{ project_display_name }}
+          Environment: {{ target_env }}
+          Target: {{ inventory_hostname }}
+          Database filter: {{ seed_db | default('all') }}
+          Date: {{ ansible_date_time.iso8601 }}
+          ========================================
+
+  tasks:
+    # === INSTALL RCLONE IF NEEDED ===
+
+    - name: Check if rclone is installed
+      ansible.builtin.command:
+        cmd: which rclone
+      register: rclone_check
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: Install rclone
+      ansible.builtin.shell:
+        cmd: curl -s https://rclone.org/install.sh | bash
+      when: rclone_check.rc != 0
+      changed_when: true
+      become: true
+
+    - name: Configure rclone for Hetzner S3
+      ansible.builtin.template:
+        src: rclone-hetzner.conf.j2
+        dest: "/home/{{ prod_user }}/.config/rclone/rclone.conf"
+        owner: "{{ prod_user }}"
+        group: "{{ prod_user }}"
+        mode: "0600"
+      become: true
+
+    # === DOWNLOAD SEED DATA FROM S3 ===
+
+    - name: Create seed directory
+      ansible.builtin.file:
+        path: "{{ seed_dir }}"
+        state: directory
+        owner: "{{ prod_user }}"
+        group: "{{ prod_user }}"
+        mode: "0750"
+      become: true
+
+    - name: Download seed data from S3 shared bucket
+      ansible.builtin.command:
+        cmd: >
+          rclone sync hetzner-s3:{{ s3_bucket_shared }}/seed-data/
+          {{ seed_dir }}/
+          --transfers 4 --checkers 8
+      changed_when: true
+      become: true
+      become_user: "{{ prod_user }}"
+
+    - name: List downloaded seed files
+      ansible.builtin.find:
+        paths: "{{ seed_dir }}"
+        recurse: true
+        file_type: file
+      register: seed_files
+      become: true
+
+    - name: Display seed files
+      ansible.builtin.debug:
+        msg: "Found {{ seed_files.files | length }} seed files"
+
+    # === STOP APPLICATION SERVICES ===
+
+    - name: Stop application services before restore
+      community.docker.docker_compose_v2:
+        project_src: "/opt/{{ project_name }}"
+        files:
+          - docker-compose.yml
+        services:
+          - n8n
+          - openclaw
+          - litellm
+        state: absent
+      become: true
+
+    # === RESTORE POSTGRESQL ===
+
+    - name: Find PostgreSQL seed dumps
+      ansible.builtin.find:
+        paths: "{{ seed_dir }}/pg-dumps"
+        patterns: "{{ seed_db | default('*') }}-latest.dump"
+        file_type: file
+      register: pg_seed_dumps
+      become: true
+
+    - name: Restore PostgreSQL dumps
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          DB_NAME="{{ item.path | basename | regex_replace('-latest\\.dump$', '') }}"
+          docker cp "{{ item.path }}" {{ project_name }}_postgresql:/tmp/seed-restore.dump
+          docker exec {{ project_name }}_postgresql \
+            pg_restore -U postgres -d "${DB_NAME}" \
+            --clean --if-exists /tmp/seed-restore.dump || true
+          docker exec {{ project_name }}_postgresql rm -f /tmp/seed-restore.dump
+      loop: "{{ pg_seed_dumps.files }}"
+      changed_when: true
+      become: true
+
+    # === ANONYMIZE SENSITIVE DATA ===
+
+    - name: Anonymize n8n credentials
+      ansible.builtin.command:
+        cmd: >
+          docker exec {{ project_name }}_postgresql
+          psql -U postgres -d n8n -c
+          "UPDATE credential_entity SET data = '***REDACTED-PREPROD***' WHERE data IS NOT NULL;"
+      changed_when: true
+      failed_when: false
+      when: seed_db == '' or seed_db == 'n8n'
+      become: true
+
+    - name: Anonymize n8n webhooks (prefix with test-)
+      ansible.builtin.command:
+        cmd: >
+          docker exec {{ project_name }}_postgresql
+          psql -U postgres -d n8n -c
+          "UPDATE webhook_entity SET webhook_path = 'test-' || webhook_path
+           WHERE webhook_path NOT LIKE 'test-%';"
+      changed_when: true
+      failed_when: false
+      when: seed_db == '' or seed_db == 'n8n'
+      become: true
+
+    # === RESTORE REDIS ===
+
+    - name: Check if Redis seed dump exists
+      ansible.builtin.stat:
+        path: "{{ seed_dir }}/redis/dump.rdb"
+      register: redis_seed
+      become: true
+
+    - name: Stop Redis for restore
+      community.docker.docker_compose_v2:
+        project_src: "/opt/{{ project_name }}"
+        files:
+          - docker-compose.yml
+        services:
+          - redis
+        state: absent
+      when: redis_seed.stat.exists
+      become: true
+
+    - name: Restore Redis RDB
+      ansible.builtin.copy:
+        src: "{{ seed_dir }}/redis/dump.rdb"
+        dest: "/opt/{{ project_name }}/data/redis/dump.rdb"
+        remote_src: true
+        owner: "{{ prod_user }}"
+        group: "{{ prod_user }}"
+        mode: "0644"
+      when: redis_seed.stat.exists
+      become: true
+
+    - name: Start Redis after restore
+      community.docker.docker_compose_v2:
+        project_src: "/opt/{{ project_name }}"
+        files:
+          - docker-compose.yml
+        services:
+          - redis
+        state: present
+      when: redis_seed.stat.exists
+      become: true
+
+    # === RESTART SERVICES ===
+
+    - name: Start application services
+      community.docker.docker_compose_v2:
+        project_src: "/opt/{{ project_name }}"
+        files:
+          - docker-compose.yml
+        services:
+          - n8n
+          - openclaw
+          - litellm
+        state: present
+      become: true
+
+    - name: Wait for services to stabilize
+      ansible.builtin.pause:
+        seconds: 30
+
+    # === CLEANUP ===
+
+    - name: Remove seed directory
+      ansible.builtin.file:
+        path: "{{ seed_dir }}"
+        state: absent
+      become: true
+
+  post_tasks:
+    - name: Run smoke tests after seeding
+      ansible.builtin.include_role:
+        name: smoke-tests
+
+    - name: Seed complete
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          SEED COMPLETE
+          Databases restored: {{ pg_seed_dumps.files | map(attribute='path') | map('basename') | list | join(', ') }}
+          Redis restored: {{ redis_seed.stat.exists | default(false) }}
+          Anonymized: credentials, webhooks
+          ========================================

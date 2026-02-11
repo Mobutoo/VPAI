@@ -42,8 +42,15 @@ preprod_os_image: "debian-13"
 # --- Stockage S3 (Hetzner Object Storage) ---
 s3_provider: "hetzner"
 s3_region: "fsn1"
-s3_bucket_name: "{{ vault_s3_bucket_name | default('vpai-backups') }}"
 s3_endpoint: "fsn1.your-objectstorage.com"
+s3_bucket_backups: "{{ vault_s3_bucket_backups | default('vpai-backups') }}"
+s3_bucket_shared: "{{ vault_s3_bucket_shared | default('vpai-shared') }}"
+
+# --- Backup GFS Retention (Grandfather-Father-Son) ---
+backup_gfs_keep_daily: 7
+backup_gfs_keep_weekly: 4
+backup_gfs_keep_monthly: 6
+backup_gfs_keep_yearly: 2
 
 # --- Notifications ---
 notification_method: "telegram"

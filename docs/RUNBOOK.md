@@ -78,23 +78,34 @@ docker compose up -d <service_name>
 > **Location**: Seko-VPN server, Zerobyte UI at port 4096
 > **Prerequisite**: VPN connectivity between Seko-AI and Seko-VPN
 
-### 3.1 Create S3 Repository
+### 3.1 Create S3 Repositories
 
-1. Open Zerobyte UI on Seko-VPN
-2. Go to **Repositories** > **Add Repository**
-3. Configure:
+Two repositories to create — one encrypted (backups), one raw (shared files):
+
+**Repository 1: vpai-backups (Restic encrypted)**
+
+1. Go to **Repositories** > **Add Repository**
+2. Configure:
    - **Name**: `vpai-backups`
-   - **Type**: S3
+   - **Type**: Restic + S3
    - **Endpoint**: `fsn1.your-objectstorage.com`
-   - **Bucket**: (value from vault `s3_bucket_name`)
+   - **Bucket**: (value from vault `s3_bucket_backups`)
    - **Access Key**: (from Hetzner Object Storage)
    - **Secret Key**: (from Hetzner Object Storage)
    - **Region**: `fsn1`
    - **Encryption**: Enable (set a strong password, store in vault)
 
-### 3.2 Create Volumes
+**Repository 2: vpai-shared (raw files for seed/exports)**
 
-Create the following volumes, each mounting a directory from Seko-AI via VPN:
+1. Go to **Repositories** > **Add Repository**
+2. Configure:
+   - **Name**: `vpai-shared`
+   - **Type**: rclone + S3
+   - **Bucket**: (value from vault `s3_bucket_shared`)
+   - Same credentials as above
+   - **Encryption**: None (files must remain browsable)
+
+### 3.2 Create Volumes
 
 | Volume Name | Type | Source Path (via VPN) |
 |-------------|------|-----------------------|
@@ -105,16 +116,21 @@ Create the following volumes, each mounting a directory from Seko-AI via VPN:
 | `vpai-configs` | Directory | `/opt/vpai/configs/` |
 | `vpai-grafana` | Directory | `/opt/vpai/backups/grafana/` |
 
-### 3.3 Create Backup Jobs
+### 3.3 Create Backup Jobs (GFS Retention)
 
-| Job Name | Volume | Schedule | Retention |
-|----------|--------|----------|-----------|
-| DB Backup | `vpai-postgres` | Daily 03:00 | 7 daily, 4 weekly, 3 monthly |
-| Redis Snapshot | `vpai-redis` | Daily 03:05 | 7 daily |
-| Qdrant Snapshot | `vpai-qdrant` | Daily 03:10 | 7 daily, 4 weekly |
-| n8n Export | `vpai-n8n` | Daily 03:15 | 7 daily, 4 weekly, 3 monthly |
-| Config Backup | `vpai-configs` | Daily 03:20 | 7 daily, 4 weekly |
-| Grafana Export | `vpai-grafana` | Weekly Sun 03:00 | 4 weekly |
+| Job | Volume | Repository | Schedule | GFS Retention |
+|-----|--------|------------|----------|---------------|
+| DB Full | `vpai-postgres` | vpai-backups | Daily 03:00 | 7d / 4w / 6m / 2y |
+| Redis | `vpai-redis` | vpai-backups | Daily 03:05 | 7d / 4w |
+| Qdrant | `vpai-qdrant` | vpai-backups | Daily 03:10 | 7d / 4w / 6m |
+| n8n | `vpai-n8n` | vpai-backups | Daily 03:15 | 7d / 4w / 6m / 2y |
+| Configs | `vpai-configs` | vpai-backups | Daily 03:20 | 7d / 4w |
+| Grafana | `vpai-grafana` | vpai-backups | Weekly Sun 03:00 | 4w / 6m |
+| Seed | `vpai-postgres` | vpai-shared | Daily 03:30 | Latest only |
+
+For each Restic job, configure retention: Keep Daily=7, Weekly=4, Monthly=6, Yearly=2, Auto-prune=Yes.
+
+> Full strategy with tiering and NAS integration: `docs/BACKUP-STRATEGY.md`
 
 ### 3.4 Verify Backup
 
@@ -123,7 +139,7 @@ Create the following volumes, each mounting a directory from Seko-AI via VPN:
 /opt/vpai/scripts/pre-backup.sh
 
 # On Seko-VPN: trigger a manual Zerobyte job via UI > Jobs > Run Now
-# Verify S3 content via Zerobyte UI > Repository > Browse
+# Verify via Zerobyte UI > Repository > Browse
 ```
 
 ---

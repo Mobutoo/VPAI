@@ -146,18 +146,27 @@ ls -la
 5. Nom : `vpai-ci` | Permissions : **Read & Write**
 6. **Copie le token**
 
-### 4.4 Cles S3 Hetzner (pour les backups)
+### 4.4 Cles S3 Hetzner (pour les backups et le partage)
+
+Le projet utilise **2 buckets S3** (meme plan a 4.99 EUR/mois, 1 TB partage) :
+
+| Bucket | Role | Format |
+|--------|------|--------|
+| `vpai-backups` | Backups techniques (Restic chiffre) | Non navigable |
+| `vpai-shared` | Seed preprod, exports, documents | Navigable, montable Nextcloud |
 
 1. Toujours dans la Hetzner Console
 2. Va dans **Object Storage** (menu de gauche)
-3. Clique **Create Bucket** si tu n'en as pas encore :
-   - Nom : `vpai-backups` (ou le nom de ton choix)
-   - Region : `fsn1` (Falkenstein) — meme DC que la preprod = transfert gratuit
+3. Cree **2 buckets** :
+   - Bucket 1 : `vpai-backups` — Region : `fsn1` (Falkenstein)
+   - Bucket 2 : `vpai-shared` — Region : `fsn1`
 4. Va dans **Manage credentials** (en haut de la page Object Storage)
-5. Clique **Generate credentials**
+5. Clique **Generate credentials** (les memes credentials fonctionnent pour les 2 buckets)
 6. **Note** l'Access Key et le Secret Key
 
 > **Attention** : Les credentials S3 ne sont affichees qu'une seule fois. Si tu les perds, il faut en regenerer.
+>
+> **Strategie complete** : Voir `docs/BACKUP-STRATEGY.md` pour le tiering HOT/WARM/COLD et la retention GFS.
 
 ### 4.5 Cles API OVH (pour la gestion DNS automatique)
 

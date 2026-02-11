@@ -312,11 +312,14 @@ ask "Token Hetzner Cloud (ou vide)" "" HETZNER_TOKEN
 
 # Hetzner S3
 echo ""
-echo -e "  ${CYAN}--- Hetzner S3 (backups) ---${NC}"
+echo -e "  ${CYAN}--- Hetzner S3 (backups + partage) ---${NC}"
 echo -e "  Obtenir sur : https://console.hetzner.cloud > Object Storage > Manage credentials"
+echo -e "  ${YELLOW}2 buckets necessaires : un pour les backups (Restic), un pour les fichiers partages${NC}"
+echo ""
 ask "S3 Access Key (ou vide)" "" S3_ACCESS_KEY
 ask "S3 Secret Key (ou vide)" "" S3_SECRET_KEY
-ask "Nom du bucket S3" "vpai-backups" S3_BUCKET
+ask "Nom du bucket backups (Restic chiffre)" "vpai-backups" S3_BUCKET_BACKUPS
+ask "Nom du bucket partage (seed, exports, docs)" "vpai-shared" S3_BUCKET_SHARED
 
 # OVH DNS (si registrar OVH)
 OVH_APP_KEY=""
@@ -472,8 +475,15 @@ preprod_os_image: "debian-13"
 # --- Stockage S3 (Hetzner Object Storage) ---
 s3_provider: "hetzner"
 s3_region: "fsn1"
-s3_bucket_name: "{{ vault_s3_bucket_name | default('vpai-backups') }}"
 s3_endpoint: "fsn1.your-objectstorage.com"
+s3_bucket_backups: "{{ vault_s3_bucket_backups | default('vpai-backups') }}"
+s3_bucket_shared: "{{ vault_s3_bucket_shared | default('vpai-shared') }}"
+
+# --- Backup GFS Retention (Grandfather-Father-Son) ---
+backup_gfs_keep_daily: 7
+backup_gfs_keep_weekly: 4
+backup_gfs_keep_monthly: 6
+backup_gfs_keep_yearly: 2
 
 # --- Notifications ---
 notification_method: "$NOTIF_METHOD"
@@ -509,7 +519,8 @@ vault_prod_ip: "$PROD_IP"
 vault_vpn_hostname: "$VPN_HOSTNAME"
 vault_vpn_headscale_url: "$VPN_HEADSCALE_URL"
 vault_vpn_headscale_ip: "$VPN_HEADSCALE_IP"
-vault_s3_bucket_name: "$S3_BUCKET"
+vault_s3_bucket_backups: "$S3_BUCKET_BACKUPS"
+vault_s3_bucket_shared: "$S3_BUCKET_SHARED"
 vault_notification_webhook_url: "$NOTIF_WEBHOOK"
 vault_notification_email: "$NOTIF_EMAIL"
 

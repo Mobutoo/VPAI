@@ -1,0 +1,5 @@
+---
+# n8n — defaults
+
+n8n_config_dir: "/opt/{{ project_name }}/configs/n8n"
+n8n_data_dir: "/opt/{{ project_name }}/data/n8n"

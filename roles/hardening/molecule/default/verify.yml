@@ -1,0 +1,26 @@
+---
+- name: Verify hardening role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check SSH config exists
+      ansible.builtin.stat:
+        path: /etc/ssh/sshd_config
+      register: sshd_config
+      failed_when: not sshd_config.stat.exists
+
+    - name: Check Fail2ban is installed
+      ansible.builtin.command:
+        cmd: dpkg -l fail2ban
+      changed_when: false
+
+    - name: Check UFW is installed
+      ansible.builtin.command:
+        cmd: dpkg -l ufw
+      changed_when: false
+
+    - name: Check audit rules exist
+      ansible.builtin.stat:
+        path: /etc/audit/rules.d/hardening.rules
+      register: audit_rules
+      failed_when: not audit_rules.stat.exists

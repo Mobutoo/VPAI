@@ -1,0 +1,4 @@
+---
+# litellm — defaults
+
+litellm_config_dir: "/opt/{{ project_name }}/configs/litellm"

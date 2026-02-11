@@ -1,0 +1,25 @@
+---
+# postgresql — defaults
+
+postgresql_config_dir: "/opt/{{ project_name }}/configs/postgresql"
+postgresql_data_dir: "/opt/{{ project_name }}/data/postgresql"
+
+postgresql_shared_buffers: "{{ '256MB' if target_env == 'prod' else '128MB' }}"
+postgresql_effective_cache_size: "{{ '512MB' if target_env == 'prod' else '256MB' }}"
+postgresql_work_mem: "{{ '16MB' if target_env == 'prod' else '8MB' }}"
+postgresql_maintenance_work_mem: "{{ '128MB' if target_env == 'prod' else '64MB' }}"
+
+postgresql_databases:
+  - name: n8n
+    user: n8n
+    extensions:
+      - uuid-ossp
+  - name: openclaw
+    user: openclaw
+    extensions:
+      - uuid-ossp
+      - vector
+  - name: litellm
+    user: litellm
+    extensions:
+      - uuid-ossp

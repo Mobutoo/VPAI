@@ -1,0 +1,10 @@
+---
+- name: Verify qdrant role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check Qdrant config exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name | default('vpai') }}/configs/qdrant/config.yaml"
+      register: qdrant_config
+      failed_when: not qdrant_config.stat.exists

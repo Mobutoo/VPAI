@@ -1,0 +1,12 @@
+---
+# postgresql — handlers
+
+- name: Restart postgresql stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - postgresql
+    state: restarted
+  become: true

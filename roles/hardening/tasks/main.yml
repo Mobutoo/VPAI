@@ -1,0 +1,166 @@
+---
+# hardening — tasks
+
+- name: Install hardening packages
+  ansible.builtin.apt:
+    name:
+      - openssh-server
+      - fail2ban
+      - ufw
+      - unattended-upgrades
+      - apt-listchanges
+      - auditd
+    state: present
+  become: true
+
+- name: Deploy SSH authorized keys
+  ansible.posix.authorized_key:
+    user: "{{ hardening_ssh_allowed_user }}"
+    key: "{{ item }}"
+    state: present
+  loop: "{{ hardening_ssh_authorized_keys }}"
+  become: true
+
+- name: Deploy sshd_config
+  ansible.builtin.template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+    owner: root
+    group: root
+    mode: "0600"
+    validate: "sshd -t -f %s"
+  become: true
+  notify: Restart sshd
+
+- name: Configure Fail2ban jail
+  ansible.builtin.template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart fail2ban
+
+- name: Enable and start Fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    state: started
+    enabled: true
+  become: true
+
+- name: Install CrowdSec GPG key
+  ansible.builtin.apt_key:
+    url: https://packagecloud.io/crowdsec/crowdsec/gpgkey
+    state: present
+  become: true
+
+- name: Add CrowdSec repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://packagecloud.io/crowdsec/crowdsec/debian/ {{ ansible_distribution_release }} main"
+    state: present
+    filename: crowdsec
+  become: true
+
+- name: Install CrowdSec
+  ansible.builtin.apt:
+    name:
+      - crowdsec
+      - crowdsec-firewall-bouncer-iptables
+    state: present
+    update_cache: true
+  become: true
+
+- name: Install CrowdSec collections
+  ansible.builtin.command:
+    cmd: "cscli collections install {{ item }}"
+  loop: "{{ hardening_crowdsec_collections }}"
+  become: true
+  changed_when: false
+
+- name: Enable and start CrowdSec
+  ansible.builtin.systemd:
+    name: crowdsec
+    state: started
+    enabled: true
+  become: true
+
+- name: UFW — Reset to defaults
+  community.general.ufw:
+    state: reset
+  become: true
+
+- name: UFW — Set default deny incoming
+  community.general.ufw:
+    default: deny
+    direction: incoming
+  become: true
+
+- name: UFW — Set default allow outgoing
+  community.general.ufw:
+    default: allow
+    direction: outgoing
+  become: true
+
+- name: UFW — Allow HTTP and HTTPS
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: "{{ hardening_ufw_allowed_tcp_ports }}"
+  become: true
+
+- name: UFW — Allow SSH from VPN only
+  community.general.ufw:
+    rule: allow
+    port: "{{ hardening_ssh_port }}"
+    proto: tcp
+    from_ip: "{{ hardening_ufw_vpn_network }}"
+  become: true
+
+- name: UFW — Allow Tailscale UDP
+  community.general.ufw:
+    rule: allow
+    port: "{{ hardening_ufw_tailscale_port }}"
+    proto: udp
+  become: true
+
+- name: UFW — Enable firewall
+  community.general.ufw:
+    state: enabled
+  become: true
+
+- name: Configure unattended-upgrades
+  ansible.builtin.template:
+    src: 50unattended-upgrades.j2
+    dest: /etc/apt/apt.conf.d/50unattended-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+- name: Enable automatic updates
+  ansible.builtin.template:
+    src: 20auto-upgrades.j2
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+- name: Configure auditd rules
+  ansible.builtin.template:
+    src: audit.rules.j2
+    dest: /etc/audit/rules.d/hardening.rules
+    owner: root
+    group: root
+    mode: "0640"
+  become: true
+  notify: Restart auditd
+
+- name: Enable and start auditd
+  ansible.builtin.systemd:
+    name: auditd
+    state: started
+    enabled: true
+  become: true

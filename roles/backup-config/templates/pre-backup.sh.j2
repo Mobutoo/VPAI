@@ -1,0 +1,85 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Pre-backup script for {{ project_display_name }}
+# Executed by cron at {{ backup_pre_script_cron_hour }}:{{ backup_pre_script_cron_minute }} BEFORE Zerobyte backup at 03:00
+
+set -euo pipefail
+
+BACKUP_DIR="{{ backup_base_dir }}"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+PROJECT="{{ project_name }}"
+
+echo "[$(date)] Starting pre-backup..."
+
+# === PostgreSQL dump ===
+echo "[$(date)] Dumping PostgreSQL databases..."
+for DB in n8n openclaw litellm; do
+  docker exec "${PROJECT}_postgresql" \
+    pg_dump -U postgres -Fc --file="/tmp/${DB}_backup.dump" "${DB}"
+  docker cp "${PROJECT}_postgresql:/tmp/${DB}_backup.dump" \
+    "${BACKUP_DIR}/pg_dump/${DB}-${TIMESTAMP}.dump"
+  docker exec "${PROJECT}_postgresql" rm -f "/tmp/${DB}_backup.dump"
+done
+echo "[$(date)] PostgreSQL dump completed"
+
+# === Redis BGSAVE ===
+echo "[$(date)] Triggering Redis BGSAVE..."
+docker exec "${PROJECT}_redis" \
+  redis-cli -a "{{ redis_password }}" BGSAVE
+# Wait for background save to complete
+sleep 5
+cp "/opt/${PROJECT}/data/redis/dump.rdb" \
+  "${BACKUP_DIR}/redis/dump-${TIMESTAMP}.rdb"
+echo "[$(date)] Redis snapshot completed"
+
+# === Qdrant snapshots ===
+echo "[$(date)] Creating Qdrant snapshot..."
+SNAPSHOT_RESULT=$(docker exec "${PROJECT}_qdrant" \
+  wget -qO- --header="api-key: {{ qdrant_api_key }}" \
+  --post-data='' "http://localhost:6333/snapshots")
+SNAPSHOT_NAME=$(echo "${SNAPSHOT_RESULT}" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
+if [ -n "${SNAPSHOT_NAME}" ]; then
+  echo "${SNAPSHOT_NAME}" > "${BACKUP_DIR}/qdrant/latest-snapshot-${TIMESTAMP}.txt"
+  echo "[$(date)] Qdrant snapshot created: ${SNAPSHOT_NAME}"
+else
+  echo "[$(date)] WARNING: Qdrant snapshot name could not be extracted"
+fi
+
+# === n8n workflow export ===
+echo "[$(date)] Exporting n8n workflows..."
+docker exec "${PROJECT}_n8n" \
+  n8n export:workflow --all \
+  --output="/home/node/.n8n/backups/workflows.json" 2>/dev/null || true
+docker cp "${PROJECT}_n8n:/home/node/.n8n/backups/workflows.json" \
+  "${BACKUP_DIR}/n8n/workflows-${TIMESTAMP}.json" 2>/dev/null || true
+echo "[$(date)] n8n export completed"
+
+# === Grafana dashboard export ===
+echo "[$(date)] Exporting Grafana dashboards..."
+GRAFANA_URL="http://localhost:3000"
+GRAFANA_API_KEY="{{ grafana_admin_password }}"
+DASHBOARD_UIDS=$(docker exec "${PROJECT}_grafana" \
+  wget -qO- --header="Authorization: Basic $(echo -n 'admin:'"${GRAFANA_API_KEY}" | base64)" \
+  "${GRAFANA_URL}/api/search?type=dash-db" 2>/dev/null | \
+  grep -o '"uid":"[^"]*"' | cut -d'"' -f4) || true
+
+if [ -n "${DASHBOARD_UIDS}" ]; then
+  mkdir -p "${BACKUP_DIR}/grafana/dashboards-${TIMESTAMP}"
+  for UID in ${DASHBOARD_UIDS}; do
+    docker exec "${PROJECT}_grafana" \
+      wget -qO- --header="Authorization: Basic $(echo -n 'admin:'"${GRAFANA_API_KEY}" | base64)" \
+      "${GRAFANA_URL}/api/dashboards/uid/${UID}" \
+      > "${BACKUP_DIR}/grafana/dashboards-${TIMESTAMP}/${UID}.json" 2>/dev/null || true
+  done
+  echo "[$(date)] Grafana dashboards exported"
+else
+  echo "[$(date)] WARNING: No Grafana dashboards found to export"
+fi
+
+echo "[$(date)] Pre-backup completed successfully"
+
+{% if backup_heartbeat_url | default('') | length > 0 %}
+# === Heartbeat ping ===
+curl -fsS --max-time 10 "{{ backup_heartbeat_url }}" > /dev/null 2>&1 || \
+  echo "[$(date)] WARNING: Heartbeat ping failed"
+{% endif %}

@@ -1,0 +1,20 @@
+---
+# hardening — handlers
+
+- name: Restart sshd
+  ansible.builtin.systemd:
+    name: sshd
+    state: restarted
+  become: true
+
+- name: Restart fail2ban
+  ansible.builtin.systemd:
+    name: fail2ban
+    state: restarted
+  become: true
+
+- name: Restart auditd
+  ansible.builtin.systemd:
+    name: auditd
+    state: restarted
+  become: true

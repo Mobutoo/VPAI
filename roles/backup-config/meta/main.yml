@@ -1,0 +1,5 @@
+---
+# backup-config — meta
+
+dependencies:
+  - role: docker

@@ -1,0 +1,107 @@
+// {{ ansible_managed }}
+// Grafana Alloy configuration for {{ project_display_name }}
+// HCL format — collects metrics + logs from all Docker containers
+
+// ============================================================
+// DOCKER DISCOVERY
+// ============================================================
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+// ============================================================
+// METRICS: Node Exporter (host metrics)
+// ============================================================
+
+prometheus.exporter.unix "node" {
+  procfs_path = "/host/proc"
+  sysfs_path  = "/host/sys"
+  set_collectors = [
+    "cpu",
+    "diskstats",
+    "filesystem",
+    "loadavg",
+    "meminfo",
+    "netdev",
+    "uname",
+  ]
+}
+
+prometheus.scrape "node" {
+  targets    = prometheus.exporter.unix.node.targets
+  forward_to = [prometheus.remote_write.victoriametrics.receiver]
+  scrape_interval = "30s"
+  job_name   = "node"
+}
+
+// ============================================================
+// METRICS: cAdvisor (container metrics via Docker)
+// ============================================================
+
+discovery.relabel "docker_metrics" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "instance"
+  }
+}
+
+// ============================================================
+// METRICS: Remote Write to VictoriaMetrics
+// ============================================================
+
+prometheus.remote_write "victoriametrics" {
+  endpoint {
+    url = "http://victoriametrics:8428/api/v1/write"
+  }
+}
+
+// ============================================================
+// LOGS: Docker container logs
+// ============================================================
+
+loki.source.docker "containers" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.docker.containers.targets
+  forward_to = [loki.process.docker.receiver]
+}
+
+loki.process "docker" {
+  // Extract container name
+  stage.docker {}
+
+  stage.labels {
+    values = {
+      container = "",
+    }
+  }
+
+  // Add static labels
+  stage.static_labels {
+    values = {
+      job     = "docker",
+      project = "{{ project_name }}",
+    }
+  }
+
+  forward_to = [loki.write.loki.receiver]
+}
+
+// ============================================================
+// LOGS: Write to Loki
+// ============================================================
+
+loki.write "loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

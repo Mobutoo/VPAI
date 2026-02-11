@@ -1,0 +1,48 @@
+---
+- name: Verify diun role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check DIUN data directory exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/data/diun"
+      register: diun_data
+    - name: Assert DIUN data dir
+      ansible.builtin.assert:
+        that: diun_data.stat.exists
+
+    - name: Check DIUN config directory exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/configs/diun"
+      register: diun_config
+    - name: Assert DIUN config dir
+      ansible.builtin.assert:
+        that: diun_config.stat.exists
+
+    - name: Check DIUN config file exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/configs/diun/diun.yml"
+      register: diun_cfg
+    - name: Assert DIUN config file
+      ansible.builtin.assert:
+        that: diun_cfg.stat.exists
+
+    - name: Check DIUN config contains watch schedule
+      ansible.builtin.command:
+        cmd: grep -q "schedule" /opt/vpai/configs/diun/diun.yml
+      changed_when: false
+      failed_when: false
+      register: diun_schedule
+    - name: Assert DIUN schedule
+      ansible.builtin.assert:
+        that: diun_schedule.rc == 0
+
+    - name: Check DIUN config contains docker provider
+      ansible.builtin.command:
+        cmd: grep -q "docker" /opt/vpai/configs/diun/diun.yml
+      changed_when: false
+      failed_when: false
+      register: diun_docker
+    - name: Assert DIUN docker provider
+      ansible.builtin.assert:
+        that: diun_docker.rc == 0

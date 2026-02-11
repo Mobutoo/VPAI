@@ -1,0 +1,10 @@
+---
+- name: Verify redis role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check Redis config exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name | default('vpai') }}/configs/redis/redis.conf"
+      register: redis_conf
+      failed_when: not redis_conf.stat.exists

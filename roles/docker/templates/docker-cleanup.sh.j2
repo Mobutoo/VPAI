@@ -1,0 +1,11 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Weekly Docker cleanup script
+
+set -euo pipefail
+
+echo "[$(date)] Starting Docker cleanup..."
+
+docker system prune --volumes -f
+
+echo "[$(date)] Docker cleanup completed."

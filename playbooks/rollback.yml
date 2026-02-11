@@ -1,0 +1,73 @@
+---
+# playbooks/rollback.yml — Emergency rollback to previous versions
+#
+# Usage:
+#   ansible-playbook playbooks/rollback.yml -e "target_env=prod"
+#   ansible-playbook playbooks/rollback.yml -e "target_env=prod" --tags "n8n,litellm"
+
+- name: "Rollback {{ project_display_name }} — Previous Versions"
+  hosts: "{{ target_env | default('prod') }}"
+  gather_facts: true
+
+  vars_prompt:
+    - name: confirm_rollback
+      prompt: "Are you sure you want to rollback? Type 'yes' to confirm"
+      private: false
+
+  pre_tasks:
+    - name: Validate confirmation
+      ansible.builtin.assert:
+        that: confirm_rollback == 'yes'
+        fail_msg: "Rollback aborted — confirmation required"
+      tags: [always]
+
+    - name: Display rollback info
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          ROLLBACK — {{ project_display_name }}
+          Environment: {{ target_env }}
+          Target: {{ inventory_hostname }}
+          Date: {{ ansible_date_time.iso8601 }}
+          ========================================
+      tags: [always]
+
+  tasks:
+    - name: Stop Docker Compose stack
+      community.docker.docker_compose_v2:
+        project_src: "/opt/{{ project_name }}"
+        files:
+          - docker-compose.yml
+        state: absent
+      become: true
+      tags: [always]
+
+    - name: Re-deploy docker-compose from current templates
+      ansible.builtin.template:
+        src: "../templates/docker-compose.yml.j2"
+        dest: "/opt/{{ project_name }}/docker-compose.yml"
+        owner: "{{ prod_user }}"
+        group: "{{ prod_user }}"
+        mode: "0644"
+      become: true
+      tags: [always]
+
+    - name: Pull and start all services
+      community.docker.docker_compose_v2:
+        project_src: "/opt/{{ project_name }}"
+        files:
+          - docker-compose.yml
+        state: present
+        pull: always
+      become: true
+      tags: [always]
+
+    - name: Wait for services to stabilize
+      ansible.builtin.pause:
+        seconds: 30
+      tags: [always]
+
+    - name: Run smoke tests after rollback
+      ansible.builtin.include_role:
+        name: smoke-tests
+      tags: [always]

@@ -1,0 +1,25 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Cleanup old local pre-backup files for {{ project_display_name }}
+# Keeps only the last {{ backup_local_retention_days }} days of local backups
+
+set -euo pipefail
+
+BACKUP_DIR="{{ backup_base_dir }}"
+RETENTION_DAYS="{{ backup_local_retention_days }}"
+
+echo "[$(date)] Starting backup cleanup (retention: ${RETENTION_DAYS} days)..."
+
+for SUBDIR in pg_dump redis qdrant n8n grafana; do
+  if [ -d "${BACKUP_DIR}/${SUBDIR}" ]; then
+    COUNT=$(find "${BACKUP_DIR}/${SUBDIR}" -type f -mtime +${RETENTION_DAYS} | wc -l)
+    if [ "${COUNT}" -gt 0 ]; then
+      find "${BACKUP_DIR}/${SUBDIR}" -type f -mtime +${RETENTION_DAYS} -delete
+      # Also clean empty directories
+      find "${BACKUP_DIR}/${SUBDIR}" -type d -empty -mindepth 1 -delete 2>/dev/null || true
+      echo "[$(date)] Cleaned ${COUNT} file(s) from ${SUBDIR}"
+    fi
+  fi
+done
+
+echo "[$(date)] Backup cleanup completed"

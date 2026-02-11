@@ -1,0 +1,13 @@
+---
+# inventory/group_vars/prod/main.yml — Overrides production
+
+target_env: "prod"
+
+# PostgreSQL tuning (8GB RAM)
+postgresql_shared_buffers: "256MB"
+postgresql_effective_cache_size: "512MB"
+postgresql_work_mem: "16MB"
+postgresql_maintenance_work_mem: "128MB"
+
+# Redis
+redis_maxmemory: "384mb"

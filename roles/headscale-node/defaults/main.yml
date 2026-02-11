@@ -1,0 +1,9 @@
+---
+# headscale-node — defaults
+
+headscale_login_server: "{{ vpn_headscale_url }}"
+headscale_auth_key_value: "{{ headscale_auth_key }}"
+headscale_vpn_ip: "{{ vpn_headscale_ip }}"
+headscale_hostname: "{{ prod_hostname }}"
+headscale_advertise_routes: []
+headscale_accept_routes: true

@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: qdrant
+  author: VPAI
+  description: Qdrant vector database with API key auth and HNSW tuning
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies:
+  - role: docker

@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: redis
+  author: VPAI
+  description: Redis 8.0 deployment with auth, maxmemory, RDB persistence, io-threads
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies:
+  - role: docker

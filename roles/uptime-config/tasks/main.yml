@@ -1,0 +1,23 @@
+---
+# uptime-config — tasks
+# This role generates the Uptime Kuma monitor configuration documentation.
+# Uptime Kuma runs on Seko-VPN — monitors are created manually.
+# The rendered template serves as a reference document.
+
+- name: Ensure docs directory exists
+  ansible.builtin.file:
+    path: "/opt/{{ project_name }}/docs"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy Uptime Kuma monitors reference
+  ansible.builtin.template:
+    src: uptime-kuma-monitors.md.j2
+    dest: "/opt/{{ project_name }}/docs/uptime-kuma-monitors.md"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true

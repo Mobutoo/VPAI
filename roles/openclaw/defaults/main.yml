@@ -1,0 +1,4 @@
+---
+# openclaw — defaults
+
+openclaw_config_dir: "/opt/{{ project_name }}/configs/openclaw"

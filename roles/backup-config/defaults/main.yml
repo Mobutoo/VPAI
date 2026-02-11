@@ -1,0 +1,20 @@
+---
+# backup-config — defaults
+
+# --- Directories ---
+backup_base_dir: "/opt/{{ project_name }}/backups"
+backup_pg_dump_dir: "{{ backup_base_dir }}/pg_dump"
+backup_redis_dir: "{{ backup_base_dir }}/redis"
+backup_qdrant_dir: "{{ backup_base_dir }}/qdrant"
+backup_n8n_dir: "{{ backup_base_dir }}/n8n"
+backup_grafana_dir: "{{ backup_base_dir }}/grafana"
+
+# --- Cron schedule ---
+backup_pre_script_cron_minute: "55"
+backup_pre_script_cron_hour: "2"
+
+# --- Heartbeat (Uptime Kuma push URL) ---
+backup_heartbeat_url: "{{ vault_backup_heartbeat_url | default('') }}"
+
+# --- Retention (local pre-backup files) ---
+backup_local_retention_days: 3

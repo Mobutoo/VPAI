@@ -1,0 +1,178 @@
+# {{ ansible_managed }}
+# Grafana alerting provisioning for {{ project_display_name }}
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: "{{ project_display_name }} — Infrastructure"
+    folder: "{{ project_display_name }}"
+    interval: 1m
+    rules:
+      - uid: cpu-high
+        title: "CPU usage > 80% for 5 min"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: VictoriaMetrics
+            model:
+              expr: "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)"
+              intervalMs: 30000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [80]
+        for: 5m
+        annotations:
+          summary: "CPU usage is above 80% for 5 minutes"
+        labels:
+          severity: warning
+
+      - uid: ram-high
+        title: "RAM usage > 85% for 5 min"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: VictoriaMetrics
+            model:
+              expr: "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100"
+              intervalMs: 30000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [85]
+        for: 5m
+        annotations:
+          summary: "RAM usage is above 85% for 5 minutes"
+        labels:
+          severity: warning
+
+      - uid: disk-high
+        title: "Disk usage > 90%"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: VictoriaMetrics
+            model:
+              expr: "(1 - (node_filesystem_avail_bytes{mountpoint=\"/\"} / node_filesystem_size_bytes{mountpoint=\"/\"})) * 100"
+              intervalMs: 30000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [90]
+        for: 5m
+        annotations:
+          summary: "Disk usage is above 90%"
+        labels:
+          severity: critical
+
+      - uid: container-restarts
+        title: "Container restarts > 3 in 15 min"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: VictoriaMetrics
+            model:
+              expr: "increase(container_restart_count[15m])"
+              intervalMs: 30000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: max
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [3]
+        for: 0s
+        annotations:
+          summary: "A container has restarted more than 3 times in 15 minutes"
+        labels:
+          severity: critical
+
+{% if notification_webhook_url | default('') | length > 0 %}
+contactPoints:
+  - orgId: 1
+    name: "{{ notification_method }}-webhook"
+    receivers:
+      - uid: default-webhook
+        type: webhook
+        settings:
+          url: "{{ notification_webhook_url }}"
+          httpMethod: POST
+
+policies:
+  - orgId: 1
+    receiver: "{{ notification_method }}-webhook"
+    group_by: ["alertname"]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+{% endif %}

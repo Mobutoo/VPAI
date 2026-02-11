@@ -1,0 +1,84 @@
+---
+- name: Verify smoke-tests role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check smoke test script exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/scripts/smoke-test.sh"
+      register: smoke_script
+    - name: Assert smoke test script
+      ansible.builtin.assert:
+        that:
+          - smoke_script.stat.exists
+          - smoke_script.stat.mode == '0750'
+
+    - name: Check smoke test script starts with set -euo pipefail
+      ansible.builtin.command:
+        cmd: grep -q "set -euo pipefail" /opt/vpai/scripts/smoke-test.sh
+      changed_when: false
+      failed_when: false
+      register: smoke_pipefail
+    - name: Assert pipefail
+      ansible.builtin.assert:
+        that: smoke_pipefail.rc == 0
+
+    - name: Check smoke test script checks HTTPS
+      ansible.builtin.command:
+        cmd: grep -q "Caddy HTTPS" /opt/vpai/scripts/smoke-test.sh
+      changed_when: false
+      failed_when: false
+      register: smoke_https
+    - name: Assert HTTPS check
+      ansible.builtin.assert:
+        that: smoke_https.rc == 0
+
+    - name: Check smoke test script checks PostgreSQL
+      ansible.builtin.command:
+        cmd: grep -q "PostgreSQL" /opt/vpai/scripts/smoke-test.sh
+      changed_when: false
+      failed_when: false
+      register: smoke_pg
+    - name: Assert PostgreSQL check
+      ansible.builtin.assert:
+        that: smoke_pg.rc == 0
+
+    - name: Check smoke test script checks Redis
+      ansible.builtin.command:
+        cmd: grep -q "Redis" /opt/vpai/scripts/smoke-test.sh
+      changed_when: false
+      failed_when: false
+      register: smoke_redis
+    - name: Assert Redis check
+      ansible.builtin.assert:
+        that: smoke_redis.rc == 0
+
+    - name: Check smoke test script checks TLS
+      ansible.builtin.command:
+        cmd: grep -q "TLS" /opt/vpai/scripts/smoke-test.sh
+      changed_when: false
+      failed_when: false
+      register: smoke_tls
+    - name: Assert TLS check
+      ansible.builtin.assert:
+        that: smoke_tls.rc == 0
+
+    - name: Check smoke test script checks DNS
+      ansible.builtin.command:
+        cmd: grep -q "DNS" /opt/vpai/scripts/smoke-test.sh
+      changed_when: false
+      failed_when: false
+      register: smoke_dns
+    - name: Assert DNS check
+      ansible.builtin.assert:
+        that: smoke_dns.rc == 0
+
+    - name: Check smoke test has proper exit codes
+      ansible.builtin.command:
+        cmd: grep -q "exit 1" /opt/vpai/scripts/smoke-test.sh
+      changed_when: false
+      failed_when: false
+      register: smoke_exit
+    - name: Assert exit codes
+      ansible.builtin.assert:
+        that: smoke_exit.rc == 0

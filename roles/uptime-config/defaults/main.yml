@@ -1,0 +1,44 @@
+---
+# uptime-config — defaults
+
+# --- Uptime Kuma monitors ---
+# These are documented in RUNBOOK.md for manual creation on Seko-VPN
+uptime_kuma_monitors:
+  - name: "{{ project_display_name }} — HTTPS"
+    type: "http"
+    url: "https://{{ domain_name }}/health"
+    interval: 60
+    retryInterval: 30
+    maxretries: 2
+    accepted_statuscodes: ["200"]
+
+  - name: "{{ project_display_name }} — n8n"
+    type: "http"
+    url: "https://admin.{{ domain_name }}/n8n/healthz"
+    interval: 60
+    retryInterval: 30
+    maxretries: 3
+
+  - name: "{{ project_display_name }} — Grafana"
+    type: "http"
+    url: "https://admin.{{ domain_name }}/grafana/api/health"
+    interval: 120
+    maxretries: 3
+
+  - name: "{{ project_display_name }} — PostgreSQL"
+    type: "port"
+    hostname: "{{ vpn_headscale_ip }}"
+    port: 5432
+    interval: 120
+    maxretries: 2
+
+  - name: "{{ project_display_name }} — TLS Certificate"
+    type: "http"
+    url: "https://{{ domain_name }}"
+    interval: 86400
+    expiryNotification: true
+    maxredirects: 0
+
+  - name: "{{ project_display_name }} — Backup Heartbeat"
+    type: "push"
+    interval: 86400

@@ -1,0 +1,28 @@
+# {{ ansible_managed }}
+# Redis configuration
+
+bind 0.0.0.0
+port 6379
+requirepass {{ redis_password }}
+
+maxmemory {{ redis_maxmemory }}
+maxmemory-policy {{ redis_maxmemory_policy }}
+
+# Persistence (RDB)
+save 900 1
+save 300 10
+save 60 10000
+dbfilename dump.rdb
+dir /data
+
+# I/O threading (Redis 8.0)
+io-threads {{ redis_io_threads }}
+io-threads-do-reads yes
+
+# Logging
+loglevel notice
+logfile ""
+
+# Security
+rename-command FLUSHDB ""
+rename-command FLUSHALL ""

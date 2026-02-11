@@ -1,0 +1,102 @@
+---
+# .github/workflows/ci.yml — Lint + Molecule tests
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'roles/**'
+      - 'playbooks/**'
+      - 'inventory/**'
+      - 'templates/**'
+      - '.github/workflows/ci.yml'
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install ansible ansible-lint yamllint
+
+      - name: Install Ansible collections
+        run: |
+          ansible-galaxy install -r requirements.yml
+
+      - name: YAML Lint
+        run: |
+          find . \( -name '*.yml' -o -name '*.yaml' \) ! -path './.git/*' ! -path './.venv/*' ! -path '*/molecule/*' ! -path '*/collections/*' ! -name 'secrets.yml' -print0 | xargs -0 yamllint -c .yamllint.yml
+
+      - name: Ansible Lint
+        run: |
+          ansible-lint playbooks/site.yml
+
+      - name: Check no latest tags
+        run: |
+          if grep -E ':latest|:stable' inventory/group_vars/all/versions.yml; then
+            echo "ERROR: Found :latest or :stable tags in versions.yml"
+            exit 1
+          fi
+          echo "OK: No :latest tags found"
+
+  molecule:
+    name: Molecule — ${{ matrix.role }}
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        role:
+          - common
+          - hardening
+          - docker
+          - headscale-node
+          - caddy
+          - postgresql
+          - redis
+          - qdrant
+          - n8n
+          - litellm
+          - openclaw
+          - monitoring
+          - diun
+          - backup-config
+          - uptime-config
+          - smoke-tests
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install ansible ansible-lint molecule molecule-docker jmespath yamllint
+
+      - name: Install Ansible collections
+        run: |
+          ansible-galaxy install -r requirements.yml
+
+      - name: Run Molecule converge + verify
+        working-directory: roles/${{ matrix.role }}
+        run: |
+          molecule test
+        env:
+          ANSIBLE_FORCE_COLOR: "1"

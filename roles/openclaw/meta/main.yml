@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: openclaw
+  author: VPAI
+  description: OpenClaw AI agent platform with LiteLLM proxy integration
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies:
+  - role: docker
+  - role: postgresql
+  - role: redis
+  - role: qdrant

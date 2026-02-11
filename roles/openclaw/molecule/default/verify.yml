@@ -1,0 +1,10 @@
+---
+- name: Verify openclaw role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check OpenClaw env file exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name | default('vpai') }}/configs/openclaw/openclaw.env"
+      register: openclaw_env
+      failed_when: not openclaw_env.stat.exists

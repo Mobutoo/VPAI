@@ -1,0 +1,31 @@
+---
+# diun — tasks
+# Deploys: DIUN (Docker Image Update Notifier)
+
+- name: Create DIUN data directory
+  ansible.builtin.file:
+    path: "{{ diun_data_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create DIUN config directory
+  ansible.builtin.file:
+    path: "{{ diun_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy DIUN configuration
+  ansible.builtin.template:
+    src: diun.yml.j2
+    dest: "{{ diun_config_dir }}/diun.yml"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart diun stack

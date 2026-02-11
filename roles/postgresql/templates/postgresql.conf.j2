@@ -1,0 +1,33 @@
+# {{ ansible_managed }}
+# PostgreSQL configuration — tuned for {{ target_env }}
+
+listen_addresses = '*'
+port = 5432
+max_connections = 100
+
+# Memory
+shared_buffers = {{ postgresql_shared_buffers }}
+effective_cache_size = {{ postgresql_effective_cache_size }}
+work_mem = {{ postgresql_work_mem }}
+maintenance_work_mem = {{ postgresql_maintenance_work_mem }}
+
+# WAL
+wal_buffers = 16MB
+checkpoint_completion_target = 0.9
+
+# Logging
+log_timezone = '{{ timezone }}'
+logging_collector = on
+log_directory = 'log'
+log_filename = 'postgresql-%Y-%m-%d.log'
+log_rotation_age = 1d
+log_rotation_size = 100MB
+
+# Locale
+datestyle = 'iso, mdy'
+timezone = '{{ timezone }}'
+lc_messages = 'en_US.utf8'
+lc_monetary = 'en_US.utf8'
+lc_numeric = 'en_US.utf8'
+lc_time = 'en_US.utf8'
+default_text_search_config = 'pg_catalog.english'

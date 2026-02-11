@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  role_name: n8n
+  author: VPAI
+  description: n8n workflow automation with PostgreSQL backend and task runners
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies:
+  - role: docker
+  - role: postgresql

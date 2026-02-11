@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: hardening
+  author: VPAI
+  description: Security hardening — SSH, Fail2ban, CrowdSec, UFW, unattended-upgrades, auditd
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies:
+  - role: common

@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: caddy
+  author: VPAI
+  description: Caddy reverse proxy with TLS auto, rate limiting, VPN ACL
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies:
+  - role: docker

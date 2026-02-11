@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+# Grafana dashboard provisioning for {{ project_display_name }}
+
+apiVersion: 1
+
+providers:
+  - name: "{{ project_display_name }}"
+    orgId: 1
+    folder: "{{ project_display_name }}"
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 60
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

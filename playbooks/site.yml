@@ -1,0 +1,78 @@
+---
+# playbooks/site.yml — Playbook principal
+# Déploie l'intégralité de la stack AI self-hosted
+#
+# Usage:
+#   ansible-playbook playbooks/site.yml -e "target_env=prod"
+#   ansible-playbook playbooks/site.yml -e "target_env=preprod"
+#   ansible-playbook playbooks/site.yml --tags "n8n,litellm"  # Rôles spécifiques
+
+- name: "Deploy Full Stack — {{ project_display_name }}"
+  hosts: "{{ target_env | default('prod') }}"
+  gather_facts: true
+
+  pre_tasks:
+    - name: Display deployment info
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Project: {{ project_display_name }}
+          Environment: {{ target_env }}
+          Target: {{ inventory_hostname }}
+          Date: {{ ansible_date_time.iso8601 }}
+          ========================================
+      tags: [always]
+
+    - name: Verify Ansible version
+      ansible.builtin.assert:
+        that:
+          - ansible_version.full is version('2.16', '>=')
+        fail_msg: "Ansible 2.16+ required. Current: {{ ansible_version.full }}"
+      tags: [always]
+
+  roles:
+    # Phase 1 — Fondations
+    - role: common
+      tags: [common, phase1]
+    - role: hardening
+      tags: [hardening, phase1]
+    - role: docker
+      tags: [docker, phase1]
+    - role: headscale-node
+      tags: [headscale-node, phase1]
+
+    # Phase 2 — Données & Reverse Proxy
+    - role: postgresql
+      tags: [postgresql, phase2]
+    - role: redis
+      tags: [redis, phase2]
+    - role: qdrant
+      tags: [qdrant, phase2]
+    - role: caddy
+      tags: [caddy, phase2]
+
+    # Phase 3 — Applications
+    - role: n8n
+      tags: [n8n, phase3]
+    - role: litellm
+      tags: [litellm, phase3]
+    - role: openclaw
+      tags: [openclaw, phase3]
+
+    # Phase 4 — Observabilité
+    - role: monitoring
+      tags: [monitoring, phase4]
+    - role: diun
+      tags: [diun, phase4]
+
+    # Phase 5 — Résilience
+    - role: backup-config
+      tags: [backup-config, phase5]
+    - role: uptime-config
+      tags: [uptime-config, phase5]
+
+  post_tasks:
+    - name: Run smoke tests
+      ansible.builtin.include_role:
+        name: smoke-tests
+      tags: [smoke-tests, always]

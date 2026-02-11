@@ -1,0 +1,120 @@
+---
+# monitoring — tasks
+# Deploys: VictoriaMetrics, Loki, Grafana Alloy, Grafana
+
+# === DIRECTORIES ===
+
+- name: Create VictoriaMetrics data directory
+  ansible.builtin.file:
+    path: "{{ victoriametrics_data_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create Loki directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  loop:
+    - "{{ loki_config_dir }}"
+    - "{{ loki_data_dir }}"
+  become: true
+
+- name: Create Alloy config directory
+  ansible.builtin.file:
+    path: "{{ alloy_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create Grafana directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "472"
+    group: "472"
+    mode: "0755"
+  loop:
+    - "{{ grafana_data_dir }}"
+    - "{{ grafana_config_dir }}"
+    - "{{ grafana_provisioning_dir }}"
+    - "{{ grafana_provisioning_dir }}/datasources"
+    - "{{ grafana_provisioning_dir }}/dashboards"
+    - "{{ grafana_provisioning_dir }}/alerting"
+    - "{{ grafana_dashboards_dir }}"
+  become: true
+
+# === LOKI CONFIG ===
+
+- name: Deploy Loki configuration
+  ansible.builtin.template:
+    src: loki-config.yaml.j2
+    dest: "{{ loki_config_dir }}/loki-config.yaml"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart loki stack
+
+# === ALLOY CONFIG ===
+
+- name: Deploy Alloy configuration
+  ansible.builtin.template:
+    src: config.alloy.j2
+    dest: "{{ alloy_config_dir }}/config.alloy"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart alloy stack
+
+# === GRAFANA PROVISIONING ===
+
+- name: Deploy Grafana datasources provisioning
+  ansible.builtin.template:
+    src: grafana/provisioning/datasources.yaml.j2
+    dest: "{{ grafana_provisioning_dir }}/datasources/datasources.yaml"
+    owner: "472"
+    group: "472"
+    mode: "0644"
+  become: true
+  notify: Restart grafana stack
+
+- name: Deploy Grafana dashboard provisioning config
+  ansible.builtin.template:
+    src: grafana/provisioning/dashboards.yaml.j2
+    dest: "{{ grafana_provisioning_dir }}/dashboards/dashboards.yaml"
+    owner: "472"
+    group: "472"
+    mode: "0644"
+  become: true
+  notify: Restart grafana stack
+
+- name: Deploy Grafana alerting provisioning
+  ansible.builtin.template:
+    src: grafana/provisioning/alerting.yaml.j2
+    dest: "{{ grafana_provisioning_dir }}/alerting/alerting.yaml"
+    owner: "472"
+    group: "472"
+    mode: "0644"
+  become: true
+  notify: Restart grafana stack
+
+# === GRAFANA DASHBOARDS ===
+
+- name: Deploy Grafana dashboards
+  ansible.builtin.copy:
+    src: "dashboards/"
+    dest: "{{ grafana_dashboards_dir }}/"
+    owner: "472"
+    group: "472"
+    mode: "0644"
+  become: true
+  notify: Restart grafana stack

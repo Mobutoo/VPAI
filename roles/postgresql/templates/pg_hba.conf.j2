@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+# PostgreSQL Client Authentication Configuration
+
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+local   all             all                                     trust
+host    all             all             127.0.0.1/32            md5
+host    all             all             ::1/128                 md5
+# Allow connections from Docker backend network
+host    all             all             {{ docker_network_backend_subnet }}    md5

@@ -1,0 +1,8 @@
+---
+# redis — defaults
+
+redis_config_dir: "/opt/{{ project_name }}/configs/redis"
+redis_data_dir: "/opt/{{ project_name }}/data/redis"
+redis_maxmemory: "{{ '384mb' if target_env == 'prod' else '192mb' }}"
+redis_maxmemory_policy: "allkeys-lru"
+redis_io_threads: 2

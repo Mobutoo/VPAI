@@ -1,0 +1,82 @@
+---
+- name: Verify monitoring role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check VictoriaMetrics data directory exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/data/victoriametrics"
+      register: vm_data
+    - name: Assert VictoriaMetrics data dir
+      ansible.builtin.assert:
+        that: vm_data.stat.exists
+
+    - name: Check Loki config exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/configs/loki/loki-config.yaml"
+      register: loki_cfg
+    - name: Assert Loki config
+      ansible.builtin.assert:
+        that: loki_cfg.stat.exists
+
+    - name: Check Alloy config exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/configs/alloy/config.alloy"
+      register: alloy_cfg
+    - name: Assert Alloy config
+      ansible.builtin.assert:
+        that: alloy_cfg.stat.exists
+
+    - name: Check Grafana provisioning datasources exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/configs/grafana/provisioning/datasources/datasources.yaml"
+      register: grafana_ds
+    - name: Assert Grafana datasources
+      ansible.builtin.assert:
+        that: grafana_ds.stat.exists
+
+    - name: Check Grafana provisioning dashboards exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/configs/grafana/provisioning/dashboards/dashboards.yaml"
+      register: grafana_db
+    - name: Assert Grafana dashboards provisioning
+      ansible.builtin.assert:
+        that: grafana_db.stat.exists
+
+    - name: Check Grafana alerting provisioning exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/configs/grafana/provisioning/alerting/alerting.yaml"
+      register: grafana_alert
+    - name: Assert Grafana alerting
+      ansible.builtin.assert:
+        that: grafana_alert.stat.exists
+
+    - name: Check at least 5 dashboard JSON files
+      ansible.builtin.find:
+        paths: "/opt/vpai/configs/grafana/dashboards"
+        patterns: "*.json"
+      register: dashboards_found
+    - name: Assert minimum 5 dashboards
+      ansible.builtin.assert:
+        that: dashboards_found.matched >= 5
+        fail_msg: "Expected at least 5 dashboards, found {{ dashboards_found.matched }}"
+
+    - name: Check Loki config contains retention setting
+      ansible.builtin.command:
+        cmd: grep -q "retention_period" /opt/vpai/configs/loki/loki-config.yaml
+      changed_when: false
+      failed_when: false
+      register: loki_retention
+    - name: Assert Loki retention
+      ansible.builtin.assert:
+        that: loki_retention.rc == 0
+
+    - name: Check Alloy config uses HCL format
+      ansible.builtin.command:
+        cmd: grep -q "prometheus.remote_write" /opt/vpai/configs/alloy/config.alloy
+      changed_when: false
+      failed_when: false
+      register: alloy_hcl
+    - name: Assert Alloy HCL format
+      ansible.builtin.assert:
+        that: alloy_hcl.rc == 0

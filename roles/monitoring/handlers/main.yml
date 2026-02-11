@@ -1,0 +1,45 @@
+---
+# monitoring — handlers
+
+- name: Restart loki stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - loki
+    state: restarted
+  become: true
+
+- name: Restart alloy stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - alloy
+    state: restarted
+  become: true
+
+- name: Restart grafana stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - grafana
+    state: restarted
+  become: true
+
+- name: Restart monitoring stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - victoriametrics
+      - loki
+      - alloy
+      - grafana
+    state: restarted
+  become: true

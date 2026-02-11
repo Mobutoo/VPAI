@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  role_name: litellm
+  author: VPAI
+  description: LiteLLM proxy with model routing, fallbacks, Redis cache, PostgreSQL logging
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies:
+  - role: docker
+  - role: postgresql
+  - role: redis

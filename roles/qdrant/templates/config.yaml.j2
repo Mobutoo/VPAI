@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+# Qdrant configuration
+
+storage:
+  storage_path: /qdrant/storage
+
+service:
+  api_key: {{ qdrant_api_key }}
+  host: 0.0.0.0
+  http_port: 6333
+  grpc_port: 6334
+
+optimizers:
+  default_segment_number: 2
+
+hnsw_index:
+  m: {{ qdrant_hnsw_m }}
+  ef_construct: {{ qdrant_hnsw_ef_construct }}
+  full_scan_threshold: 10000

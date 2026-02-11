@@ -1,0 +1,10 @@
+---
+- name: Verify n8n role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check n8n env file exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name | default('vpai') }}/configs/n8n/n8n.env"
+      register: n8n_env
+      failed_when: not n8n_env.stat.exists

@@ -1,0 +1,70 @@
+---
+- name: Verify backup-config role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check backup base directory exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/backups"
+      register: backup_base
+    - name: Assert backup base dir
+      ansible.builtin.assert:
+        that: backup_base.stat.exists
+
+    - name: Check backup subdirectories exist
+      ansible.builtin.stat:
+        path: "/opt/vpai/backups/{{ item }}"
+      loop:
+        - pg_dump
+        - redis
+        - qdrant
+        - n8n
+        - grafana
+      register: backup_subdirs
+    - name: Assert backup subdirectories
+      ansible.builtin.assert:
+        that: item.stat.exists
+      loop: "{{ backup_subdirs.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Check pre-backup script exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/scripts/pre-backup.sh"
+      register: pre_backup
+    - name: Assert pre-backup script
+      ansible.builtin.assert:
+        that:
+          - pre_backup.stat.exists
+          - pre_backup.stat.mode == '0750'
+
+    - name: Check pre-backup script starts with set -euo pipefail
+      ansible.builtin.command:
+        cmd: grep -q "set -euo pipefail" /opt/vpai/scripts/pre-backup.sh
+      changed_when: false
+      failed_when: false
+      register: pre_backup_pipefail
+    - name: Assert pre-backup pipefail
+      ansible.builtin.assert:
+        that: pre_backup_pipefail.rc == 0
+
+    - name: Check backup cleanup script exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/scripts/backup-cleanup.sh"
+      register: cleanup_script
+    - name: Assert cleanup script
+      ansible.builtin.assert:
+        that:
+          - cleanup_script.stat.exists
+          - cleanup_script.stat.mode == '0750'
+
+    - name: Check pre-backup cron job
+      ansible.builtin.command:
+        cmd: crontab -l -u deploy
+      changed_when: false
+      failed_when: false
+      register: crontab_output
+    - name: Assert pre-backup cron exists
+      ansible.builtin.assert:
+        that: "'pre-backup.sh' in crontab_output.stdout"
+        fail_msg: "Pre-backup cron job not found"

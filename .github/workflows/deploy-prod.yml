@@ -1,0 +1,105 @@
+---
+# .github/workflows/deploy-prod.yml — Deploy to production (manual)
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy-prod" to confirm production deployment'
+        required: true
+        type: string
+      tags:
+        description: 'Ansible tags (leave empty for full deploy)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  ANSIBLE_FORCE_COLOR: "1"
+
+jobs:
+  validate:
+    name: Validate Confirmation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "deploy-prod" ]; then
+            echo "ERROR: You must type 'deploy-prod' to confirm"
+            exit 1
+          fi
+          echo "Confirmation validated"
+
+  lint:
+    name: Lint
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install ansible ansible-lint yamllint
+      - run: ansible-galaxy install -r requirements.yml
+      - run: yamllint -c .yamllint.yml .
+      - run: ansible-lint playbooks/site.yml
+
+  deploy:
+    name: Deploy to Production
+    needs: lint
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install ansible jmespath
+          ansible-galaxy install -r requirements.yml
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p 2222 -H "${{ secrets.PROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Create vault password file
+        run: |
+          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_password
+          chmod 600 .vault_password
+
+      - name: Deploy
+        run: |
+          TAGS_OPTION=""
+          if [ -n "${{ github.event.inputs.tags }}" ]; then
+            TAGS_OPTION="--tags ${{ github.event.inputs.tags }}"
+          fi
+
+          ansible-playbook playbooks/site.yml \
+            -e "target_env=prod" \
+            ${TAGS_OPTION} \
+            --diff
+
+  smoke-tests:
+    name: Smoke Tests
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for services to stabilize
+        run: sleep 30
+
+      - name: Run smoke tests
+        run: |
+          bash scripts/smoke-test.sh "https://${{ secrets.PROD_DOMAIN }}"
+        env:
+          LITELLM_KEY: ${{ secrets.LITELLM_MASTER_KEY }}

@@ -1,0 +1,84 @@
+---
+# headscale-node — tasks
+
+- name: Add Tailscale GPG key
+  ansible.builtin.apt_key:
+    url: "https://pkgs.tailscale.com/stable/debian/{{ ansible_distribution_release }}.noarmor.gpg"
+    keyring: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    state: present
+  become: true
+
+- name: Add Tailscale repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg]
+      https://pkgs.tailscale.com/stable/debian
+      {{ ansible_distribution_release }} main
+    state: present
+    filename: tailscale
+  become: true
+
+- name: Install Tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: true
+  become: true
+
+- name: Enable and start Tailscale service
+  ansible.builtin.systemd:
+    name: tailscaled
+    state: started
+    enabled: true
+  become: true
+
+- name: Check Tailscale status
+  ansible.builtin.command:
+    cmd: tailscale status --json
+  register: tailscale_status_raw
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Parse Tailscale status
+  ansible.builtin.set_fact:
+    tailscale_status: "{{ tailscale_status_raw.stdout | from_json }}"
+  when: tailscale_status_raw.rc == 0
+
+- name: Authenticate with Headscale server
+  ansible.builtin.command:
+    cmd: >-
+      tailscale up
+      --login-server={{ headscale_login_server }}
+      --authkey={{ headscale_auth_key_value }}
+      --hostname={{ headscale_hostname }}
+      {% if headscale_accept_routes %}--accept-routes{% endif %}
+      {% if headscale_advertise_routes | length > 0 %}--advertise-routes={{ headscale_advertise_routes | join(',') }}{% endif %}
+  become: true
+  changed_when: true
+  register: tailscale_up_result
+  when: >-
+    tailscale_status_raw.rc != 0 or
+    (tailscale_status is defined and tailscale_status.BackendState != "Running")
+
+- name: Get Tailscale IP address
+  ansible.builtin.command:
+    cmd: tailscale ip -4
+  register: tailscale_ip_result
+  changed_when: false
+  become: true
+
+- name: Save Tailscale IP as fact
+  ansible.builtin.set_fact:
+    tailscale_ip: "{{ tailscale_ip_result.stdout | trim }}"
+    cacheable: true
+
+- name: Verify VPN connectivity
+  ansible.builtin.command:
+    cmd: "ping -c 3 -W 5 {{ headscale_vpn_ip }}"
+  changed_when: false
+  become: true
+
+- name: Display Tailscale IP
+  ansible.builtin.debug:
+    msg: "Tailscale IP assigned: {{ tailscale_ip }}"

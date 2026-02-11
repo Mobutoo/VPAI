@@ -1,0 +1,188 @@
+---
+# .github/workflows/deploy-preprod.yml — Deploy to pre-production
+name: Deploy Pre-production
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'roles/**'
+      - 'playbooks/**'
+      - 'inventory/**'
+      - 'templates/**'
+
+env:
+  ANSIBLE_FORCE_COLOR: "1"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install ansible ansible-lint yamllint
+      - run: ansible-galaxy install -r requirements.yml
+      - run: yamllint -c .yamllint.yml .
+      - run: ansible-lint playbooks/site.yml
+
+  provision:
+    name: Provision Hetzner Server
+    needs: lint
+    runs-on: ubuntu-latest
+    outputs:
+      server_ip: ${{ steps.create.outputs.ip }}
+      server_id: ${{ steps.create.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install hcloud CLI
+        run: |
+          curl -sL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz | tar xz
+          sudo mv hcloud /usr/local/bin/
+
+      - name: Create Hetzner Server
+        id: create
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HETZNER_CLOUD_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          # Try to restore from snapshot
+          SNAPSHOT_ID=$(hcloud image list --type snapshot \
+            --selector project=vpai \
+            -o json 2>/dev/null | jq -r '.[0].id // empty') || true
+
+          if [ -n "$SNAPSHOT_ID" ]; then
+            echo "Restoring from snapshot $SNAPSHOT_ID"
+            SERVER_JSON=$(hcloud server create \
+              --name vpai-preprod-$(date +%s) \
+              --type cx23 \
+              --location fsn1 \
+              --image "$SNAPSHOT_ID" \
+              --ssh-key deploy \
+              -o json)
+          else
+            echo "Creating from scratch"
+            SERVER_JSON=$(hcloud server create \
+              --name vpai-preprod-$(date +%s) \
+              --type cx23 \
+              --location fsn1 \
+              --image debian-13 \
+              --ssh-key deploy \
+              -o json)
+          fi
+
+          IP=$(echo "$SERVER_JSON" | jq -r '.server.public_net.ipv4.ip')
+          ID=$(echo "$SERVER_JSON" | jq -r '.server.id')
+          echo "ip=$IP" >> "$GITHUB_OUTPUT"
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+          echo "Server created: $IP (ID: $ID)"
+
+      - name: Wait for SSH
+        run: |
+          for i in $(seq 1 30); do
+            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+              root@${{ steps.create.outputs.ip }} echo "SSH ready"; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "SSH timeout" && exit 1
+
+  deploy:
+    name: Deploy via Ansible
+    needs: provision
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install ansible jmespath
+          ansible-galaxy install -r requirements.yml
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ needs.provision.outputs.server_ip }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Create vault password file
+        run: |
+          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_password
+          chmod 600 .vault_password
+
+      - name: Deploy
+        run: |
+          ansible-playbook playbooks/site.yml \
+            -i "${{ needs.provision.outputs.server_ip }}," \
+            -e "target_env=preprod" \
+            -e "ansible_user=root" \
+            --diff
+
+  smoke-tests:
+    name: Smoke Tests
+    needs: [provision, deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for services to stabilize
+        run: sleep 30
+
+      - name: Run smoke tests
+        run: |
+          bash scripts/smoke-test.sh \
+            "https://${{ needs.provision.outputs.server_ip }}"
+        env:
+          LITELLM_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+
+  snapshot:
+    name: Create Golden Snapshot
+    needs: [provision, smoke-tests]
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install hcloud CLI
+        run: |
+          curl -sL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz | tar xz
+          sudo mv hcloud /usr/local/bin/
+
+      - name: Create snapshot
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HETZNER_CLOUD_TOKEN }}
+        run: |
+          hcloud server create-image \
+            --type snapshot \
+            --description "Golden $(date +%Y%m%d-%H%M)" \
+            --label project=vpai \
+            ${{ needs.provision.outputs.server_id }}
+
+  cleanup:
+    name: Cleanup
+    needs: [provision, smoke-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install hcloud CLI
+        run: |
+          curl -sL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz | tar xz
+          sudo mv hcloud /usr/local/bin/
+
+      - name: Destroy ephemeral server
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HETZNER_CLOUD_TOKEN }}
+        run: |
+          hcloud server delete ${{ needs.provision.outputs.server_id }} || true

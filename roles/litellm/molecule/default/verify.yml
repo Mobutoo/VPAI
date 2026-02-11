@@ -1,0 +1,10 @@
+---
+- name: Verify litellm role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check LiteLLM config exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name | default('vpai') }}/configs/litellm/litellm_config.yaml"
+      register: litellm_config
+      failed_when: not litellm_config.stat.exists

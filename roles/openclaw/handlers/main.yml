@@ -1,0 +1,12 @@
+---
+# openclaw — handlers
+
+- name: Restart openclaw stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - openclaw
+    state: restarted
+  become: true

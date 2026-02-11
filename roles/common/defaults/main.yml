@@ -1,0 +1,40 @@
+---
+# common — defaults
+
+common_packages:
+  - curl
+  - wget
+  - jq
+  - gnupg
+  - ca-certificates
+  - python3-pip
+  - unzip
+  - htop
+  - ncdu
+  - tmux
+  - apt-transport-https
+  - software-properties-common
+  - lsb-release
+
+common_locale: "{{ locale }}"
+common_timezone: "{{ timezone }}"
+common_hostname: "{{ prod_hostname }}"
+
+common_headscale_ip: "{{ vpn_headscale_ip }}"
+common_headscale_hostname: "{{ vpn_hostname }}"
+
+common_project_base: "/opt/{{ project_name }}"
+common_project_dirs:
+  - "configs"
+  - "data"
+  - "backups"
+  - "logs"
+
+common_sysctl_settings:
+  vm.swappiness: 10
+  net.core.somaxconn: 65535
+  fs.file-max: 100000
+
+common_ntp_servers:
+  - "0.pool.ntp.org"
+  - "1.pool.ntp.org"

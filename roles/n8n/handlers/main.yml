@@ -1,0 +1,12 @@
+---
+# n8n — handlers
+
+- name: Restart n8n stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - n8n
+    state: restarted
+  become: true

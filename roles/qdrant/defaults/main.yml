@@ -1,0 +1,7 @@
+---
+# qdrant — defaults
+
+qdrant_config_dir: "/opt/{{ project_name }}/configs/qdrant"
+qdrant_data_dir: "/opt/{{ project_name }}/data/qdrant"
+qdrant_hnsw_m: 16
+qdrant_hnsw_ef_construct: 100

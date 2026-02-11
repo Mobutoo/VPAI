@@ -1,0 +1,19 @@
+---
+- name: Verify headscale-node role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check Tailscale is installed
+      ansible.builtin.command:
+        cmd: tailscale version
+      changed_when: false
+
+    - name: Check tailscaled service exists
+      ansible.builtin.stat:
+        path: /usr/lib/systemd/system/tailscaled.service
+      register: tailscaled_service
+
+    - name: Verify tailscaled service file exists
+      ansible.builtin.assert:
+        that:
+          - tailscaled_service.stat.exists

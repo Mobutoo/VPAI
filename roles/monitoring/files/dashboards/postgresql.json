@@ -1,0 +1,80 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "PostgreSQL — Container CPU",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "rate(container_cpu_usage_seconds_total{name=~\".*postgresql.*\"}[5m]) * 100",
+          "legendFormat": "CPU %"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" }, "overrides": [] }
+    },
+    {
+      "title": "PostgreSQL — Container Memory",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "container_memory_usage_bytes{name=~\".*postgresql.*\"}",
+          "legendFormat": "Memory used"
+        },
+        {
+          "expr": "container_spec_memory_limit_bytes{name=~\".*postgresql.*\"}",
+          "legendFormat": "Memory limit"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "bytes" }, "overrides": [] }
+    },
+    {
+      "title": "PostgreSQL — Network I/O",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "rate(container_network_receive_bytes_total{name=~\".*postgresql.*\"}[5m])",
+          "legendFormat": "RX"
+        },
+        {
+          "expr": "-rate(container_network_transmit_bytes_total{name=~\".*postgresql.*\"}[5m])",
+          "legendFormat": "TX"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] }
+    },
+    {
+      "title": "PostgreSQL — Disk I/O",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "rate(container_fs_reads_bytes_total{name=~\".*postgresql.*\"}[5m])",
+          "legendFormat": "Read"
+        },
+        {
+          "expr": "rate(container_fs_writes_bytes_total{name=~\".*postgresql.*\"}[5m])",
+          "legendFormat": "Write"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "Bps" }, "overrides": [] }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["postgresql", "database"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "PostgreSQL",
+  "uid": "postgresql"
+}

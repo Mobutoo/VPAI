@@ -1,0 +1,30 @@
+---
+# docker — defaults
+
+docker_user: "{{ prod_user }}"
+
+docker_log_driver: "json-file"
+docker_log_max_size: "10m"
+docker_log_max_file: "3"
+docker_storage_driver: "overlay2"
+docker_live_restore: true
+docker_default_address_pool_base: "172.20.0.0/16"
+docker_default_address_pool_size: 24
+
+docker_networks:
+  - name: "{{ project_name }}_frontend"
+    subnet: "{{ docker_network_frontend_subnet }}"
+    internal: false
+  - name: "{{ project_name }}_backend"
+    subnet: "{{ docker_network_backend_subnet }}"
+    internal: true
+  - name: "{{ project_name }}_monitoring"
+    subnet: "{{ docker_network_monitoring_subnet }}"
+    internal: true
+  - name: "{{ project_name }}_egress"
+    subnet: "{{ docker_network_egress_subnet }}"
+    internal: false
+
+docker_cleanup_cron_weekday: "0"
+docker_cleanup_cron_hour: "4"
+docker_cleanup_cron_minute: "0"

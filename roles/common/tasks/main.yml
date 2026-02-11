@@ -1,0 +1,85 @@
+---
+# common — tasks
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Install common packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+  become: true
+
+- name: Configure locale
+  community.general.locale_gen:
+    name: "{{ common_locale }}"
+    state: present
+  become: true
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+  become: true
+  notify: Restart systemd-timesyncd
+
+- name: Configure systemd-timesyncd
+  ansible.builtin.template:
+    src: timesyncd.conf.j2
+    dest: /etc/systemd/timesyncd.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart systemd-timesyncd
+
+- name: Enable and start systemd-timesyncd
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    state: started
+    enabled: true
+  become: true
+
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ common_hostname }}"
+  become: true
+
+- name: Add Headscale hostname to /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: ".*{{ common_headscale_hostname }}$"
+    line: "{{ common_headscale_ip }} {{ common_headscale_hostname }}"
+    state: present
+  become: true
+
+- name: Configure sysctl parameters
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop: "{{ common_sysctl_settings | dict2items }}"
+  become: true
+
+- name: Create project base directory
+  ansible.builtin.file:
+    path: "{{ common_project_base }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create project subdirectories
+  ansible.builtin.file:
+    path: "{{ common_project_base }}/{{ item }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  loop: "{{ common_project_dirs }}"
+  become: true

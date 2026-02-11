@@ -1,0 +1,10 @@
+---
+- name: Verify caddy role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check Caddyfile exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name | default('vpai') }}/configs/caddy/Caddyfile"
+      register: caddyfile
+      failed_when: not caddyfile.stat.exists

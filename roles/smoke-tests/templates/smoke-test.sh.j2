@@ -1,0 +1,185 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Smoke tests for {{ project_display_name }}
+# Usage: {{ smoke_test_script_path }}
+# Exit code: 0 = all tests passed, 1 = at least one test failed
+
+set -euo pipefail
+
+BASE_URL="{{ smoke_test_base_url }}"
+ADMIN_URL="{{ smoke_test_admin_url }}"
+TIMEOUT="{{ smoke_test_timeout }}"
+PROJECT="{{ project_name }}"
+FAILURES=0
+
+check_http() {
+  local name="$1" url="$2" expected="${3:-200}"
+  local status
+  status=$(curl -s -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" "$url" 2>/dev/null) || status="000"
+  if [ "$status" = "$expected" ]; then
+    echo "PASS  $name (HTTP $status)"
+  else
+    echo "FAIL  $name (HTTP $status, expected $expected)"
+    FAILURES=$((FAILURES + 1))
+  fi
+}
+
+check_container() {
+  local name="$1" container="$2"
+  local state
+  state=$(docker inspect --format='{{ '{{' }}.State.Status{{ '}}' }}' "${PROJECT}_${container}" 2>/dev/null) || state="not_found"
+  if [ "$state" = "running" ]; then
+    echo "PASS  $name container (running)"
+  else
+    echo "FAIL  $name container (state: $state)"
+    FAILURES=$((FAILURES + 1))
+  fi
+}
+
+check_container_health() {
+  local name="$1" container="$2"
+  local health
+  health=$(docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}' "${PROJECT}_${container}" 2>/dev/null) || health="unknown"
+  if [ "$health" = "healthy" ]; then
+    echo "PASS  $name healthcheck (healthy)"
+  else
+    echo "FAIL  $name healthcheck ($health)"
+    FAILURES=$((FAILURES + 1))
+  fi
+}
+
+echo "============================================"
+echo "  Smoke Tests - {{ project_display_name }}"
+echo "  $(date)"
+echo "  Target: ${BASE_URL}"
+echo "============================================"
+echo ""
+
+# === HTTPS & TLS ===
+echo "--- HTTPS & TLS ---"
+check_http "Caddy HTTPS health" "${BASE_URL}/health"
+
+# Check TLS certificate validity
+TLS_EXPIRY=$(echo | openssl s_client -servername "{{ domain_name }}" -connect "{{ domain_name }}:443" 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2) || TLS_EXPIRY=""
+if [ -n "${TLS_EXPIRY}" ]; then
+  EXPIRY_EPOCH=$(date -d "${TLS_EXPIRY}" +%s 2>/dev/null) || EXPIRY_EPOCH=0
+  NOW_EPOCH=$(date +%s)
+  DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
+  if [ "${DAYS_LEFT}" -gt 7 ]; then
+    echo "PASS  TLS certificate (expires in ${DAYS_LEFT} days)"
+  else
+    echo "FAIL  TLS certificate (expires in ${DAYS_LEFT} days)"
+    FAILURES=$((FAILURES + 1))
+  fi
+else
+  echo "FAIL  TLS certificate (could not check)"
+  FAILURES=$((FAILURES + 1))
+fi
+
+# Check DNS resolution
+DNS_RESULT=$(dig +short "{{ domain_name }}" 2>/dev/null | head -1) || DNS_RESULT=""
+if [ -n "${DNS_RESULT}" ]; then
+  echo "PASS  DNS resolution ({{ domain_name }} -> ${DNS_RESULT})"
+else
+  echo "FAIL  DNS resolution ({{ domain_name }} not resolving)"
+  FAILURES=$((FAILURES + 1))
+fi
+
+echo ""
+
+# === APPLICATION HEALTH ===
+echo "--- Application Endpoints ---"
+check_http "n8n healthz" "${ADMIN_URL}/n8n/healthz"
+check_http "Grafana health" "${ADMIN_URL}/grafana/api/health"
+check_http "LiteLLM health" "${BASE_URL}/litellm/health"
+
+echo ""
+
+# === CONTAINER STATUS ===
+echo "--- Container Status ---"
+check_container "PostgreSQL" "postgresql"
+check_container "Redis" "redis"
+check_container "Qdrant" "qdrant"
+check_container "n8n" "n8n"
+check_container "LiteLLM" "litellm"
+check_container "OpenClaw" "openclaw"
+check_container "Caddy" "caddy"
+check_container "VictoriaMetrics" "victoriametrics"
+check_container "Loki" "loki"
+check_container "Alloy" "alloy"
+check_container "Grafana" "grafana"
+check_container "DIUN" "diun"
+
+echo ""
+
+# === CONTAINER HEALTHCHECKS ===
+echo "--- Container Health ---"
+check_container_health "PostgreSQL" "postgresql"
+check_container_health "Redis" "redis"
+check_container_health "Qdrant" "qdrant"
+check_container_health "n8n" "n8n"
+check_container_health "LiteLLM" "litellm"
+check_container_health "Caddy" "caddy"
+check_container_health "VictoriaMetrics" "victoriametrics"
+check_container_health "Loki" "loki"
+check_container_health "Grafana" "grafana"
+
+echo ""
+
+# === DATABASE CONNECTIVITY ===
+echo "--- Database Connectivity ---"
+
+# PostgreSQL
+PG_READY=$(docker exec "${PROJECT}_postgresql" pg_isready -U postgres 2>/dev/null) && PG_RC=0 || PG_RC=1
+if [ "${PG_RC}" -eq 0 ]; then
+  echo "PASS  PostgreSQL connectivity (pg_isready)"
+else
+  echo "FAIL  PostgreSQL connectivity"
+  FAILURES=$((FAILURES + 1))
+fi
+
+# Redis
+REDIS_PING=$(docker exec "${PROJECT}_redis" redis-cli -a "{{ redis_password }}" ping 2>/dev/null) || REDIS_PING=""
+if [ "${REDIS_PING}" = "PONG" ]; then
+  echo "PASS  Redis connectivity (PONG)"
+else
+  echo "FAIL  Redis connectivity (got: ${REDIS_PING})"
+  FAILURES=$((FAILURES + 1))
+fi
+
+# Qdrant
+QDRANT_HEALTH=$(docker exec "${PROJECT}_qdrant" wget -qO- http://localhost:6333/healthz 2>/dev/null) || QDRANT_HEALTH=""
+if echo "${QDRANT_HEALTH}" | grep -q "ok\|title"; then
+  echo "PASS  Qdrant connectivity"
+else
+  echo "FAIL  Qdrant connectivity"
+  FAILURES=$((FAILURES + 1))
+fi
+
+echo ""
+
+# === LiteLLM API ===
+echo "--- LiteLLM API ---"
+MODELS=$(curl -s -H "Authorization: Bearer {{ litellm_master_key }}" \
+  "${BASE_URL}/litellm/v1/models" --max-time "${TIMEOUT}" 2>/dev/null | \
+  grep -o '"id"' | wc -l) || MODELS=0
+if [ "${MODELS}" -gt 0 ]; then
+  echo "PASS  LiteLLM models (${MODELS} models available)"
+else
+  echo "FAIL  LiteLLM models (no models found)"
+  FAILURES=$((FAILURES + 1))
+fi
+
+echo ""
+
+# === RESULTS ===
+echo "============================================"
+if [ "${FAILURES}" -eq 0 ]; then
+  echo "  ALL TESTS PASSED"
+  echo "============================================"
+  exit 0
+else
+  echo "  ${FAILURES} TEST(S) FAILED"
+  echo "============================================"
+  exit 1
+fi

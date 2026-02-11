@@ -1,0 +1,49 @@
+---
+# postgresql — tasks
+
+- name: Create PostgreSQL config directory
+  ansible.builtin.file:
+    path: "{{ postgresql_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create PostgreSQL data directory
+  ansible.builtin.file:
+    path: "{{ postgresql_data_dir }}"
+    state: directory
+    owner: "999"
+    group: "999"
+    mode: "0700"
+  become: true
+
+- name: Deploy PostgreSQL init script
+  ansible.builtin.template:
+    src: init.sql.j2
+    dest: "{{ postgresql_config_dir }}/init.sql"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+
+- name: Deploy pg_hba.conf
+  ansible.builtin.template:
+    src: pg_hba.conf.j2
+    dest: "{{ postgresql_config_dir }}/pg_hba.conf"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart postgresql stack
+
+- name: Deploy postgresql.conf
+  ansible.builtin.template:
+    src: postgresql.conf.j2
+    dest: "{{ postgresql_config_dir }}/postgresql.conf"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart postgresql stack

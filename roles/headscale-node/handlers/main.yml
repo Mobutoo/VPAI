@@ -1,0 +1,8 @@
+---
+# headscale-node — handlers
+
+- name: Restart tailscaled
+  ansible.builtin.systemd:
+    name: tailscaled
+    state: restarted
+  become: true

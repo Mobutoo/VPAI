@@ -1,0 +1,59 @@
+# ====================================================================
+# .gitignore — Ansible AI Stack Project
+# ====================================================================
+
+# --- Ansible Vault ---
+.vault_password
+*.vault
+# Ne PAS ignorer secrets.yml — il est chiffré avec Vault
+# !inventory/group_vars/all/secrets.yml
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+
+# --- Ansible ---
+*.retry
+/tmp/
+ansible_facts_cache/
+collections/
+.ansible/
+
+# --- Claude Code ---
+.claude/
+
+# --- SSH ---
+*.pem
+*.key
+id_*
+!id_*.pub
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Molecule ---
+roles/*/molecule/default/.molecule/
+
+# --- Environment ---
+.env
+.env.local
+.env.*.local
+
+# --- Logs ---
+*.log
+
+# --- Hetzner ---
+terraform.tfstate*
+.terraform/

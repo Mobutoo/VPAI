@@ -1,0 +1,26 @@
+---
+# inventory/group_vars/all/versions.yml — Images Docker pinnées
+# JAMAIS de :latest ou :stable — Tout est versionné
+# Vérifié le : 11 février 2026
+
+# --- Données ---
+postgresql_image: "postgres:18.1-bookworm"
+redis_image: "redis:8.0.10-bookworm"
+qdrant_image: "qdrant/qdrant:v1.16.3"
+
+# --- Applications ---
+openclaw_image: "ghcr.io/openclaw/openclaw:v2026.2.9"
+n8n_image: "docker.n8n.io/n8nio/n8n:2.7.3"
+litellm_image: "ghcr.io/berriai/litellm:v1.81.3-stable"
+
+# --- Reverse Proxy ---
+caddy_image: "caddy:2.10.2-alpine"
+
+# --- Observabilité ---
+grafana_image: "grafana/grafana:12.3.2"
+victoriametrics_image: "victoriametrics/victoria-metrics:v1.135.0"
+loki_image: "grafana/loki:3.6.5"
+alloy_image: "grafana/alloy:v1.13.0"
+
+# --- Système ---
+diun_image: "crazymax/diun:4.31.0"

@@ -1,0 +1,16 @@
+---
+- name: Verify postgresql role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check PostgreSQL config directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name | default('vpai') }}/configs/postgresql"
+      register: pg_config
+      failed_when: not pg_config.stat.exists
+
+    - name: Check init.sql exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name | default('vpai') }}/configs/postgresql/init.sql"
+      register: pg_init
+      failed_when: not pg_init.stat.exists

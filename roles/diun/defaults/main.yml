@@ -1,0 +1,8 @@
+---
+# diun — defaults
+
+diun_config_dir: "/opt/{{ project_name }}/configs/diun"
+diun_data_dir: "/opt/{{ project_name }}/data/diun"
+diun_watch_schedule: "0 */6 * * *"
+diun_watch_first_check_notif: false
+diun_watch_by_default: true

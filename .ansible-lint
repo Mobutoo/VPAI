@@ -1,0 +1,46 @@
+---
+profile: production
+
+# Strict mode
+strict: true
+
+# Rules config
+enable_list:
+  - fqcn
+  - no-changed-when
+  - no-handler
+  - yaml
+
+skip_list:
+  - galaxy[no-changelog]   # Pas de changelog pour les rôles internes
+
+warn_list:
+  - experimental
+  - role-name[path]        # Noms de rôles avec tirets
+
+# Exclude
+exclude_paths:
+  - .github/
+  - .venv/
+  - collections/
+  - molecule/
+
+# Offline mode (pas de téléchargement Galaxy pendant le lint)
+offline: true
+
+# Extra vars pour que syntax-check fonctionne sans inventaire complet
+extra_vars:
+  project_display_name: "VPAI"
+  target_env: "prod"
+
+# Coloring
+use_default_rules: true
+
+# Kinds mapping
+kinds:
+  - playbook: "playbooks/*.yml"
+  - tasks: "roles/*/tasks/*.yml"
+  - handlers: "roles/*/handlers/*.yml"
+  - vars: "roles/*/vars/*.yml"
+  - defaults: "roles/*/defaults/*.yml"
+  - meta: "roles/*/meta/*.yml"

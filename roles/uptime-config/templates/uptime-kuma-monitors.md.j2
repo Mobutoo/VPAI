@@ -1,0 +1,49 @@
+# Uptime Kuma — Monitor Configuration for {{ project_display_name }}
+
+> **Generated**: {{ '{{' }} ansible_date_time.iso8601 {{ '}}' }}
+> **Target**: Seko-VPN (Uptime Kuma instance)
+> **Access**: VPN only
+
+## Monitors to Create
+
+{% for monitor in uptime_kuma_monitors %}
+### {{ loop.index }}. {{ monitor.name }}
+
+| Setting | Value |
+|---------|-------|
+| Type | {{ monitor.type }} |
+{% if monitor.url is defined %}
+| URL | `{{ monitor.url }}` |
+{% endif %}
+{% if monitor.hostname is defined %}
+| Hostname | `{{ monitor.hostname }}` |
+| Port | `{{ monitor.port }}` |
+{% endif %}
+| Interval | {{ monitor.interval }}s |
+{% if monitor.maxretries is defined %}
+| Max Retries | {{ monitor.maxretries }} |
+{% endif %}
+{% if monitor.retryInterval is defined %}
+| Retry Interval | {{ monitor.retryInterval }}s |
+{% endif %}
+{% if monitor.accepted_statuscodes is defined %}
+| Accepted Status | {{ monitor.accepted_statuscodes | join(', ') }} |
+{% endif %}
+{% if monitor.expiryNotification is defined %}
+| TLS Expiry Alert | {{ monitor.expiryNotification }} |
+{% endif %}
+
+{% endfor %}
+
+## Notification Group
+
+Configure a notification group linked to the `{{ notification_method }}` webhook:
+- Webhook URL: `{{ notification_webhook_url }}`
+
+## Backup Heartbeat
+
+The "Backup Heartbeat" monitor is a push monitor. The pre-backup script on Seko-AI
+pings the push URL after a successful backup. If no ping is received within 24 hours,
+an alert is triggered.
+
+Push URL: retrieve from Uptime Kuma after creating the monitor.

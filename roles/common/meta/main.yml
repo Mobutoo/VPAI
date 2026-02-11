@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: common
+  author: VPAI
+  description: Base OS configuration — packages, locale, timezone, NTP, sysctl, directories
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

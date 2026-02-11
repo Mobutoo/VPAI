@@ -1,0 +1,30 @@
+---
+# redis — tasks
+
+- name: Create Redis config directory
+  ansible.builtin.file:
+    path: "{{ redis_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create Redis data directory
+  ansible.builtin.file:
+    path: "{{ redis_data_dir }}"
+    state: directory
+    owner: "999"
+    group: "999"
+    mode: "0755"
+  become: true
+
+- name: Deploy redis.conf
+  ansible.builtin.template:
+    src: redis.conf.j2
+    dest: "{{ redis_config_dir }}/redis.conf"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart redis stack

@@ -1,0 +1,434 @@
+# PRD — Self-Hosted AI Infrastructure Stack
+
+> **Version** : 1.0.0  
+> **Date** : 11 février 2026  
+> **Auteur** : Architecture générée par Claude Opus 4.6  
+> **Statut** : Draft — En attente de validation
+
+---
+
+## 1. Vision
+
+Déployer une infrastructure AI/automatisation auto-hébergée, sécurisée et observable sur un VPS unique, orchestrée par Ansible avec CI/CD GitHub Actions, backup automatisé via Zerobyte, et monitoring externe. Le tout conçu comme un template portable réutilisable sur n'importe quel projet.
+
+---
+
+## 2. Wizard de Configuration — Variables du Projet
+
+> **Instructions** : Dupliquer ce fichier et remplir les valeurs `<À_REMPLIR>` avant tout déploiement.
+> Ce wizard est la **source unique de vérité** pour l'ensemble du projet.
+
+### 2.1 Identité du Projet
+
+```yaml
+# ====================================================================
+# WIZARD DE CONFIGURATION — Remplir avant tout déploiement
+# ====================================================================
+
+# --- Identité projet ---
+project_name: "<À_REMPLIR>"              # Ex: "seko-ai"
+project_display_name: "<À_REMPLIR>"       # Ex: "Seko-AI"
+project_description: "Stack AI/automatisation auto-hébergée"
+project_repo_url: "<À_REMPLIR>"           # Ex: "git@github.com:user/seko-ai.git"
+project_repo_branch: "main"
+
+# --- Domaine & DNS ---
+domain_name: "<À_REMPLIR>"               # Ex: "seko-ai.example.com"
+domain_registrar: "ovh"                   # ovh | cloudflare | hetzner
+dns_api_endpoint: "ovh-eu"               # ovh-eu | ovh-ca | ovh-us
+subdomain_preprod: "preprod"              # Sous-domaine pré-prod
+
+# --- VPS Production (OVH) ---
+prod_provider: "ovh"
+prod_hostname: "<À_REMPLIR>"             # Ex: "vps-prod-01"
+prod_ip: "<À_REMPLIR>"                   # IP publique du VPS
+prod_os: "debian-13"
+prod_ram_gb: 8                            # RAM en GB
+prod_cpu_cores: 4
+prod_disk_gb: 80                          # Stockage NVMe en GB
+prod_ssh_port: 2222                       # Port SSH custom (pas 22)
+prod_user: "deploy"                       # Utilisateur de déploiement
+
+# --- VPS VPN (existant) ---
+vpn_provider: "<À_REMPLIR>"              # Ex: "hetzner" | "ovh"
+vpn_hostname: "<À_REMPLIR>"              # Ex: "seko-vpn"
+vpn_headscale_url: "<À_REMPLIR>"         # Ex: "https://vpn.example.com"
+vpn_headscale_ip: "<À_REMPLIR>"          # IP Headscale du VPN server
+vpn_network_cidr: "100.64.0.0/10"        # CIDR du réseau Tailscale/Headscale
+
+# --- Pré-production (Hetzner Cloud) ---
+preprod_provider: "hetzner"
+preprod_server_type: "cx23"               # 2 vCPU / 4GB RAM / 40GB NVMe
+preprod_location: "fsn1"                  # Falkenstein, Allemagne
+preprod_os_image: "debian-13"
+
+# --- Stockage S3 (Hetzner Object Storage) ---
+s3_provider: "hetzner"
+s3_region: "fsn1"                         # Même DC que pré-prod = trafic interne gratuit
+s3_bucket_name: "<À_REMPLIR>"            # Ex: "seko-ai-backups"
+s3_endpoint: "fsn1.your-objectstorage.com"
+
+# --- Notifications ---
+notification_method: "<À_REMPLIR>"        # discord | slack | telegram | email | ntfy
+notification_webhook_url: "<À_REMPLIR>"   # URL du webhook
+notification_email: "<À_REMPLIR>"         # Email de notification (si applicable)
+
+# --- Timezone ---
+timezone: "Europe/Paris"
+locale: "fr_FR.UTF-8"
+```
+
+### 2.2 Secrets (Ansible Vault)
+
+```yaml
+# ====================================================================
+# SECRETS — Chiffrer avec : ansible-vault encrypt secrets.yml
+# ====================================================================
+
+# --- DNS API (OVH) ---
+ovh_application_key: "<VAULT>"
+ovh_application_secret: "<VAULT>"
+ovh_consumer_key: "<VAULT>"
+
+# --- Hetzner Cloud ---
+hetzner_cloud_token: "<VAULT>"
+hetzner_s3_access_key: "<VAULT>"
+hetzner_s3_secret_key: "<VAULT>"
+
+# --- Base de données ---
+postgresql_password: "<VAULT>"            # Générer : openssl rand -base64 32
+postgresql_db_name: "{{ project_name }}"
+redis_password: "<VAULT>"                 # Générer : openssl rand -base64 32
+
+# --- Applications ---
+n8n_encryption_key: "<VAULT>"             # Générer : openssl rand -hex 32
+n8n_basic_auth_user: "<VAULT>"
+n8n_basic_auth_password: "<VAULT>"
+litellm_master_key: "<VAULT>"             # Clé maître LiteLLM
+litellm_api_keys: "<VAULT>"              # Clés API providers (OpenAI, Anthropic...)
+openclaw_api_key: "<VAULT>"
+grafana_admin_password: "<VAULT>"
+qdrant_api_key: "<VAULT>"                 # Générer : openssl rand -hex 32
+
+# --- Zerobyte ---
+zerobyte_s3_access_key: "{{ hetzner_s3_access_key }}"
+zerobyte_s3_secret_key: "{{ hetzner_s3_secret_key }}"
+
+# --- Headscale/Tailscale ---
+headscale_auth_key: "<VAULT>"             # Clé pré-authentification Headscale
+
+# --- SSH ---
+ssh_authorized_keys:
+  - "<VAULT>"                             # Clé publique SSH de l'opérateur
+```
+
+### 2.3 Versions Applicatives (source unique de vérité)
+
+```yaml
+# ====================================================================
+# VERSIONS — Images Docker pinnées (PAS de :latest)
+# Vérifié le : 11 février 2026
+# ====================================================================
+
+# --- Données ---
+postgresql_image: "postgres:18.1-bookworm"
+redis_image: "redis:8.0.10-bookworm"
+qdrant_image: "qdrant/qdrant:v1.16.3"
+
+# --- Applications ---
+openclaw_image: "ghcr.io/openclaw/openclaw:v2026.2.9"
+n8n_image: "docker.n8n.io/n8nio/n8n:2.7.3"
+litellm_image: "ghcr.io/berriai/litellm:v1.81.3-stable"
+
+# --- Reverse Proxy ---
+caddy_image: "caddy:2.10.2-alpine"
+
+# --- Observabilité ---
+grafana_image: "grafana/grafana:12.3.2"
+victoriametrics_image: "victoriametrics/victoria-metrics:v1.135.0"
+loki_image: "grafana/loki:3.6.5"
+alloy_image: "grafana/alloy:v1.13.0"
+
+# --- Système ---
+diun_image: "crazymax/diun:4.31.0"
+zerobyte_image: "ghcr.io/nicotsx/zerobyte:v0.16"
+```
+
+---
+
+## 3. Objectifs et Contraintes
+
+### 3.1 Objectifs Day 1
+
+| # | Objectif | Critère de succès |
+|---|----------|-------------------|
+| O1 | Déploiement automatisé complet | `ansible-playbook site.yml` déploie la stack entière en < 20 min |
+| O2 | 12 services opérationnels | Tous les healthchecks passent (HTTP 200 / TCP connect) |
+| O3 | Backup automatisé | Zerobyte exécute un backup complet → S3 avec succès |
+| O4 | Monitoring externe | Uptime Kuma (Seko-VPN) détecte une panne simulée en < 5 min |
+| O5 | Sécurité réseau | SSH VPN-only, admin UIs VPN-only, seul 80/443 public |
+| O6 | CI/CD opérationnel | Push → lint → molecule test → deploy preprod → smoke tests |
+| O7 | Config applicative | n8n + LiteLLM + OpenClaw configurés et fonctionnels |
+| O8 | Documentation complète | README, runbooks, architecture diagrams à jour |
+
+### 3.2 Contraintes
+
+| Contrainte | Détail |
+|------------|--------|
+| Budget | VPS prod existant + S3 €5.99/mois + preprod éphémère ~€3.49/mois |
+| RAM | 8 GB maximum (prod), 4 GB (preprod) — limites Docker obligatoires |
+| Single node | Pas de clustering, pas de HA — accepté pour ce stade |
+| Ansible only | Pas de Terraform, pas de Kubernetes — Ansible + Docker Compose |
+| Portabilité | Template wizard permet re-déploiement sous autre nom/serveur |
+
+### 3.3 Hors scope (Day 2+)
+
+- NextCloud auto-hébergé (futur remplacement S3 pour le stockage)
+- Clustering / HA multi-nodes
+- Terraform pour l'IaC cloud
+- GPU / inférence locale
+- CDN / WAF externe
+
+---
+
+## 4. Architecture Fonctionnelle
+
+### 4.1 Couches Applicatives
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     INTERNET (Ports 80/443)                  │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+┌─────────────────────▼───────────────────────────────────────┐
+│  FRONTEND NETWORK                                            │
+│  ┌───────────┐  ┌──────────┐                                │
+│  │   Caddy    │  │ Grafana  │ (dashboard public si souhaité) │
+│  │ TLS auto   │  │ :3000    │                                │
+│  │ Rate limit │  └──────────┘                                │
+│  └─────┬─────┘                                               │
+└────────┼────────────────────────────────────────────────────┘
+         │
+┌────────▼────────────────────────────────────────────────────┐
+│  BACKEND NETWORK (internal — jamais exposé)                  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐                    │
+│  │ OpenClaw │ │   n8n    │ │ LiteLLM  │  Applications      │
+│  │ :8080    │ │  :5678   │ │  :4000   │                    │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘                    │
+│       │             │            │                           │
+│  ┌────▼─────┐ ┌────▼─────┐ ┌───▼──────┐                   │
+│  │PostgreSQL│ │  Redis   │ │  Qdrant  │  Données           │
+│  │  :5432   │ │  :6379   │ │  :6333   │                    │
+│  └──────────┘ └──────────┘ └──────────┘                    │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│  MONITORING NETWORK (internal)                               │
+│  ┌──────────┐ ┌───────────────┐ ┌──────┐                   │
+│  │  Alloy   │→│VictoriaMetrics│ │ Loki │  Télémétrie       │
+│  │ collector│ │   :8428       │ │:3100 │                    │
+│  └──────────┘ └───────────────┘ └──────┘                    │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│  SYSTÈME (host-level)                                        │
+│  ┌──────┐ ┌──────────┐ ┌──────────┐ ┌───────────┐         │
+│  │ DIUN │ │CrowdSec  │ │Fail2ban  │ │Unattended │         │
+│  │watch │ │protection│ │  SSH     │ │ Upgrades  │         │
+│  └──────┘ └──────────┘ └──────────┘ └───────────┘         │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│  SEKO-VPN (serveur distant — déjà déployé)                   │
+│  ┌───────────┐ ┌───────────┐ ┌──────────┐                  │
+│  │ Headscale │ │Uptime Kuma│ │ Zerobyte │                  │
+│  │  VPN mesh │ │ monitoring│ │ backup→S3│                  │
+│  └───────────┘ └───────────┘ └──────────┘                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 Modèle Réseau & Sécurité
+
+| Surface | Exposition | Protocole | Cible |
+|---------|-----------|-----------|-------|
+| Port 80 | 🌐 Public | HTTP → redirect HTTPS | Caddy |
+| Port 443 | 🌐 Public | HTTPS/TLS 1.3 | Caddy → reverse proxy |
+| Port SSH custom | 🔒 VPN only | SSH, bind sur IP Headscale | Host sshd |
+| Admin UIs | 🔒 VPN only | HTTPS via Caddy ACL | n8n, Grafana, Zerobyte, OpenClaw |
+| Inter-services | 🔒 Docker internal | TCP | Réseaux Docker isolés |
+| Backup | 🔒 VPN only | HTTPS (S3 API) | Zerobyte → Hetzner S3 |
+| Monitoring | 🔒 VPN only | HTTPS | Uptime Kuma → healthchecks |
+
+**Principe directeur** : Seul Caddy voit internet. Tout le reste est soit VPN-only, soit Docker-internal.
+
+### 4.3 Flux de Données
+
+```
+[Utilisateur] → HTTPS → [Caddy :443]
+    ├── /n8n/*        → [n8n :5678]        (VPN ACL)
+    ├── /grafana/*    → [Grafana :3000]    (VPN ACL)
+    ├── /openclaw/*   → [OpenClaw :8080]   (VPN ACL)
+    ├── /litellm/*    → [LiteLLM :4000]    (API key auth)
+    └── /qdrant/*     → [Qdrant :6333]     (VPN ACL)
+
+[n8n] ←→ [LiteLLM] → [OpenAI / Anthropic / Ollama]
+[n8n] ←→ [OpenClaw] ←→ [LiteLLM]
+[n8n] ←→ [PostgreSQL] (workflows, credentials)
+[OpenClaw] ←→ [PostgreSQL] + [Qdrant] + [Redis]
+[Alloy] → scrape all → [VictoriaMetrics] (metrics)
+[Alloy] → collect all → [Loki] (logs)
+[Grafana] ← query ← [VictoriaMetrics] + [Loki]
+[DIUN] → watch images → notification webhook
+[Zerobyte@VPN] → S3 backup (pg_dump, configs, volumes)
+[Uptime Kuma@VPN] → healthcheck endpoints → alert si down
+```
+
+---
+
+## 5. Rôles Ansible — Inventaire
+
+| # | Rôle | Responsabilité | Priorité |
+|---|------|---------------|----------|
+| 1 | `common` | Packages de base, locale, timezone, NTP | P0 |
+| 2 | `hardening` | SSH custom port, Fail2ban, CrowdSec, UFW, sysctl | P0 |
+| 3 | `docker` | Docker CE, Docker Compose plugin, daemon.json (log rotation) | P0 |
+| 4 | `headscale-node` | Enregistrement node Tailscale/Headscale, VLAN config | P0 |
+| 5 | `caddy` | Reverse proxy, TLS auto, rate limiting, ACL VPN | P0 |
+| 6 | `postgresql` | PostgreSQL, init DB, pg_hba, tuning mémoire | P0 |
+| 7 | `redis` | Redis, auth, maxmemory, persistence | P0 |
+| 8 | `qdrant` | Qdrant vector DB, API key, collections | P1 |
+| 9 | `n8n` | n8n, config DB, encryption key, webhook URL | P0 |
+| 10 | `openclaw` | OpenClaw, config agents/workspaces | P1 |
+| 11 | `litellm` | LiteLLM proxy, routes modèles, budgets, callbacks | P0 |
+| 12 | `monitoring` | VictoriaMetrics + Loki + Alloy + Grafana dashboards | P1 |
+| 13 | `diun` | Image watcher, notifications webhook | P2 |
+| 14 | `backup-config` | Config Zerobyte côté Seko-VPN (volumes, repos, jobs) | P1 |
+| 15 | `uptime-config` | Config Uptime Kuma côté Seko-VPN (monitors) | P1 |
+| 16 | `smoke-tests` | Tests de fumée post-déploiement (healthchecks, API calls) | P0 |
+
+---
+
+## 6. Pipeline CI/CD
+
+```
+┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+│   Push   │───▶│  Lint    │───▶│ Molecule │───▶│  Deploy  │───▶│  Smoke   │
+│  main    │    │ yamllint │    │  Test    │    │ Preprod  │    │  Tests   │
+│          │    │ ansible- │    │ Docker   │    │ Hetzner  │    │ HTTP/API │
+│          │    │ lint     │    │ in Docker│    │ ephemeral│    │          │
+└──────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
+                                                      │
+                                                      ▼
+                                                ┌──────────┐
+                                                │  Soak    │
+                                                │  48h     │
+                                                │ monitoring│
+                                                └─────┬────┘
+                                                      │ (manuel)
+                                                      ▼
+                                                ┌──────────┐
+                                                │  Deploy  │
+                                                │  Prod    │
+                                                │  --diff  │
+                                                └──────────┘
+```
+
+---
+
+## 7. Stratégie Backup
+
+| Composant | Source | Méthode | Rétention | Cible |
+|-----------|--------|---------|-----------|-------|
+| PostgreSQL | `pg_dump --format=custom` | Zerobyte job (daily 3h) | 7d, 4w, 3m | S3 Hetzner fsn1 |
+| Redis | RDB snapshot | Zerobyte job (daily 3h) | 7d | S3 Hetzner fsn1 |
+| Qdrant | API snapshot | Zerobyte job (daily 3h15) | 7d, 4w | S3 Hetzner fsn1 |
+| n8n | Export workflows JSON | Zerobyte job (daily 3h) | 7d, 4w, 3m | S3 Hetzner fsn1 |
+| Grafana | Dashboards + datasources | Zerobyte job (weekly dim 3h) | 4w | S3 Hetzner fsn1 |
+| Configs | /opt/{{ project_name }}/ | Zerobyte job (daily 3h30) | 7d, 4w | S3 Hetzner fsn1 |
+
+**Orchestrateur** : Zerobyte sur Seko-VPN, accès via réseau Headscale.  
+**Test de restauration** : Obligatoire en pré-prod avant mise en production.
+
+---
+
+## 8. Monitoring Externe
+
+| Check | Type | Fréquence | Seuil alerte | Outil |
+|-------|------|-----------|-------------|-------|
+| Caddy HTTPS | HTTP(S) | 60s | 2 échecs consécutifs | Uptime Kuma |
+| n8n healthcheck | HTTP | 60s | 3 échecs | Uptime Kuma |
+| PostgreSQL | TCP :5432 via VPN | 120s | 2 échecs | Uptime Kuma |
+| Grafana | HTTP | 120s | 3 échecs | Uptime Kuma |
+| Certificat TLS | TLS expiry | 24h | < 14 jours | Uptime Kuma |
+| Backup Zerobyte | Heartbeat | 24h | Manqué 1x | Uptime Kuma |
+
+---
+
+## 9. Critères d'Acceptation (Definition of Done)
+
+### Phase Pré-production
+- [ ] Tous les 16 rôles Ansible s'exécutent sans erreur
+- [ ] Idempotence : 2ème exécution = 0 changed
+- [ ] 12 containers en état `healthy` ou `running`
+- [ ] SSH uniquement via Headscale VPN (port custom)
+- [ ] Admin UIs accessibles uniquement via VPN
+- [ ] Ports 80/443 répondent avec TLS valide
+- [ ] Backup Zerobyte exécuté et vérifié
+- [ ] Restauration testée depuis le backup
+- [ ] Uptime Kuma détecte une panne simulée
+- [ ] Smoke tests passent (HTTP + API + DB connectivity)
+- [ ] 48h de soak sans incident
+
+### Phase Production
+- [ ] Backup complet de l'existant avant déploiement
+- [ ] Déploiement via `ansible-playbook site.yml --diff`
+- [ ] Tous les critères pré-prod validés en prod
+- [ ] Monitoring 24h post-déploiement sans alerte
+- [ ] Documentation à jour (README, runbooks, architecture)
+
+---
+
+## 10. Risques et Mitigations
+
+| Risque | Probabilité | Impact | Mitigation |
+|--------|-------------|--------|------------|
+| PostgreSQL 18.1 (major upgrade) | Moyenne | Élevé | Test pg_upgrade en preprod, backup avant migration |
+| Redis 8.0 (major upgrade) | Moyenne | Moyen | Test compatibilité clients, fallback 7.x prêt |
+| VictoriaMetrics non-LTS | Faible | Faible | Monitoring 48h, rollback vers LTS si instable |
+| OOM sur 8GB RAM | Moyenne | Élevé | Limites Docker strictes, alertes Grafana à 80% |
+| Perte données S3 | Très faible | Critique | Backup rule 3-2-1, test restore mensuel |
+| Zerobyte 0.x (early stage) | Moyenne | Moyen | Fallback Restic CLI si Zerobyte instable |
+
+---
+
+## 11. Livrables Attendus
+
+| # | Livrable | Format | Responsable |
+|---|----------|--------|-------------|
+| L1 | Repository Ansible complet | Git | Claude Code |
+| L2 | 16 rôles avec Molecule tests | YAML | Claude Code |
+| L3 | GitHub Actions CI/CD pipeline | YAML | Claude Code |
+| L4 | Docker Compose templatisé | Jinja2 | Claude Code |
+| L5 | Caddyfile templatisé | Jinja2 | Claude Code |
+| L6 | Documentation technique | Markdown | Claude Code |
+| L7 | Runbooks opérationnels | Markdown | Claude Code |
+| L8 | Config LiteLLM (routes, budgets) | YAML | Claude Code |
+| L9 | Smoke tests automatisés | Shell/Python | Claude Code |
+| L10 | Ce PRD validé | Markdown | Opus 4.6 review |
+
+---
+
+## 12. Planning
+
+| Phase | Durée estimée | Contenu |
+|-------|--------------|---------|
+| Phase 0 — Quick Wins | 2h | Log rotation, restart policies, unattended-upgrades |
+| Phase 1 — Sécurité | 4h | Docker limits, network segmentation, Fail2ban, SSH hardening |
+| Phase 2 — Backup | 6h | S3 bucket, Zerobyte config, cron, test restore |
+| Phase 3 — Pré-prod | 2-3 jours | Hetzner VM, OVH DNS, deploy, golden snapshot, smoke tests, soak 48h |
+| Phase 4 — Production | 1 jour | Backup existant, deploy --diff, smoke tests, monitoring 24h |
+| Phase 5 — Continuous | Continu | Trivy CI, CrowdSec, Grafana alerts, secrets rotation |
+
+---
+
+*Fin du PRD — Document de référence pour le développement du projet.*

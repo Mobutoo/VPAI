@@ -1,0 +1,35 @@
+---
+# smoke-tests — tasks
+# Deploys and executes the smoke test script
+
+- name: Ensure scripts directory exists
+  ansible.builtin.file:
+    path: "/opt/{{ project_name }}/scripts"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy smoke test script
+  ansible.builtin.template:
+    src: smoke-test.sh.j2
+    dest: "{{ smoke_test_script_path }}"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  become: true
+
+- name: Run smoke tests
+  ansible.builtin.command:
+    cmd: "{{ smoke_test_script_path }}"
+  register: smoke_test_result
+  changed_when: false
+  failed_when: smoke_test_result.rc != 0
+  become: true
+  become_user: "{{ prod_user }}"
+
+- name: Display smoke test results
+  ansible.builtin.debug:
+    msg: "{{ smoke_test_result.stdout_lines }}"
+  when: smoke_test_result.stdout_lines is defined

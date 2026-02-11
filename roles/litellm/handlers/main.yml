@@ -1,0 +1,12 @@
+---
+# litellm — handlers
+
+- name: Restart litellm stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - litellm
+    state: restarted
+  become: true

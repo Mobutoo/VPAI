@@ -1,0 +1,75 @@
+---
+# backup-config — tasks
+# Prepares pre-backup scripts and cron on Seko-AI (production VPS)
+# Zerobyte itself runs on Seko-VPN — config is documented in RUNBOOK.md
+
+# === DIRECTORIES ===
+
+- name: Create backup directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  loop:
+    - "{{ backup_base_dir }}"
+    - "{{ backup_pg_dump_dir }}"
+    - "{{ backup_redis_dir }}"
+    - "{{ backup_qdrant_dir }}"
+    - "{{ backup_n8n_dir }}"
+    - "{{ backup_grafana_dir }}"
+  become: true
+
+# === PRE-BACKUP SCRIPT ===
+
+- name: Deploy pre-backup script
+  ansible.builtin.template:
+    src: pre-backup.sh.j2
+    dest: "/opt/{{ project_name }}/scripts/pre-backup.sh"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  become: true
+
+# === CLEANUP SCRIPT ===
+
+- name: Deploy backup cleanup script
+  ansible.builtin.template:
+    src: backup-cleanup.sh.j2
+    dest: "/opt/{{ project_name }}/scripts/backup-cleanup.sh"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  become: true
+
+# === SCRIPTS DIRECTORY ===
+
+- name: Ensure scripts directory exists
+  ansible.builtin.file:
+    path: "/opt/{{ project_name }}/scripts"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+# === CRON JOBS ===
+
+- name: Configure pre-backup cron job
+  ansible.builtin.cron:
+    name: "{{ project_name }}_pre_backup"
+    minute: "{{ backup_pre_script_cron_minute }}"
+    hour: "{{ backup_pre_script_cron_hour }}"
+    job: "/opt/{{ project_name }}/scripts/pre-backup.sh >> /opt/{{ project_name }}/logs/pre-backup.log 2>&1"
+    user: "{{ prod_user }}"
+  become: true
+
+- name: Configure backup cleanup cron job
+  ansible.builtin.cron:
+    name: "{{ project_name }}_backup_cleanup"
+    minute: "0"
+    hour: "4"
+    job: "/opt/{{ project_name }}/scripts/backup-cleanup.sh >> /opt/{{ project_name }}/logs/backup-cleanup.log 2>&1"
+    user: "{{ prod_user }}"
+  become: true

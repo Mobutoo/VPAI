@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: docker
+  author: VPAI
+  description: Docker CE installation, Compose plugin, daemon config, network creation
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies:
+  - role: common

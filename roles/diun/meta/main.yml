@@ -1,0 +1,5 @@
+---
+# diun — meta
+
+dependencies:
+  - role: docker

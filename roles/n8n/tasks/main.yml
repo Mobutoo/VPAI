@@ -1,0 +1,30 @@
+---
+# n8n — tasks
+
+- name: Create n8n config directory
+  ansible.builtin.file:
+    path: "{{ n8n_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create n8n data directory
+  ansible.builtin.file:
+    path: "{{ n8n_data_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+
+- name: Deploy n8n environment file
+  ansible.builtin.template:
+    src: n8n.env.j2
+    dest: "{{ n8n_config_dir }}/n8n.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart n8n stack

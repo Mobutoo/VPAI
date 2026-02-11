@@ -1,0 +1,48 @@
+# {{ ansible_managed }}
+# DIUN configuration for {{ project_display_name }}
+
+watch:
+  schedule: "{{ diun_watch_schedule }}"
+  firstCheckNotif: {{ diun_watch_first_check_notif | lower }}
+  runOnStartup: false
+
+defaults:
+  watchRepo: false
+  includeTags:
+    - "^\d+\.\d+\.\d+$"
+    - "^v\d+\.\d+\.\d+$"
+
+providers:
+  docker:
+    watchByDefault: {{ diun_watch_by_default | lower }}
+    watchStopped: false
+
+{% if notification_method == 'telegram' and notification_webhook_url | default('') | length > 0 %}
+notif:
+  telegram:
+    token: "{{ notification_webhook_url }}"
+    chatIDs:
+      - "{{ vault_telegram_chat_id | default('') }}"
+    templateBody: |
+      Docker image update available:
+      Image: {{ '{{' }} .Entry.Image {{ '}}' }}
+      Current: {{ '{{' }} .Entry.Manifest.Digest {{ '}}' }}
+{% elif notification_method == 'discord' and notification_webhook_url | default('') | length > 0 %}
+notif:
+  discord:
+    webhookURL: "{{ notification_webhook_url }}"
+    templateBody: |
+      Docker image update available:
+      Image: {{ '{{' }} .Entry.Image {{ '}}' }}
+{% elif notification_method == 'slack' and notification_webhook_url | default('') | length > 0 %}
+notif:
+  slack:
+    webhookURL: "{{ notification_webhook_url }}"
+{% else %}
+notif:
+  webhook:
+    endpoint: "{{ notification_webhook_url | default('http://localhost:9999/webhook') }}"
+    method: POST
+    headers:
+      Content-Type: application/json
+{% endif %}

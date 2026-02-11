@@ -1,0 +1,28 @@
+---
+# monitoring — defaults
+
+# --- Directories ---
+monitoring_config_dir: "/opt/{{ project_name }}/configs"
+monitoring_data_dir: "/opt/{{ project_name }}/data"
+
+# --- VictoriaMetrics ---
+victoriametrics_retention_period: "30d"
+victoriametrics_data_dir: "{{ monitoring_data_dir }}/victoriametrics"
+
+# --- Loki ---
+loki_config_dir: "{{ monitoring_config_dir }}/loki"
+loki_data_dir: "{{ monitoring_data_dir }}/loki"
+loki_retention_period: "336h"  # 14 days
+loki_max_query_length: "721h"  # 30 days + 1h
+
+# --- Alloy ---
+alloy_config_dir: "{{ monitoring_config_dir }}/alloy"
+
+# --- Grafana ---
+grafana_config_dir: "{{ monitoring_config_dir }}/grafana"
+grafana_data_dir: "{{ monitoring_data_dir }}/grafana"
+grafana_provisioning_dir: "{{ grafana_config_dir }}/provisioning"
+grafana_dashboards_dir: "{{ grafana_config_dir }}/dashboards"
+grafana_admin_user: "admin"
+grafana_root_url: "https://admin.{{ domain_name }}/grafana/"
+grafana_serve_from_sub_path: "true"

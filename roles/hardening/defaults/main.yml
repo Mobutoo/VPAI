@@ -1,0 +1,34 @@
+---
+# hardening — defaults
+
+hardening_ssh_port: "{{ prod_ssh_port }}"
+hardening_ssh_listen_address: "{{ vpn_headscale_ip }}"
+hardening_ssh_allowed_user: "{{ prod_user }}"
+hardening_ssh_max_auth_tries: 3
+hardening_ssh_login_grace_time: 30
+hardening_ssh_client_alive_interval: 300
+hardening_ssh_client_alive_count_max: 2
+
+hardening_fail2ban_bantime: 3600
+hardening_fail2ban_findtime: 600
+hardening_fail2ban_maxretry: 3
+
+hardening_ufw_allowed_tcp_ports:
+  - "80"
+  - "443"
+
+hardening_ufw_vpn_network: "{{ vpn_network_cidr }}"
+hardening_ufw_tailscale_port: "41641"
+
+hardening_crowdsec_collections:
+  - crowdsecurity/linux
+  - crowdsecurity/sshd
+  - crowdsecurity/nginx
+  - crowdsecurity/http-cve
+
+hardening_unattended_upgrades_origins:
+  - "origin=Debian,codename=${distro_codename},label=Debian-Security"
+
+hardening_unattended_auto_reboot: "false"
+
+hardening_ssh_authorized_keys: "{{ ssh_authorized_keys }}"

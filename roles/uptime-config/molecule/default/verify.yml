@@ -1,0 +1,31 @@
+---
+- name: Verify uptime-config role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check docs directory exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/docs"
+      register: docs_dir
+    - name: Assert docs dir
+      ansible.builtin.assert:
+        that: docs_dir.stat.exists
+
+    - name: Check Uptime Kuma monitors reference exists
+      ansible.builtin.stat:
+        path: "/opt/vpai/docs/uptime-kuma-monitors.md"
+      register: monitors_doc
+    - name: Assert monitors doc
+      ansible.builtin.assert:
+        that: monitors_doc.stat.exists
+
+    - name: Check monitors doc contains 6 monitors
+      ansible.builtin.command:
+        cmd: grep -c "^### " /opt/vpai/docs/uptime-kuma-monitors.md
+      changed_when: false
+      failed_when: false
+      register: monitor_count
+    - name: Assert 6 monitors documented
+      ansible.builtin.assert:
+        that: monitor_count.stdout | int >= 6
+        fail_msg: "Expected at least 6 monitors, found {{ monitor_count.stdout }}"

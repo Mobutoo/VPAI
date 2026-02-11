@@ -1,0 +1,27 @@
+---
+- name: Verify common role
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Check common packages are installed
+      ansible.builtin.command:
+        cmd: "dpkg -l {{ item }}"
+      loop:
+        - curl
+        - wget
+        - jq
+        - htop
+      changed_when: false
+
+    - name: Check project directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name | default('vpai') }}"
+      register: project_dir
+      failed_when: not project_dir.stat.exists
+
+    - name: Check sysctl values
+      ansible.builtin.command:
+        cmd: "sysctl -n vm.swappiness"
+      register: swappiness
+      changed_when: false
+      failed_when: swappiness.stdout != "10"

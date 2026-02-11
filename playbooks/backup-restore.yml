@@ -1,0 +1,144 @@
+---
+# playbooks/backup-restore.yml — Restore from backup
+#
+# Usage:
+#   ansible-playbook playbooks/backup-restore.yml -e "target_env=prod"
+#   ansible-playbook playbooks/backup-restore.yml -e "target_env=prod" -e "restore_db=n8n"
+#   ansible-playbook playbooks/backup-restore.yml -e "target_env=prod" -e "restore_service=redis"
+
+- name: "Restore {{ project_display_name }} — From Backup"
+  hosts: "{{ target_env | default('prod') }}"
+  gather_facts: true
+
+  vars:
+    restore_db: ""
+    restore_service: ""
+
+  vars_prompt:
+    - name: confirm_restore
+      prompt: "Are you sure you want to restore from backup? Type 'yes' to confirm"
+      private: false
+
+  pre_tasks:
+    - name: Validate confirmation
+      ansible.builtin.assert:
+        that: confirm_restore == 'yes'
+        fail_msg: "Restore aborted — confirmation required"
+
+    - name: Display restore info
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          RESTORE — {{ project_display_name }}
+          Environment: {{ target_env }}
+          Target: {{ inventory_hostname }}
+          Database: {{ restore_db | default('all') }}
+          Service: {{ restore_service | default('all') }}
+          Date: {{ ansible_date_time.iso8601 }}
+          ========================================
+
+  tasks:
+    # === POSTGRESQL RESTORE ===
+    - name: Find latest PostgreSQL dump
+      ansible.builtin.find:
+        paths: "/opt/{{ project_name }}/backups/pg_dump"
+        patterns: "{{ restore_db | default('*') }}-*.dump"
+        file_type: file
+      register: pg_dumps
+      when: restore_service == '' or restore_service == 'postgresql'
+      become: true
+
+    - name: Select latest dump
+      ansible.builtin.set_fact:
+        latest_pg_dump: "{{ (pg_dumps.files | sort(attribute='mtime') | last).path }}"
+      when:
+        - restore_service == '' or restore_service == 'postgresql'
+        - pg_dumps.files | length > 0
+
+    - name: Display selected dump
+      ansible.builtin.debug:
+        msg: "Restoring from: {{ latest_pg_dump }}"
+      when: latest_pg_dump is defined
+
+    - name: Copy dump into PostgreSQL container
+      ansible.builtin.command:
+        cmd: >
+          docker cp "{{ latest_pg_dump }}"
+          {{ project_name }}_postgresql:/tmp/restore.dump
+      changed_when: true
+      when: latest_pg_dump is defined
+      become: true
+
+    - name: Restore PostgreSQL dump
+      ansible.builtin.command:
+        cmd: >
+          docker exec {{ project_name }}_postgresql
+          pg_restore -U postgres
+          -d {{ restore_db | default(project_name) }}
+          --clean --if-exists /tmp/restore.dump
+      changed_when: true
+      when: latest_pg_dump is defined
+      become: true
+
+    - name: Cleanup dump file from container
+      ansible.builtin.command:
+        cmd: >
+          docker exec {{ project_name }}_postgresql
+          rm -f /tmp/restore.dump
+      changed_when: true
+      when: latest_pg_dump is defined
+      become: true
+
+    # === REDIS RESTORE ===
+    - name: Find latest Redis dump
+      ansible.builtin.find:
+        paths: "/opt/{{ project_name }}/backups/redis"
+        patterns: "dump-*.rdb"
+        file_type: file
+      register: redis_dumps
+      when: restore_service == '' or restore_service == 'redis'
+      become: true
+
+    - name: Stop Redis for restore
+      community.docker.docker_compose_v2:
+        project_src: "/opt/{{ project_name }}"
+        files:
+          - docker-compose.yml
+        services:
+          - redis
+        state: absent
+      when:
+        - restore_service == '' or restore_service == 'redis'
+        - redis_dumps.files | length > 0
+      become: true
+
+    - name: Restore Redis RDB file
+      ansible.builtin.copy:
+        src: "{{ (redis_dumps.files | sort(attribute='mtime') | last).path }}"
+        dest: "/opt/{{ project_name }}/data/redis/dump.rdb"
+        remote_src: true
+        owner: "{{ prod_user }}"
+        group: "{{ prod_user }}"
+        mode: "0644"
+      when:
+        - restore_service == '' or restore_service == 'redis'
+        - redis_dumps.files | length > 0
+      become: true
+
+    - name: Start Redis after restore
+      community.docker.docker_compose_v2:
+        project_src: "/opt/{{ project_name }}"
+        files:
+          - docker-compose.yml
+        services:
+          - redis
+        state: present
+      when:
+        - restore_service == '' or restore_service == 'redis'
+        - redis_dumps.files | length > 0
+      become: true
+
+  post_tasks:
+    - name: Run smoke tests after restore
+      ansible.builtin.include_role:
+        name: smoke-tests

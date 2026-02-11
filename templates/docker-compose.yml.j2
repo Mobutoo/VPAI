@@ -1,0 +1,354 @@
+# {{ ansible_managed }}
+# docker-compose.yml for {{ project_display_name }}
+
+services:
+  # === DATA LAYER ===
+  postgresql:
+    image: {{ postgresql_image }}
+    container_name: {{ project_name }}_postgresql
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: "{{ postgresql_password }}"
+      POSTGRES_DB: "{{ project_name }}"
+    volumes:
+      - /opt/{{ project_name }}/data/postgresql:/var/lib/postgresql/data
+      - /opt/{{ project_name }}/configs/postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - /opt/{{ project_name }}/configs/postgresql/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - /opt/{{ project_name }}/configs/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ postgresql_memory_limit }}
+          cpus: "{{ postgresql_cpu_limit }}"
+        reservations:
+          memory: {{ postgresql_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  redis:
+    image: {{ redis_image }}
+    container_name: {{ project_name }}_redis
+    restart: unless-stopped
+    volumes:
+      - /opt/{{ project_name }}/data/redis:/data
+      - /opt/{{ project_name }}/configs/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ redis_memory_limit }}
+          cpus: "{{ redis_cpu_limit }}"
+        reservations:
+          memory: {{ redis_memory_reservation }}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "{{ redis_password }}", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  qdrant:
+    image: {{ qdrant_image }}
+    container_name: {{ project_name }}_qdrant
+    restart: unless-stopped
+    environment:
+      QDRANT__SERVICE__API_KEY: "{{ qdrant_api_key }}"
+    volumes:
+      - /opt/{{ project_name }}/data/qdrant:/qdrant/storage
+      - /opt/{{ project_name }}/configs/qdrant/config.yaml:/qdrant/config/production.yaml:ro
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ qdrant_memory_limit }}
+          cpus: "{{ qdrant_cpu_limit }}"
+        reservations:
+          memory: {{ qdrant_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # === APPLICATION LAYER ===
+  n8n:
+    image: {{ n8n_image }}
+    container_name: {{ project_name }}_n8n
+    restart: unless-stopped
+    env_file:
+      - /opt/{{ project_name }}/configs/n8n/n8n.env
+    volumes:
+      - /opt/{{ project_name }}/data/n8n:/home/node/.n8n
+    networks:
+      - backend
+      - egress
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: {{ n8n_memory_limit }}
+          cpus: "{{ n8n_cpu_limit }}"
+        reservations:
+          memory: {{ n8n_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  litellm:
+    image: {{ litellm_image }}
+    container_name: {{ project_name }}_litellm
+    restart: unless-stopped
+    env_file:
+      - /opt/{{ project_name }}/configs/litellm/litellm.env
+    volumes:
+      - /opt/{{ project_name }}/configs/litellm/litellm_config.yaml:/app/config.yaml:ro
+    command: --config /app/config.yaml --port 4000
+    networks:
+      - backend
+      - egress
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: {{ litellm_memory_limit }}
+          cpus: "{{ litellm_cpu_limit }}"
+        reservations:
+          memory: {{ litellm_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  openclaw:
+    image: {{ openclaw_image }}
+    container_name: {{ project_name }}_openclaw
+    restart: unless-stopped
+    env_file:
+      - /opt/{{ project_name }}/configs/openclaw/openclaw.env
+    networks:
+      - backend
+      - egress
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: {{ openclaw_memory_limit }}
+          cpus: "{{ openclaw_cpu_limit }}"
+        reservations:
+          memory: {{ openclaw_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # === REVERSE PROXY ===
+  caddy:
+    image: {{ caddy_image }}
+    container_name: {{ project_name }}_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - /opt/{{ project_name }}/configs/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/{{ project_name }}/data/caddy/data:/data
+      - /opt/{{ project_name }}/data/caddy/config:/config
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      n8n:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: {{ caddy_memory_limit }}
+          cpus: "{{ caddy_cpu_limit }}"
+        reservations:
+          memory: {{ caddy_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # === MONITORING LAYER ===
+  victoriametrics:
+    image: {{ victoriametrics_image }}
+    container_name: {{ project_name }}_victoriametrics
+    restart: unless-stopped
+    command:
+      - "-storageDataPath=/storage"
+      - "-retentionPeriod=30d"
+      - "-httpListenAddr=:8428"
+    volumes:
+      - /opt/{{ project_name }}/data/victoriametrics:/storage
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          memory: {{ victoriametrics_memory_limit }}
+          cpus: "{{ victoriametrics_cpu_limit }}"
+        reservations:
+          memory: {{ victoriametrics_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8428/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  loki:
+    image: {{ loki_image }}
+    container_name: {{ project_name }}_loki
+    restart: unless-stopped
+    volumes:
+      - /opt/{{ project_name }}/data/loki:/loki
+      - /opt/{{ project_name }}/configs/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          memory: {{ loki_memory_limit }}
+          cpus: "{{ loki_cpu_limit }}"
+        reservations:
+          memory: {{ loki_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  alloy:
+    image: {{ alloy_image }}
+    container_name: {{ project_name }}_alloy
+    restart: unless-stopped
+    volumes:
+      - /opt/{{ project_name }}/configs/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /var/log:/var/log:ro
+    command: run --server.http.listen-addr=0.0.0.0:12345 /etc/alloy/config.alloy
+    networks:
+      - backend
+      - monitoring
+    depends_on:
+      victoriametrics:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: {{ alloy_memory_limit }}
+          cpus: "{{ alloy_cpu_limit }}"
+        reservations:
+          memory: {{ alloy_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:12345/-/ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  grafana:
+    image: {{ grafana_image }}
+    container_name: {{ project_name }}_grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_admin_password }}"
+      GF_SERVER_ROOT_URL: "https://admin.{{ domain_name }}/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - /opt/{{ project_name }}/data/grafana:/var/lib/grafana
+      - /opt/{{ project_name }}/configs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - /opt/{{ project_name }}/configs/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - frontend
+      - monitoring
+    depends_on:
+      victoriametrics:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: {{ grafana_memory_limit }}
+          cpus: "{{ grafana_cpu_limit }}"
+        reservations:
+          memory: {{ grafana_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # === SYSTEM ===
+  diun:
+    image: {{ diun_image }}
+    container_name: {{ project_name }}_diun
+    restart: unless-stopped
+    environment:
+      TZ: "{{ timezone }}"
+      CONFIG: "/diun.yml"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/{{ project_name }}/data/diun:/data
+      - /opt/{{ project_name }}/configs/diun/diun.yml:/diun.yml:ro
+    deploy:
+      resources:
+        limits:
+          memory: {{ diun_memory_limit }}
+          cpus: "{{ diun_cpu_limit }}"
+        reservations:
+          memory: {{ diun_memory_reservation }}
+
+networks:
+  frontend:
+    name: {{ project_name }}_frontend
+    external: true
+  backend:
+    name: {{ project_name }}_backend
+    external: true
+  monitoring:
+    name: {{ project_name }}_monitoring
+    external: true
+  egress:
+    name: {{ project_name }}_egress
+    external: true

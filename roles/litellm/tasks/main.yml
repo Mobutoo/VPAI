@@ -1,0 +1,31 @@
+---
+# litellm — tasks
+
+- name: Create LiteLLM config directory
+  ansible.builtin.file:
+    path: "{{ litellm_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy LiteLLM config
+  ansible.builtin.template:
+    src: litellm_config.yaml.j2
+    dest: "{{ litellm_config_dir }}/litellm_config.yaml"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart litellm stack
+
+- name: Deploy LiteLLM environment file
+  ansible.builtin.template:
+    src: litellm.env.j2
+    dest: "{{ litellm_config_dir }}/litellm.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart litellm stack

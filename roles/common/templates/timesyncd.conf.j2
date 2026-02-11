@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# /etc/systemd/timesyncd.conf
+
+[Time]
+NTP={{ common_ntp_servers | join(' ') }}
+FallbackNTP=ntp.ubuntu.com

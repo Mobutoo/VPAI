@@ -1,0 +1,30 @@
+---
+# qdrant — tasks
+
+- name: Create Qdrant config directory
+  ansible.builtin.file:
+    path: "{{ qdrant_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create Qdrant data directory
+  ansible.builtin.file:
+    path: "{{ qdrant_data_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+
+- name: Deploy Qdrant config
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: "{{ qdrant_config_dir }}/config.yaml"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart qdrant stack

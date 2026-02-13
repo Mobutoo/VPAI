@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# Fail2Ban filter for Caddy — brute force on authentication endpoints
+# Matches 401 and 403 responses in Caddy JSON access logs
+
+[Definition]
+failregex = ^.*"client_ip":"<HOST>".*"status":(401|403).*$
+ignoreregex =

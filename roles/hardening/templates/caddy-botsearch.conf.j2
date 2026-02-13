@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# Fail2Ban filter for Caddy — bot scanners and path probing
+# Matches 404 responses to common scanner paths in Caddy JSON access logs
+
+[Definition]
+failregex = ^.*"client_ip":"<HOST>".*"uri":"/(wp-|admin|\.env|phpmyadmin|\.git|cgi-bin|vendor|xmlrpc).*"status":404.*$
+ignoreregex =

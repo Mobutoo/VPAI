@@ -13,6 +13,34 @@
     state: present
   become: true
 
+# === ANTI-LOCKOUT GUARD ===
+# Detect if Tailscale VPN is connected before restricting SSH.
+# If VPN is down or force_open is set, SSH stays open on all interfaces.
+- name: "GUARD: Check Tailscale connectivity"
+  ansible.builtin.command:
+    cmd: tailscale status --json
+  become: true
+  changed_when: false
+  failed_when: false
+  register: hardening_tailscale_check
+
+- name: "GUARD: Determine SSH lockdown mode"
+  ansible.builtin.set_fact:
+    hardening_vpn_ready: >-
+      {{ (not hardening_ssh_force_open) and
+         (hardening_tailscale_check.rc == 0) and
+         (hardening_tailscale_check.stdout | from_json).BackendState | default('') == 'Running' }}
+
+- name: "GUARD: SSH lockdown status"
+  ansible.builtin.debug:
+    msg: >-
+      {{ 'SSH LOCKDOWN: VPN active, restricting SSH to VPN only (ListenAddress '
+         ~ hardening_ssh_listen_address ~ ')'
+         if hardening_vpn_ready | bool else
+         'SSH OPEN: VPN not ready or force_open=true, SSH listens on 0.0.0.0 (all interfaces). '
+         ~ 'Run with hardening_ssh_force_open=false once VPN is confirmed working.' }}
+
+# === SSH ===
 - name: Deploy SSH authorized keys
   ansible.posix.authorized_key:
     user: "{{ hardening_ssh_allowed_user }}"
@@ -32,6 +60,27 @@
   become: true
   notify: Restart sshd
 
+# === FAIL2BAN ===
+- name: Deploy Fail2Ban Caddy auth filter
+  ansible.builtin.template:
+    src: caddy-auth.conf.j2
+    dest: /etc/fail2ban/filter.d/caddy-auth.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart fail2ban
+
+- name: Deploy Fail2Ban Caddy botsearch filter
+  ansible.builtin.template:
+    src: caddy-botsearch.conf.j2
+    dest: /etc/fail2ban/filter.d/caddy-botsearch.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart fail2ban
+
 - name: Configure Fail2ban jail
   ansible.builtin.template:
     src: jail.local.j2
@@ -49,6 +98,7 @@
     enabled: true
   become: true
 
+# === CROWDSEC ===
 - name: Install CrowdSec GPG key
   ansible.builtin.apt_key:
     url: https://packagecloud.io/crowdsec/crowdsec/gpgkey
@@ -85,6 +135,7 @@
     enabled: true
   become: true
 
+# === UFW FIREWALL ===
 - name: UFW — Reset to defaults
   community.general.ufw:
     state: reset
@@ -110,13 +161,22 @@
   loop: "{{ hardening_ufw_allowed_tcp_ports }}"
   become: true
 
-- name: UFW — Allow SSH from VPN only
+- name: UFW — Allow SSH from VPN only (locked down)
   community.general.ufw:
     rule: allow
     port: "{{ hardening_ssh_port }}"
     proto: tcp
     from_ip: "{{ hardening_ufw_vpn_network }}"
   become: true
+  when: hardening_vpn_ready | bool
+
+- name: UFW — Allow SSH from anywhere (open mode)
+  community.general.ufw:
+    rule: allow
+    port: "{{ hardening_ssh_port }}"
+    proto: tcp
+  become: true
+  when: not (hardening_vpn_ready | bool)
 
 - name: UFW — Allow Tailscale UDP
   community.general.ufw:
@@ -130,6 +190,7 @@
     state: enabled
   become: true
 
+# === UNATTENDED UPGRADES ===
 - name: Configure unattended-upgrades
   ansible.builtin.template:
     src: 50unattended-upgrades.j2
@@ -148,6 +209,7 @@
     mode: "0644"
   become: true
 
+# === AUDITD ===
 - name: Configure auditd rules
   ansible.builtin.template:
     src: audit.rules.j2

@@ -12,3 +12,22 @@ port = {{ hardening_ssh_port }}
 logpath = /var/log/auth.log
 maxretry = {{ hardening_fail2ban_maxretry }}
 bantime = {{ hardening_fail2ban_bantime }}
+
+# --- Caddy HTTP jails (REX Seko-VPN V4 axe 3) ---
+[caddy-auth]
+enabled = true
+port = http,https
+logpath = /opt/{{ project_name }}/logs/caddy/access.log
+maxretry = {{ hardening_fail2ban_caddy_maxretry }}
+bantime = {{ hardening_fail2ban_bantime }}
+findtime = {{ hardening_fail2ban_findtime }}
+filter = caddy-auth
+
+[caddy-botsearch]
+enabled = true
+port = http,https
+logpath = /opt/{{ project_name }}/logs/caddy/access.log
+maxretry = {{ hardening_fail2ban_caddy_botsearch_maxretry }}
+bantime = {{ hardening_fail2ban_caddy_botsearch_bantime }}
+findtime = {{ hardening_fail2ban_findtime }}
+filter = caddy-botsearch

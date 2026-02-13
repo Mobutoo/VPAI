@@ -1,7 +1,12 @@
 # {{ ansible_managed }}
 
 Port {{ hardening_ssh_port }}
+{% if hardening_vpn_ready | default(false) | bool %}
 ListenAddress {{ hardening_ssh_listen_address }}
+{% else %}
+# ANTI-LOCKOUT: VPN not ready or force_open=true — listening on all interfaces
+ListenAddress 0.0.0.0
+{% endif %}
 
 PermitRootLogin no
 PasswordAuthentication no

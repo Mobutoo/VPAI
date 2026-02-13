@@ -65,6 +65,71 @@
   loop: "{{ common_sysctl_settings | dict2items }}"
   become: true
 
+- name: Configure journald log limits
+  ansible.builtin.template:
+    src: journald.conf.j2
+    dest: /etc/systemd/journald.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart systemd-journald
+
+# --- Swap conditionnel (preprod 4 Go RAM) ---
+- name: Check if swap file exists
+  ansible.builtin.stat:
+    path: "{{ common_swap_file }}"
+  register: common_swap_file_check
+  become: true
+  when: common_swap_enable and ansible_memtotal_mb < 6144
+
+- name: Create swap file
+  ansible.builtin.command:
+    cmd: "dd if=/dev/zero of={{ common_swap_file }} bs=1M count={{ common_swap_size_mb }}"
+    creates: "{{ common_swap_file }}"
+  become: true
+  changed_when: true
+  when:
+    - common_swap_enable
+    - ansible_memtotal_mb < 6144
+    - not (common_swap_file_check.stat.exists | default(false))
+
+- name: Set swap file permissions
+  ansible.builtin.file:
+    path: "{{ common_swap_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  when: common_swap_enable and ansible_memtotal_mb < 6144
+
+- name: Format swap file
+  ansible.builtin.command:
+    cmd: "mkswap {{ common_swap_file }}"
+  become: true
+  changed_when: true
+  when:
+    - common_swap_enable
+    - ansible_memtotal_mb < 6144
+    - not (common_swap_file_check.stat.exists | default(false))
+
+- name: Enable swap file
+  ansible.builtin.command:
+    cmd: "swapon {{ common_swap_file }}"
+  become: true
+  changed_when: true
+  failed_when: false
+  when: common_swap_enable and ansible_memtotal_mb < 6144
+
+- name: Add swap to fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: "^{{ common_swap_file }}"
+    line: "{{ common_swap_file }} none swap sw 0 0"
+    state: present
+  become: true
+  when: common_swap_enable and ansible_memtotal_mb < 6144
+
 - name: Create project base directory
   ansible.builtin.file:
     path: "{{ common_project_base }}"

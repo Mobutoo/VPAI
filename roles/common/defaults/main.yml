@@ -34,6 +34,13 @@ common_sysctl_settings:
   vm.swappiness: 10
   net.core.somaxconn: 65535
   fs.file-max: 100000
+  kernel.panic: 10
+  kernel.panic_on_oops: 1
+
+# --- Swap conditionnel (active si RAM < 6 Go) ---
+common_swap_enable: true
+common_swap_size_mb: 2048
+common_swap_file: "/swapfile"
 
 common_ntp_servers:
   - "0.pool.ntp.org"

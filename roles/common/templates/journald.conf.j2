@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+# Systemd journal configuration — limit disk usage
+
+[Journal]
+Storage=persistent
+Compress=yes
+SystemMaxUse=500M
+SystemMaxFileSize=50M
+MaxRetentionSec=7day
+ForwardToSyslog=no

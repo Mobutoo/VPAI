@@ -7,6 +7,16 @@ services:
     image: {{ postgresql_image }}
     container_name: {{ project_name }}_postgresql
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - FOWNER
+      - DAC_READ_SEARCH
     environment:
       POSTGRES_PASSWORD: "{{ postgresql_password }}"
       POSTGRES_DB: "{{ project_name }}"
@@ -36,6 +46,14 @@ services:
     image: {{ redis_image }}
     container_name: {{ project_name }}_redis
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     volumes:
       - /opt/{{ project_name }}/data/redis:/data
       - /opt/{{ project_name }}/configs/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
@@ -59,6 +77,14 @@ services:
     image: {{ qdrant_image }}
     container_name: {{ project_name }}_qdrant
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     environment:
       QDRANT__SERVICE__API_KEY: "{{ qdrant_api_key }}"
     volumes:
@@ -84,6 +110,14 @@ services:
     image: {{ n8n_image }}
     container_name: {{ project_name }}_n8n
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     env_file:
       - /opt/{{ project_name }}/configs/n8n/n8n.env
     volumes:
@@ -112,6 +146,14 @@ services:
     image: {{ litellm_image }}
     container_name: {{ project_name }}_litellm
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     env_file:
       - /opt/{{ project_name }}/configs/litellm/litellm.env
     volumes:
@@ -143,6 +185,14 @@ services:
     image: {{ openclaw_image }}
     container_name: {{ project_name }}_openclaw
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     env_file:
       - /opt/{{ project_name }}/configs/openclaw/openclaw.env
     networks:
@@ -174,6 +224,12 @@ services:
     image: {{ caddy_image }}
     container_name: {{ project_name }}_caddy
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
     ports:
       - "80:80"
       - "443:443"
@@ -182,6 +238,7 @@ services:
       - /opt/{{ project_name }}/configs/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - /opt/{{ project_name }}/data/caddy/data:/data
       - /opt/{{ project_name }}/data/caddy/config:/config
+      - /opt/{{ project_name }}/logs/caddy:/var/log/caddy
     networks:
       - frontend
       - backend
@@ -208,6 +265,14 @@ services:
     image: {{ victoriametrics_image }}
     container_name: {{ project_name }}_victoriametrics
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     command:
       - "-storageDataPath=/storage"
       - "-retentionPeriod=30d"
@@ -233,6 +298,14 @@ services:
     image: {{ loki_image }}
     container_name: {{ project_name }}_loki
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     volumes:
       - /opt/{{ project_name }}/data/loki:/loki
       - /opt/{{ project_name }}/configs/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
@@ -257,6 +330,16 @@ services:
     image: {{ alloy_image }}
     container_name: {{ project_name }}_alloy
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - SYS_PTRACE
+      - DAC_READ_SEARCH
     volumes:
       - /opt/{{ project_name }}/configs/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -290,6 +373,14 @@ services:
     image: {{ grafana_image }}
     container_name: {{ project_name }}_grafana
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     environment:
       GF_SECURITY_ADMIN_PASSWORD: "{{ grafana_admin_password }}"
       GF_SERVER_ROOT_URL: "https://admin.{{ domain_name }}/grafana/"
@@ -324,6 +415,10 @@ services:
     image: {{ diun_image }}
     container_name: {{ project_name }}_diun
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     environment:
       TZ: "{{ timezone }}"
       CONFIG: "/diun.yml"

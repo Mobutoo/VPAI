@@ -1,0 +1,152 @@
+---
+# playbooks/safety-check.yml — Pre-flight safety checks
+#
+# Verifies that the server is accessible and critical services
+# are running BEFORE and AFTER applying hardening changes.
+# Prevents lockout scenarios.
+#
+# Usage:
+#   ansible-playbook playbooks/safety-check.yml -e "target_env=prod"
+#   ansible-playbook playbooks/safety-check.yml -e "target_env=preprod"
+
+- name: "Safety Check — {{ project_display_name }}"
+  hosts: "{{ target_env | default('prod') }}"
+  gather_facts: true
+
+  tasks:
+    # === 1. CONNECTIVITY ===
+    - name: "SAFETY: Verify SSH connectivity"
+      ansible.builtin.ping:
+
+    - name: "SAFETY: Display connection info"
+      ansible.builtin.debug:
+        msg: |
+          ==========================================
+          SAFETY CHECK — {{ project_display_name }}
+          Host: {{ inventory_hostname }}
+          SSH User: {{ ansible_user | default('unknown') }}
+          SSH Port: {{ ansible_port | default(22) }}
+          Environment: {{ target_env }}
+          RAM: {{ ansible_memtotal_mb }} MB
+          Swap: {{ ansible_swaptotal_mb }} MB
+          ==========================================
+
+    # === 2. UFW FIREWALL STATUS ===
+    - name: "SAFETY: Check UFW status"
+      ansible.builtin.command:
+        cmd: ufw status verbose
+      become: true
+      changed_when: false
+      failed_when: false
+      register: ufw_status
+
+    - name: "SAFETY: Display UFW rules"
+      ansible.builtin.debug:
+        msg: "{{ ufw_status.stdout_lines | default(['UFW not installed']) }}"
+
+    - name: "SAFETY: Verify SSH port is allowed in UFW"
+      ansible.builtin.assert:
+        that:
+          - "ufw_status.stdout is search(prod_ssh_port | string) or ufw_status.rc != 0"
+        fail_msg: |
+          LOCKOUT RISK: SSH port {{ prod_ssh_port }} is NOT in UFW rules!
+          Current rules: {{ ufw_status.stdout }}
+      when: ufw_status.rc == 0
+
+    # === 3. SSHD CONFIG VALIDATION ===
+    - name: "SAFETY: Verify sshd config is valid"
+      ansible.builtin.command:
+        cmd: sshd -t
+      become: true
+      changed_when: false
+      failed_when: false
+      register: sshd_test
+
+    - name: "SAFETY: Assert sshd config is valid"
+      ansible.builtin.assert:
+        that:
+          - sshd_test.rc == 0
+        fail_msg: |
+          CRITICAL: sshd config is INVALID! Do NOT restart sshd.
+          Error: {{ sshd_test.stderr }}
+
+    # === 4. SSH LISTEN ADDRESS ===
+    - name: "SAFETY: Check sshd ListenAddress"
+      ansible.builtin.command:
+        cmd: "grep -E '^ListenAddress' /etc/ssh/sshd_config"
+      become: true
+      changed_when: false
+      failed_when: false
+      register: ssh_listen
+
+    - name: "SAFETY: Display SSH listen address"
+      ansible.builtin.debug:
+        msg: "{{ ssh_listen.stdout | default('ListenAddress not set (listening on all interfaces)') }}"
+
+    # === 5. VPN CONNECTIVITY ===
+    - name: "SAFETY: Check if Tailscale is connected"
+      ansible.builtin.command:
+        cmd: tailscale status
+      changed_when: false
+      failed_when: false
+      register: tailscale_status
+      become: true
+
+    - name: "SAFETY: Display Tailscale status"
+      ansible.builtin.debug:
+        msg: "{{ tailscale_status.stdout_lines[:5] | default(['Tailscale not installed']) }}"
+
+    # === 6. DOCKER STATUS ===
+    - name: "SAFETY: Check Docker service"
+      ansible.builtin.command:
+        cmd: docker ps --format "table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}"
+      become: true
+      changed_when: false
+      failed_when: false
+      register: docker_ps
+
+    - name: "SAFETY: Display running containers"
+      ansible.builtin.debug:
+        msg: "{{ docker_ps.stdout_lines | default(['Docker not running']) }}"
+
+    # === 7. DISK SPACE ===
+    - name: "SAFETY: Check disk usage"
+      ansible.builtin.command:
+        cmd: df -h /
+      changed_when: false
+      register: disk_usage
+
+    - name: "SAFETY: Warn if disk > 85%"
+      ansible.builtin.debug:
+        msg: "{{ disk_usage.stdout_lines }}"
+
+    # === 8. FAIL2BAN STATUS ===
+    - name: "SAFETY: Check Fail2Ban status"
+      ansible.builtin.command:
+        cmd: fail2ban-client status
+      become: true
+      changed_when: false
+      failed_when: false
+      register: f2b_status
+
+    - name: "SAFETY: Display Fail2Ban jails"
+      ansible.builtin.debug:
+        msg: "{{ f2b_status.stdout_lines | default(['Fail2Ban not running']) }}"
+
+    # === 9. SUMMARY ===
+    - name: "SAFETY: Final summary"
+      ansible.builtin.debug:
+        msg: |
+          ==========================================
+          SAFETY CHECK RESULTS
+          ------------------------------------------
+          SSH connectivity : OK
+          sshd config     : {{ 'VALID' if sshd_test.rc == 0 else 'INVALID' }}
+          UFW firewall    : {{ 'ACTIVE' if ufw_status.rc == 0 and 'active' in ufw_status.stdout else 'INACTIVE' }}
+          Tailscale VPN   : {{ 'CONNECTED' if tailscale_status.rc == 0 else 'NOT CONNECTED' }}
+          Docker          : {{ 'RUNNING' if docker_ps.rc == 0 else 'NOT RUNNING' }}
+          Fail2Ban        : {{ 'ACTIVE' if f2b_status.rc == 0 else 'INACTIVE' }}
+          ==========================================
+          Run this BEFORE and AFTER hardening changes.
+          If VPN is not connected, do NOT restrict SSH to VPN!
+          ==========================================

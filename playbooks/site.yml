@@ -30,6 +30,24 @@
         fail_msg: "Ansible 2.16+ required. Current: {{ ansible_version.full }}"
       tags: [always]
 
+    - name: "ANTI-LOCKOUT: Validate sshd config before proceeding"
+      ansible.builtin.command:
+        cmd: sshd -t
+      become: true
+      changed_when: false
+      failed_when: false
+      register: sshd_preflight
+      tags: [always]
+
+    - name: "ANTI-LOCKOUT: Warn if sshd config is broken"
+      ansible.builtin.debug:
+        msg: |
+          WARNING: sshd config validation failed.
+          This is expected on first deploy (sshd not yet installed).
+          Error: {{ sshd_preflight.stderr | default('sshd not found') }}
+      when: sshd_preflight.rc is defined and sshd_preflight.rc != 0
+      tags: [always]
+
   roles:
     # Phase 1 — Fondations
     - role: common

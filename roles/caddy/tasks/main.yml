@@ -22,6 +22,15 @@
     - config
   become: true
 
+- name: Create Caddy logs directory for Fail2Ban
+  ansible.builtin.file:
+    path: "/opt/{{ project_name }}/logs/caddy"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
 - name: Deploy Caddyfile
   ansible.builtin.template:
     src: Caddyfile.j2

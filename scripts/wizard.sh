@@ -18,7 +18,17 @@ NC='\033[0m'
 VAULT_FILE="inventory/group_vars/all/secrets.yml"
 MAIN_FILE="inventory/group_vars/all/main.yml"
 VAULT_PASS_FILE=".vault_password"
+USERS_FILE="inventory/group_vars/all/users.yml"
 GENERATED_SECRETS_FILE="/tmp/vpai-secrets-$(date +%s).txt"
+
+# Auto-cleanup temp secrets file on exit
+cleanup() {
+  if [ -f "$GENERATED_SECRETS_FILE" ]; then
+    rm -f "$GENERATED_SECRETS_FILE"
+    echo -e "\n${YELLOW}Fichier temporaire des secrets supprime automatiquement.${NC}"
+  fi
+}
+trap cleanup EXIT
 
 # ====================================================================
 # Helper functions
@@ -56,7 +66,7 @@ ask() {
   if [ -n "$default" ]; then
     echo -ne "  ${prompt} ${YELLOW}[${default}]${NC}: "
     read -r input
-    eval "$var_name='${input:-$default}'"
+    printf -v "$var_name" '%s' "${input:-$default}"
   else
     echo -ne "  ${prompt}: "
     read -r input
@@ -64,7 +74,7 @@ ask() {
       echo -ne "  ${RED}Requis.${NC} ${prompt}: "
       read -r input
     done
-    eval "$var_name='$input'"
+    printf -v "$var_name" '%s' "$input"
   fi
 }
 
@@ -80,7 +90,7 @@ ask_secret() {
     read -rs input
     echo ""
   done
-  eval "$var_name='$input'"
+  printf -v "$var_name" '%s' "$input"
 }
 
 ask_yesno() {
@@ -96,9 +106,18 @@ ask_yesno() {
   read -r input
   input="${input:-$default}"
   case "$input" in
-    [yY]*) eval "$var_name=true" ;;
-    *) eval "$var_name=false" ;;
+    [yY]*) printf -v "$var_name" '%s' "true" ;;
+    *) printf -v "$var_name" '%s' "false" ;;
   esac
+}
+
+ask_optional() {
+  local prompt="$1"
+  local var_name="$2"
+
+  echo -ne "  ${prompt}: "
+  read -r input
+  printf -v "$var_name" '%s' "${input:-}"
 }
 
 generate_secret() {
@@ -151,7 +170,7 @@ read -r
 # ETAPE 1 : Identite du projet
 # ====================================================================
 
-banner "Etape 1/8 — Identite du Projet"
+banner "Etape 1/9 — Identite du Projet"
 
 ask "Nom court du projet (minuscules, sans espaces)" "vpai" PROJECT_NAME
 ask "Nom affiche (pour les dashboards)" "VPAI" PROJECT_DISPLAY
@@ -161,7 +180,7 @@ ask "Description du projet" "Stack AI/automatisation auto-hebergee" PROJECT_DESC
 # ETAPE 2 : Domaine et DNS
 # ====================================================================
 
-banner "Etape 2/8 — Domaine et DNS"
+banner "Etape 2/9 — Domaine et DNS"
 
 ask "Nom de domaine principal" "" DOMAIN_NAME
 echo ""
@@ -184,7 +203,7 @@ success "Registrar : $DOMAIN_REGISTRAR"
 # ETAPE 3 : VPS Production
 # ====================================================================
 
-banner "Etape 3/8 — VPS Production"
+banner "Etape 3/9 — VPS Production"
 
 ask "IP publique du VPS" "" PROD_IP
 ask "Hostname du VPS" "vps-prod-01" PROD_HOSTNAME
@@ -212,7 +231,7 @@ esac
 # ETAPE 4 : VPN Headscale
 # ====================================================================
 
-banner "Etape 4/8 — VPN Headscale"
+banner "Etape 4/9 — VPN Headscale"
 
 echo -e "  ${YELLOW}Tu dois avoir un serveur Headscale fonctionnel.${NC}"
 echo ""
@@ -240,7 +259,7 @@ esac
 # ETAPE 5 : Notifications
 # ====================================================================
 
-banner "Etape 5/8 — Notifications"
+banner "Etape 5/9 — Notifications"
 
 echo -e "  Quel canal pour les alertes ?"
 echo -e "    1) Telegram"
@@ -254,39 +273,92 @@ case "${notif_choice:-1}" in
   1)
     NOTIF_METHOD="telegram"
     echo ""
-    echo -e "  ${CYAN}Comment obtenir le webhook Telegram :${NC}"
+    echo -e "  ${CYAN}=== Bot MONITORING (alertes Grafana, DIUN, backup) ===${NC}"
+    echo -e "  ${YELLOW}Ce bot est partage avec Seko-VPN pour centraliser les alertes infra.${NC}"
+    echo -e "  ${CYAN}Comment obtenir un token :${NC}"
     echo -e "    1. Ouvre Telegram, cherche @BotFather"
     echo -e "    2. Envoie /newbot, suis les instructions"
-    echo -e "    3. Note le token du bot"
-    echo -e "    4. Cree un groupe, ajoute le bot"
-    echo -e "    5. Recupere le chat ID (voir docs/FIRST-DEPLOY.md)"
+    echo -e "    3. Note le token du bot (format: 123456:ABC-DEF...)"
     echo ""
-    ask "URL webhook Telegram (ou vide pour plus tard)" "" NOTIF_WEBHOOK
+    ask "Token du bot MONITORING" "" TELEGRAM_MONITORING_TOKEN
+    ask "Chat ID monitoring" "" TELEGRAM_MONITORING_CHAT_ID
+    echo ""
+    echo -e "  ${CYAN}=== Bot OPENCLAW (notifications agents IA, dedie) ===${NC}"
+    echo -e "  ${YELLOW}Bot distinct du monitoring pour les interactions OpenClaw.${NC}"
+    echo -e "  ${YELLOW}Laisse vide pour utiliser le meme bot que le monitoring.${NC}"
+    echo ""
+    echo -ne "  Token du bot OPENCLAW (ou vide = meme que monitoring): "
+    read -r TELEGRAM_OPENCLAW_TOKEN
+    if [ -z "$TELEGRAM_OPENCLAW_TOKEN" ]; then
+      TELEGRAM_OPENCLAW_TOKEN="$TELEGRAM_MONITORING_TOKEN"
+      TELEGRAM_OPENCLAW_CHAT_ID="$TELEGRAM_MONITORING_CHAT_ID"
+      success "Bot OpenClaw = Bot monitoring (meme token)"
+    else
+      ask "Chat ID OpenClaw" "" TELEGRAM_OPENCLAW_CHAT_ID
+    fi
+    NOTIF_WEBHOOK=""
     ;;
   2)
     NOTIF_METHOD="discord"
     echo ""
     echo -e "  ${CYAN}Parametres du canal Discord > Integrations > Webhooks > Nouveau webhook${NC}"
     echo ""
-    ask "URL webhook Discord (ou vide pour plus tard)" "" NOTIF_WEBHOOK
+    ask_optional "URL webhook Discord (ou vide pour plus tard)" NOTIF_WEBHOOK
+    TELEGRAM_MONITORING_TOKEN=""
+    TELEGRAM_MONITORING_CHAT_ID=""
+    TELEGRAM_OPENCLAW_TOKEN=""
+    TELEGRAM_OPENCLAW_CHAT_ID=""
     ;;
   3)
     NOTIF_METHOD="slack"
-    ask "URL webhook Slack (ou vide pour plus tard)" "" NOTIF_WEBHOOK
+    ask_optional "URL webhook Slack (ou vide pour plus tard)" NOTIF_WEBHOOK
+    TELEGRAM_MONITORING_TOKEN=""
+    TELEGRAM_MONITORING_CHAT_ID=""
+    TELEGRAM_OPENCLAW_TOKEN=""
+    TELEGRAM_OPENCLAW_CHAT_ID=""
     ;;
   *)
     NOTIF_METHOD="none"
     NOTIF_WEBHOOK=""
+    TELEGRAM_MONITORING_TOKEN=""
+    TELEGRAM_MONITORING_CHAT_ID=""
+    TELEGRAM_OPENCLAW_TOKEN=""
+    TELEGRAM_OPENCLAW_CHAT_ID=""
     ;;
 esac
 
 ask "Email de notification" "" NOTIF_EMAIL
 
 # ====================================================================
-# ETAPE 6 : Cles API externes
+# ETAPE 6/9 : Comptes administrateurs
 # ====================================================================
 
-banner "Etape 6/8 — Cles API Externes"
+banner "Etape 6/9 — Comptes Administrateurs"
+
+echo -e "  ${YELLOW}Ces comptes sont crees automatiquement au premier deploiement.${NC}"
+echo ""
+
+# n8n owner
+echo -e "  ${CYAN}--- n8n (compte owner) ---${NC}"
+ask "Email du proprietaire n8n" "" N8N_OWNER_EMAIL
+ask "Prenom" "" N8N_OWNER_FIRST_NAME
+ask "Nom" "" N8N_OWNER_LAST_NAME
+echo ""
+
+# Grafana
+echo -e "  ${CYAN}--- Grafana ---${NC}"
+ask "Utilisateur admin Grafana" "admin" GRAFANA_ADMIN_USER
+echo ""
+
+# LiteLLM
+echo -e "  ${CYAN}--- LiteLLM (UI Admin) ---${NC}"
+ask "Username admin LiteLLM" "" LITELLM_UI_USERNAME
+
+# ====================================================================
+# ETAPE 7 : Cles API externes
+# ====================================================================
+
+banner "Etape 7/9 — Cles API Externes"
 
 echo -e "  ${YELLOW}Tu vas avoir besoin des cles API de tes fournisseurs LLM.${NC}"
 echo -e "  ${YELLOW}Si tu ne les as pas encore, tu peux les ajouter plus tard via :${NC}"
@@ -296,19 +368,19 @@ echo ""
 # Anthropic
 echo -e "  ${CYAN}--- Anthropic (Claude) ---${NC}"
 echo -e "  Obtenir sur : https://console.anthropic.com/settings/keys"
-ask "Cle API Anthropic (sk-ant-... ou vide)" "" ANTHROPIC_KEY
+ask_optional "Cle API Anthropic (sk-ant-... ou vide)" ANTHROPIC_KEY
 
 # OpenAI
 echo ""
 echo -e "  ${CYAN}--- OpenAI (GPT) ---${NC}"
 echo -e "  Obtenir sur : https://platform.openai.com/api-keys"
-ask "Cle API OpenAI (sk-proj-... ou vide)" "" OPENAI_KEY
+ask_optional "Cle API OpenAI (sk-proj-... ou vide)" OPENAI_KEY
 
 # Hetzner
 echo ""
 echo -e "  ${CYAN}--- Hetzner Cloud (CI/CD preprod) ---${NC}"
 echo -e "  Obtenir sur : https://console.hetzner.cloud > Security > API Tokens"
-ask "Token Hetzner Cloud (ou vide)" "" HETZNER_TOKEN
+ask_optional "Token Hetzner Cloud (ou vide)" HETZNER_TOKEN
 
 # Hetzner S3
 echo ""
@@ -316,8 +388,8 @@ echo -e "  ${CYAN}--- Hetzner S3 (backups + partage) ---${NC}"
 echo -e "  Obtenir sur : https://console.hetzner.cloud > Object Storage > Manage credentials"
 echo -e "  ${YELLOW}2 buckets necessaires : un pour les backups (Restic), un pour les fichiers partages${NC}"
 echo ""
-ask "S3 Access Key (ou vide)" "" S3_ACCESS_KEY
-ask "S3 Secret Key (ou vide)" "" S3_SECRET_KEY
+ask_optional "S3 Access Key (ou vide)" S3_ACCESS_KEY
+ask_optional "S3 Secret Key (ou vide)" S3_SECRET_KEY
 ask "Nom du bucket backups (Restic chiffre)" "vpai-backups" S3_BUCKET_BACKUPS
 ask "Nom du bucket partage (seed, exports, docs)" "vpai-shared" S3_BUCKET_SHARED
 
@@ -331,9 +403,9 @@ if [ "$DOMAIN_REGISTRAR" = "ovh" ]; then
   echo -e "  Obtenir sur : https://api.ovh.com/createToken/"
   echo -e "  Droits requis : GET/PUT/POST/DELETE sur /domain/zone/*"
   echo ""
-  ask "OVH Application Key (ou vide)" "" OVH_APP_KEY
-  ask "OVH Application Secret (ou vide)" "" OVH_APP_SECRET
-  ask "OVH Consumer Key (ou vide)" "" OVH_CONSUMER_KEY
+  ask_optional "OVH Application Key (ou vide)" OVH_APP_KEY
+  ask_optional "OVH Application Secret (ou vide)" OVH_APP_SECRET
+  ask_optional "OVH Consumer Key (ou vide)" OVH_CONSUMER_KEY
 fi
 
 # Headscale
@@ -342,33 +414,37 @@ echo -e "  ${CYAN}--- Headscale (pre-auth key) ---${NC}"
 echo -e "  Generer sur ton serveur VPN :"
 echo -e "    headscale preauthkeys create --namespace prod --reusable --expiration 24h"
 echo ""
-ask "Cle pre-authentification Headscale (ou vide)" "" HEADSCALE_KEY
+ask_optional "Cle pre-authentification Headscale (ou vide)" HEADSCALE_KEY
 
 # ====================================================================
-# ETAPE 7 : Generation des secrets internes
+# ETAPE 8 : Generation des secrets internes
 # ====================================================================
 
-banner "Etape 7/8 — Generation des Secrets Internes"
+banner "Etape 8/9 — Generation des Secrets Internes"
 
-step "Generation automatique de 8 secrets..."
+step "Generation automatique de 10 secrets..."
 
 PG_PASSWORD=$(generate_secret)
 REDIS_PASSWORD=$(generate_secret)
 QDRANT_KEY=$(generate_hex)
 LITELLM_KEY="sk-$(openssl rand -hex 24)"
 N8N_ENCRYPTION=$(generate_hex)
-N8N_AUTH_PASSWORD=$(generate_secret)
+N8N_OWNER_PASSWORD=$(generate_secret)
 GRAFANA_PASSWORD=$(generate_secret)
 OPENCLAW_KEY=$(generate_hex)
+LITELLM_UI_PASSWORD=$(generate_secret)
+LITELLM_SALT_KEY=$(generate_hex)
 
-success "postgresql_password : ${PG_PASSWORD:0:8}..."
-success "redis_password      : ${REDIS_PASSWORD:0:8}..."
-success "qdrant_api_key      : ${QDRANT_KEY:0:8}..."
-success "litellm_master_key  : ${LITELLM_KEY:0:12}..."
-success "n8n_encryption_key  : ${N8N_ENCRYPTION:0:8}..."
-success "n8n_basic_auth_pass : ${N8N_AUTH_PASSWORD:0:8}..."
-success "grafana_admin_pass  : ${GRAFANA_PASSWORD:0:8}..."
-success "openclaw_api_key    : ${OPENCLAW_KEY:0:8}..."
+success "postgresql_password  : ${PG_PASSWORD:0:8}..."
+success "redis_password       : ${REDIS_PASSWORD:0:8}..."
+success "qdrant_api_key       : ${QDRANT_KEY:0:8}..."
+success "litellm_master_key   : ${LITELLM_KEY:0:12}..."
+success "n8n_encryption_key   : ${N8N_ENCRYPTION:0:8}..."
+success "n8n_owner_password   : ${N8N_OWNER_PASSWORD:0:8}..."
+success "grafana_admin_pass   : ${GRAFANA_PASSWORD:0:8}..."
+success "openclaw_api_key     : ${OPENCLAW_KEY:0:8}..."
+success "litellm_ui_password  : ${LITELLM_UI_PASSWORD:0:8}..."
+success "litellm_salt_key     : ${LITELLM_SALT_KEY:0:8}..."
 
 echo ""
 warn "IMPORTANT : n8n_encryption_key ne doit JAMAIS etre change apres le 1er deploiement !"
@@ -383,19 +459,21 @@ redis_password: $REDIS_PASSWORD
 qdrant_api_key: $QDRANT_KEY
 litellm_master_key: $LITELLM_KEY
 n8n_encryption_key: $N8N_ENCRYPTION
-n8n_basic_auth_password: $N8N_AUTH_PASSWORD
+n8n_owner_password: $N8N_OWNER_PASSWORD
 grafana_admin_password: $GRAFANA_PASSWORD
 openclaw_api_key: $OPENCLAW_KEY
+litellm_ui_password: $LITELLM_UI_PASSWORD
+litellm_salt_key: $LITELLM_SALT_KEY
 SECRETS_EOF
 chmod 600 "$GENERATED_SECRETS_FILE"
 warn "Secrets sauvegardes temporairement dans : $GENERATED_SECRETS_FILE"
 warn "SUPPRIME ce fichier apres verification !"
 
 # ====================================================================
-# ETAPE 8 : Ecriture des fichiers
+# ETAPE 9 : Ecriture des fichiers
 # ====================================================================
 
-banner "Etape 8/8 — Ecriture de la Configuration"
+banner "Etape 9/9 — Ecriture de la Configuration"
 
 # --- SSH Key ---
 SSH_PUB_KEY=""
@@ -407,7 +485,7 @@ elif [ -f "$HOME/.ssh/id_rsa.pub" ]; then
   success "Cle SSH publique detectee : ${SSH_PUB_KEY:0:30}..."
 else
   warn "Pas de cle SSH publique trouvee."
-  ask "Colle ta cle publique SSH (ou vide)" "" SSH_PUB_KEY
+  ask_optional "Colle ta cle publique SSH (ou vide)" SSH_PUB_KEY
 fi
 
 # --- Vault password ---
@@ -487,8 +565,18 @@ backup_gfs_keep_yearly: 2
 
 # --- Notifications ---
 notification_method: "$NOTIF_METHOD"
-notification_webhook_url: "{{ vault_notification_webhook_url | default('') }}"
 notification_email: "{{ vault_notification_email | default('') }}"
+
+# Telegram monitoring bot (shared with Seko-VPN)
+telegram_monitoring_bot_token: "{{ vault_telegram_monitoring_bot_token | default('') }}"
+telegram_monitoring_chat_id: "{{ vault_telegram_monitoring_chat_id | default('') }}"
+
+# Telegram OpenClaw bot (dedicated)
+telegram_openclaw_bot_token: "{{ vault_telegram_openclaw_bot_token | default('') }}"
+telegram_openclaw_chat_id: "{{ vault_telegram_openclaw_chat_id | default('') }}"
+
+# Webhook URL kept for Discord/Slack backward compatibility
+notification_webhook_url: "{{ vault_notification_webhook_url | default('') }}"
 
 # --- Timezone ---
 timezone: "Europe/Paris"
@@ -499,6 +587,44 @@ target_env: "prod"
 MAIN_EOF
 
 success "main.yml ecrit"
+
+# --- Write users.yml ---
+step "Ecriture de inventory/group_vars/all/users.yml..."
+
+cat > "$USERS_FILE" << USERS_EOF
+---
+# inventory/group_vars/all/users.yml -- Comptes administrateurs
+# Genere par scripts/wizard.sh le $(date '+%Y-%m-%d %H:%M')
+# Les mots de passe sont dans secrets.yml (Vault chiffre)
+
+# ===========================================================
+#  OBLIGATOIRE -- Remplir avant \`make deploy\`
+# ===========================================================
+
+# --- n8n (owner account, cree automatiquement au 1er demarrage) ---
+n8n_owner_email: "$N8N_OWNER_EMAIL"
+n8n_owner_first_name: "$N8N_OWNER_FIRST_NAME"
+n8n_owner_last_name: "$N8N_OWNER_LAST_NAME"
+# Mot de passe : n8n_owner_password dans secrets.yml
+
+# --- Grafana ---
+grafana_admin_user: "$GRAFANA_ADMIN_USER"
+# Mot de passe : grafana_admin_password dans secrets.yml
+
+# --- LiteLLM (UI Admin) ---
+litellm_ui_username: "$LITELLM_UI_USERNAME"
+# Mot de passe : litellm_ui_password dans secrets.yml
+
+# ===========================================================
+#  OPTIONNEL -- Valeurs par defaut utilisees si vides
+# ===========================================================
+
+# --- OpenClaw ---
+# Utilise openclaw_api_key pour l'acces API (dans secrets.yml)
+# Bot Telegram distinct pour les notifications agent (voir main.yml)
+USERS_EOF
+
+success "users.yml ecrit"
 
 # --- Write Vault ---
 step "Creation du Vault chiffre..."
@@ -521,8 +647,16 @@ vault_vpn_headscale_url: "$VPN_HEADSCALE_URL"
 vault_vpn_headscale_ip: "$VPN_HEADSCALE_IP"
 vault_s3_bucket_backups: "$S3_BUCKET_BACKUPS"
 vault_s3_bucket_shared: "$S3_BUCKET_SHARED"
-vault_notification_webhook_url: "$NOTIF_WEBHOOK"
 vault_notification_email: "$NOTIF_EMAIL"
+vault_notification_webhook_url: "$NOTIF_WEBHOOK"
+
+# --- Telegram Monitoring (shared with Seko-VPN) ---
+vault_telegram_monitoring_bot_token: "$TELEGRAM_MONITORING_TOKEN"
+vault_telegram_monitoring_chat_id: "$TELEGRAM_MONITORING_CHAT_ID"
+
+# --- Telegram OpenClaw (dedicated) ---
+vault_telegram_openclaw_bot_token: "$TELEGRAM_OPENCLAW_TOKEN"
+vault_telegram_openclaw_chat_id: "$TELEGRAM_OPENCLAW_CHAT_ID"
 
 # --- DNS API (OVH) ---
 ovh_application_key: "$OVH_APP_KEY"
@@ -540,9 +674,10 @@ redis_password: "$REDIS_PASSWORD"
 
 # --- Applications ---
 n8n_encryption_key: "$N8N_ENCRYPTION"
-n8n_basic_auth_user: "admin"
-n8n_basic_auth_password: "$N8N_AUTH_PASSWORD"
+n8n_owner_password: "$N8N_OWNER_PASSWORD"
 litellm_master_key: "$LITELLM_KEY"
+litellm_ui_password: "$LITELLM_UI_PASSWORD"
+litellm_salt_key: "$LITELLM_SALT_KEY"
 openclaw_api_key: "$OPENCLAW_KEY"
 grafana_admin_password: "$GRAFANA_PASSWORD"
 qdrant_api_key: "$QDRANT_KEY"
@@ -576,6 +711,7 @@ banner "Configuration Terminee !"
 echo -e "  ${GREEN}Fichiers generes :${NC}"
 echo -e "    ✓ $MAIN_FILE"
 echo -e "    ✓ $VAULT_FILE (chiffre)"
+echo -e "    ✓ $USERS_FILE"
 echo -e "    ✓ $VAULT_PASS_FILE"
 echo ""
 echo -e "  ${YELLOW}Prochaines etapes :${NC}"
@@ -592,8 +728,8 @@ echo ""
 echo -e "    4. ${BOLD}Deployer :${NC}"
 echo -e "       make deploy-prod"
 echo ""
-echo -e "  ${RED}N'oublie pas de supprimer le fichier temporaire des secrets :${NC}"
-echo -e "    rm $GENERATED_SECRETS_FILE"
+echo -e "  ${YELLOW}Le fichier temporaire des secrets sera supprime automatiquement a la sortie.${NC}"
+echo -e "  ${YELLOW}Pour le conserver : copie-le MAINTENANT avant de quitter.${NC}"
 echo ""
 echo -e "  ${CYAN}Documentation complete : docs/FIRST-DEPLOY.md${NC}"
 echo ""

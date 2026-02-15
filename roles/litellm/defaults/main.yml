@@ -2,3 +2,8 @@
 # litellm — defaults
 
 litellm_config_dir: "/opt/{{ project_name }}/configs/litellm"
+
+# --- UI Admin ---
+litellm_ui_username: ""
+# litellm_ui_password is in secrets.yml (vault)
+# litellm_salt_key is in secrets.yml (vault)

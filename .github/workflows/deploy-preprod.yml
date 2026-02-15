@@ -1,18 +1,33 @@
 ---
 # .github/workflows/deploy-preprod.yml — Deploy to pre-production
+# Strategy: Scenario B — Permanent CX23 server (see docs/PREPROD-STRATEGY.md)
+#
+# The preprod server is persistent and declared in inventory/hosts.yml.
+# Ansible deploys diffs only (~5 min), no ephemeral provisioning.
+#
+# Required GitHub secrets:
+#   SSH_PRIVATE_KEY          — SSH private key for deployment user
+#   ANSIBLE_VAULT_PASSWORD   — Vault password
+#   PREPROD_SERVER_IP        — Preprod server IP (from Hetzner CX23)
+#   PREPROD_DOMAIN           — Preprod domain (e.g., preprod.example.com)
+#   LITELLM_MASTER_KEY       — For smoke test API checks
+#   HETZNER_CLOUD_TOKEN      — For snapshot creation (optional)
+
 name: Deploy Pre-production
 
 on:
   workflow_dispatch:
     inputs:
-      mode:
-        description: 'Deployment mode'
-        required: true
-        type: choice
-        options:
-          - fast
-          - normal
-        default: fast
+      seed_data:
+        description: 'Seed preprod with fresh prod data after deploy?'
+        required: false
+        type: boolean
+        default: false
+      snapshot:
+        description: 'Create golden snapshot after successful tests?'
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -23,7 +38,6 @@ on:
 
 env:
   ANSIBLE_FORCE_COLOR: "1"
-  PREPROD_SERVER_NAME: "vpai-preprod"
 
 jobs:
   lint:
@@ -37,95 +51,68 @@ jobs:
           cache: 'pip'
       - run: pip install ansible ansible-lint yamllint
       - run: ansible-galaxy install -r requirements.yml
-      - run: yamllint -c .yamllint.yml .
+      - name: YAML Lint
+        run: |
+          find . \( -name '*.yml' -o -name '*.yaml' \) \
+            ! -path './.git/*' ! -path './.venv/*' \
+            ! -path '*/molecule/*' ! -path '*/collections/*' \
+            ! -name 'secrets.yml' -print0 | xargs -0 yamllint -c .yamllint.yml
       - run: ansible-lint playbooks/site.yml
 
-  provision:
-    name: Provision Hetzner Server
+  deploy:
+    name: Deploy to Preprod
     needs: lint
     runs-on: ubuntu-latest
-    outputs:
-      server_ip: ${{ steps.resolve.outputs.ip }}
-      server_id: ${{ steps.resolve.outputs.id }}
-      was_created: ${{ steps.resolve.outputs.was_created }}
+    environment: preprod
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install hcloud CLI
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
         run: |
-          curl -sL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz | tar xz
-          sudo mv hcloud /usr/local/bin/
+          pip install ansible jmespath
+          ansible-galaxy install -r requirements.yml
 
-      - name: Resolve or create preprod server
-        id: resolve
-        env:
-          HCLOUD_TOKEN: ${{ secrets.HETZNER_CLOUD_TOKEN }}
+      - name: Configure SSH key
         run: |
-          set -euo pipefail
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.PREPROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
 
-          # Check if a persistent preprod server already exists
-          EXISTING=$(hcloud server list --selector project=vpai-preprod \
-            -o json 2>/dev/null | jq -r '.[0] // empty')
-
-          if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
-            IP=$(echo "$EXISTING" | jq -r '.public_net.ipv4.ip')
-            ID=$(echo "$EXISTING" | jq -r '.id')
-            echo "Reusing existing server: $IP (ID: $ID)"
-            echo "ip=$IP" >> "$GITHUB_OUTPUT"
-            echo "id=$ID" >> "$GITHUB_OUTPUT"
-            echo "was_created=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "No existing preprod server found, creating one..."
-
-            # Try to restore from snapshot
-            SNAPSHOT_ID=$(hcloud image list --type snapshot \
-              --selector project=vpai \
-              -o json 2>/dev/null | jq -r '.[0].id // empty') || true
-
-            if [ -n "$SNAPSHOT_ID" ]; then
-              echo "Restoring from snapshot $SNAPSHOT_ID"
-              SERVER_JSON=$(hcloud server create \
-                --name "${{ env.PREPROD_SERVER_NAME }}" \
-                --type cx23 \
-                --location fsn1 \
-                --image "$SNAPSHOT_ID" \
-                --ssh-key deploy \
-                --label project=vpai-preprod \
-                -o json)
-            else
-              echo "Creating from scratch"
-              SERVER_JSON=$(hcloud server create \
-                --name "${{ env.PREPROD_SERVER_NAME }}" \
-                --type cx23 \
-                --location fsn1 \
-                --image debian-13 \
-                --ssh-key deploy \
-                --label project=vpai-preprod \
-                -o json)
-            fi
-
-            IP=$(echo "$SERVER_JSON" | jq -r '.server.public_net.ipv4.ip')
-            ID=$(echo "$SERVER_JSON" | jq -r '.server.id')
-            echo "ip=$IP" >> "$GITHUB_OUTPUT"
-            echo "id=$ID" >> "$GITHUB_OUTPUT"
-            echo "was_created=true" >> "$GITHUB_OUTPUT"
-            echo "Server created: $IP (ID: $ID)"
-          fi
-
-      - name: Wait for SSH
+      - name: Wait for SSH availability
         run: |
-          for i in $(seq 1 30); do
+          for i in $(seq 1 12); do
             if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
-              root@${{ steps.resolve.outputs.ip }} echo "SSH ready"; then
+              root@${{ secrets.PREPROD_SERVER_IP }} echo "SSH ready"; then
               exit 0
             fi
-            sleep 10
+            echo "Waiting for SSH... (attempt $i/12)"
+            sleep 5
           done
           echo "SSH timeout" && exit 1
 
-  deploy:
-    name: Deploy via Ansible
-    needs: provision
+      - name: Create vault password file
+        run: |
+          printf '%s' "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_password
+          chmod 600 .vault_password
+
+      - name: Deploy to permanent preprod server
+        run: |
+          ansible-playbook playbooks/site.yml \
+            -i "${{ secrets.PREPROD_SERVER_IP }}," \
+            -e "target_env=preprod" \
+            -e "ansible_user=root" \
+            --diff
+
+  seed:
+    name: Seed Prod Data
+    needs: deploy
+    if: github.event.inputs.seed_data == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -145,48 +132,77 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ needs.provision.outputs.server_ip }} >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "${{ secrets.PREPROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Create vault password file
         run: |
           printf '%s' "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_password
           chmod 600 .vault_password
 
-      - name: Deploy
+      - name: Seed preprod with prod data
         run: |
-          ansible-playbook playbooks/site.yml \
-            -i "${{ needs.provision.outputs.server_ip }}," \
+          ansible-playbook playbooks/seed-preprod.yml \
+            -i "${{ secrets.PREPROD_SERVER_IP }}," \
             -e "target_env=preprod" \
             -e "ansible_user=root" \
             --diff
 
   smoke-tests:
     name: Smoke Tests
-    needs: [provision, deploy]
+    needs: [deploy, seed]
+    if: always() && needs.deploy.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.PREPROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
+
       - name: Wait for services to stabilize
         run: sleep 30
 
-      - name: Run smoke tests
+      - name: Run public smoke tests from CI
         run: |
           bash scripts/smoke-test.sh \
-            "https://${{ needs.provision.outputs.server_ip }}"
+            --ci \
+            "https://${{ secrets.PREPROD_DOMAIN }}"
         env:
           LITELLM_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
 
+      - name: Run full smoke tests on server via SSH
+        run: |
+          ssh root@${{ secrets.PREPROD_SERVER_IP }} \
+            "bash /opt/*/scripts/smoke-test.sh 2>&1" || true
+
   snapshot:
     name: Create Golden Snapshot
-    needs: [provision, smoke-tests]
-    if: success()
+    needs: smoke-tests
+    if: >-
+      github.event.inputs.snapshot == 'true' &&
+      needs.smoke-tests.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Install hcloud CLI
         run: |
           curl -sL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz | tar xz
           sudo mv hcloud /usr/local/bin/
+
+      - name: Find preprod server ID
+        id: server
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HETZNER_CLOUD_TOKEN }}
+        run: |
+          SERVER_ID=$(hcloud server list --selector project=vpai-preprod \
+            -o json | jq -r '.[0].id // empty')
+          if [ -z "$SERVER_ID" ]; then
+            echo "No preprod server found with label project=vpai-preprod"
+            exit 1
+          fi
+          echo "id=$SERVER_ID" >> "$GITHUB_OUTPUT"
 
       - name: Create snapshot
         env:
@@ -196,42 +212,4 @@ jobs:
             --type snapshot \
             --description "Golden $(date +%Y%m%d-%H%M)" \
             --label project=vpai \
-            ${{ needs.provision.outputs.server_id }}
-
-  cleanup:
-    name: Cleanup
-    needs: [provision, smoke-tests]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install hcloud CLI
-        run: |
-          curl -sL https://github.com/hetznercloud/cli/releases/latest/download/hcloud-linux-amd64.tar.gz | tar xz
-          sudo mv hcloud /usr/local/bin/
-
-      # Determine effective mode:
-      # - workflow_dispatch: use the selected mode input
-      # - push event: default to 'fast' (keep server alive)
-      - name: Determine deployment mode
-        id: mode
-        run: |
-          MODE="${{ github.event.inputs.mode }}"
-          if [ -z "$MODE" ]; then
-            MODE="fast"
-          fi
-          echo "value=$MODE" >> "$GITHUB_OUTPUT"
-          echo "Deployment mode: $MODE"
-
-      - name: Destroy server (normal mode only)
-        if: steps.mode.outputs.value == 'normal'
-        env:
-          HCLOUD_TOKEN: ${{ secrets.HETZNER_CLOUD_TOKEN }}
-        run: |
-          echo "Normal mode — destroying preprod server"
-          hcloud server delete ${{ needs.provision.outputs.server_id }} || true
-
-      - name: Keep server alive (fast mode)
-        if: steps.mode.outputs.value == 'fast'
-        run: |
-          echo "Fast mode — server ${{ needs.provision.outputs.server_ip }} kept alive for next run"
-          echo "To switch to normal mode: run workflow_dispatch with mode=normal"
+            ${{ steps.server.outputs.id }}

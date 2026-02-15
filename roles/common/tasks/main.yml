@@ -1,6 +1,51 @@
 ---
 # common — tasks
 
+# --- Deployment user ---
+- name: Create deployment user
+  ansible.builtin.user:
+    name: "{{ prod_user }}"
+    shell: /bin/bash
+    groups: sudo
+    append: true
+    create_home: true
+    state: present
+  become: true
+
+# --- Debian 13 minimal repos fix ---
+- name: Check Debian repos completeness
+  ansible.builtin.command:
+    cmd: apt-cache policy gnupg
+  changed_when: false
+  failed_when: false
+  register: common_repo_check
+  become: true
+
+- name: Fix Debian 13 minimal repos if needed
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/debian.sources
+    content: |
+      Types: deb
+      URIs: http://deb.debian.org/debian
+      Suites: trixie trixie-updates
+      Components: main contrib non-free non-free-firmware
+      Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+      Types: deb
+      URIs: http://deb.debian.org/debian-security
+      Suites: trixie-security
+      Components: main contrib non-free non-free-firmware
+      Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+    mode: "0644"
+  become: true
+  when: >
+    (common_repo_check.rc != 0) or
+    ('Candidate: (none)' in common_repo_check.stdout | default(''))
+  notify: Update apt cache
+
+- name: Flush handlers to update apt cache before package installs
+  ansible.builtin.meta: flush_handlers
+
 - name: Update apt cache
   ansible.builtin.apt:
     update_cache: true

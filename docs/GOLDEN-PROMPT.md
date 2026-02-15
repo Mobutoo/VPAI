@@ -691,4 +691,81 @@ ignore: |
 
 ---
 
+### Erreur 10 — apt_key deprecie sur Debian 13
+
+**Symptome** : `apt_key` module fonctionne mais genere des warnings sur Debian 13 (Trixie). CrowdSec installe mais le repo n'est pas signe correctement → packages non verifies.
+
+**Cause racine** : Le module `ansible.builtin.apt_key` ajoute les cles dans le trousseau global `/etc/apt/trusted.gpg.d/`, ce qui est deprecie depuis Debian 12 et ignore sur certaines installations Debian 13 minimales.
+
+**Fix** : Remplacer `apt_key` par le pattern `gpg --dearmor` + `signed-by=` :
+```bash
+# Telecharger et convertir la cle
+curl -fsSL <KEY_URL> | gpg --dearmor --yes -o /etc/apt/keyrings/<service>.gpg
+
+# Utiliser signed-by dans le repo
+deb [arch=amd64 signed-by=/etc/apt/keyrings/<service>.gpg] <REPO_URL> <SUITE> main
+```
+
+**Garde-fou** : `grep -r 'apt_key' roles/` doit renvoyer **rien**. Tous les repos tiers doivent utiliser `/etc/apt/keyrings/` + `signed-by=`.
+
+### Erreur 11 — dash vs bash sur Debian 13
+
+**Symptome** : Les taches `shell` avec `set -o pipefail` echouent avec `set: Illegal option -o pipefail` sur Debian 13.
+
+**Cause racine** : Debian 13 utilise `dash` comme `/bin/sh` par defaut. `dash` ne supporte pas `set -o pipefail` ni certains bashismes. Ansible utilise `/bin/sh` par defaut pour les taches `shell`.
+
+**Fix** : Ajouter `executable: /bin/bash` a toutes les taches `ansible.builtin.shell` qui utilisent des pipes ou `set -o pipefail` :
+```yaml
+- name: Example task with pipe
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      curl -fsSL url | gpg --dearmor -o /path/to/key.gpg
+```
+
+**Garde-fou** : Auditer avec `grep -r 'ansible.builtin.shell' roles/ -A5 | grep -v 'executable'` — toute tache shell avec un pipe doit avoir `executable: /bin/bash`.
+
+### Erreur 12 — Depots Debian 13 incomplets sur images minimales
+
+**Symptome** : `apt install gnupg` echoue avec `Unable to locate package gnupg` sur un VPS Debian 13 fraichement provisionne (IONOS, Hetzner, OVH).
+
+**Cause racine** : Les images minimales de certains hebergeurs n'incluent que le depot `main` sans `contrib` ni `non-free`. Parfois meme le depot `security` est absent.
+
+**Fix** : Ajouter une verification et correction des depots en tete du role `common` :
+```yaml
+- name: Check Debian repos completeness
+  ansible.builtin.command:
+    cmd: apt-cache policy gnupg
+  changed_when: false
+  failed_when: false
+  register: common_repo_check
+
+- name: Fix Debian 13 minimal repos if needed
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/debian.sources
+    content: |
+      Types: deb
+      URIs: http://deb.debian.org/debian
+      Suites: trixie trixie-updates
+      Components: main contrib non-free non-free-firmware
+      Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+    mode: "0644"
+  when: common_repo_check.rc != 0 or 'Candidate: (none)' in common_repo_check.stdout
+```
+
+**Garde-fou** : Le role `common` doit toujours verifier les depots AVANT le premier `apt update`.
+
+### Erreur 13 — Paquets obsoletes sur Debian 13
+
+**Symptome** : `apt install apt-transport-https` genere un warning ou echoue car le paquet n'existe plus dans Debian 13.
+
+**Cause racine** : `apt-transport-https` a ete integre dans APT depuis Debian 10 (Buster). De meme, `software-properties-common` n'a pas d'utilite sans PPA Ubuntu.
+
+**Fix** : Retirer ces paquets de la liste d'installation dans `roles/common/defaults/main.yml`. S'assurer que `gnupg` est present (necessaire pour `gpg --dearmor`).
+
+**Garde-fou** : Ne pas inclure `apt-transport-https` ni `software-properties-common` dans les paquets a installer sur Debian 12+.
+
+---
+
 *Fin du Golden Prompt — Prêt pour le développement.*

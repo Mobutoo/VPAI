@@ -2,3 +2,7 @@
 # openclaw — defaults
 
 openclaw_config_dir: "/opt/{{ project_name }}/configs/openclaw"
+
+# --- Telegram Bot (dedicated, distinct from monitoring bot) ---
+# telegram_openclaw_bot_token is in main.yml (from vault)
+# telegram_openclaw_chat_id is in main.yml (from vault)

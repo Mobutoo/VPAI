@@ -17,12 +17,12 @@ providers:
     watchByDefault: {{ diun_watch_by_default | lower }}
     watchStopped: false
 
-{% if notification_method == 'telegram' and notification_webhook_url | default('') | length > 0 %}
+{% if notification_method == 'telegram' and telegram_monitoring_bot_token | default('') | length > 0 %}
 notif:
   telegram:
-    token: "{{ notification_webhook_url }}"
+    token: "{{ telegram_monitoring_bot_token }}"
     chatIDs:
-      - "{{ vault_telegram_chat_id | default('') }}"
+      - "{{ telegram_monitoring_chat_id }}"
     templateBody: |
       Docker image update available:
       Image: {{ '{{' }} .Entry.Image {{ '}}' }}
@@ -38,11 +38,4 @@ notif:
 notif:
   slack:
     webhookURL: "{{ notification_webhook_url }}"
-{% else %}
-notif:
-  webhook:
-    endpoint: "{{ notification_webhook_url | default('http://localhost:9999/webhook') }}"
-    method: POST
-    headers:
-      Content-Type: application/json
 {% endif %}

@@ -263,7 +263,19 @@ headscale preauthkeys create --namespace prod --reusable --expiration 24h
 
 ### 4.7 Webhook de notification (optionnel mais recommande)
 
-#### Option Telegram (recommande pour la simplicite)
+#### Option Telegram (recommande)
+
+Le projet utilise **2 bots Telegram distincts** :
+
+| Bot | Role | Variables |
+|-----|------|-----------|
+| **Bot Monitoring** | Alertes Grafana, DIUN, backup heartbeat | `vault_telegram_monitoring_bot_token`, `vault_telegram_monitoring_chat_id` |
+| **Bot OpenClaw** | Notifications agents IA | `vault_telegram_openclaw_bot_token`, `vault_telegram_openclaw_chat_id` |
+
+> **Note** : Le bot monitoring peut etre partage avec d'autres projets (ex: Seko-VPN).
+> Le bot OpenClaw doit etre dedie pour eviter le bruit dans les alertes infra.
+
+Pour chaque bot :
 
 1. Ouvre Telegram et cherche **@BotFather**
 2. Envoie `/newbot` et suis les instructions
@@ -274,7 +286,6 @@ headscale preauthkeys create --namespace prod --reusable --expiration 24h
    # Envoie un message dans le groupe, puis :
    curl https://api.telegram.org/bot<TON_TOKEN>/getUpdates | jq '.result[0].message.chat.id'
    ```
-6. L'URL webhook est : `https://api.telegram.org/bot<TOKEN>/sendMessage?chat_id=<CHAT_ID>`
 
 #### Option Discord
 
@@ -309,8 +320,9 @@ echo "redis_password: $(openssl rand -base64 32)"
 echo "qdrant_api_key: $(openssl rand -hex 32)"
 echo "litellm_master_key: sk-$(openssl rand -hex 24)"
 echo "n8n_encryption_key: $(openssl rand -hex 32)"
-echo "n8n_basic_auth_user: admin"
-echo "n8n_basic_auth_password: $(openssl rand -base64 24)"
+echo "n8n_owner_password: $(openssl rand -base64 24)"
+echo "litellm_ui_password: $(openssl rand -base64 24)"
+echo "litellm_salt_key: $(openssl rand -hex 32)"
 echo "grafana_admin_password: $(openssl rand -base64 24)"
 echo "openclaw_api_key: $(openssl rand -hex 32)"
 echo ""
@@ -403,8 +415,16 @@ vault_vpn_hostname: "seko-vpn"
 vault_vpn_headscale_url: "https://vpn.example.com"
 vault_vpn_headscale_ip: "100.64.0.1"
 vault_s3_bucket_name: "vpai-backups"
-vault_notification_webhook_url: "https://api.telegram.org/bot.../sendMessage?chat_id=..."
 vault_notification_email: "alerts@example.com"
+vault_notification_webhook_url: ""
+
+# --- Telegram Monitoring (shared with Seko-VPN) ---
+vault_telegram_monitoring_bot_token: "123456:ABC-DEF..."
+vault_telegram_monitoring_chat_id: "-100123456789"
+
+# --- Telegram OpenClaw (dedicated) ---
+vault_telegram_openclaw_bot_token: "789012:GHI-JKL..."
+vault_telegram_openclaw_chat_id: "-100987654321"
 
 # --- DNS API (OVH) ---
 ovh_application_key: "ton-app-key-ovh"
@@ -422,9 +442,10 @@ redis_password: "COLLE-TA-VALEUR-GENEREE"
 
 # --- Applications ---
 n8n_encryption_key: "COLLE-TA-VALEUR-GENEREE"
-n8n_basic_auth_user: "admin"
-n8n_basic_auth_password: "COLLE-TA-VALEUR-GENEREE"
+n8n_owner_password: "COLLE-TA-VALEUR-GENEREE"
 litellm_master_key: "sk-COLLE-TA-VALEUR-GENEREE"
+litellm_ui_password: "COLLE-TA-VALEUR-GENEREE"
+litellm_salt_key: "COLLE-TA-VALEUR-GENEREE"
 openclaw_api_key: "COLLE-TA-VALEUR-GENEREE"
 grafana_admin_password: "COLLE-TA-VALEUR-GENEREE"
 qdrant_api_key: "COLLE-TA-VALEUR-GENEREE"
@@ -471,8 +492,12 @@ ssh root@<IP_DU_VPS>
 
 ### 8.2 Creer l'utilisateur de deploiement
 
+> **Note** : Le role `common` cree automatiquement l'utilisateur `{{ prod_user }}` avec sudo
+> et configure sa cle SSH. Cette etape manuelle n'est necessaire que si le premier
+> deploiement Ansible echoue (ex: connexion initiale en root uniquement).
+
 ```bash
-# Sur le VPS, en tant que root :
+# Sur le VPS, en tant que root (uniquement si deploiement Ansible echoue) :
 adduser deploy
 usermod -aG sudo deploy
 
@@ -759,6 +784,82 @@ find roles/ -name '*.yml' -exec file {} \; | grep -v UTF-8
 # Si des fichiers non-UTF-8 apparaissent :
 find roles/ -name '*.yml' -exec sed -i 's/\r$//' {} \;
 ```
+
+---
+
+---
+
+## 15. Premier acces aux services
+
+> **Note** : Les comptes administrateurs sont provisionnes automatiquement par Ansible
+> a partir des variables `users.yml` et `secrets.yml`. Si le provisioning automatique
+> echoue, suivez les procedures de fallback ci-dessous.
+
+### 15.1 n8n (provisionne automatiquement)
+
+Le compte owner est cree automatiquement par Ansible via l'API `/rest/owner/setup`.
+
+- **URL** : `https://admin.<votre-domaine>/n8n/`
+- **Email** : la valeur de `n8n_owner_email` dans `users.yml`
+- **Mot de passe** : la valeur de `n8n_owner_password` dans `secrets.yml`
+
+**Fallback manuel** : Si le provisioning automatique a echoue, ouvrez l'URL ci-dessus.
+n8n affichera le formulaire de setup initial. Remplissez-le avec les memes credentials.
+
+### 15.2 Grafana
+
+- **URL** : `https://admin.<votre-domaine>/grafana/`
+- **Utilisateur** : la valeur de `grafana_admin_user` dans `users.yml` (defaut: `admin`)
+- **Mot de passe** : la valeur de `grafana_admin_password` dans `secrets.yml`
+
+> Il est recommande de changer le mot de passe admin au premier login via l'interface Grafana.
+
+### 15.3 LiteLLM
+
+- **URL** : `https://admin.<votre-domaine>/litellm/`
+- **Utilisateur** : la valeur de `litellm_ui_username` dans `users.yml`
+- **Mot de passe** : la valeur de `litellm_ui_password` dans `secrets.yml`
+
+### 15.4 OpenClaw
+
+- **URL** : `https://admin.<votre-domaine>/openclaw/`
+- **Acces API** : cle `openclaw_api_key` dans `secrets.yml`
+- **Notifications** : Bot Telegram dedie si configure (voir `main.yml`)
+
+---
+
+## 16. Configuration CI/CD (GitHub Actions)
+
+### 16.1 Secrets GitHub requis
+
+Configurer dans **Settings > Secrets and variables > Actions** :
+
+| Secret | Description | Exemple |
+|--------|-------------|---------|
+| `SSH_PRIVATE_KEY` | Cle privee SSH du deploiement | Contenu de `~/.ssh/seko-vpn-deploy` |
+| `ANSIBLE_VAULT_PASSWORD` | Mot de passe du vault Ansible | Le contenu de `.vault_password` |
+| `PROD_SERVER_IP` | IP publique du VPS production | `203.0.113.42` |
+| `PROD_SSH_PORT` | Port SSH du VPS production | `2222` |
+| `PROD_SSH_USER` | Utilisateur SSH production | `mobuone` |
+| `PROD_DOMAIN` | Domaine de production | `example.com` |
+| `PREPROD_SERVER_IP` | IP du serveur preprod (Hetzner CX23) | `95.216.x.x` |
+| `PREPROD_DOMAIN` | Domaine de preprod | `preprod.example.com` |
+| `LITELLM_MASTER_KEY` | Cle LiteLLM pour smoke tests | `sk-...` |
+| `HETZNER_CLOUD_TOKEN` | Token API Hetzner (snapshots) | `xxx` |
+
+### 16.2 Environments GitHub
+
+Creer deux environments dans **Settings > Environments** :
+- **production** : avec protection rules (require approval)
+- **preprod** : sans protection (deploy automatique sur push main)
+
+### 16.3 Workflows disponibles
+
+| Workflow | Trigger | Description |
+|----------|---------|-------------|
+| `ci.yml` | Push main/develop + PR | Lint + Molecule tests (15 roles) |
+| `deploy-preprod.yml` | Push main + manual | Deploy sur preprod permanent (Scenario B) |
+| `deploy-prod.yml` | Manual (confirmation) | Deploy production avec approbation |
 
 ---
 

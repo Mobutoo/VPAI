@@ -172,6 +172,28 @@ fi
 
 echo ""
 
+# === SERVICE PROVISIONING ===
+echo "--- Service Provisioning ---"
+
+# n8n owner provisioned (check if setup page is gone)
+N8N_SETTINGS=$(curl -s "${ADMIN_URL}/n8n/rest/settings" --max-time "${TIMEOUT}" 2>/dev/null || echo '{}')
+N8N_SETUP_PAGE=$(echo "$N8N_SETTINGS" | grep -o '"showSetupPage":[a-z]*' | cut -d: -f2 || echo "unknown")
+if [ "$N8N_SETUP_PAGE" = "false" ]; then
+  echo "PASS  n8n owner provisioned (setup complete)"
+elif [ "$N8N_SETUP_PAGE" = "true" ]; then
+  echo "WARN  n8n owner NOT provisioned (setup page still showing)"
+else
+  echo "SKIP  n8n owner check (could not determine setup state)"
+fi
+
+# LiteLLM UI accessible
+check_http "LiteLLM UI" "${ADMIN_URL}/litellm/ui/" "200"
+
+# Grafana login possible (just check the login page loads)
+check_http "Grafana login page" "${ADMIN_URL}/grafana/login" "200"
+
+echo ""
+
 # === RESULTS ===
 echo "============================================"
 if [ "${FAILURES}" -eq 0 ]; then

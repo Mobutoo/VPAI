@@ -1,2 +1,10 @@
+---
+# SSH Configuration
+
+# Ansible connection settings
 ansible_user: mobuone
 ansible_ssh_private_key_file: ~/.ssh/seko-vpn-deploy
+
+# SSH authorized keys (deployed to prod_user on VPS)
+ssh_authorized_keys:
+  - "ssh-ed25519 AAAAC3NzaC***********/ seko-vpn-deploy"

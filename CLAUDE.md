@@ -203,6 +203,14 @@ Ces règles ont été découvertes lors du développement initial. **Les respect
 - **`offline: true`** : Obligatoire dans `.ansible-lint` si pas de Galaxy configuré, sinon erreur `Required config 'url' for 'galaxy' galaxy_server plugin`
 - **`playbooks_dir`** : Propriété supprimée dans ansible-lint 26.x, ne plus l'utiliser
 
+### ansible.cfg — Callback Plugins
+
+- **`community.general.yaml` supprimé** : Le callback plugin `community.general.yaml` a été retiré dans community.general 12.0.0+
+  - ❌ `stdout_callback = yaml` (ancien plugin community.general)
+  - ✅ `stdout_callback = ansible.builtin.default` + `callback_result_format = yaml` (ansible-core 2.13+)
+- **Erreur rencontrée** : `[ERROR]: The 'community.general.yaml' callback plugin has been removed`
+- **Solution** : Utiliser le plugin intégré avec l'option `result_format=yaml`
+
 ### yamllint — Configuration Requise
 
 - **`octal-values`** : ansible-lint exige `forbid-implicit-octal: true` et `forbid-explicit-octal: true` dans `.yamllint.yml`

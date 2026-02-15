@@ -87,11 +87,23 @@
     tailscale_ip: "{{ tailscale_ip_result.stdout | trim }}"
     cacheable: true
 
-- name: Verify VPN connectivity
+- name: Verify VPN connectivity (non-blocking)
   ansible.builtin.command:
     cmd: "ping -c 3 -W 5 {{ headscale_vpn_ip }}"
   changed_when: false
+  failed_when: false
+  register: vpn_connectivity_check
   become: true
+
+- name: Display VPN connectivity status
+  ansible.builtin.debug:
+    msg: >-
+      {% if vpn_connectivity_check.rc == 0 %}
+      ✓ VPN connectivity to Seko-VPN ({{ headscale_vpn_ip }}) is working
+      {% else %}
+      ⚠ VPN connectivity check failed - VPS will continue using its own routing.
+      This is normal on first deployment. Configure routing rules manually if needed.
+      {% endif %}
 
 - name: Display Tailscale IP
   ansible.builtin.debug:

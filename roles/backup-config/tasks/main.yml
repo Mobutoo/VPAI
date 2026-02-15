@@ -5,6 +5,24 @@
 
 # === DIRECTORIES ===
 
+- name: Ensure scripts directory exists
+  ansible.builtin.file:
+    path: "/opt/{{ project_name }}/scripts"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Ensure logs directory exists
+  ansible.builtin.file:
+    path: "/opt/{{ project_name }}/logs"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
 - name: Create backup directories
   ansible.builtin.file:
     path: "{{ item }}"
@@ -41,17 +59,6 @@
     owner: "{{ prod_user }}"
     group: "{{ prod_user }}"
     mode: "0750"
-  become: true
-
-# === SCRIPTS DIRECTORY ===
-
-- name: Ensure scripts directory exists
-  ansible.builtin.file:
-    path: "/opt/{{ project_name }}/scripts"
-    state: directory
-    owner: "{{ prod_user }}"
-    group: "{{ prod_user }}"
-    mode: "0755"
   become: true
 
 # === CRON JOBS ===

@@ -1,6 +1,6 @@
 ---
 # inventory/group_vars/all/users.yml -- Comptes administrateurs
-# Genere par scripts/wizard.sh le 2026-02-15 19:47
+# Genere par scripts/wizard.sh le 2026-02-15 20:18
 # Les mots de passe sont dans secrets.yml (Vault chiffre)
 
 # ===========================================================
@@ -9,7 +9,7 @@
 
 # --- n8n (owner account, cree automatiquement au 1er demarrage) ---
 n8n_owner_email: "seko.mobutoo@gmail.com"
-n8n_owner_first_name: "Seko Mobutoo"
+n8n_owner_first_name: "Seko"
 n8n_owner_last_name: "Mobutoo"
 # Mot de passe : n8n_owner_password dans secrets.yml
 

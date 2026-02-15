@@ -1,0 +1,34 @@
+---
+# docker-stack — tasks
+# Déploie le docker-compose.yml centralisé et lance la stack complète
+
+- name: Create project root directory
+  ansible.builtin.file:
+    path: "/opt/{{ project_name }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "/opt/{{ project_name }}/docker-compose.yml"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart docker stack
+
+- name: Start Docker stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    state: present
+  become: true
+  register: docker_stack_result
+
+- name: Display Docker stack status
+  ansible.builtin.debug:
+    msg: "Docker stack deployed: {{ docker_stack_result.containers | map(attribute='Name') | join(', ') }}"
+  when: docker_stack_result.containers is defined

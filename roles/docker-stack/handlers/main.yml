@@ -1,0 +1,9 @@
+---
+# docker-stack — handlers
+
+- name: Restart docker stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    state: restarted
+  become: true
+  listen: Restart docker stack

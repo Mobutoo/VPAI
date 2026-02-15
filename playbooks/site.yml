@@ -81,6 +81,10 @@
     - role: diun
       tags: [diun, phase4]
 
+    # Phase 4.5 — Déploiement de la stack Docker
+    - role: docker-stack
+      tags: [docker-stack, phase4]
+
     # Phase 5 — Résilience
     - role: backup-config
       tags: [backup-config, phase5]

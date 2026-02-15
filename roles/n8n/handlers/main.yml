@@ -10,3 +10,4 @@
       - n8n
     state: restarted
   become: true
+  failed_when: false  # Ne pas échouer si docker-compose.yml n'existe pas encore

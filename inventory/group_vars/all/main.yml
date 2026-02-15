@@ -1,6 +1,6 @@
 ---
 # inventory/group_vars/all/main.yml — Variables generales (wizard)
-# Genere par scripts/wizard.sh le 2026-02-15 19:47
+# Genere par scripts/wizard.sh le 2026-02-15 20:18
 # Source unique de verite — Remplir avant tout deploiement
 
 # --- Identite projet ---
@@ -75,3 +75,37 @@ locale: "fr_FR.UTF-8"
 
 # --- Environment ---
 target_env: "prod"
+
+# --- Services Passwords & Keys (from vault) ---
+# PostgreSQL (shared password for all databases)
+postgresql_password: "{{ vault_postgresql_password }}"
+
+# Redis
+redis_password: "{{ vault_redis_password }}"
+
+# n8n
+n8n_encryption_key: "{{ vault_n8n_encryption_key }}"
+n8n_owner_password: "{{ vault_n8n_owner_password | default('') }}"
+
+# LiteLLM
+litellm_master_key: "{{ vault_litellm_master_key }}"
+litellm_ui_username: "{{ vault_litellm_ui_username | default('admin') }}"
+litellm_ui_password: "{{ vault_litellm_ui_password | default('') }}"
+litellm_salt_key: "{{ vault_litellm_salt_key }}"
+
+# AI Provider API Keys
+anthropic_api_key: "{{ vault_anthropic_api_key }}"
+openai_api_key: "{{ vault_openai_api_key }}"
+
+# OpenClaw
+openclaw_api_key: "{{ vault_openclaw_api_key }}"
+
+# Grafana
+grafana_admin_user: "{{ vault_grafana_admin_user | default('admin') }}"
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
+
+# Qdrant
+qdrant_api_key: "{{ vault_qdrant_api_key }}"
+
+# Backup heartbeat (uptime monitoring)
+backup_heartbeat_url: "{{ vault_backup_heartbeat_url | default('') }}"

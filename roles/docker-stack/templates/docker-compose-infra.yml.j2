@@ -21,7 +21,9 @@ services:
       POSTGRES_PASSWORD: {{ postgresql_password }}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale={{ locale }}"
     volumes:
-      - /opt/{{ project_name }}/data/postgresql:/var/lib/postgresql/data
+      # PostgreSQL 18+ uses /var/lib/postgresql instead of /var/lib/postgresql/data
+      # See: https://github.com/docker-library/postgres/pull/1259
+      - /opt/{{ project_name }}/data/postgresql:/var/lib/postgresql
       - /opt/{{ project_name }}/configs/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - /opt/{{ project_name }}/configs/postgresql/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
       - /opt/{{ project_name }}/configs/postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro

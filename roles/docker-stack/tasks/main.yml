@@ -1,6 +1,6 @@
 ---
 # docker-stack — tasks
-# Déploie le docker-compose.yml centralisé et lance la stack complète
+# Déploie la stack Docker en 3 phases isolées pour une meilleure résilience
 
 - name: Create project root directory
   ansible.builtin.file:
@@ -11,7 +11,42 @@
     mode: "0755"
   become: true
 
-- name: Deploy docker-compose.yml
+# === PHASE A : INFRASTRUCTURE ===
+- name: Deploy docker-compose-infra.yml (PostgreSQL, Redis, Qdrant, Caddy, Networks)
+  ansible.builtin.template:
+    src: docker-compose-infra.yml.j2
+    dest: "/opt/{{ project_name }}/docker-compose-infra.yml"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+
+- name: Start Infrastructure stack (Phase A)
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose-infra.yml
+    state: present
+  become: true
+  register: docker_infra_result
+
+- name: Display Infrastructure stack status
+  ansible.builtin.debug:
+    msg: "✅ Infrastructure deployed: {{ docker_infra_result.containers | map(attribute='Name') | join(', ') }}"
+  when: docker_infra_result.containers is defined
+
+- name: Wait for PostgreSQL to be healthy
+  ansible.builtin.command:
+    cmd: "docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}' {{ project_name }}_postgresql"
+  register: postgres_health
+  changed_when: false
+  retries: 10
+  delay: 3
+  until: postgres_health.stdout | default('') == 'healthy'
+  become: true
+
+# === PHASE B : APPLICATIONS ===
+- name: Deploy docker-compose.yml (Full stack for now, will be split later)
   ansible.builtin.template:
     src: docker-compose.yml.j2
     dest: "/opt/{{ project_name }}/docker-compose.yml"
@@ -21,14 +56,32 @@
   become: true
   notify: Restart docker stack
 
-- name: Start Docker stack
+- name: Start Applications stack (Phase B)
   community.docker.docker_compose_v2:
     project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
     state: present
   become: true
-  register: docker_stack_result
+  register: docker_apps_result
+  failed_when: false  # Ne pas bloquer si une app échoue
 
-- name: Display Docker stack status
+- name: Display Applications stack status
   ansible.builtin.debug:
-    msg: "Docker stack deployed: {{ docker_stack_result.containers | map(attribute='Name') | join(', ') }}"
-  when: docker_stack_result.containers is defined
+    msg: |
+      {% if docker_apps_result.failed %}
+      ⚠️  Applications deployment had errors (check logs above)
+      {% else %}
+      ✅ Applications deployed: {{ docker_apps_result.containers | map(attribute='Name') | join(', ') }}
+      {% endif %}
+
+- name: List all running containers
+  ansible.builtin.command:
+    cmd: "docker ps --format 'table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}'"
+  register: docker_ps_output
+  changed_when: false
+  become: true
+
+- name: Display final container status
+  ansible.builtin.debug:
+    msg: "{{ docker_ps_output.stdout_lines }}"

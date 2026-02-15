@@ -1,0 +1,174 @@
+# {{ ansible_managed }}
+# docker-compose-infra.yml — Services d'infrastructure (Phase A)
+# PostgreSQL, Redis, Qdrant, Caddy, Réseaux
+
+services:
+  # === DATA LAYER ===
+  postgresql:
+    image: {{ postgresql_image }}
+    container_name: {{ project_name }}_postgresql
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: {{ postgresql_password }}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale={{ locale }}"
+    volumes:
+      - /opt/{{ project_name }}/data/postgresql:/var/lib/postgresql/data
+      - /opt/{{ project_name }}/configs/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - /opt/{{ project_name }}/configs/postgresql/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - /opt/{{ project_name }}/configs/postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ postgresql_memory_limit }}
+          cpus: "{{ postgresql_cpu_limit }}"
+        reservations:
+          memory: {{ postgresql_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: {{ redis_image }}
+    container_name: {{ project_name }}_redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+    volumes:
+      - /opt/{{ project_name }}/data/redis:/data
+      - /opt/{{ project_name }}/configs/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ redis_memory_limit }}
+          cpus: "{{ redis_cpu_limit }}"
+        reservations:
+          memory: {{ redis_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a {{ redis_password }} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: {{ qdrant_image }}
+    container_name: {{ project_name }}_qdrant
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - /opt/{{ project_name }}/data/qdrant/storage:/qdrant/storage
+      - /opt/{{ project_name }}/data/qdrant/snapshots:/qdrant/snapshots
+      - /opt/{{ project_name }}/configs/qdrant/config.yaml:/qdrant/config/config.yaml:ro
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ qdrant_memory_limit }}
+          cpus: "{{ qdrant_cpu_limit }}"
+        reservations:
+          memory: {{ qdrant_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # === REVERSE PROXY ===
+  caddy:
+    image: {{ caddy_image }}
+    container_name: {{ project_name }}_caddy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3
+    volumes:
+      - /opt/{{ project_name }}/configs/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/{{ project_name }}/configs/caddy/admin-landing.html:/srv/admin-landing.html:ro
+      - /opt/{{ project_name }}/data/caddy/data:/data
+      - /opt/{{ project_name }}/data/caddy/config:/config
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      postgresql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: {{ caddy_memory_limit }}
+          cpus: "{{ caddy_cpu_limit }}"
+        reservations:
+          memory: {{ caddy_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:2019/metrics || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  frontend:
+    name: {{ project_name }}_frontend
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.1.0/24
+
+  backend:
+    name: {{ project_name }}_backend
+    driver: bridge
+    internal: true  # Pas d'accès internet
+    ipam:
+      config:
+        - subnet: 172.20.2.0/24
+
+  egress:
+    name: {{ project_name }}_egress
+    driver: bridge
+    # Accès internet pour LiteLLM, n8n, OpenClaw (API calls, webhooks)
+    ipam:
+      config:
+        - subnet: 172.20.4.0/24
+
+  monitoring:
+    name: {{ project_name }}_monitoring
+    driver: bridge
+    internal: true  # Pas d'accès internet
+    ipam:
+      config:
+        - subnet: 172.20.3.0/24

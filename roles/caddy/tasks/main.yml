@@ -40,3 +40,13 @@
     mode: "0644"
   become: true
   notify: Restart caddy stack
+
+- name: Deploy admin landing page
+  ansible.builtin.template:
+    src: admin-landing.html.j2
+    dest: "{{ caddy_config_dir }}/admin-landing.html"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart caddy stack

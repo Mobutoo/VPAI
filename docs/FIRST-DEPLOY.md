@@ -94,19 +94,24 @@ rm -f .vault_password inventory/group_vars/all/{main,users,secrets}.yml
 # 2. Wizard
 bash scripts/wizard.sh  # Répondre aux questions, sauvegarder les secrets affichés
 
-# 3. Vérifier
+# 3. Activer l'environnement Python (venv)
+source .venv/bin/activate  # OBLIGATOIRE pour make lint et make deploy-*
+
+# 4. Vérifier
 make lint
 ansible prod -m ping --vault-password-file .vault_password
 
-# 4. Déployer
+# 5. Déployer
 make deploy-prod
 
-# 5. Accéder
-open https://admin.<ton-domaine>/n8n
+# 6. Accéder
+open https://<admin-subdomain>.<ton-domaine>/n8n
 # Login : email/password du wizard (dans users.yml + secrets.yml)
 ```
 
-**En résumé** : Tu remplis un formulaire de config, tu lances une commande, Ansible fait le reste.
+> **⚠️ Important** : Les commandes `make lint`, `make deploy-*`, et `ansible-playbook` nécessitent **l'activation du venv Python**. Si vous voyez `command not found: ansible-lint`, activez le venv avec `source .venv/bin/activate`.
+
+**En résumé** : Tu remplis un formulaire de config, tu actives le venv, tu lances une commande, Ansible fait le reste.
 
 ---
 
@@ -668,8 +673,10 @@ ansible prod -m ping --vault-password-file .vault_password
 ### Avec un serveur Hetzner ephemere (CI/CD)
 
 ```bash
+# Activer le venv Python (si pas déjà fait)
+source .venv/bin/activate
+
 # Lancer le lint d'abord
-source ~/.venv-vpai/bin/activate
 make lint
 
 # Si le lint passe, deployer en preprod
@@ -681,6 +688,9 @@ make deploy-preprod
 Modifie temporairement l'IP de preprod dans l'inventaire puis :
 
 ```bash
+# Activer le venv Python (si pas déjà fait)
+source .venv/bin/activate
+
 ansible-playbook playbooks/site.yml \
   -e "target_env=preprod" \
   --vault-password-file .vault_password \
@@ -747,6 +757,9 @@ curl -s https://ton-domaine.com/litellm/v1/chat/completions \
 > **ATTENTION** : Assure-toi que les etapes 4 a 10 sont validees avant de deployer en prod !
 
 ```bash
+# Activer le venv Python (si pas déjà fait)
+source .venv/bin/activate
+
 # Dernier lint de verification
 make lint
 
@@ -897,7 +910,13 @@ df -h /
 
 ```bash
 # Verifier que le venv est active
-source ~/.venv-vpai/bin/activate
+source .venv/bin/activate
+
+# Si la commande ansible-lint n'est pas trouvée :
+# 1. Vérifier que le venv existe : ls -la .venv/
+# 2. Si absent, le créer : python3 -m venv .venv
+# 3. Installer les dépendances : pip install -r requirements.txt
+# 4. Réactiver : source .venv/bin/activate
 
 # Erreur UTF-8 / CRLF :
 find roles/ -name '*.yml' -exec file {} \; | grep -v UTF-8

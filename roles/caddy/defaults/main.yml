@@ -5,7 +5,7 @@ caddy_image_tag: "{{ caddy_image }}"
 caddy_config_dir: "/opt/{{ project_name }}/configs/caddy"
 caddy_data_dir: "/opt/{{ project_name }}/data/caddy"
 caddy_domain: "{{ domain_name }}"
-caddy_admin_domain: "admin.{{ domain_name }}"
+caddy_admin_domain: "{{ admin_subdomain | default('admin') }}.{{ domain_name }}"
 caddy_vpn_cidr: "{{ vpn_network_cidr }}"
 caddy_notification_email: "{{ notification_email }}"
 caddy_rate_limit_events: 100

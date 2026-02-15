@@ -73,6 +73,12 @@
         reverse_proxy qdrant:6333
     }
 
+    handle {
+        root * /srv
+        try_files {path} /admin-landing.html
+        file_server
+    }
+
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options "nosniff"

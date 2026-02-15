@@ -184,6 +184,11 @@ banner "Etape 2/9 — Domaine et DNS"
 
 ask "Nom de domaine principal" "" DOMAIN_NAME
 echo ""
+echo -e "  ${CYAN}Sous-domaine pour les admin UIs (n8n, Grafana, OpenClaw)${NC}"
+echo -e "  Exemples : admin, private, secure, app"
+ask "Sous-domaine admin" "admin" ADMIN_SUBDOMAIN
+success "Admin UIs : https://${ADMIN_SUBDOMAIN}.${DOMAIN_NAME}/"
+echo ""
 echo -e "  Quel est ton registrar DNS ?"
 echo -e "    1) OVH"
 echo -e "    2) Cloudflare"
@@ -524,6 +529,7 @@ project_repo_branch: "main"
 domain_name: "{{ vault_domain_name | default('example.com') }}"
 domain_registrar: "$DOMAIN_REGISTRAR"
 dns_api_endpoint: "$DNS_ENDPOINT"
+admin_subdomain: "$ADMIN_SUBDOMAIN"
 subdomain_preprod: "preprod"
 
 # --- VPS Production ---

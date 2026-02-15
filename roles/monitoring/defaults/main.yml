@@ -23,6 +23,8 @@ grafana_config_dir: "{{ monitoring_config_dir }}/grafana"
 grafana_data_dir: "{{ monitoring_data_dir }}/grafana"
 grafana_provisioning_dir: "{{ grafana_config_dir }}/provisioning"
 grafana_dashboards_dir: "{{ grafana_config_dir }}/dashboards"
+# NOTE: grafana_admin_user is set in users.yml (wizard-generated)
+# This default is a fallback if users.yml is missing
 grafana_admin_user: "admin"
 grafana_root_url: "https://admin.{{ domain_name }}/grafana/"
 grafana_serve_from_sub_path: "true"

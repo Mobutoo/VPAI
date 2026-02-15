@@ -1,17 +1,31 @@
 ---
 # headscale-node — tasks
 
-- name: Add Tailscale GPG key
-  ansible.builtin.apt_key:
-    url: "https://pkgs.tailscale.com/stable/debian/{{ ansible_distribution_release }}.noarmor.gpg"
-    keyring: /usr/share/keyrings/tailscale-archive-keyring.gpg
-    state: present
+- name: Create keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Download Tailscale GPG key
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      TAILSCALE_GPG="https://pkgs.tailscale.com/stable/debian"
+      curl -fsSL "${TAILSCALE_GPG}/{{ ansible_distribution_release }}.noarmor.gpg" \
+        | gpg --dearmor --yes -o /etc/apt/keyrings/tailscale-archive-keyring.gpg
+      chmod a+r /etc/apt/keyrings/tailscale-archive-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/tailscale-archive-keyring.gpg
+  changed_when: true
   become: true
 
 - name: Add Tailscale repository
   ansible.builtin.apt_repository:
     repo: >-
-      deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg]
+      deb [signed-by=/etc/apt/keyrings/tailscale-archive-keyring.gpg]
       https://pkgs.tailscale.com/stable/debian
       {{ ansible_distribution_release }} main
     state: present

@@ -99,15 +99,31 @@
   become: true
 
 # === CROWDSEC ===
-- name: Install CrowdSec GPG key
-  ansible.builtin.apt_key:
-    url: https://packagecloud.io/crowdsec/crowdsec/gpgkey
-    state: present
+- name: Create keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  become: true
+
+- name: Download CrowdSec GPG key
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      curl -fsSL https://packagecloud.io/crowdsec/crowdsec/gpgkey | gpg --dearmor --yes -o /etc/apt/keyrings/crowdsec-archive-keyring.gpg
+      chmod a+r /etc/apt/keyrings/crowdsec-archive-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/crowdsec-archive-keyring.gpg
+  changed_when: true
   become: true
 
 - name: Add CrowdSec repository
   ansible.builtin.apt_repository:
-    repo: "deb https://packagecloud.io/crowdsec/crowdsec/debian/ {{ ansible_distribution_release }} main"
+    repo: >-
+      deb [arch=amd64 signed-by=/etc/apt/keyrings/crowdsec-archive-keyring.gpg]
+      https://packagecloud.io/crowdsec/crowdsec/debian/
+      {{ ansible_distribution_release }} main
     state: present
     filename: crowdsec
   become: true

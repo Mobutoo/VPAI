@@ -46,7 +46,10 @@
 
     - name: Install rclone
       ansible.builtin.shell:
-        cmd: curl -s https://rclone.org/install.sh | bash
+        executable: /bin/bash
+        cmd: |
+          set -o pipefail
+          curl -s https://rclone.org/install.sh | bash
       when: rclone_check.rc != 0
       changed_when: true
       become: true
@@ -119,6 +122,7 @@
 
     - name: Restore PostgreSQL dumps
       ansible.builtin.shell:
+        executable: /bin/bash
         cmd: |
           set -euo pipefail
           DB_NAME="{{ item.path | basename | regex_replace('-latest\\.dump$', '') }}"

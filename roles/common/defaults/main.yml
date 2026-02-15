@@ -12,9 +12,9 @@ common_packages:
   - htop
   - ncdu
   - tmux
-  - apt-transport-https
-  - software-properties-common
   - lsb-release
+  - net-tools
+  - rsync
 
 common_locale: "{{ locale }}"
 common_timezone: "{{ timezone }}"

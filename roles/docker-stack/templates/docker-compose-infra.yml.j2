@@ -16,6 +16,8 @@ services:
       - CHOWN
       - SETGID
       - SETUID
+      - DAC_OVERRIDE  # PostgreSQL needs to bypass file permission checks
+      - FOWNER        # PostgreSQL needs to change file ownership
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: {{ postgresql_password }}

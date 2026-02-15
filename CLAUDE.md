@@ -255,6 +255,27 @@ Ces règles ont été découvertes lors du développement initial. **Les respect
 - **Après hardening** : Le rôle `hardening` configure le port custom (via `prod_ssh_port_target`), et les déploiements suivants utilisent `-e ansible_port_override=804`
 - **Important** : Le `prod_ssh_port` dans le wizard est le port **cible** (après hardening), pas le port actuel du VPS
 
+### ⚠️ CRITIQUE - Lockout SSH par Hardening
+
+- **Problème** : Le rôle `hardening` restreint SSH au VPN AVANT que le VPN ne soit validé → lockout immédiat
+- **Erreur rencontrée** : `Connection timed out` après le rôle hardening, impossible de se reconnecter
+- **Cause racine** :
+  - Hardening était en Phase 1 (trop tôt)
+  - `hardening_ssh_force_open: false` par défaut (dangereux)
+  - SSH configuré sur `ListenAddress {{ vpn_headscale_ip }}` avant que le VPN ne fonctionne
+- **Solution appliquée** :
+  - Hardening déplacé en **Phase 6** (DERNIER rôle, après toutes les validations)
+  - `hardening_ssh_force_open: true` par défaut (SSH reste sur 0.0.0.0)
+  - L'admin doit explicitement mettre `false` APRÈS avoir confirmé que le VPN fonctionne
+- **Prévention** : **TOUJOURS garder une fenêtre SSH ouverte** pendant le premier déploiement
+- **Récupération si lockout** :
+  ```bash
+  # Depuis la console VPS ou une session SSH encore ouverte
+  sudo sed -i 's/^ListenAddress.*/ListenAddress 0.0.0.0/' /etc/ssh/sshd_config
+  sudo systemctl restart sshd
+  sudo ufw allow 22/tcp
+  ```
+
 ### Environnement de Développement (WSL)
 
 - **venv Python** : Utiliser `.venv/` pour installer ansible-lint et yamllint (`python3 -m venv .venv`)

@@ -756,10 +756,19 @@ curl -s https://ton-domaine.com/litellm/v1/chat/completions \
 
 ## 11. Deployer en production
 
-> **ATTENTION** : Assure-toi que les etapes 4 a 10 sont validees avant de deployer en prod !
+> **⚠️ ATTENTION** : Assure-toi que les etapes 4 a 10 sont validees avant de deployer en prod !
+
+> **🔒 SÉCURITÉ - PRÉVENTION LOCKOUT SSH** :
+> 1. **GARDE UNE FENÊTRE SSH OUVERTE** sur le VPS pendant tout le déploiement
+> 2. Ne ferme cette fenêtre QU'APRÈS avoir confirmé que tu peux te reconnecter
+> 3. En cas de lockout, utilise cette fenêtre pour rétablir SSH (voir section Troubleshooting)
 
 ```bash
-# Activer le venv Python (si pas déjà fait)
+# IMPORTANT : Ouvre une fenêtre SSH sur le VPS et GARDE-LA OUVERTE
+ssh mobuone@<IP_VPS>
+# Cette session reste ouverte pendant tout le déploiement (fenêtre de secours)
+
+# Dans une AUTRE fenêtre, active le venv Python
 source .venv/bin/activate
 
 # Dernier lint de verification
@@ -852,6 +861,41 @@ Dans **GitHub** > **Settings** > **Secrets and variables** > **Actions**, ajoute
 ---
 
 ## 14. Depannage
+
+### 🚨 CRITIQUE - Lockout SSH après hardening
+
+**Symptôme** : Impossible de se reconnecter en SSH après le déploiement, `Connection timed out`
+
+**Cause** : Le rôle hardening a restreint SSH au VPN avant validation
+
+**Prévention** : TOUJOURS garder une fenêtre SSH ouverte pendant le premier déploiement !
+
+**Récupération** :
+
+```bash
+# Depuis ta fenêtre SSH encore ouverte (si tu en as gardé une)
+sudo nano /etc/ssh/sshd_config
+
+# Trouve et modifie :
+# ListenAddress <IP_VPN>
+# Remplace par :
+ListenAddress 0.0.0.0
+
+# Sauvegarde et redémarre
+sudo systemctl restart sshd
+
+# Vérifie le firewall
+sudo ufw allow 22/tcp
+sudo ufw allow 804/tcp
+
+# Teste la reconnexion
+exit
+ssh mobuone@<IP_VPS>
+```
+
+**Option 2** : Utilise la console VPS (KVM/IPMI depuis l'interface OVH)
+
+---
 
 ### "Connection refused" sur SSH
 

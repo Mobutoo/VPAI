@@ -11,6 +11,32 @@
     mode: "0755"
   become: true
 
+# === CLEANUP : Remove old compose stacks to avoid label conflicts ===
+- name: Stop old docker-compose stacks if they exist
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      cd /opt/{{ project_name }}
+      docker compose -f docker-compose.yml down 2>/dev/null || true
+      docker compose -f docker-compose-infra.yml down 2>/dev/null || true
+  become: true
+  changed_when: false
+  failed_when: false
+
+- name: Remove project Docker networks if they exist (clean slate)
+  ansible.builtin.command:
+    cmd: "docker network rm {{ project_name }}_{{ item }}"
+  loop:
+    - frontend
+    - backend
+    - egress
+    - monitoring
+  become: true
+  changed_when: false
+  failed_when: false
+  register: network_cleanup
+
 # === PHASE A : INFRASTRUCTURE ===
 - name: Deploy docker-compose-infra.yml (PostgreSQL, Redis, Qdrant, Caddy, Networks)
   ansible.builtin.template:

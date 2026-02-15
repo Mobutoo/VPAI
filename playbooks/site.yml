@@ -52,8 +52,6 @@
     # Phase 1 — Fondations
     - role: common
       tags: [common, phase1]
-    - role: hardening
-      tags: [hardening, phase1]
     - role: docker
       tags: [docker, phase1]
     - role: headscale-node
@@ -88,6 +86,10 @@
       tags: [backup-config, phase5]
     - role: uptime-config
       tags: [uptime-config, phase5]
+
+    # Phase 6 — Hardening (DERNIER - après validation complète)
+    - role: hardening
+      tags: [hardening, phase6]
 
   post_tasks:
     - name: Run smoke tests

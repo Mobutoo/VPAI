@@ -15,7 +15,8 @@ hardening_ssh_authorized_keys: "{{ ssh_authorized_keys }}"
 # Force SSH to listen on all interfaces and allow SSH from anywhere.
 # Use this for first deploy or debug sessions when VPN is not yet ready.
 # Set to true to bypass VPN-only SSH restriction.
-hardening_ssh_force_open: false
+# DEFAULT: true for safety - set to false ONLY after confirming VPN works
+hardening_ssh_force_open: true
 
 # --- Fail2Ban ---
 hardening_fail2ban_bantime: 3600

@@ -276,8 +276,99 @@ Ces règles ont été découvertes lors du développement initial. **Les respect
   sudo ufw allow 22/tcp
   ```
 
+### PostgreSQL 18+ - Breaking Changes Volume & Capabilities
+
+- **Problème** : PostgreSQL 18.1 crash loop avec `chmod: changing permissions: Operation not permitted`
+- **Cause racine 1 - Volume Mount** :
+  - ❌ Ancien format (< 18) : `/var/lib/postgresql/data`
+  - ✅ Nouveau format (18+) : `/var/lib/postgresql` (avec subdirs par version)
+  - Référence : https://github.com/docker-library/postgres/pull/1259
+- **Cause racine 2 - Capabilities insuffisantes** :
+  - PostgreSQL 18+ nécessite `DAC_OVERRIDE` et `FOWNER` en plus de `CHOWN`, `SETGID`, `SETUID`
+  - Sans ces capabilities, impossible de `chmod`/`chown` dans `/var/lib/postgresql/18/docker`
+- **Solution appliquée** :
+  ```yaml
+  # docker-compose-infra.yml
+  volumes:
+    - /opt/{{ project_name }}/data/postgresql:/var/lib/postgresql  # Corrigé
+  cap_add:
+    - CHOWN
+    - SETGID
+    - SETUID
+    - DAC_OVERRIDE  # Bypass file permission checks
+    - FOWNER        # Bypass ownership checks
+  ```
+- **Sécurité** : Toujours `cap_drop: ALL` d'abord, puis ajout minimal. UID 999 non-root.
+- **Migration depuis PG 17** : Nécessite `pg_upgrade` si données existantes
+
+### Rôle docker-stack et Architecture Phasée
+
+- **Problème** : Aucun conteneur créé car aucun rôle ne faisait `docker compose up`
+- **Solution** : Création du rôle `docker-stack` en **Phase 4.5**
+- **Architecture déploiement en 2 phases** :
+  - **Phase A (Infra)** : PostgreSQL, Redis, Qdrant, Caddy + Réseaux isolés
+  - **Phase B (Apps)** : n8n, LiteLLM, OpenClaw, Monitoring (`failed_when: false`)
+- **Réseaux Docker isolés** (conforme TECHNICAL-SPEC) :
+  - `frontend` (172.20.1.0/24) : Public (Caddy, Grafana)
+  - `backend` (172.20.2.0/24) : Internal, NO internet (PostgreSQL, Redis, Qdrant)
+  - `egress` (172.20.4.0/24) : Apps avec internet (n8n, LiteLLM, OpenClaw)
+  - `monitoring` (172.20.3.0/24) : Internal, NO internet (VictoriaMetrics, Loki)
+- **Cleanup automatique** : Suppression anciens stacks/réseaux avant déploiement (idempotence)
+
+### Provisioning n8n - Ordre d'Exécution
+
+- **Problème** : Rôle `n8n` essayait de provisionner l'owner AVANT création du conteneur
+- **Erreur** : `docker exec javisi_n8n` → `No such container`
+- **Solution** : Séparation en 2 rôles :
+  - **n8n (Phase 3)** : Prépare configs UNIQUEMENT
+  - **n8n-provision (Phase 4.6)** : Provisionne owner APRÈS docker-stack
+- **Principe** : Config avant conteneurs, provisioning après conteneurs
+
+### Images Docker - Vérification Obligatoire
+
+- **Problème** : `redis:8.0.10-bookworm` et `openclaw:v2026.2.14` inexistants
+- **Solution** :
+  - `redis:8.0-bookworm` (tag patch n'existe pas)
+  - `openclaw:latest` (temporaire, TODO: pinner version stable)
+- **Prévention** : Vérifier TOUTES les images AVANT déploiement
+  ```bash
+  for image in $(list_all); do
+    docker manifest inspect "$image" || echo "ERREUR: $image"
+  done
+  ```
+
+### Réseaux Docker - Conflit de Labels Compose
+
+- **Problème** : `network javisi_backend has incorrect label com.docker.compose.network`
+- **Cause** : Réseaux créés par ancien compose avec labels différents
+- **Solution** : Cleanup automatique dans docker-stack/tasks/main.yml
+  ```yaml
+  - name: Remove project Docker networks if they exist
+    ansible.builtin.command:
+      cmd: "docker network rm {{ project_name }}_{{ item }}"
+    loop: [frontend, backend, egress, monitoring]
+    failed_when: false
+  ```
+
+### Connectivité VPN - Check Non-Bloquant
+
+- **Problème** : `ping 87.106.30.160` échouait car VPS utilise son propre routage (pas de route VPN)
+- **Solution** : Vérification VPN avec `failed_when: false` (non-bloquante)
+- **Principe** : VPN mesh != routage automatique. Le VPS garde son routage normal.
+
 ### Environnement de Développement (WSL)
 
 - **venv Python** : Utiliser `.venv/` pour installer ansible-lint et yamllint (`python3 -m venv .venv`)
 - **Activer le venv** avant `make lint` : `source .venv/bin/activate && make lint`
 - **`.venv/`** est dans `.gitignore`
+
+---
+
+## 📋 REX Complet Premier Déploiement
+
+Voir `docs/REX-FIRST-DEPLOY-2026-02-15.md` pour :
+- Analyse détaillée des 8 erreurs critiques
+- Commits de correction avec rationale
+- Architecture finale déployée
+- Checklist code review pour Opus 4.6
+- Recommandations futurs déploiements

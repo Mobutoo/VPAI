@@ -28,6 +28,20 @@
 
 ## 0. Vue d'ensemble
 
+### Deux scénarios de déploiement
+
+**Scénario A — VPS from scratch (nouveau serveur)** :
+- Tu commandes un VPS vierge
+- Ansible crée l'utilisateur de déploiement
+- Déploiement 100% automatique
+
+**Scénario B — VPS déjà configuré (ton cas si tu as déjà un user configuré)** :
+- Tu as déjà un VPS avec un utilisateur SSH configuré
+- Tu gardes tes credentials existantes (`ssh.yml`, `ansible.cfg`)
+- Le wizard détecte et utilise ta config existante
+
+### Architecture
+
 ```
 Ce que tu vas faire :
 
@@ -40,7 +54,59 @@ Ce que tu vas faire :
        +-- [GitHub Actions] -- CI/CD automatique sur chaque push
 ```
 
-**En resume** : Tu remplis un formulaire de config, tu lances une commande, Ansible fait le reste.
+### Séquence de déploiement
+
+```
+PRÉPARATION (1x, une fois pour toutes)
+├─ 1. Obtenir les clés API externes (Anthropic, OpenAI, OVH DNS, Hetzner)
+├─ 2. Nettoyer les anciens fichiers wizard (si redéploiement)
+└─ 3. Lancer le wizard : bash scripts/wizard.sh
+         ↓ Génère : main.yml, users.yml, secrets.yml, .vault_password
+
+VÉRIFICATION
+├─ 4. Linter : make lint
+├─ 5. Tester SSH : ssh <user>@<IP>
+└─ 6. Tester Ansible : ansible prod -m ping --vault-password-file .vault_password
+
+PREMIER DÉPLOIEMENT (depuis ta machine)
+└─ 7. make deploy-prod
+         ↓ Ansible installe Docker + tous les services (15-20 min)
+         ↓ Crée l'utilisateur si besoin (scénario A)
+         ↓ Configure firewall, hardening, TLS auto
+
+VÉRIFICATION POST-DEPLOY
+├─ 8. Accéder aux services : https://admin.<domain>/n8n, /grafana, /litellm
+└─ 9. Vérifier les logs : ssh <user>@<IP> "docker compose -f /opt/.../docker-compose.yml logs"
+
+CI/CD (optionnel, après le 1er déploiement)
+├─ 10. Configurer GitHub Secrets (voir section 16 de ce doc)
+└─ 11. Push sur main → GitHub Actions déploie automatiquement
+```
+
+### Checklist rapide (TL;DR)
+
+Si tu connais déjà le projet et veux juste déployer :
+
+```bash
+# 1. Nettoyer (si redéploiement)
+rm -f .vault_password inventory/group_vars/all/{main,users,secrets}.yml
+
+# 2. Wizard
+bash scripts/wizard.sh  # Répondre aux questions, sauvegarder les secrets affichés
+
+# 3. Vérifier
+make lint
+ansible prod -m ping --vault-password-file .vault_password
+
+# 4. Déployer
+make deploy-prod
+
+# 5. Accéder
+open https://admin.<ton-domaine>/n8n
+# Login : email/password du wizard (dans users.yml + secrets.yml)
+```
+
+**En résumé** : Tu remplis un formulaire de config, tu lances une commande, Ansible fait le reste.
 
 ---
 
@@ -335,15 +401,57 @@ echo ">>> COPIE CES VALEURS ! Tu en auras besoin a l'etape 7."
 
 ---
 
+## 5.5. Nettoyage pré-wizard (si redéploiement)
+
+> **⚠️ IMPORTANT** : Si tu as déjà lancé le wizard avant, ou si tu veux repartir de zéro, supprime les fichiers générés :
+
+```bash
+cd VPAI
+
+# Supprimer les fichiers générés par le wizard
+rm -f .vault_password
+rm -f inventory/group_vars/all/main.yml
+rm -f inventory/group_vars/all/users.yml
+rm -f inventory/group_vars/all/secrets.yml
+
+# Vérifier
+ls -la inventory/group_vars/all/
+# Doit afficher uniquement : docker.yml, versions.yml
+# (et ssh.yml si tu as déjà configuré ton accès SSH)
+```
+
+### Si tu as déjà un VPS configuré avec un utilisateur SSH
+
+Si `inventory/group_vars/all/ssh.yml` existe avec tes credentials :
+
+```bash
+# Vérifier le contenu
+cat inventory/group_vars/all/ssh.yml
+
+# Devrait contenir quelque chose comme :
+# ansible_user: mobuone
+# ansible_ssh_private_key_file: ~/.ssh/seko-vpn-deploy
+```
+
+**Ne supprime PAS ce fichier** — il contient ta config SSH personnalisée qui sera utilisée par Ansible.
+
+Le wizard va générer `main.yml` avec `prod_user: "mobuone"` qui sera cohérent avec `ssh.yml`.
+
+---
+
 ## 6. Configurer le projet (wizard)
 
-### Option A : Wizard interactif (recommande)
+### Option A : Wizard interactif (recommandé)
 
 ```bash
 bash scripts/wizard.sh
 ```
 
-Le wizard te pose chaque question et genere les fichiers automatiquement.
+Le wizard te pose chaque question et génère les fichiers automatiquement :
+- `inventory/group_vars/all/main.yml` — Variables générales du projet
+- `inventory/group_vars/all/users.yml` — Comptes administrateurs (n8n, Grafana, LiteLLM)
+- `inventory/group_vars/all/secrets.yml` — Vault chiffré avec tous les secrets
+- `.vault_password` — Mot de passe du vault (ne PAS commit !)
 
 ### Option B : Configuration manuelle
 
@@ -480,49 +588,61 @@ ansible-vault view inventory/group_vars/all/secrets.yml --vault-password-file .v
 
 ---
 
-## 8. Preparer le VPS cible
+## 8. Préparer le VPS cible
 
-### 8.1 Acces SSH initial
+> **Choisis ton scénario** :
+> - **Scénario A** : VPS from scratch (nouveau serveur vierge)
+> - **Scénario B** : VPS déjà configuré avec un utilisateur SSH
 
-Connecte-toi au VPS avec les credentials de ton hebergeur :
+### Scénario A — VPS from scratch (connexion root initiale)
+
+#### 8.1 Connexion initiale en root
+
+Sur OVH, l'utilisateur root par défaut est **`debian`** (pas `root`) :
 
 ```bash
+# Pour VPS OVH Debian
+ssh debian@<IP_DU_VPS>
+
+# Pour autres hébergeurs
 ssh root@<IP_DU_VPS>
 ```
 
-### 8.2 Creer l'utilisateur de deploiement
+#### 8.2 Le rôle `common` crée l'utilisateur automatiquement
 
-> **Note** : Le role `common` cree automatiquement l'utilisateur `{{ prod_user }}` avec sudo
-> et configure sa cle SSH. Cette etape manuelle n'est necessaire que si le premier
-> deploiement Ansible echoue (ex: connexion initiale en root uniquement).
+**Tu n'as RIEN à faire manuellement !** Le rôle Ansible `common` va :
+1. Créer l'utilisateur `{{ prod_user }}` (celui du wizard, ex: `mobuone`)
+2. Lui donner les droits sudo
+3. Configurer sa clé SSH (celle que tu as fournie au wizard)
 
-```bash
-# Sur le VPS, en tant que root (uniquement si deploiement Ansible echoue) :
-adduser deploy
-usermod -aG sudo deploy
+Passe directement à l'étape 8.4 (Tester Ansible).
 
-# Configurer l'acces SSH par cle
-mkdir -p /home/deploy/.ssh
-chmod 700 /home/deploy/.ssh
+### Scénario B — VPS déjà configuré (ton cas)
 
-# Colle ta cle publique SSH
-echo "ssh-ed25519 AAAAC3... ton-email@example.com" > /home/deploy/.ssh/authorized_keys
-chmod 600 /home/deploy/.ssh/authorized_keys
-chown -R deploy:deploy /home/deploy/.ssh
-```
-
-### 8.3 Tester la connexion
-
-Depuis ta machine locale :
+#### 8.1 Vérifier que l'utilisateur existe déjà
 
 ```bash
-ssh deploy@<IP_DU_VPS>
-# Doit se connecter sans mot de passe (via cle SSH)
+# Tester la connexion SSH avec ton user existant
+ssh -i ~/.ssh/seko-vpn-deploy mobuone@<IP_DU_VPS>
 
-# Tester sudo
+# Vérifier sudo
 sudo whoami
 # Doit afficher : root
 ```
+
+#### 8.2 Vérifier que ssh.yml est correct
+
+```bash
+cat inventory/group_vars/all/ssh.yml
+
+# Devrait contenir :
+# ansible_user: mobuone
+# ansible_ssh_private_key_file: ~/.ssh/seko-vpn-deploy
+```
+
+#### 8.3 Vérifier ansible.cfg (optionnel)
+
+Ansible utilise `inventory/hosts.yml` qui override `ansible.cfg`, donc même si `ansible.cfg` contient `remote_user = root`, c'est `ansible_user: mobuone` de `ssh.yml` qui sera utilisé.
 
 ### 8.4 Tester Ansible
 
@@ -830,26 +950,45 @@ n8n affichera le formulaire de setup initial. Remplissez-le avec les memes crede
 
 ## 16. Configuration CI/CD (GitHub Actions)
 
+> **⚠️ IMPORTANT** : Cette section est **optionnelle** pour le premier déploiement.
+>
+> **Séquence recommandée** :
+> 1. **D'abord** : Déployer en local avec `make deploy-prod` (sections 1-15)
+> 2. **Vérifier** : Que tout fonctionne (accès services, smoke tests OK)
+> 3. **Ensuite** : Configurer GitHub Actions (cette section)
+> 4. **Activer** : CI/CD pour les déploiements futurs
+
+### Deux scénarios de déploiement disponibles
+
+Une fois configuré, tu as le choix entre :
+
+| Méthode | Commande | Quand l'utiliser |
+|---------|----------|------------------|
+| **Deploy local** | `make deploy-prod` depuis ta machine | Premier déploiement, debugging, tests |
+| **Deploy CI/CD** | Push sur `main` → GitHub Actions | Déploiements automatiques, production |
+
+**Les 2 méthodes restent toujours disponibles** — tu peux alterner selon tes besoins.
+
 ### 16.1 Secrets GitHub requis
 
 Configurer dans **Settings > Secrets and variables > Actions** :
 
-| Secret | Description | Exemple |
-|--------|-------------|---------|
-| `SSH_PRIVATE_KEY` | Cle privee SSH du deploiement | Contenu de `~/.ssh/seko-vpn-deploy` |
-| `ANSIBLE_VAULT_PASSWORD` | Mot de passe du vault Ansible | Le contenu de `.vault_password` |
-| `PROD_SERVER_IP` | IP publique du VPS production | `203.0.113.42` |
-| `PROD_SSH_PORT` | Port SSH du VPS production | `2222` |
-| `PROD_SSH_USER` | Utilisateur SSH production | `mobuone` |
-| `PROD_DOMAIN` | Domaine de production | `example.com` |
-| `PREPROD_SERVER_IP` | IP du serveur preprod (Hetzner CX23) | `95.216.x.x` |
-| `PREPROD_DOMAIN` | Domaine de preprod | `preprod.example.com` |
-| `LITELLM_MASTER_KEY` | Cle LiteLLM pour smoke tests | `sk-...` |
-| `HETZNER_CLOUD_TOKEN` | Token API Hetzner (snapshots) | `xxx` |
+| Secret | Description | Exemple / Source |
+|--------|-------------|------------------|
+| `SSH_PRIVATE_KEY` | Clé privée SSH du déploiement | Contenu de `cat ~/.ssh/seko-vpn-deploy` |
+| `ANSIBLE_VAULT_PASSWORD` | Mot de passe du vault Ansible | Contenu de `cat .vault_password` |
+| `PROD_SERVER_IP` | IP publique du VPS production | `203.0.113.42` (ta vraie IP) |
+| `PROD_SSH_PORT` | Port SSH du VPS production | `2222` (ou `22` si défaut) |
+| `PROD_SSH_USER` | Utilisateur SSH production | `mobuone` (ton user du wizard) |
+| `PROD_DOMAIN` | Domaine de production | `example.com` (ton domaine) |
+| `PREPROD_SERVER_IP` | IP du serveur preprod (Hetzner CX23) | `95.216.x.x` (si preprod activée) |
+| `PREPROD_DOMAIN` | Domaine de preprod | `preprod.example.com` (si preprod activée) |
+| `LITELLM_MASTER_KEY` | Clé LiteLLM pour smoke tests | Depuis `secrets.yml` : `litellm_master_key` |
+| `HETZNER_CLOUD_TOKEN` | Token API Hetzner (snapshots) | Depuis `secrets.yml` : `hetzner_cloud_token` |
 
 ### 16.2 Environments GitHub
 
-Creer deux environments dans **Settings > Environments** :
+Créer deux environments dans **Settings > Environments** :
 - **production** : avec protection rules (require approval)
 - **preprod** : sans protection (deploy automatique sur push main)
 
@@ -857,9 +996,29 @@ Creer deux environments dans **Settings > Environments** :
 
 | Workflow | Trigger | Description |
 |----------|---------|-------------|
-| `ci.yml` | Push main/develop + PR | Lint + Molecule tests (15 roles) |
+| `ci.yml` | Push main/develop + PR | Lint + Molecule tests (16 roles) |
 | `deploy-preprod.yml` | Push main + manual | Deploy sur preprod permanent (Scenario B) |
 | `deploy-prod.yml` | Manual (confirmation) | Deploy production avec approbation |
+
+### 16.4 Premier déploiement CI/CD
+
+Une fois les secrets configurés :
+
+```bash
+# Depuis ta machine
+git add .
+git commit -m "chore: configure production deployment"
+git push origin main
+
+# Ouvrir GitHub Actions
+open https://github.com/<ton-user>/VPAI/actions
+
+# Lancer manuellement deploy-prod :
+# 1. Aller dans "Actions" > "Deploy Production"
+# 2. Cliquer "Run workflow"
+# 3. Taper "deploy-prod" pour confirmer
+# 4. Lancer
+```
 
 ---
 

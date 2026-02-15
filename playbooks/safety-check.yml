@@ -9,7 +9,7 @@
 #   ansible-playbook playbooks/safety-check.yml -e "target_env=prod"
 #   ansible-playbook playbooks/safety-check.yml -e "target_env=preprod"
 
-- name: "Safety Check — {{ project_display_name }}"
+- name: Safety Check
   hosts: "{{ target_env | default('prod') }}"
   gather_facts: true
 
@@ -26,7 +26,7 @@
           Host: {{ inventory_hostname }}
           SSH User: {{ ansible_user | default('unknown') }}
           SSH Port: {{ ansible_port | default(22) }}
-          Environment: {{ target_env }}
+          Environment: {{ target_env | default('prod') }}
           RAM: {{ ansible_memtotal_mb }} MB
           Swap: {{ ansible_swaptotal_mb }} MB
           ==========================================

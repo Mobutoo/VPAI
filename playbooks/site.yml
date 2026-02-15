@@ -7,7 +7,7 @@
 #   ansible-playbook playbooks/site.yml -e "target_env=preprod"
 #   ansible-playbook playbooks/site.yml --tags "n8n,litellm"  # Rôles spécifiques
 
-- name: "Deploy Full Stack — {{ project_display_name }}"
+- name: Deploy Full Stack
   hosts: "{{ target_env | default('prod') }}"
   gather_facts: true
 
@@ -17,7 +17,7 @@
         msg: |
           ========================================
           Project: {{ project_display_name }}
-          Environment: {{ target_env }}
+          Environment: {{ target_env | default('prod') }}
           Target: {{ inventory_hostname }}
           Date: {{ ansible_date_time.iso8601 }}
           ========================================

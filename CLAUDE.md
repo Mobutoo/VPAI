@@ -193,9 +193,12 @@ Ces règles ont été découvertes lors du développement initial. **Les respect
 
 ### ansible-lint — Pièges Spécifiques
 
-- **`name[template]`** : Les templates Jinja2 dans le champ `name:` d'un play doivent être **à la fin** de la chaîne
-  - ❌ `- name: "Deploy {{ project_name }} — Full Stack"`
-  - ✅ `- name: "Deploy Full Stack — {{ project_display_name }}"`
+- **`name:` du play et variables** : Les templates Jinja2 dans le champ `name:` d'un **play** ne peuvent PAS utiliser de variables d'inventaire
+  - ❌ `- name: "Deploy {{ project_display_name }}"` (inventaire pas encore chargé)
+  - ✅ `- name: "Deploy Full Stack"` (nom statique pour le play)
+  - ✅ Dans les tasks : `msg: "Project: {{ project_display_name }}"` (variables disponibles)
+  - **Pourquoi** : Le `name:` du play est parsé avant le chargement des variables d'inventaire
+  - **Erreur rencontrée** : `Error processing keyword 'name': 'project_display_name' is undefined`
 - **`schema[meta]`** : Le `role_name` dans `meta/main.yml` doit correspondre au pattern `^[a-z][a-z0-9_]+$`
   - ❌ `role_name: headscale-node` (tirets interdits)
   - ✅ `role_name: headscale_node` (underscores OK, le dossier peut garder le tiret)

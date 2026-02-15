@@ -5,7 +5,7 @@
 #   ansible-playbook playbooks/rollback.yml -e "target_env=prod"
 #   ansible-playbook playbooks/rollback.yml -e "target_env=prod" --tags "n8n,litellm"
 
-- name: "Rollback {{ project_display_name }} — Previous Versions"
+- name: Rollback to Previous Versions
   hosts: "{{ target_env | default('prod') }}"
   gather_facts: true
 
@@ -26,7 +26,7 @@
         msg: |
           ========================================
           ROLLBACK — {{ project_display_name }}
-          Environment: {{ target_env }}
+          Environment: {{ target_env | default('prod') }}
           Target: {{ inventory_hostname }}
           Date: {{ ansible_date_time.iso8601 }}
           ========================================

@@ -6,7 +6,7 @@
 #   ansible-playbook playbooks/backup-restore.yml -e "target_env=prod" -e "restore_db=n8n"
 #   ansible-playbook playbooks/backup-restore.yml -e "target_env=prod" -e "restore_service=redis"
 
-- name: "Restore {{ project_display_name }} — From Backup"
+- name: Restore From Backup
   hosts: "{{ target_env | default('prod') }}"
   gather_facts: true
 
@@ -30,7 +30,7 @@
         msg: |
           ========================================
           RESTORE — {{ project_display_name }}
-          Environment: {{ target_env }}
+          Environment: {{ target_env | default('prod') }}
           Target: {{ inventory_hostname }}
           Database: {{ restore_db | default('all') }}
           Service: {{ restore_service | default('all') }}

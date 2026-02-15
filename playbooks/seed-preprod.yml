@@ -8,7 +8,7 @@
 #   ansible-playbook playbooks/seed-preprod.yml -e "target_env=preprod"
 #   ansible-playbook playbooks/seed-preprod.yml -e "target_env=preprod" -e "seed_db=n8n"
 
-- name: "Seed preprod with production data — {{ project_display_name }}"
+- name: Seed preprod with production data
   hosts: "{{ target_env | default('preprod') }}"
   gather_facts: true
 
@@ -27,7 +27,7 @@
         msg: |
           ========================================
           SEED PREPROD — {{ project_display_name }}
-          Environment: {{ target_env }}
+          Environment: {{ target_env | default('preprod') }}
           Target: {{ inventory_hostname }}
           Database filter: {{ seed_db | default('all') }}
           Date: {{ ansible_date_time.iso8601 }}

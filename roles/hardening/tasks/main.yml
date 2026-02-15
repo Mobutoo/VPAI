@@ -123,10 +123,11 @@
     repo: >-
       deb [arch=amd64 signed-by=/etc/apt/keyrings/crowdsec-archive-keyring.gpg]
       https://packagecloud.io/crowdsec/crowdsec/debian/
-      {{ ansible_distribution_release }} main
+      bookworm main
     state: present
     filename: crowdsec
   become: true
+  # Note: Use bookworm (Debian 12) repo as trixie (Debian 13) not yet supported
 
 - name: Install CrowdSec
   ansible.builtin.apt:

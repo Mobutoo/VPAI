@@ -1,0 +1,10 @@
+---
+# n8n-provision — meta
+galaxy_info:
+  role_name: n8n_provision
+  author: "{{ project_display_name }} Team"
+  description: "Provisionne le compte owner n8n via API après docker-stack"
+  license: MIT
+  min_ansible_version: "2.16"
+
+dependencies: []

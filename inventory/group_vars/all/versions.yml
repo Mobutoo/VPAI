@@ -5,7 +5,7 @@
 
 # --- Données ---
 postgresql_image: "postgres:18.1-bookworm"
-redis_image: "redis:8.0.10-bookworm"
+redis_image: "redis:8.0-bookworm"  # 8.0.10 n'existe pas, utiliser 8.0
 qdrant_image: "qdrant/qdrant:v1.16.3"
 
 # --- Applications ---

@@ -18,6 +18,7 @@
       - ca-certificates
       - curl
       - gnupg
+      - cron
     state: present
   become: true
 

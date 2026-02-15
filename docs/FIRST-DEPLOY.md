@@ -479,12 +479,14 @@ Remplis chaque champ `<A_REMPLIR>` avec tes valeurs :
 | `domain_name` | `ai.mondomaine.com` | Domaine pointe vers le VPS |
 | `prod_hostname` | `vps-prod-01` | Hostname du VPS |
 | `prod_ip` | `203.0.113.42` | IP publique du VPS |
-| `prod_ssh_port` | `2222` | Port SSH (pas 22 pour la securite) |
-| `prod_user` | `deploy` | Utilisateur SSH |
+| `prod_ssh_port` | `804` | Port SSH **cible** après hardening (le VPS utilise le port 22 au départ) |
+| `prod_user` | `mobuone` | Utilisateur SSH (déjà créé sur le VPS) |
 | `vpn_headscale_url` | `https://vpn.example.com` | URL de ton serveur Headscale |
 | `vpn_headscale_ip` | `100.64.0.1` | IP Headscale du serveur VPN |
 | `s3_bucket_name` | `vpai-backups` | Nom du bucket S3 |
 | `notification_method` | `telegram` | `telegram`, `discord`, `slack` |
+
+> **⚠️ IMPORTANT - Port SSH** : Au premier déploiement, le VPS écoute sur le port **22** (défaut SSH). Le `prod_ssh_port` (ex: 804) est le port **cible** que le rôle `hardening` configurera. Ansible se connecte automatiquement sur le port 22 au début, puis bascule sur le port custom après le hardening. Pas besoin de configuration manuelle !
 
 ---
 

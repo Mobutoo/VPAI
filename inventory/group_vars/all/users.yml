@@ -1,0 +1,30 @@
+---
+# inventory/group_vars/all/users.yml -- Comptes administrateurs
+# Genere par scripts/wizard.sh le 2026-02-15 19:47
+# Les mots de passe sont dans secrets.yml (Vault chiffre)
+
+# ===========================================================
+#  OBLIGATOIRE -- Remplir avant `make deploy`
+# ===========================================================
+
+# --- n8n (owner account, cree automatiquement au 1er demarrage) ---
+n8n_owner_email: "seko.mobutoo@gmail.com"
+n8n_owner_first_name: "Seko Mobutoo"
+n8n_owner_last_name: "Mobutoo"
+# Mot de passe : n8n_owner_password dans secrets.yml
+
+# --- Grafana ---
+grafana_admin_user: "mobutoo"
+# Mot de passe : grafana_admin_password dans secrets.yml
+
+# --- LiteLLM (UI Admin) ---
+litellm_ui_username: "mobutoo"
+# Mot de passe : litellm_ui_password dans secrets.yml
+
+# ===========================================================
+#  OPTIONNEL -- Valeurs par defaut utilisees si vides
+# ===========================================================
+
+# --- OpenClaw ---
+# Utilise openclaw_api_key pour l'acces API (dans secrets.yml)
+# Bot Telegram distinct pour les notifications agent (voir main.yml)

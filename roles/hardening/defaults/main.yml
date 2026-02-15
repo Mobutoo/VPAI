@@ -2,7 +2,7 @@
 # hardening — defaults
 
 # --- SSH ---
-hardening_ssh_port: "{{ prod_ssh_port }}"
+hardening_ssh_port: "{{ prod_ssh_port_target | default(prod_ssh_port) }}"
 hardening_ssh_listen_address: "{{ vpn_headscale_ip }}"
 hardening_ssh_allowed_user: "{{ prod_user }}"
 hardening_ssh_max_auth_tries: 3

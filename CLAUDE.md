@@ -247,6 +247,14 @@ Ces règles ont été découvertes lors du développement initial. **Les respect
 - **Préférer un fichier de config** (`diun.yml.j2`) plutôt que des variables d'environnement — plus lisible et plus flexible pour la notification conditionnelle
 - **Docker socket** monté en read-only : `/var/run/docker.sock:/var/run/docker.sock:ro`
 
+### Port SSH et Premier Déploiement
+
+- **Problème** : Au premier déploiement, le VPS écoute sur le port **22** (défaut SSH), mais `prod_ssh_port` dans `main.yml` contient le port custom (ex: 804)
+- **Erreur rencontrée** : `ssh: connect to host <IP> port 804: Connection refused`
+- **Solution** : L'inventaire utilise `ansible_port: "{{ ansible_port_override | default(22) }}"` pour se connecter sur le port 22 au départ
+- **Après hardening** : Le rôle `hardening` configure le port custom (via `prod_ssh_port_target`), et les déploiements suivants utilisent `-e ansible_port_override=804`
+- **Important** : Le `prod_ssh_port` dans le wizard est le port **cible** (après hardening), pas le port actuel du VPS
+
 ### Environnement de Développement (WSL)
 
 - **venv Python** : Utiliser `.venv/` pour installer ansible-lint et yamllint (`python3 -m venv .venv`)

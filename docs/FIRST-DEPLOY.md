@@ -828,4 +828,39 @@ n8n affichera le formulaire de setup initial. Remplissez-le avec les memes crede
 
 ---
 
+## 16. Configuration CI/CD (GitHub Actions)
+
+### 16.1 Secrets GitHub requis
+
+Configurer dans **Settings > Secrets and variables > Actions** :
+
+| Secret | Description | Exemple |
+|--------|-------------|---------|
+| `SSH_PRIVATE_KEY` | Cle privee SSH du deploiement | Contenu de `~/.ssh/seko-vpn-deploy` |
+| `ANSIBLE_VAULT_PASSWORD` | Mot de passe du vault Ansible | Le contenu de `.vault_password` |
+| `PROD_SERVER_IP` | IP publique du VPS production | `203.0.113.42` |
+| `PROD_SSH_PORT` | Port SSH du VPS production | `2222` |
+| `PROD_SSH_USER` | Utilisateur SSH production | `mobuone` |
+| `PROD_DOMAIN` | Domaine de production | `example.com` |
+| `PREPROD_SERVER_IP` | IP du serveur preprod (Hetzner CX23) | `95.216.x.x` |
+| `PREPROD_DOMAIN` | Domaine de preprod | `preprod.example.com` |
+| `LITELLM_MASTER_KEY` | Cle LiteLLM pour smoke tests | `sk-...` |
+| `HETZNER_CLOUD_TOKEN` | Token API Hetzner (snapshots) | `xxx` |
+
+### 16.2 Environments GitHub
+
+Creer deux environments dans **Settings > Environments** :
+- **production** : avec protection rules (require approval)
+- **preprod** : sans protection (deploy automatique sur push main)
+
+### 16.3 Workflows disponibles
+
+| Workflow | Trigger | Description |
+|----------|---------|-------------|
+| `ci.yml` | Push main/develop + PR | Lint + Molecule tests (15 roles) |
+| `deploy-preprod.yml` | Push main + manual | Deploy sur preprod permanent (Scenario B) |
+| `deploy-prod.yml` | Manual (confirmation) | Deploy production avec approbation |
+
+---
+
 > **Tu es bloque ?** Ouvre une issue sur le repository GitHub ou consulte le `docs/RUNBOOK.md` pour les procedures operationnelles.

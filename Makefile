@@ -124,7 +124,7 @@ check: ## Dry-run du playbook principal (--check --diff)
 	$(ANSIBLE_PLAYBOOK) playbooks/site.yml --check --diff
 
 .PHONY: deploy-preprod
-deploy-preprod: lint ## Déployer en pré-production (Hetzner éphémère)
+deploy-preprod: lint ## Déployer en pré-production (Hetzner permanent)
 	@echo "$(YELLOW)>>> Deploying to PRE-PRODUCTION...$(NC)"
 	$(ANSIBLE_PLAYBOOK) playbooks/site.yml \
 		-e "target_env=preprod" \

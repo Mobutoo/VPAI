@@ -194,49 +194,24 @@ Caddy on preprod automatically obtains TLS certificates via Let's Encrypt
 
 ## 5. CI/CD Integration
 
-### Current Workflow (deploy-preprod.yml)
+### Workflow (deploy-preprod.yml — implemented)
 
 ```
-Push to main
+Push to main (or manual workflow_dispatch)
   --> Lint (yamllint + ansible-lint)
-    --> Provision CX23 (from snapshot or scratch)
-      --> Deploy via Ansible (target_env=preprod)
-        --> Smoke tests
-          --> Golden snapshot (if tests pass)
-            --> Cleanup (destroy ephemeral VM)
+    --> Deploy to permanent preprod (Ansible diff only, ~5 min)
+      --> Smoke tests (CI: public only + SSH: full on-server)
+        --> Optional: seed preprod with prod data (workflow_dispatch)
+        --> Optional: golden snapshot (workflow_dispatch)
 ```
 
-### Recommended Workflow (with permanent preprod)
+The workflow supports two manual options via `workflow_dispatch`:
+- **seed_data**: Seed preprod with fresh production data after deploy
+- **snapshot**: Create a golden Hetzner snapshot after successful tests
 
-```
-Push to main
-  --> Lint (yamllint + ansible-lint)
-    --> Deploy to permanent preprod (fast, Ansible diff only)
-      --> Smoke tests
-        --> Golden snapshot (weekly, not every push)
-
-Monthly (or before prod deploy):
-  --> Seed preprod with fresh prod data
-    --> Full test suite with realistic data
-      --> Approve for prod deploy
-```
-
-### GitHub Actions Update
-
-The `deploy-preprod.yml` workflow should be updated to target the permanent
-preprod server instead of creating/destroying ephemeral VMs:
-
-```yaml
-# Simplified: no provision/cleanup, just deploy
-deploy:
-  steps:
-    - name: Deploy to permanent preprod
-      run: |
-        ansible-playbook playbooks/site.yml \
-          -i inventory/hosts.yml \
-          -e "target_env=preprod" \
-          --diff
-```
+Required GitHub secrets: `SSH_PRIVATE_KEY`, `ANSIBLE_VAULT_PASSWORD`,
+`PREPROD_SERVER_IP`, `PREPROD_DOMAIN`, `LITELLM_MASTER_KEY`,
+`HETZNER_CLOUD_TOKEN` (for snapshots)
 
 ---
 

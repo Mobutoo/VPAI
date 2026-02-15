@@ -1,11 +1,19 @@
 #!/bin/bash
 # Smoke tests for CI/CD pipeline
-# Usage: ./scripts/smoke-test.sh <base_url> [admin_url]
+# Usage: ./scripts/smoke-test.sh [--ci] <base_url> [admin_url]
+#   --ci    : CI mode — only test public endpoints (skip VPN-only admin UIs)
 # Exit code: 0 = all tests passed, 1 = at least one test failed
 
 set -euo pipefail
 
-BASE_URL="${1:?Usage: $0 <base_url> [admin_url]}"
+# Parse --ci flag
+CI_MODE=false
+if [ "${1:-}" = "--ci" ]; then
+  CI_MODE=true
+  shift
+fi
+
+BASE_URL="${1:?Usage: $0 [--ci] <base_url> [admin_url]}"
 ADMIN_URL="${2:-${BASE_URL/preprod/admin.preprod}}"
 TIMEOUT=10
 FAILURES=0
@@ -26,6 +34,11 @@ echo "============================================"
 echo "  Smoke Tests — CI/CD"
 echo "  $(date)"
 echo "  Target: ${BASE_URL}"
+if [ "$CI_MODE" = "true" ]; then
+  echo "  Mode: CI (public endpoints only)"
+else
+  echo "  Mode: Full (public + admin endpoints)"
+fi
 echo "============================================"
 echo ""
 
@@ -62,10 +75,8 @@ fi
 
 echo ""
 
-# --- Application Endpoints ---
-echo "--- Application Endpoints ---"
-check "n8n healthz" "${ADMIN_URL}/n8n/healthz"
-check "Grafana health" "${ADMIN_URL}/grafana/api/health"
+# --- Public Application Endpoints ---
+echo "--- Public Endpoints ---"
 check "LiteLLM health" "${BASE_URL}/litellm/health"
 
 echo ""
@@ -80,6 +91,20 @@ if [ "${MODELS}" -gt 0 ]; then
 else
   echo "FAIL  LiteLLM models (no models found)"
   FAILURES=$((FAILURES + 1))
+fi
+
+echo ""
+
+# --- Admin Endpoints (VPN-only, skipped in CI mode) ---
+if [ "$CI_MODE" = "true" ]; then
+  echo "--- Admin Endpoints (SKIPPED — VPN-only, not reachable from CI) ---"
+  echo "SKIP  n8n healthz (VPN-only)"
+  echo "SKIP  Grafana health (VPN-only)"
+  echo "SKIP  OpenClaw health (VPN-only)"
+else
+  echo "--- Admin Endpoints (VPN-only) ---"
+  check "n8n healthz" "${ADMIN_URL}/n8n/healthz"
+  check "Grafana health" "${ADMIN_URL}/grafana/api/health"
 fi
 
 echo ""

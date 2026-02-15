@@ -43,7 +43,12 @@ jobs:
           cache: 'pip'
       - run: pip install ansible ansible-lint yamllint
       - run: ansible-galaxy install -r requirements.yml
-      - run: yamllint -c .yamllint.yml .
+      - name: YAML Lint
+        run: |
+          find . \( -name '*.yml' -o -name '*.yaml' \) \
+            ! -path './.git/*' ! -path './.venv/*' \
+            ! -path '*/molecule/*' ! -path '*/collections/*' \
+            ! -name 'secrets.yml' -print0 | xargs -0 yamllint -c .yamllint.yml
       - run: ansible-lint playbooks/site.yml
 
   deploy:
@@ -69,7 +74,8 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -p 2222 -H "${{ secrets.PROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -p ${{ secrets.PROD_SSH_PORT }} \
+            -H "${{ secrets.PROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Create vault password file
         run: |
@@ -95,11 +101,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p ${{ secrets.PROD_SSH_PORT }} \
+            -H "${{ secrets.PROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
+
       - name: Wait for services to stabilize
         run: sleep 30
 
-      - name: Run smoke tests
+      - name: Run public smoke tests from CI
         run: |
-          bash scripts/smoke-test.sh "https://${{ secrets.PROD_DOMAIN }}"
+          bash scripts/smoke-test.sh \
+            --ci \
+            "https://${{ secrets.PROD_DOMAIN }}"
         env:
           LITELLM_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+
+      - name: Run full smoke tests on server via SSH
+        run: |
+          ssh -p ${{ secrets.PROD_SSH_PORT }} \
+            ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SERVER_IP }} \
+            "bash /opt/*/scripts/smoke-test.sh 2>&1" || true

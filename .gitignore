@@ -8,6 +8,11 @@
 # Ne PAS ignorer secrets.yml — il est chiffré avec Vault
 # !inventory/group_vars/all/secrets.yml
 
+# --- Configuration personnelle (générée par wizard) ---
+inventory/group_vars/all/main.yml
+inventory/group_vars/all/users.yml
+# secrets.yml est OK car chiffré par Vault
+
 # --- Python ---
 __pycache__/
 *.py[cod]

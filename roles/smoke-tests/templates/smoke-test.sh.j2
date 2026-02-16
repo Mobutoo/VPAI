@@ -15,7 +15,7 @@ FAILURES=0
 check_http() {
   local name="$1" url="$2" expected="${3:-200}"
   local status
-  status=$(curl -s -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" "$url" 2>/dev/null) || status="000"
+  status=$(curl -sL -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" "$url" 2>/dev/null) || status="000"
   if [ "$status" = "$expected" ]; then
     echo "PASS  $name (HTTP $status)"
   else

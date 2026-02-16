@@ -289,10 +289,31 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **Execute apres Phase A** dans les tasks docker-stack
 - **LiteLLM restart** : Restart automatique si pas healthy apres Phase B (timing DB provisioning)
 
-### OpenClaw -- Node.js Heap Memory
+### OpenClaw -- Gateway Architecture (WebSocket, NOT HTTP REST)
 
+- **OpenClaw est un agent IA Gateway WebSocket** sur port **18789**, PAS un serveur HTTP REST sur 8080
+- **Architecture** : OpenClaw -> LiteLLM -> (Anthropic, OpenAI, OpenRouter)
+- **Pas de base de donnees** : OpenClaw est file-based (sessions JSON), pas PostgreSQL/Redis/Qdrant
+- **Config** : `openclaw.json` (pas des env vars DB), provider custom LiteLLM via `models.providers`
+- **Env vars valides** : `OPENCLAW_GATEWAY_TOKEN`, `LITELLM_API_KEY`, `TELEGRAM_BOT_TOKEN`, `NODE_OPTIONS`
+- **Env vars INEXISTANTES** : `DATABASE_URL`, `REDIS_URL`, `QDRANT_URL`, `HOST`, `PORT`, `API_KEY`
+- **Container user** : `node` (UID 1000), dirs data doivent etre `chown 1000:1000`
+- **`init: true`** dans docker-compose (le process Node.js Gateway a besoin d'init)
 - **`NODE_OPTIONS=--max-old-space-size=768`** dans openclaw.env.j2
-- **Limite Docker** : 1536M minimum pour OpenClaw (image 6.38GB, runtime ~800MB)
+- **Limite Docker** : 1536M minimum pour OpenClaw
+- **Control UI** : Servie directement par le Gateway sur le meme port (18789)
+- **Caddy proxy** : `reverse_proxy openclaw:18789` avec `uri strip_prefix /openclaw`
+- **Onboarding** : Le flag `--allow-unconfigured` dans le Dockerfile permet de demarrer sans onboarding interactif
+- **Image** : `ghcr.io/openclaw/openclaw:2026.2.15` (tags: YYYY.M.DD, pas de prefixe v)
+
+### LiteLLM -- Config Syntax
+
+- **`fallbacks`** : Format correct `[{"model_name": ["fallback_model"]}]`, PAS `- model: ... fallback: [...]`
+- **`os.environ/`** : Preferer `os.environ/VAR_NAME` dans config.yaml pour referencer les env vars
+- **Redis cache** : Ajouter `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` dans le `.env`, puis `os.environ/REDIS_*` dans cache_params
+- **`general_settings`** : `master_key` et `database_url` via `os.environ/` (pas de secrets en clair dans la config)
+- **Modele `default`** : Supprime — un seul mapping par modele, le client choisit le modele a utiliser
+- **Memoire** : 1024M minimum (pas 768M) pour PostgreSQL + Redis cache + model routing
 
 ### Smoke Tests
 

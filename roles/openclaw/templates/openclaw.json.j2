@@ -1,0 +1,65 @@
+{
+  "gateway": {
+    "mode": "local",
+    "port": {{ openclaw_gateway_port }},
+    "bind": "{{ openclaw_gateway_bind }}",
+    "auth": {
+      "mode": "token"
+    },
+    "controlUi": {
+      "enabled": true,
+      "basePath": "/"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": "{{ openclaw_default_model }}"
+    }
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "custom-litellm": {
+        "baseUrl": "http://litellm:4000/v1",
+        "apiKey": "${LITELLM_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "claude-sonnet",
+            "name": "Claude Sonnet 4 (via LiteLLM)",
+            "reasoning": false,
+            "input": ["text"],
+            "contextWindow": 200000,
+            "maxTokens": 8192
+          },
+          {
+            "id": "claude-haiku",
+            "name": "Claude Haiku 4.5 (via LiteLLM)",
+            "reasoning": false,
+            "input": ["text"],
+            "contextWindow": 200000,
+            "maxTokens": 8192
+          },
+          {
+            "id": "gpt-4o",
+            "name": "GPT-4o (via LiteLLM)",
+            "reasoning": false,
+            "input": ["text"],
+            "contextWindow": 128000,
+            "maxTokens": 16384
+          }
+        ]
+      }
+    }
+  },
+{% if telegram_openclaw_bot_token | default('') | length > 0 %}
+  "channels": {
+    "telegram": {
+      "token": "${TELEGRAM_BOT_TOKEN}"
+    }
+  },
+{% endif %}
+  "logging": {
+    "level": "info"
+  }
+}

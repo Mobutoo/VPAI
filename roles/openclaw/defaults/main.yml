@@ -2,6 +2,20 @@
 # openclaw — defaults
 
 openclaw_config_dir: "/opt/{{ project_name }}/configs/openclaw"
+openclaw_data_dir: "/opt/{{ project_name }}/data/openclaw"
+
+# Gateway port (WebSocket control plane + Control UI)
+openclaw_gateway_port: 18789
+
+# Gateway bind mode: loopback | lan | tailnet
+# "lan" required for Docker (container must accept connections from Caddy network)
+openclaw_gateway_bind: "lan"
+
+# Default agent model (routed through LiteLLM proxy)
+openclaw_default_model: "custom-litellm/claude-sonnet"
+
+# Node.js heap size in MB (prevents OOM crashes on large context windows)
+openclaw_node_heap_mb: 768
 
 # --- Telegram Bot (dedicated, distinct from monitoring bot) ---
 # telegram_openclaw_bot_token is in main.yml (from vault)

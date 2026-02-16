@@ -78,9 +78,10 @@
         reverse_proxy grafana:3000
     }
 
+    # OpenClaw Gateway (Control UI + WebSocket on port 18789)
     handle /openclaw/* {
         uri strip_prefix /openclaw
-        reverse_proxy openclaw:8080
+        reverse_proxy openclaw:18789
     }
 
     handle /qdrant/* {

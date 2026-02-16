@@ -105,6 +105,8 @@ openai_api_key: "{{ vault_openai_api_key }}"
 
 # OpenClaw
 openclaw_api_key: "{{ vault_openclaw_api_key }}"
+# Gateway token for OpenClaw Control UI auth (generate: openssl rand -hex 32)
+openclaw_gateway_token: "{{ vault_openclaw_gateway_token | default(vault_openclaw_api_key) }}"
 
 # Grafana
 grafana_admin_user: "{{ vault_grafana_admin_user | default('admin') }}"

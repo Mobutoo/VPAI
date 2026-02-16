@@ -9,9 +9,7 @@ redis_image: "redis:8.0-bookworm"  # 8.0.10 n'existe pas, utiliser 8.0
 qdrant_image: "qdrant/qdrant:v1.16.3"
 
 # --- Applications ---
-# TODO: Trouver la vraie version d'OpenClaw - v2026.2.14 n'existe pas
-# Utilisation temporaire de :latest (à remplacer par une version pinnée)
-openclaw_image: "ghcr.io/openclaw/openclaw:latest"
+openclaw_image: "ghcr.io/openclaw/openclaw:2026.2.15"
 n8n_image: "docker.n8n.io/n8nio/n8n:2.7.3"
 litellm_image: "ghcr.io/berriai/litellm:v1.81.3-stable"
 

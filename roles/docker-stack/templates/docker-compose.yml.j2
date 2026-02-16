@@ -76,6 +76,7 @@ services:
     image: {{ openclaw_image }}
     container_name: {{ project_name }}_openclaw
     restart: unless-stopped
+    init: true
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -86,6 +87,9 @@ services:
       - SETUID
     env_file:
       - /opt/{{ project_name }}/configs/openclaw/openclaw.env
+    volumes:
+      - /opt/{{ project_name }}/configs/openclaw/openclaw.json:/home/node/.openclaw/openclaw.json:ro
+      - /opt/{{ project_name }}/data/openclaw/workspace:/home/node/.openclaw/workspace
     networks:
       - backend
       - egress
@@ -96,12 +100,13 @@ services:
           cpus: "{{ openclaw_cpu_limit }}"
         reservations:
           memory: {{ openclaw_memory_reservation }}
+    # OpenClaw Gateway healthcheck: verify the WebSocket control plane is responsive
     healthcheck:
-      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      test: ["CMD-SHELL", "node -e \"const h=require('http');h.get('http://127.0.0.1:{{ openclaw_gateway_port }}/',r=>{process.exit(r.statusCode<500?0:1)}).on('error',()=>process.exit(1))\""]
       interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   # === MONITORING LAYER ===
   victoriametrics:

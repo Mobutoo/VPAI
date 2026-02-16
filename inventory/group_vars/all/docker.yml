@@ -36,10 +36,10 @@ openclaw_memory_limit: "{{ '1536M' if target_env == 'prod' else '768M' }}"
 openclaw_memory_reservation: "384M"
 openclaw_cpu_limit: "1.0"
 
-# LiteLLM
-litellm_memory_limit: "{{ '768M' if target_env == 'prod' else '384M' }}"
-litellm_memory_reservation: "192M"
-litellm_cpu_limit: "0.75"
+# LiteLLM (needs 1GB+ for PostgreSQL + Redis cache + model routing)
+litellm_memory_limit: "{{ '1024M' if target_env == 'prod' else '512M' }}"
+litellm_memory_reservation: "256M"
+litellm_cpu_limit: "1.0"
 
 # Qdrant
 qdrant_memory_limit: "{{ '1024M' if target_env == 'prod' else '512M' }}"

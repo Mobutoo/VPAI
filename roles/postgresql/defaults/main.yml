@@ -14,14 +14,8 @@ postgresql_databases:
     user: n8n
     extensions:
       - uuid-ossp
-  - name: openclaw
-    user: openclaw
-    extensions:
-      - uuid-ossp
-      # NOTE: pgvector extension requires pgvector-enabled PostgreSQL image
-      # Stock postgres:18.1-bookworm does NOT include pgvector
-      # To enable: use pgvector/pgvector:pg18 image instead
-      # - vector
+  # NOTE: OpenClaw does NOT use PostgreSQL — it's file-based (sessions.json)
+  # The openclaw database has been removed (REX: OpenClaw is a Gateway, not a web app)
   - name: litellm
     user: litellm
     extensions:

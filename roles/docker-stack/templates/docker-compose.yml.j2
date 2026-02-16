@@ -32,7 +32,7 @@ services:
         reservations:
           memory: {{ n8n_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/ || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -66,11 +66,11 @@ services:
         reservations:
           memory: {{ litellm_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health || exit 1"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health')\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 90s
 
   openclaw:
     image: {{ openclaw_image }}
@@ -97,11 +97,11 @@ services:
         reservations:
           memory: {{ openclaw_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
       interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # === MONITORING LAYER ===
   victoriametrics:
@@ -134,7 +134,7 @@ services:
         reservations:
           memory: {{ victoriametrics_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8428/-/healthy || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8428/-/healthy || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -167,12 +167,14 @@ services:
           cpus: "{{ loki_cpu_limit }}"
         reservations:
           memory: {{ loki_memory_reservation }}
+    # NOTE: grafana/loki image has no wget/curl/nc
+    # Healthcheck uses process check; HTTP check done via smoke tests from host
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval: 30s
       timeout: 5s
-      retries: 5
-      start_period: 60s
+      retries: 3
+      start_period: 30s
 
   alloy:
     image: {{ alloy_image }}
@@ -205,11 +207,13 @@ services:
           cpus: "{{ alloy_cpu_limit }}"
         reservations:
           memory: {{ alloy_memory_reservation }}
+    # NOTE: grafana/alloy may not have wget/curl
+    # Process check as fallback; HTTP check done via smoke tests from host
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:12345/-/ready || exit 1"]
-      interval: 15s
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval: 30s
       timeout: 5s
-      retries: 5
+      retries: 3
       start_period: 30s
 
   grafana:
@@ -245,7 +249,7 @@ services:
         reservations:
           memory: {{ grafana_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

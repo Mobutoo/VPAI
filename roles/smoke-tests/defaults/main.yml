@@ -3,5 +3,5 @@
 
 smoke_test_script_path: "/opt/{{ project_name }}/scripts/smoke-test.sh"
 smoke_test_base_url: "https://{{ domain_name }}"
-smoke_test_admin_url: "https://admin.{{ domain_name }}"
+smoke_test_admin_url: "https://{{ admin_subdomain | default('admin') }}.{{ domain_name }}"
 smoke_test_timeout: 10

@@ -1,6 +1,7 @@
 # {{ ansible_managed }}
 # Loki configuration for {{ project_display_name }}
-# Loki 3.x single-node (monolithic) mode
+# Loki 3.6.5 single-node monolithic mode (-target=all)
+# REX: "empty ring" fix requires explicit ingester ring + memberlist disabled
 
 auth_enabled: false
 
@@ -8,6 +9,12 @@ server:
   http_listen_port: 3100
   grpc_listen_port: 9096
   log_level: warn
+
+# Memberlist disabled — single-node deployment, no cluster discovery needed
+# REX: Loki 3.x initializes memberlist-kv even with inmemory kvstore (bug #19381)
+# Explicitly disabling prevents network interface lookup errors
+memberlist:
+  join_members: []
 
 common:
   instance_addr: 127.0.0.1
@@ -26,6 +33,12 @@ ingester:
   chunk_idle_period: 1h
   max_chunk_age: 2h
   chunk_retain_period: 30s
+  lifecycler:
+    ring:
+      replication_factor: 1
+      kvstore:
+        store: inmemory
+    final_sleep: 0s
   wal:
     dir: /loki/wal
 

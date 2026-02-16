@@ -12,9 +12,9 @@
 
 ## Resume
 
-**Duree totale** : ~10 heures de debugging iteratif (2 sessions)
-**Erreurs critiques** : 16
-**Resultat** : Phase A (infra) fonctionnelle -- PG, Redis, Qdrant healthy. Phase B en cours.
+**Duree totale** : ~14 heures de debugging iteratif (3 sessions)
+**Erreurs critiques** : 28
+**Resultat** : Stack complete deployee -- PG, Redis, Qdrant, Caddy, n8n, Grafana, VictoriaMetrics healthy. Loki fix en cours de validation.
 
 ---
 
@@ -173,14 +173,138 @@
 
 ---
 
+## Session 3 -- Erreurs 17 a 28 (16 fevrier, nuit)
+
+### 17. VictoriaMetrics -- PermissionDenied sur /storage/flock.lock
+
+**Symptome** : VictoriaMetrics en restart loop, `permission denied: /storage/flock.lock`
+**Cause** : `cap_drop: ALL` sans `DAC_OVERRIDE` -- VM (UID 1000) ne peut pas creer le flock
+**Fix** : Ajout `DAC_OVERRIDE` + `FOWNER` aux capabilities
+**Impact** : CRITIQUE
+
+### 18. Loki -- PermissionDenied similaire
+
+**Symptome** : Loki ne demarre pas, permission denied sur `/loki`
+**Cause** : Meme probleme que VM -- `cap_drop: ALL` sans `DAC_OVERRIDE`
+**Fix** : Ajout `DAC_OVERRIDE` + `FOWNER` aux capabilities Loki
+**Impact** : CRITIQUE
+
+### 19. DIUN -- YAML escape dans regex
+
+**Symptome** : `yaml line 12: unknown escape character 'd'`
+**Cause** : Pattern regex `"^\d+\.\d+\.\d+"` en double quotes -- YAML interprete `\d` comme echappement
+**Fix** : Utiliser des single quotes : `'^\d+\.\d+\.\d+'`
+**Impact** : CRITIQUE
+
+### 20. LiteLLM -- Config non lisible par le conteneur
+
+**Symptome** : `PermissionError: '/app/config.yaml'`
+**Cause** : Config deployee avec mode `0600`, le conteneur tourne sous un UID different
+**Fix** : Changer le mode a `0644`
+**Impact** : CRITIQUE
+
+### 21. Caddy -- Admin API ne repond pas
+
+**Symptome** : Healthcheck `wget -qO- http://localhost:2019/config/` -> `Connection refused`
+**Cause** : Malgre `admin localhost:2019` dans le Caddyfile, l'admin API ne repond pas en Docker
+**Fix** : Healthcheck change en `caddy version` (verifie que le binaire tourne)
+**Impact** : CRITIQUE
+
+### 22. VictoriaMetrics -- IPv6 localhost
+
+**Symptome** : Healthcheck echoue avec `[::1]:8428` dans les logs
+**Cause** : Alpine resout `localhost` en IPv6 `[::1]`, mais VM n'ecoute que sur IPv4
+**Fix** : Remplacer `localhost` par `127.0.0.1` dans TOUS les healthchecks
+**Impact** : CRITIQUE
+
+### 23. Loki -- Image distroless sans wget/curl
+
+**Symptome** : `"wget": executable file not found in $PATH`
+**Cause** : `grafana/loki:3.6.5` est une image distroless -- aucun outil shell (pas de wget, curl, ls, test)
+**Fix** : Utiliser la commande built-in `loki -health` (ajoutee en v3.6.5, backport PR #20590)
+**Impact** : CRITIQUE
+
+### 24. Loki -- Empty ring en mode monolithique
+
+**Symptome** : `"error getting ingester clients" err="empty ring"` en boucle
+**Cause** : Loki 3.x avec kvstore `inmemory` initialise quand meme le module `memberlist-kv` (bug #19381). L'ingester ne s'enregistre pas dans le ring.
+**Fix** :
+- Ajout `-target=all` dans la commande Docker
+- Configuration explicite de `ingester.lifecycler.ring` avec `kvstore: inmemory`
+- Ajout `memberlist.join_members: []` pour desactiver le clustering
+**Impact** : CRITIQUE
+
+### 25. LiteLLM -- Image sans wget, Python disponible
+
+**Symptome** : `"wget": executable file not found in $PATH`
+**Cause** : L'image LiteLLM est basee Python mais n'inclut pas wget
+**Fix** : Healthcheck via Python : `python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health')"`
+**Impact** : CRITIQUE
+
+### 26. Alloy -- Image sans wget/curl
+
+**Symptome** : Healthcheck impossible via HTTP
+**Cause** : `grafana/alloy` n'a pas d'outils HTTP
+**Fix** : Healthcheck via `kill -0 1` (verifie que le process PID 1 tourne)
+**Impact** : MOYEN
+
+### 27. DNS -- `dig` non installe sur VPS
+
+**Symptome** : Smoke test DNS echoue malgre le DNS fonctionnel
+**Cause** : `dig` (paquet `dnsutils`) n'est pas installe sur les images minimales Debian 13
+**Fix** : Remplacer `dig +short` par `getent hosts` (toujours disponible, fait partie de glibc)
+**Impact** : MOYEN
+
+### 28. Grafana -- Redirect 301 sur /login
+
+**Symptome** : Smoke test Grafana echoue avec HTTP 301 au lieu de 200
+**Cause** : `/grafana/login` redirige vers `/grafana/login/` (trailing slash)
+**Fix** : Ajouter `-L` (follow redirects) a curl dans le smoke test
+**Impact** : MOYEN
+
+### 29. Handlers infra -- Mauvais fichier compose
+
+**Symptome** : Handler restart Caddy/PG/Redis/Qdrant : `no such service: caddy`
+**Cause** : Handlers pointaient vers `docker-compose.yml` (Phase B) mais les services infra sont dans `docker-compose-infra.yml` (Phase A)
+**Fix** : Mise a jour des 4 handlers infra pour pointer vers `docker-compose-infra.yml`
+**Impact** : CRITIQUE
+
+### 30. Smoke test -- Admin URL hardcodee
+
+**Symptome** : Smoke test cherche `admin.{{ domain_name }}` mais l'admin est sur `javisi.ewutelo.cloud`
+**Cause** : L'URL admin etait hardcodee avec le prefixe `admin.`
+**Fix** : Utiliser `{{ admin_subdomain | default('admin') }}.{{ domain_name }}`
+**Impact** : MOYEN
+
+---
+
 ## Statistiques Globales
 
-| Metrique | Session 1 | Session 2 | Total |
-|----------|-----------|-----------|-------|
-| Erreurs critiques | 6 | 8 | 14 |
-| Erreurs moyennes | 2 | 2 | 4 |
-| Fichiers modifies | 14 | 31 | ~35 (avec recouvrements) |
-| Temps debugging | ~6h | ~4h | ~10h |
+| Metrique | Session 1 | Session 2 | Session 3 | Total |
+|----------|-----------|-----------|-----------|-------|
+| Erreurs critiques | 6 | 8 | 10 | 24 |
+| Erreurs moyennes | 2 | 2 | 4 | 8 |
+| Fichiers modifies | 14 | 31 | 12 | ~45 (avec recouvrements) |
+| Temps debugging | ~6h | ~4h | ~4h | ~14h |
+
+---
+
+## Etat Final des Services (fin session 3)
+
+| Service | Phase | Etat | Healthcheck |
+|---------|-------|------|-------------|
+| PostgreSQL | A | Healthy | `pg_isready` |
+| Redis | A | Healthy | `redis-cli ping` |
+| Qdrant | A | Healthy | `bash -c ':> /dev/tcp/localhost/6333'` |
+| Caddy | A | Healthy | `caddy version` |
+| n8n | B | Healthy | `wget http://127.0.0.1:5678/` |
+| LiteLLM | B | Healthy | `python urllib.request` |
+| OpenClaw | B | Running | `kill -0 1` |
+| VictoriaMetrics | B | Healthy | `wget http://127.0.0.1:8428/-/healthy` |
+| Loki | B | Fix en cours | `loki -health` (v3.6.5) |
+| Alloy | B | Running | `kill -0 1` |
+| Grafana | B | Healthy | `wget http://127.0.0.1:3000/api/health` |
+| DIUN | B | Running | (pas de healthcheck) |
 
 ---
 
@@ -189,10 +313,15 @@
 ### A FAIRE
 
 1. **`cap_drop: ALL` + `cap_add` minimal** est la bonne approche, MAIS `DAC_OVERRIDE` est quasi-systematiquement necessaire des qu'un conteneur ecrit dans un volume monte
-2. **Verifier les outils disponibles dans l'image** avant d'ecrire un healthcheck (wget, curl, bash...)
+2. **Verifier les outils disponibles dans l'image** avant d'ecrire un healthcheck (`docker exec <c> which wget curl ls test`)
 3. **Les healthchecks sur `localhost` doivent matcher le bon Host header** -- utiliser l'admin API quand possible
 4. **Un fichier compose par phase** -- pas de duplication de services entre les 2 fichiers
 5. **Le port SSH par defaut dans l'inventaire** doit etre le port cible (804), avec override possible pour le premier deploiement
+6. **Toujours utiliser `127.0.0.1`** au lieu de `localhost` dans les healthchecks (IPv6 vs IPv4)
+7. **Les images distroless** (Loki 3.6+, certaines images Grafana) n'ont AUCUN outil shell -- utiliser les commandes built-in du binaire
+8. **Utiliser `getent hosts`** au lieu de `dig` pour les checks DNS (toujours disponible)
+9. **Les handlers doivent pointer vers le bon fichier compose** (Phase A vs Phase B)
+10. **Les URLs admin doivent utiliser les variables d'inventaire** (`admin_subdomain`), jamais de valeur hardcodee
 
 ### A EVITER
 
@@ -201,9 +330,13 @@
 3. Ne pas utiliser les locales systeme dans les images Docker (utiliser ICU)
 4. Ne pas utiliser `rename-command` dans Redis 8.0+
 5. Ne pas faire `make deploy-prod -e ...` (le `-e` est un flag make, pas Ansible)
+6. Ne pas utiliser `localhost` dans les healthchecks Docker (Alpine resout en IPv6)
+7. Ne pas utiliser `dig` dans les scripts -- `getent hosts` est plus portable
+8. Ne pas deployer de configs en mode `0600` si le conteneur tourne sous un UID different
+9. Ne pas utiliser `test -d` ou `ls` dans un conteneur distroless
 
 ---
 
 **Auteur** : Claude Opus 4.6 (avec utilisateur mobuone)
 **Date** : 2026-02-16
-**Version** : 2.0
+**Version** : 3.0

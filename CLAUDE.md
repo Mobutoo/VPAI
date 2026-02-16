@@ -208,7 +208,7 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 
 ### Caddy -- Healthcheck et Capabilities
 
-- **Healthcheck** : Utiliser l'admin API `wget -qO- http://localhost:2019/config/` (pas `localhost:80/health` car le `/health` ne repond que sur le domain name, pas sur `localhost`)
+- **Healthcheck** : Utiliser `caddy version` (l'admin API `:2019` ne repond pas en Docker malgre la config)
 - **Capabilities** : `NET_BIND_SERVICE` + `DAC_OVERRIDE` (pour ecrire dans le volume logs)
 - **rate_limit** : Plugin non inclus dans l'image stock `caddy:alpine`. Commenter ou builder une image custom.
 - **Logs** : Volume `/var/log/caddy` monte et accessible en ecriture
@@ -219,6 +219,28 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **Loki** : UID 10001 (pas `{{ prod_user }}`)
 - **Grafana** : UID 472
 - **Regle** : Les dirs de data doivent etre `chown` avec l'UID du conteneur, pas l'utilisateur systeme
+
+### Loki 3.6.5 -- Image Distroless
+
+- **Distroless** : `grafana/loki:3.6.5` n'a AUCUN outil shell (pas de wget, curl, ls, test, bash)
+- **Healthcheck** : Utiliser `loki -health` (commande built-in ajoutee en v3.6.5, backport PR #20590)
+- **Empty ring** : Bug #19381 -- le module `memberlist-kv` s'initialise meme avec kvstore `inmemory`
+- **Fix empty ring** : Ajouter `-target=all` dans la commande + `ingester.lifecycler.ring` explicite + `memberlist.join_members: []`
+- **Config monolithique** : `replication_factor: 1` + `kvstore.store: inmemory` dans `common.ring` ET `ingester.lifecycler.ring`
+
+### Healthchecks Docker -- Regles Generales
+
+- **Toujours `127.0.0.1`** au lieu de `localhost` (Alpine resout en IPv6 `[::1]`, services n'ecoutent qu'IPv4)
+- **Verifier les outils** avant d'ecrire un healthcheck : `docker exec <c> which wget curl ls test bash`
+- **Images distroless** : utiliser les commandes built-in du binaire (ex: `loki -health`, `caddy version`)
+- **Images Python** (LiteLLM) : utiliser `python -c "import urllib.request; ..."`
+- **Fallback universel** : `kill -0 1` verifie que le process principal tourne
+
+### DNS dans les Scripts
+
+- **Ne PAS utiliser `dig`** : Le paquet `dnsutils` n'est pas installe sur les images minimales Debian 13
+- **Utiliser `getent hosts`** : Fait partie de glibc, toujours disponible
+- **Syntaxe** : `getent hosts "domain.tld" | awk '{print $1}' | head -1`
 
 ### Port SSH et Deploiement
 

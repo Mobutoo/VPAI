@@ -157,7 +157,7 @@ services:
     volumes:
       - /opt/{{ project_name }}/data/loki:/loki
       - /opt/{{ project_name }}/configs/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
-    command: -config.file=/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml -target=all
     networks:
       - monitoring
     deploy:
@@ -167,9 +167,10 @@ services:
           cpus: "{{ loki_cpu_limit }}"
         reservations:
           memory: {{ loki_memory_reservation }}
-    # NOTE: grafana/loki image has no wget/curl — use /ready via built-in tools
+    # NOTE: grafana/loki 3.6.5 is distroless (no wget/curl/test/ls)
+    # Use built-in 'loki -health' command added in v3.6.5 (backport PR #20590)
     healthcheck:
-      test: ["CMD-SHELL", "test -d /loki/wal || exit 1"]
+      test: ["CMD", "/usr/bin/loki", "-health"]
       interval: 30s
       timeout: 5s
       retries: 5

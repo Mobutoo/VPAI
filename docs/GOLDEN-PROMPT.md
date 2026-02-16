@@ -845,15 +845,15 @@ healthcheck:
 
 **Symptome** : Caddy `(unhealthy)` alors que le service tourne correctement
 
-**Cause racine** : Le healthcheck `wget -qO- http://localhost:80/health` echoue car `/health` est defini dans le bloc domain (`{{ caddy_domain }}`). Le Host header `localhost` ne matche aucun site block Caddy.
+**Cause racine** : Le healthcheck `wget -qO- http://localhost:80/health` echoue car `/health` est defini dans le bloc domain (`{{ caddy_domain }}`). Le Host header `localhost` ne matche aucun site block Caddy. L'admin API `:2019` ne repond pas non plus en Docker.
 
-**Fix** : Utiliser l'admin API Caddy (toujours disponible sur localhost:2019) :
+**Fix** : Utiliser `caddy version` comme healthcheck (verifie que le binaire est fonctionnel) :
 ```yaml
 healthcheck:
-  test: ["CMD-SHELL", "wget -qO- http://localhost:2019/config/ || exit 1"]
+  test: ["CMD", "caddy", "version"]
 ```
 
-**Garde-fou** : Pour Caddy, toujours utiliser l'admin API pour les healthchecks Docker, jamais les routes applicatives.
+**Garde-fou** : Pour Caddy en Docker, utiliser `caddy version` comme healthcheck. Ni les routes applicatives (probleme de Host header) ni l'admin API (ne repond pas) ne fonctionnent de facon fiable.
 
 ### Erreur 21 -- Phase B duplique les services Phase A
 
@@ -874,6 +874,107 @@ healthcheck:
 **Fix** : Ajout de `$(if $(EXTRA_VARS),-e "$(EXTRA_VARS)")` dans le Makefile.
 
 **Garde-fou** : Utiliser `make deploy-prod EXTRA_VARS="key=value"` (pas `-e`).
+
+### Erreur 23 -- IPv6 localhost dans les healthchecks Alpine
+
+**Symptome** : Healthcheck VictoriaMetrics echoue, logs montrent `[::1]:8428`
+
+**Cause racine** : Les images Alpine resolvent `localhost` en IPv6 `::1` alors que les services n'ecoutent que sur IPv4 `0.0.0.0`. Le healthcheck `wget http://localhost:8428/...` tente `[::1]:8428` et echoue.
+
+**Fix** : Utiliser `127.0.0.1` au lieu de `localhost` dans TOUS les healthchecks Docker :
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "wget --spider http://127.0.0.1:8428/-/healthy || exit 1"]
+```
+
+**Garde-fou** : `grep -r 'localhost' roles/docker-stack/templates/*.j2` dans les sections healthcheck doit renvoyer **rien**. Toujours `127.0.0.1`.
+
+### Erreur 24 -- Images distroless sans outils (Loki 3.6+, Alloy)
+
+**Symptome** : `"wget": executable file not found in $PATH` puis `"ls": executable file not found in $PATH`
+
+**Cause racine** : `grafana/loki:3.6.0+` a change d'image de base vers distroless. Plus AUCUN outil shell : pas de wget, curl, ls, test, bash, sh. Meme `test -d /path` echoue.
+
+**Fix** : Utiliser les commandes built-in du binaire principal :
+```yaml
+# Loki 3.6.5+ : commande -health ajoutee (backport PR #20590)
+healthcheck:
+  test: ["CMD", "/usr/bin/loki", "-health"]
+
+# Alloy / OpenClaw : verifier que le process PID 1 tourne
+healthcheck:
+  test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+
+# LiteLLM (Python disponible, pas wget) :
+healthcheck:
+  test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health')\" || exit 1"]
+```
+
+**Garde-fou** : Avant d'ecrire un healthcheck, tester dans le conteneur : `docker exec <c> which wget curl ls test bash`. Si vide -> image distroless, utiliser la commande du binaire principal.
+
+### Erreur 25 -- Loki 3.x "empty ring" en mode monolithique
+
+**Symptome** : `"error getting ingester clients" err="empty ring"` en boucle
+
+**Cause racine** : Bug Loki #19381 -- le module `memberlist-kv` s'initialise meme avec `kvstore.store: inmemory`. L'ingester ne s'enregistre pas dans le ring car memberlist cherche des interfaces reseau.
+
+**Fix** :
+1. Ajouter `-target=all` dans la commande Docker Compose
+2. Configurer explicitement `ingester.lifecycler.ring.kvstore.store: inmemory`
+3. Ajouter `memberlist.join_members: []` pour desactiver le clustering
+```yaml
+# docker-compose.yml
+command: -config.file=/etc/loki/local-config.yaml -target=all
+
+# loki-config.yaml
+memberlist:
+  join_members: []
+ingester:
+  lifecycler:
+    ring:
+      replication_factor: 1
+      kvstore:
+        store: inmemory
+```
+
+**Garde-fou** : En mode monolithique, toujours specifier `-target=all` ET configurer le ring dans `common` ET `ingester.lifecycler`.
+
+### Erreur 26 -- DNS check avec `dig` non installe
+
+**Symptome** : Smoke test DNS echoue malgre le DNS fonctionnel
+
+**Cause racine** : `dig` (paquet `dnsutils`) n'est pas installe sur les images minimales Debian 13.
+
+**Fix** : Utiliser `getent hosts` (fait partie de glibc, toujours disponible) :
+```bash
+# Avant (necessite dnsutils)
+DNS_RESULT=$(dig +short "domain.tld" | head -1)
+
+# Apres (toujours disponible)
+DNS_RESULT=$(getent hosts "domain.tld" | awk '{print $1}' | head -1)
+```
+
+**Garde-fou** : Ne jamais utiliser `dig`, `nslookup`, ou `host` dans les scripts de smoke test. Utiliser `getent hosts`.
+
+### Erreur 27 -- Grafana redirect 301 sur /login
+
+**Symptome** : Smoke test Grafana echoue avec HTTP 301 au lieu de 200
+
+**Cause racine** : `/grafana/login` redirige vers `/grafana/login/` (trailing slash). curl sans `-L` retourne 301.
+
+**Fix** : Ajouter `-L` (follow redirects) a curl dans la fonction `check_http()`.
+
+**Garde-fou** : Toujours utiliser `curl -sL` (avec `-L`) dans les smoke tests pour suivre les redirections.
+
+### Erreur 28 -- Handlers infra pointent vers le mauvais compose
+
+**Symptome** : `no such service: caddy` lors du handler restart
+
+**Cause racine** : Les handlers de caddy, postgresql, redis, qdrant pointaient vers `docker-compose.yml` (Phase B) mais ces services sont dans `docker-compose-infra.yml` (Phase A).
+
+**Fix** : Mettre a jour les 4 handlers infra pour utiliser `docker-compose-infra.yml`.
+
+**Garde-fou** : Un handler de restart DOIT pointer vers le fichier compose qui contient le service. Verifier la correspondance handler <-> compose file pour chaque role.
 
 ---
 

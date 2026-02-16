@@ -76,8 +76,8 @@ else
   FAILURES=$((FAILURES + 1))
 fi
 
-# Check DNS resolution
-DNS_RESULT=$(dig +short "{{ domain_name }}" 2>/dev/null | head -1) || DNS_RESULT=""
+# Check DNS resolution (use getent — available everywhere, dig may not be installed)
+DNS_RESULT=$(getent hosts "{{ domain_name }}" 2>/dev/null | awk '{print $1}' | head -1) || DNS_RESULT=""
 if [ -n "${DNS_RESULT}" ]; then
   echo "PASS  DNS resolution ({{ domain_name }} -> ${DNS_RESULT})"
 else

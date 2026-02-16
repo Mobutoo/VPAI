@@ -64,8 +64,8 @@ else
   echo "WARN  TLS certificate (could not check — may not be available in CI)"
 fi
 
-# DNS check
-DNS_RESULT=$(dig +short "${DOMAIN}" 2>/dev/null | head -1) || DNS_RESULT=""
+# DNS check (use getent — available everywhere, dig may not be installed)
+DNS_RESULT=$(getent hosts "${DOMAIN}" 2>/dev/null | awk '{print $1}' | head -1) || DNS_RESULT=""
 if [ -n "${DNS_RESULT}" ]; then
   echo "PASS  DNS resolution (${DOMAIN} -> ${DNS_RESULT})"
 else

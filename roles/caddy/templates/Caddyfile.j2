@@ -79,8 +79,9 @@
     }
 
     # OpenClaw Gateway (Control UI + WebSocket on port 18789)
+    # basePath=/openclaw in openclaw.json — Gateway serves UI at /openclaw/
+    # Do NOT strip_prefix: Gateway expects the full path with prefix
     handle /openclaw/* {
-        uri strip_prefix /openclaw
         reverse_proxy openclaw:18789
     }
 

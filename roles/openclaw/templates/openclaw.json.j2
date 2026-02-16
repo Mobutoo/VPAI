@@ -6,9 +6,12 @@
     "auth": {
       "mode": "token"
     },
+    "trustedProxies": ["{{ docker_network_backend_subnet }}"],
     "controlUi": {
       "enabled": true,
-      "basePath": "/openclaw"
+      "basePath": "/openclaw",
+      "allowInsecureAuth": true,
+      "allowedOrigins": ["https://{{ admin_subdomain }}.{{ domain_name }}"]
     }
   },
   "agents": {

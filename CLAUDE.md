@@ -305,6 +305,13 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **Caddy proxy** : `reverse_proxy openclaw:18789` avec `uri strip_prefix /openclaw`
 - **Onboarding** : Le flag `--allow-unconfigured` dans le Dockerfile permet de demarrer sans onboarding interactif
 - **Image** : `ghcr.io/openclaw/openclaw:2026.2.15` (tags: YYYY.M.DD, pas de prefixe v)
+- **Volume** : Monter `/home/node/.openclaw` en RW (pas readonly) — OpenClaw ecrit canvas/, cron/, sessions/, plugins/
+- **`agents.defaults.model`** : Doit etre un objet `{"primary": "provider/model"}`, PAS une string
+- **`channels.telegram`** : La cle est `botToken` (pas `token`)
+- **`controlUi.basePath`** : Doit correspondre au chemin public (`/openclaw`), PAS au chemin interne
+- **Reverse proxy** : Ne PAS strip_prefix quand basePath est configure — le Gateway attend le full path
+- **`trustedProxies`** : Necessaire derriere un reverse proxy pour X-Forwarded-For
+- **`allowInsecureAuth`** : Necessaire car WebCrypto requiert HTTPS ou localhost
 
 ### LiteLLM -- Config Syntax
 
@@ -314,6 +321,17 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **`general_settings`** : `master_key` et `database_url` via `os.environ/` (pas de secrets en clair dans la config)
 - **Modele `default`** : Supprime — un seul mapping par modele, le client choisit le modele a utiliser
 - **Memoire** : 1024M minimum (pas 768M) pour PostgreSQL + Redis cache + model routing
+- **UI sub-path** : `SERVER_ROOT_PATH` est buggy (issues #11451, #11865, #10761) — UI web non-fonctionnelle en sub-path
+- **Health endpoint** : `/health` requiert le header `Authorization: Bearer <master_key>` quand master_key est configure
+
+### Sub-path Hosting -- Limites Connues
+
+- **LiteLLM UI** : Ne supporte PAS le sub-path (`SERVER_ROOT_PATH` buggy). API fonctionne, UI non.
+- **Qdrant Dashboard** : Ne supporte PAS le sub-path (issue qdrant-web-ui#94 ouverte depuis 2023). API fonctionne, dashboard non.
+- **OpenClaw Control UI** : Supporte le sub-path via `controlUi.basePath` + pas de strip_prefix dans Caddy
+- **Grafana** : Supporte le sub-path via `GF_SERVER_SERVE_FROM_SUB_PATH=true` + pas de strip_prefix
+- **n8n** : Ne supporte PAS le sub-path (issue #19635) — utilise un sous-domaine dedie
+- **Regle generale** : Quand une app ne supporte pas le sub-path, utiliser un sous-domaine dedie ou accepter API-only
 
 ### Smoke Tests
 
@@ -321,7 +339,7 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **Mode strict** : `smoke_test_strict: true` pour bloquer le playbook sur echec
 - **Qdrant connectivity** : Via `docker exec` + `bash -c ':> /dev/tcp/localhost/6333'`
 - **VPN-protected endpoints** : Resolus via IP Tailscale avec `curl --resolve`
-- **LiteLLM UI** : Teste sur le domaine public (pas admin), accessible via API key
+- **LiteLLM health** : Requiert le header auth Bearer dans le smoke test et le healthcheck Docker
 
 ### Debian 13 (Trixie) -- Specifique
 

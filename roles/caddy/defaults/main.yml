@@ -8,6 +8,9 @@ caddy_domain: "{{ domain_name }}"
 caddy_admin_domain: "{{ admin_subdomain | default('admin') }}.{{ domain_name }}"
 caddy_n8n_domain: "{{ n8n_subdomain | default('') }}.{{ domain_name }}"
 caddy_vpn_cidr: "{{ vpn_network_cidr }}"
+# Set to false to disable VPN restriction (public access to admin UIs)
+# Use for initial validation, then set to true to enforce VPN-only access
+caddy_vpn_enforce: true
 caddy_notification_email: "{{ notification_email }}"
 caddy_rate_limit_events: 100
 caddy_rate_limit_window: "1m"

@@ -15,6 +15,7 @@
     }
 }
 
+{% if caddy_vpn_enforce | default(true) | bool %}
 (vpn_only) {
     @blocked not remote_ip {{ caddy_vpn_cidr }}
     error @blocked 403
@@ -27,6 +28,14 @@
         file_server
     }
 }
+{% else %}
+# VPN enforcement DISABLED (caddy_vpn_enforce=false)
+# Admin UIs are publicly accessible — for initial validation only
+(vpn_only) {
+}
+(vpn_error_page) {
+}
+{% endif %}
 
 {{ caddy_domain }} {
     handle /health {

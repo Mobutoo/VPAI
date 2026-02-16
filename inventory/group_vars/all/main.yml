@@ -18,6 +18,11 @@ admin_subdomain: "javisi"
 n8n_subdomain: "mayi"
 subdomain_preprod: "preprod"
 
+# --- VPN Access Control ---
+# Set to false to make admin UIs publicly accessible (for initial validation)
+# Set to true to enforce VPN-only access (production hardening)
+caddy_vpn_enforce: false
+
 # --- VPS Production ---
 prod_provider: "ovh"
 prod_hostname: "{{ vault_prod_hostname | default('vps-prod-01') }}"

@@ -1020,6 +1020,21 @@ n8n affichera le formulaire de setup initial. Remplissez-le avec les memes crede
 - **Premier acces** : Ouvrir `https://<admin-subdomain>.<votre-domaine>/__bootstrap__` pour configurer le token dans le navigateur. L'UI redirigera automatiquement vers le dashboard.
 - **Notifications** : Bot Telegram dedie si configure (voir `main.yml`)
 
+#### Telegram — Controle d'acces DM
+
+Le bot Telegram utilise une politique de DM (`dmPolicy`) pour controler qui peut discuter :
+
+| Mode | Comportement | Configuration |
+|------|-------------|---------------|
+| `allowlist` | Seuls les user IDs dans `allowFrom` sont autorises. **Automatique** si `telegram_openclaw_chat_id` est renseigne dans `secrets.yml`. | Aucune action manuelle. |
+| `pairing` | Le bot envoie un code de pairing. L'admin doit l'approuver via CLI. C'est le **defaut** si `telegram_openclaw_chat_id` est vide. | `docker exec <container> node openclaw.mjs pairing approve telegram <CODE>` |
+| `open` | Tout le monde peut ecrire au bot. A utiliser uniquement si le bot est restreint par d'autres moyens (VPN, groupe prive). | Modifier `dmPolicy` dans `openclaw.json` |
+
+**Industrialisation multi-tenant** : Pour gerer plusieurs utilisateurs sans CLI, deux approches :
+
+1. **Allowlist avec plusieurs IDs** : Ajouter une variable liste `openclaw_telegram_allowed_users` dans l'inventaire, et peupler `allowFrom` avec tous les IDs. Chaque ajout necessite un redeploy.
+2. **Formulaire web d'onboarding** : Developper un micro-service devant l'API WebSocket du Gateway qui expose un formulaire de demande d'acces. L'admin approuve via une interface web au lieu du CLI. Necessiterait un service custom (hors scope du template actuel).
+
 ### 15.5 Qdrant
 
 - **URL** : `https://<qdrant-subdomain>.<votre-domaine>/dashboard` (ex: `https://qd.example.com/dashboard`)

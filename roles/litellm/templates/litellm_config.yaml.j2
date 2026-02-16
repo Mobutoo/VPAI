@@ -33,6 +33,8 @@ litellm_settings:
   num_retries: 2
   request_timeout: 120
   fallbacks: [{"claude-sonnet": ["gpt-4o"]}]
+  success_callback: ["prometheus"]
+  failure_callback: ["prometheus"]
   cache: true
   cache_params:
     type: "redis"

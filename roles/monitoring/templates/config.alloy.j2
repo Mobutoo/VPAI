@@ -90,24 +90,31 @@ prometheus.remote_write "victoriametrics" {
 }
 
 // ============================================================
+// LOGS: Relabel Docker targets for log collection
+// ============================================================
+
+discovery.relabel "docker_logs" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+}
+
+// ============================================================
 // LOGS: Docker container logs
 // ============================================================
 
 loki.source.docker "containers" {
   host       = "unix:///var/run/docker.sock"
-  targets    = discovery.docker.containers.targets
+  targets    = discovery.relabel.docker_logs.output
   forward_to = [loki.process.docker.receiver]
 }
 
 loki.process "docker" {
-  // Extract container name
   stage.docker {}
-
-  stage.labels {
-    values = {
-      container = "",
-    }
-  }
 
   // Add static labels
   stage.static_labels {

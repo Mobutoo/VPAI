@@ -133,6 +133,7 @@ services:
     volumes:
       - /opt/{{ project_name }}/configs/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - /opt/{{ project_name }}/configs/caddy/admin-landing.html:/srv/admin-landing.html:ro
+      - /opt/{{ project_name }}/configs/caddy/restricted-zone.html:/srv/restricted-zone.html:ro
       - /opt/{{ project_name }}/data/caddy/data:/data
       - /opt/{{ project_name }}/data/caddy/config:/config
       - /opt/{{ project_name }}/logs/caddy:/var/log/caddy

@@ -17,7 +17,11 @@
 
 (vpn_only) {
     @blocked not remote_ip {{ caddy_vpn_cidr }}
-    respond @blocked 403
+    handle @blocked {
+        root * /srv
+        rewrite * /restricted-zone.html
+        file_server
+    }
 }
 
 {{ caddy_domain }} {

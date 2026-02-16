@@ -50,3 +50,13 @@
     mode: "0644"
   become: true
   notify: Restart caddy stack
+
+- name: Deploy restricted zone page (VPN block page)
+  ansible.builtin.template:
+    src: restricted-zone.html.j2
+    dest: "{{ caddy_config_dir }}/restricted-zone.html"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart caddy stack

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zone Restreinte</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    min-height: 100vh;
+    background: #0a0a0a;
+    color: #00ff41;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 255, 65, 0.03) 2px,
+        rgba(0, 255, 65, 0.03) 4px
+      );
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  .container {
+    text-align: center;
+    padding: 2rem;
+    max-width: 620px;
+    position: relative;
+    z-index: 5;
+  }
+
+  .warning-icon {
+    font-size: 5rem;
+    margin-bottom: 1rem;
+    animation: pulse 2s ease-in-out infinite;
+    filter: drop-shadow(0 0 20px rgba(255, 60, 60, 0.6));
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.05); }
+  }
+
+  .code { font-size: 6rem; font-weight: bold; color: #ff3c3c;
+    text-shadow: 0 0 30px rgba(255, 60, 60, 0.5); line-height: 1; }
+
+  h1 { font-size: 1.4rem; margin: 1.2rem 0 0.5rem;
+    text-transform: uppercase; letter-spacing: 4px; color: #ff3c3c; }
+
+  .classified {
+    display: inline-block; padding: 0.3rem 1.2rem; margin: 1rem 0;
+    border: 2px solid #ff3c3c; color: #ff3c3c; font-size: 0.9rem;
+    letter-spacing: 6px; text-transform: uppercase;
+    animation: blink 3s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+
+  .message { color: #00cc33; font-size: 0.85rem; line-height: 1.8;
+    margin: 1.5rem 0; }
+
+  .terminal-line { color: #00ff41; font-size: 0.75rem; opacity: 0.6;
+    margin: 0.3rem 0; }
+
+  .terminal-line::before { content: '> '; color: #ff3c3c; }
+
+  .grid-bg {
+    position: fixed; inset: 0; z-index: 1;
+    background-image:
+      linear-gradient(rgba(0, 255, 65, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 255, 65, 0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .corner { position: fixed; width: 60px; height: 60px; z-index: 2; }
+  .corner::before, .corner::after {
+    content: ''; position: absolute; background: #ff3c3c;
+  }
+  .tl { top: 20px; left: 20px; }
+  .tl::before { width: 30px; height: 2px; top: 0; left: 0; }
+  .tl::after  { width: 2px; height: 30px; top: 0; left: 0; }
+  .tr { top: 20px; right: 20px; }
+  .tr::before { width: 30px; height: 2px; top: 0; right: 0; }
+  .tr::after  { width: 2px; height: 30px; top: 0; right: 0; }
+  .bl { bottom: 20px; left: 20px; }
+  .bl::before { width: 30px; height: 2px; bottom: 0; left: 0; }
+  .bl::after  { width: 2px; height: 30px; bottom: 0; left: 0; }
+  .br { bottom: 20px; right: 20px; }
+  .br::before { width: 30px; height: 2px; bottom: 0; right: 0; }
+  .br::after  { width: 2px; height: 30px; bottom: 0; right: 0; }
+</style>
+</head>
+<body>
+  <div class="grid-bg"></div>
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
+
+  <div class="container">
+    <div class="warning-icon">&#9888;</div>
+    <div class="code">403</div>
+    <h1>Acces non autorise</h1>
+    <div class="classified">Classifie</div>
+    <div class="message">
+      Vous tentez d'acceder a une zone restreinte.<br>
+      Ce secteur est sous surveillance permanente.<br>
+      Seul le personnel autorise disposant d'un acces<br>
+      reseau securise peut penetrer dans cette zone.
+    </div>
+    <div class="terminal-line">CONNEXION REFUSEE &mdash; PROTOCOLE VPN REQUIS</div>
+    <div class="terminal-line">INCIDENT JOURNALISE &mdash; ID: <span id="ts"></span></div>
+    <div class="terminal-line">COORDONNEES VISITEUR ENREGISTREES</div>
+  </div>
+  <script>
+    document.getElementById('ts').textContent =
+      new Date().toISOString().replace(/[-:T]/g,'').slice(0,14);
+  </script>
+</body>
+</html>

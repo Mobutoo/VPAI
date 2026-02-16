@@ -22,5 +22,8 @@ victoriametrics_image: "victoriametrics/victoria-metrics:v1.135.0"
 loki_image: "grafana/loki:3.6.5"
 alloy_image: "grafana/alloy:v1.13.0"
 
+# --- Monitoring (collecteurs) ---
+cadvisor_image: "ghcr.io/google/cadvisor:0.55.1"
+
 # --- Système ---
 diun_image: "crazymax/diun:4.31.0"

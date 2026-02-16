@@ -36,23 +36,47 @@ prometheus.scrape "node" {
 }
 
 // ============================================================
-// METRICS: cAdvisor (container metrics via Docker)
+// METRICS: cAdvisor (container metrics)
 // ============================================================
 
-discovery.relabel "docker_metrics" {
-  targets = discovery.docker.containers.targets
+prometheus.scrape "cadvisor" {
+  targets = [{
+    __address__ = "cadvisor:8080",
+  }]
+  forward_to      = [prometheus.relabel.cadvisor.receiver]
+  scrape_interval = "30s"
+  job_name        = "cadvisor"
+  metrics_path    = "/metrics"
+}
+
+// Relabel cAdvisor metrics: normalise container names (strip leading /)
+prometheus.relabel "cadvisor" {
+  forward_to = [prometheus.remote_write.victoriametrics.receiver]
 
   rule {
-    source_labels = ["__meta_docker_container_name"]
+    source_labels = ["name"]
     regex         = "/(.*)"
+    target_label  = "name"
+  }
+
+  rule {
+    source_labels = ["name"]
     target_label  = "container"
   }
+}
 
-  rule {
-    source_labels = ["__meta_docker_container_name"]
-    regex         = "/(.*)"
-    target_label  = "instance"
-  }
+// ============================================================
+// METRICS: LiteLLM Proxy (request/spend/token metrics)
+// ============================================================
+
+prometheus.scrape "litellm" {
+  targets = [{
+    __address__ = "litellm:4000",
+  }]
+  forward_to      = [prometheus.remote_write.victoriametrics.receiver]
+  scrape_interval = "30s"
+  job_name        = "litellm"
+  metrics_path    = "/metrics"
 }
 
 // ============================================================

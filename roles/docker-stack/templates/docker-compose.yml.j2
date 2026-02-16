@@ -111,6 +111,41 @@ services:
       start_period: 60s
 
   # === MONITORING LAYER ===
+  cadvisor:
+    image: {{ cadvisor_image }}
+    container_name: {{ project_name }}_cadvisor
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_OVERRIDE
+      - FOWNER
+    command:
+      - "--docker_only=true"
+      - "--housekeeping_interval=30s"
+      - "--disable_metrics=advtcp,cpu_topology,cpuset,hugetlb,memory_numa,process,referenced_memory,resctrl,sched,tcp,udp"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          memory: {{ cadvisor_memory_limit }}
+          cpus: "{{ cadvisor_cpu_limit }}"
+        reservations:
+          memory: {{ cadvisor_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   victoriametrics:
     image: {{ victoriametrics_image }}
     container_name: {{ project_name }}_victoriametrics

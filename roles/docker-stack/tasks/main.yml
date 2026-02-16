@@ -243,7 +243,16 @@
     cmd: "docker restart {{ project_name }}_litellm"
   become: true
   changed_when: true
+  failed_when: false
+  register: litellm_restart
   when: litellm_precheck.stdout | default('') != 'healthy'
+
+- name: Show LiteLLM restart result
+  ansible.builtin.debug:
+    msg: >-
+      LiteLLM restart: {{ litellm_restart.rc | default('skipped') }}
+      {{ litellm_restart.stderr | default('') }}
+  when: litellm_restart is not skipped and litellm_restart.rc | default(0) != 0
 
 - name: Wait for LiteLLM to be healthy
   ansible.builtin.command:
@@ -263,6 +272,7 @@
     cmd: "docker logs {{ project_name }}_litellm --tail 30"
   become: true
   changed_when: false
+  failed_when: false
   when: litellm_health.stdout | default('') != 'healthy'
 
 - name: Warn if LiteLLM is unhealthy

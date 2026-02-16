@@ -71,6 +71,11 @@ caddy_memory_limit: "256M"
 caddy_memory_reservation: "64M"
 caddy_cpu_limit: "0.5"
 
+# cAdvisor (container metrics collector)
+cadvisor_memory_limit: "256M"
+cadvisor_memory_reservation: "64M"
+cadvisor_cpu_limit: "0.25"
+
 # DIUN
 diun_memory_limit: "128M"
 diun_memory_reservation: "32M"

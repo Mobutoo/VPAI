@@ -30,7 +30,7 @@ Ce repository est un projet **Ansible** qui deploie une stack AI/automatisation 
 - **Reverse Proxy** : Caddy (TLS auto, ACL VPN)
 - **Donnees** : PostgreSQL 18.1, Redis 8.0, Qdrant v1.16.3
 - **Applications** : n8n 2.7.3, OpenClaw, LiteLLM v1.81.3-stable
-- **Observabilite** : Grafana 12.3.2, VictoriaMetrics v1.135.0, Loki 3.6.5, Alloy v1.13.0
+- **Observabilite** : Grafana 12.3.2, VictoriaMetrics v1.135.0, Loki 3.6.5, Alloy v1.13.0, cAdvisor v0.55.1
 - **Systeme** : DIUN 4.31.0, CrowdSec, Fail2ban, UFW
 - **Backup** : Zerobyte v0.16 (sur serveur VPN distant, orchestre via cron local)
 - **Monitoring externe** : Uptime Kuma (sur serveur VPN distant)
@@ -135,7 +135,7 @@ Phase 6 -- Hardening (DERNIER)
 ### Docker Compose en 2 Fichiers
 
 - **`docker-compose-infra.yml`** (Phase A) : PostgreSQL, Redis, Qdrant, Caddy + 4 reseaux. Pas de `depends_on`. Chaque service demarre independamment.
-- **`docker-compose.yml`** (Phase B) : n8n, LiteLLM, OpenClaw, VictoriaMetrics, Loki, Alloy, Grafana, DIUN. Reseaux en `external: true`.
+- **`docker-compose.yml`** (Phase B) : n8n, LiteLLM, OpenClaw, cAdvisor, VictoriaMetrics, Loki, Alloy, Grafana, DIUN. Reseaux en `external: true`.
 
 ### Reseaux Docker Isoles
 
@@ -144,7 +144,7 @@ Phase 6 -- Hardening (DERNIER)
 | `frontend` | 172.20.1.0/24 | Non | Caddy, Grafana |
 | `backend` | 172.20.2.0/24 | Oui | PG, Redis, Qdrant, n8n, LiteLLM, OpenClaw, Caddy, Alloy |
 | `egress` | 172.20.4.0/24 | Non | n8n, LiteLLM, OpenClaw |
-| `monitoring` | 172.20.3.0/24 | Oui | VictoriaMetrics, Loki, Alloy, Grafana |
+| `monitoring` | 172.20.3.0/24 | Oui | cAdvisor, VictoriaMetrics, Loki, Alloy, Grafana |
 
 ---
 
@@ -218,7 +218,20 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **VictoriaMetrics** : UID 1000 (pas `{{ prod_user }}`)
 - **Loki** : UID 10001 (pas `{{ prod_user }}`)
 - **Grafana** : UID 472
+- **cAdvisor** : Root (read-only volumes /sys, /var/lib/docker, docker.sock). Pas de data persistant.
 - **Regle** : Les dirs de data doivent etre `chown` avec l'UID du conteneur, pas l'utilisateur systeme
+
+### cAdvisor -- Container Metrics
+
+- **Role** : Collecte les metriques `container_*` (CPU, memoire, reseau, I/O, restarts) pour tous les conteneurs Docker
+- **Image** : `ghcr.io/google/cadvisor:0.55.1` (depuis v0.53.0, migre de `gcr.io` vers `ghcr.io`). **ATTENTION** : les tags cAdvisor n'ont PAS de prefixe `v` (ex: `0.55.1`, pas `v0.55.1`)
+- **Reseau** : `monitoring` uniquement (pas besoin de `backend`, lit les metriques via Docker socket + /sys)
+- **Volumes** : `/var/run/docker.sock:ro`, `/sys:ro`, `/var/lib/docker:ro` (tout en read-only)
+- **Capabilities** : `DAC_OVERRIDE` + `FOWNER` (acces aux volumes montes avec `cap_drop: ALL`)
+- **Optimisation** : `--docker_only=true` (ignore les cgroups non-Docker), `--disable_metrics=advtcp,...` (reduit la cardinalite)
+- **Port** : 8080 (metrics endpoint), scrape par Alloy via `prometheus.scrape "cadvisor"`
+- **Healthcheck** : `wget -qO- http://127.0.0.1:8080/healthz`
+- **Dashboards** : `docker-containers.json` et `postgresql.json` utilisent les metriques `container_*`
 
 ### Loki 3.6.5 -- Image Distroless
 

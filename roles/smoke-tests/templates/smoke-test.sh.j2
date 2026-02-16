@@ -13,6 +13,16 @@ N8N_URL="https://{{ n8n_subdomain }}.{{ domain_name }}"
 {% else %}
 N8N_URL="${ADMIN_URL}/n8n"
 {% endif %}
+{% if litellm_subdomain | default('') | length > 0 %}
+LITELLM_URL="https://{{ litellm_subdomain }}.{{ domain_name }}"
+{% else %}
+LITELLM_URL="${BASE_URL}/litellm"
+{% endif %}
+{% if qdrant_subdomain | default('') | length > 0 %}
+QDRANT_URL="https://{{ qdrant_subdomain }}.{{ domain_name }}"
+{% else %}
+QDRANT_URL="${ADMIN_URL}/qdrant"
+{% endif %}
 TIMEOUT="{{ smoke_test_timeout }}"
 PROJECT="{{ project_name }}"
 FAILURES=0
@@ -25,6 +35,12 @@ if [ -n "${TAILSCALE_IP}" ]; then
   CURL_VPN_OPTS="--resolve {{ admin_subdomain | default('admin') }}.{{ domain_name }}:443:${TAILSCALE_IP}"
 {% if n8n_subdomain | default('') | length > 0 %}
   CURL_VPN_OPTS="${CURL_VPN_OPTS} --resolve {{ n8n_subdomain }}.{{ domain_name }}:443:${TAILSCALE_IP}"
+{% endif %}
+{% if litellm_subdomain | default('') | length > 0 %}
+  CURL_VPN_OPTS="${CURL_VPN_OPTS} --resolve {{ litellm_subdomain }}.{{ domain_name }}:443:${TAILSCALE_IP}"
+{% endif %}
+{% if qdrant_subdomain | default('') | length > 0 %}
+  CURL_VPN_OPTS="${CURL_VPN_OPTS} --resolve {{ qdrant_subdomain }}.{{ domain_name }}:443:${TAILSCALE_IP}"
 {% endif %}
   echo "INFO  Using Tailscale IP ${TAILSCALE_IP} for VPN-protected endpoints"
 else
@@ -112,9 +128,10 @@ echo "--- Application Endpoints ---"
 check_http "n8n healthz" "${N8N_URL}/healthz"
 check_http "Grafana health" "${ADMIN_URL}/grafana/api/health"
 # LiteLLM /health requires auth (master_key in general_settings)
+# shellcheck disable=SC2086
 LITELLM_STATUS=$(curl -sL -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" \
   -H "Authorization: Bearer {{ litellm_master_key }}" \
-  "${BASE_URL}/litellm/health" 2>/dev/null) || LITELLM_STATUS="000"
+  ${CURL_VPN_OPTS} "${LITELLM_URL}/health" 2>/dev/null) || LITELLM_STATUS="000"
 if [ "$LITELLM_STATUS" = "200" ]; then
   echo "PASS  LiteLLM health (HTTP $LITELLM_STATUS)"
 else
@@ -189,8 +206,9 @@ echo ""
 
 # === LiteLLM API ===
 echo "--- LiteLLM API ---"
+# shellcheck disable=SC2086
 MODELS=$(curl -s -H "Authorization: Bearer {{ litellm_master_key }}" \
-  "${BASE_URL}/litellm/v1/models" --max-time "${TIMEOUT}" 2>/dev/null | \
+  ${CURL_VPN_OPTS} "${LITELLM_URL}/v1/models" --max-time "${TIMEOUT}" 2>/dev/null | \
   grep -o '"id"' | wc -l) || MODELS=0
 if [ "${MODELS}" -gt 0 ]; then
   echo "PASS  LiteLLM models (${MODELS} models available)"
@@ -216,8 +234,8 @@ else
   echo "SKIP  n8n owner check (could not determine setup state)"
 fi
 
-# LiteLLM UI accessible (on public domain, behind API key auth)
-check_http "LiteLLM UI" "${BASE_URL}/litellm/ui/" "200"
+# LiteLLM UI accessible (on dedicated subdomain, behind API key auth)
+check_http "LiteLLM UI" "${LITELLM_URL}/ui/" "200"
 
 # Grafana login possible (just check the login page loads)
 check_http "Grafana login page" "${ADMIN_URL}/grafana/login" "200"

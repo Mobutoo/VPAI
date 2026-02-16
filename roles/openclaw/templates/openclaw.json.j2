@@ -4,7 +4,8 @@
     "port": {{ openclaw_gateway_port }},
     "bind": "{{ openclaw_gateway_bind }}",
     "auth": {
-      "mode": "token"
+      "mode": "token",
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
     "trustedProxies": ["{{ docker_network_backend_subnet }}"],
     "controlUi": {
@@ -16,6 +17,8 @@
   },
   "agents": {
     "defaults": {
+      "workspace": "/home/node/.openclaw/workspace",
+      "userTimezone": "{{ timezone }}",
       "model": {
         "primary": "{{ openclaw_default_model }}"
       }

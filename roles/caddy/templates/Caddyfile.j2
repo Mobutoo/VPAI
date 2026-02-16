@@ -37,14 +37,10 @@
 }
 {% endif %}
 
+# === PUBLIC DOMAIN ===
 {{ caddy_domain }} {
     handle /health {
         respond "OK" 200
-    }
-
-    handle /litellm/* {
-        uri strip_prefix /litellm
-        reverse_proxy litellm:4000
     }
 
     handle {
@@ -58,22 +54,15 @@
         Referrer-Policy "strict-origin-when-cross-origin"
         -Server
     }
-
-    # NOTE: rate_limit requires caddy-ratelimit plugin (not in stock image)
-    # To enable, build custom Caddy image with: xcaddy build --with github.com/mholt/caddy-ratelimit
-    # rate_limit {
-    #     zone global {
-    #         key {remote_host}
-    #         events {{ caddy_rate_limit_events }}
-    #         window {{ caddy_rate_limit_window }}
-    #     }
-    # }
 }
 
+# === ADMIN DOMAIN (Grafana + OpenClaw) ===
 {{ caddy_admin_domain }} {
     import vpn_only
     import vpn_error_page
 
+    # Grafana — supports sub-path via GF_SERVER_SERVE_FROM_SUB_PATH=true
+    # Do NOT strip_prefix: Grafana handles the /grafana/ prefix itself
     handle /grafana/* {
         reverse_proxy grafana:3000
     }
@@ -84,19 +73,6 @@
     handle /openclaw/* {
         reverse_proxy openclaw:18789
     }
-
-    handle /qdrant/* {
-        uri strip_prefix /qdrant
-        reverse_proxy qdrant:6333
-    }
-
-{% if n8n_subdomain | default('') | length == 0 %}
-    # n8n on admin subdomain sub-path (fallback when no dedicated subdomain)
-    handle /n8n/* {
-        uri strip_prefix /n8n
-        reverse_proxy n8n:5678
-    }
-{% endif %}
 
     handle {
         root * /srv
@@ -112,15 +88,50 @@
     }
 }
 
-{% if n8n_subdomain | default('') | length > 0 %}
-# n8n on dedicated subdomain ({{ caddy_n8n_domain }})
+# === n8n — dedicated subdomain ===
 # REX: n8n does NOT support sub-path deployment (GitHub issue #19635)
-# A dedicated subdomain is the only reliable approach
+{% if n8n_subdomain | default('') | length > 0 %}
 {{ caddy_n8n_domain }} {
     import vpn_only
     import vpn_error_page
 
     reverse_proxy n8n:5678
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+{% endif %}
+
+# === LiteLLM — dedicated subdomain ===
+# REX: LiteLLM UI does NOT support sub-path (SERVER_ROOT_PATH buggy: issues #11451, #11865)
+{% if litellm_subdomain | default('') | length > 0 %}
+{{ caddy_litellm_domain }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy litellm:4000
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+{% endif %}
+
+# === Qdrant — dedicated subdomain ===
+# REX: Qdrant dashboard does NOT support sub-path (qdrant-web-ui issue #94, open since 2023)
+{% if qdrant_subdomain | default('') | length > 0 %}
+{{ caddy_qdrant_domain }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy qdrant:6333
 
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"

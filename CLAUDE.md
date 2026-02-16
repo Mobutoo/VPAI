@@ -326,12 +326,12 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 
 ### Sub-path Hosting -- Limites Connues
 
-- **LiteLLM UI** : Ne supporte PAS le sub-path (`SERVER_ROOT_PATH` buggy). API fonctionne, UI non.
-- **Qdrant Dashboard** : Ne supporte PAS le sub-path (issue qdrant-web-ui#94 ouverte depuis 2023). API fonctionne, dashboard non.
+- **LiteLLM UI** : Ne supporte PAS le sub-path (`SERVER_ROOT_PATH` buggy). **Migre vers sous-domaine dedie** (`llm.domain`)
+- **Qdrant Dashboard** : Ne supporte PAS le sub-path (issue qdrant-web-ui#94). **Migre vers sous-domaine dedie** (`qd.domain`)
 - **OpenClaw Control UI** : Supporte le sub-path via `controlUi.basePath` + pas de strip_prefix dans Caddy
 - **Grafana** : Supporte le sub-path via `GF_SERVER_SERVE_FROM_SUB_PATH=true` + pas de strip_prefix
-- **n8n** : Ne supporte PAS le sub-path (issue #19635) — utilise un sous-domaine dedie
-- **Regle generale** : Quand une app ne supporte pas le sub-path, utiliser un sous-domaine dedie ou accepter API-only
+- **n8n** : Ne supporte PAS le sub-path (issue #19635) — sous-domaine dedie (`mayi.domain`)
+- **Regle generale** : Quand une app ne supporte pas le sub-path, utiliser un sous-domaine dedie
 
 ### Smoke Tests
 
@@ -340,6 +340,7 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **Qdrant connectivity** : Via `docker exec` + `bash -c ':> /dev/tcp/localhost/6333'`
 - **VPN-protected endpoints** : Resolus via IP Tailscale avec `curl --resolve`
 - **LiteLLM health** : Requiert le header auth Bearer dans le smoke test et le healthcheck Docker
+- **LiteLLM UI** : Teste sur le domaine dedie (pas admin), accessible via API key
 
 ### Debian 13 (Trixie) -- Specifique
 

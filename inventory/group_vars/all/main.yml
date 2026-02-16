@@ -16,6 +16,8 @@ domain_registrar: "ovh"
 dns_api_endpoint: "ovh-eu"
 admin_subdomain: "javisi"
 n8n_subdomain: "mayi"
+litellm_subdomain: "llm"
+qdrant_subdomain: "qd"
 subdomain_preprod: "preprod"
 
 # --- VPN Access Control ---

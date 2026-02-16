@@ -111,7 +111,16 @@ echo ""
 echo "--- Application Endpoints ---"
 check_http "n8n healthz" "${N8N_URL}/healthz"
 check_http "Grafana health" "${ADMIN_URL}/grafana/api/health"
-check_http "LiteLLM health" "${BASE_URL}/litellm/health"
+# LiteLLM /health requires auth (master_key in general_settings)
+LITELLM_STATUS=$(curl -sL -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" \
+  -H "Authorization: Bearer {{ litellm_master_key }}" \
+  "${BASE_URL}/litellm/health" 2>/dev/null) || LITELLM_STATUS="000"
+if [ "$LITELLM_STATUS" = "200" ]; then
+  echo "PASS  LiteLLM health (HTTP $LITELLM_STATUS)"
+else
+  echo "FAIL  LiteLLM health (HTTP $LITELLM_STATUS, expected 200)"
+  FAILURES=$((FAILURES + 1))
+fi
 
 echo ""
 

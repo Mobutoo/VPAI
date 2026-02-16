@@ -302,16 +302,16 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **`NODE_OPTIONS=--max-old-space-size=768`** dans openclaw.env.j2
 - **Limite Docker** : 1536M minimum pour OpenClaw
 - **Control UI** : Servie directement par le Gateway sur le meme port (18789)
-- **Caddy proxy** : `reverse_proxy openclaw:18789` avec `uri strip_prefix /openclaw`
+- **Caddy proxy** : `reverse_proxy openclaw:18789` (sous-domaine dedie, pas de strip_prefix)
 - **Onboarding** : Le flag `--allow-unconfigured` dans le Dockerfile permet de demarrer sans onboarding interactif
 - **Image** : `ghcr.io/openclaw/openclaw:2026.2.15` (tags: YYYY.M.DD, pas de prefixe v)
 - **Volume** : Monter `/home/node/.openclaw` en RW (pas readonly) — OpenClaw ecrit canvas/, cron/, sessions/, plugins/
 - **`agents.defaults.model`** : Doit etre un objet `{"primary": "provider/model"}`, PAS une string
 - **`channels.telegram`** : La cle est `botToken` (pas `token`)
-- **`controlUi.basePath`** : Doit correspondre au chemin public (`/openclaw`), PAS au chemin interne
-- **Reverse proxy** : Ne PAS strip_prefix quand basePath est configure — le Gateway attend le full path
+- **`controlUi.basePath`** : `/` quand sous-domaine dedie (pas de sub-path)
 - **`trustedProxies`** : Necessaire derriere un reverse proxy pour X-Forwarded-For
 - **`allowInsecureAuth`** : Necessaire car WebCrypto requiert HTTPS ou localhost
+- **Token bootstrap** : Le Control UI stocke le gateway token dans `localStorage` du navigateur. Au premier acces, localStorage est vide et l'UI boucle sur "token missing" sans afficher de prompt de saisie. **Fix** : route `/__bootstrap__` dans Caddy qui injecte le token via JS et redirige. Premier acces : `https://<admin_subdomain>.<domain>/__bootstrap__`
 
 ### LiteLLM -- Config Syntax
 

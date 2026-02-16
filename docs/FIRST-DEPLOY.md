@@ -1017,6 +1017,7 @@ n8n affichera le formulaire de setup initial. Remplissez-le avec les memes crede
 - **URL** : `https://<admin-subdomain>.<votre-domaine>/` (ex: `https://javisi.example.com/`)
 - **Acces API** : cle `openclaw_api_key` dans `secrets.yml`
 - **Gateway token** : cle `openclaw_gateway_token` dans `secrets.yml` (auth Control UI)
+- **Premier acces** : Ouvrir `https://<admin-subdomain>.<votre-domaine>/__bootstrap__` pour configurer le token dans le navigateur. L'UI redirigera automatiquement vers le dashboard.
 - **Notifications** : Bot Telegram dedie si configure (voir `main.yml`)
 
 ### 15.5 Qdrant

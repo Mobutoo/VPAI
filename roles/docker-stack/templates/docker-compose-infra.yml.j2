@@ -147,7 +147,7 @@ services:
         reservations:
           memory: {{ caddy_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:2019/config/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:2019/config/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

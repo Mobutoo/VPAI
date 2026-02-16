@@ -324,14 +324,24 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **UI sub-path** : `SERVER_ROOT_PATH` est buggy (issues #11451, #11865, #10761) — UI web non-fonctionnelle en sub-path
 - **Health endpoint** : `/health` requiert le header `Authorization: Bearer <master_key>` quand master_key est configure
 
-### Sub-path Hosting -- Limites Connues
+### Architecture Sous-domaines (1 service = 1 sous-domaine)
 
-- **LiteLLM UI** : Ne supporte PAS le sub-path (`SERVER_ROOT_PATH` buggy). **Migre vers sous-domaine dedie** (`llm.domain`)
-- **Qdrant Dashboard** : Ne supporte PAS le sub-path (issue qdrant-web-ui#94). **Migre vers sous-domaine dedie** (`qd.domain`)
-- **OpenClaw Control UI** : Supporte le sub-path via `controlUi.basePath` + pas de strip_prefix dans Caddy
-- **Grafana** : Supporte le sub-path via `GF_SERVER_SERVE_FROM_SUB_PATH=true` + pas de strip_prefix
-- **n8n** : Ne supporte PAS le sub-path (issue #19635) — sous-domaine dedie (`mayi.domain`)
-- **Regle generale** : Quand une app ne supporte pas le sub-path, utiliser un sous-domaine dedie
+- **`admin_subdomain`** (javisi) : OpenClaw Gateway exclusivement (basePath=/, pas de strip_prefix)
+- **`grafana_subdomain`** (tala) : Grafana exclusivement (pas de SERVE_FROM_SUB_PATH)
+- **`n8n_subdomain`** (mayi) : n8n (ne supporte pas le sub-path, issue #19635)
+- **`litellm_subdomain`** (llm) : LiteLLM (UI buggy en sub-path, issues #11451/#11865)
+- **`qdrant_subdomain`** (qd) : Qdrant (dashboard sans support sub-path, issue #94)
+- **Regle** : Chaque service a son propre sous-domaine. Plus de sub-path.
+
+### OpenClaw -- Sandbox (Isolation des Workspaces)
+
+- **2 couches d'isolation** : Gateway dans Docker + outils dans des conteneurs sandbox separes
+- **Docker socket** : Monte en read-only (`/var/run/docker.sock:/var/run/docker.sock:ro`) pour spawner les sandbox
+- **Modes** : `"off"` (pas de sandbox), `"non-main"` (sandbox subagents), `"all"` (tout sandbox)
+- **Config** : `agents.defaults.sandbox` dans openclaw.json (mode, scope, docker settings, prune)
+- **tools.elevated.enabled** : TOUJOURS `false` (empeche l'execution host non-sandboxee)
+- **tools.fs.workspaceOnly** : `true` (restreint les operations fichiers au workspace)
+- **CVE recentes** : GHSA-gv46-4xfq-jv58 (RCE bypass Gateway), GHSA-xw4p-pw82-hqr7 (path traversal sandbox)
 
 ### Smoke Tests
 

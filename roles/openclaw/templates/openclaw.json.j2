@@ -10,7 +10,7 @@
     "trustedProxies": ["{{ docker_network_backend_subnet }}"],
     "controlUi": {
       "enabled": true,
-      "basePath": "/openclaw",
+      "basePath": "/",
       "allowInsecureAuth": true,
       "allowedOrigins": ["https://{{ admin_subdomain }}.{{ domain_name }}"]
     }
@@ -21,6 +21,26 @@
       "userTimezone": "{{ timezone }}",
       "model": {
         "primary": "{{ openclaw_default_model }}"
+      },
+      "sandbox": {
+        "mode": "{{ openclaw_sandbox_mode | default('non-main') }}",
+        "scope": "agent",
+        "workspaceAccess": "none",
+        "docker": {
+          "image": "{{ openclaw_sandbox_image | default('openclaw-sandbox:bookworm-slim') }}",
+          "readOnlyRoot": true,
+          "tmpfs": ["/tmp", "/var/tmp", "/run"],
+          "network": "none",
+          "user": "1000:1000",
+          "capDrop": ["ALL"],
+          "pidsLimit": 256,
+          "memory": "{{ openclaw_sandbox_memory | default('1g') }}",
+          "cpus": {{ openclaw_sandbox_cpus | default(1) }}
+        },
+        "prune": {
+          "idleHours": 24,
+          "maxAgeDays": 7
+        }
       }
     }
   },
@@ -58,6 +78,20 @@
           }
         ]
       }
+    }
+  },
+  "tools": {
+    "elevated": {
+      "enabled": false
+    },
+    "exec": {
+      "applyPatch": {
+        "workspaceOnly": true
+      },
+      "timeoutSec": 120
+    },
+    "fs": {
+      "workspaceOnly": true
     }
   },
 {% if telegram_openclaw_bot_token | default('') | length > 0 %}

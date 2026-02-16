@@ -7,11 +7,16 @@
 set -euo pipefail
 
 BASE_URL="{{ smoke_test_base_url }}"
-ADMIN_URL="{{ smoke_test_admin_url }}"
+OPENCLAW_URL="https://{{ admin_subdomain | default('admin') }}.{{ domain_name }}"
+{% if grafana_subdomain | default('') | length > 0 %}
+GRAFANA_URL="https://{{ grafana_subdomain }}.{{ domain_name }}"
+{% else %}
+GRAFANA_URL="${OPENCLAW_URL}/grafana"
+{% endif %}
 {% if n8n_subdomain | default('') | length > 0 %}
 N8N_URL="https://{{ n8n_subdomain }}.{{ domain_name }}"
 {% else %}
-N8N_URL="${ADMIN_URL}/n8n"
+N8N_URL="${OPENCLAW_URL}/n8n"
 {% endif %}
 {% if litellm_subdomain | default('') | length > 0 %}
 LITELLM_URL="https://{{ litellm_subdomain }}.{{ domain_name }}"
@@ -21,18 +26,21 @@ LITELLM_URL="${BASE_URL}/litellm"
 {% if qdrant_subdomain | default('') | length > 0 %}
 QDRANT_URL="https://{{ qdrant_subdomain }}.{{ domain_name }}"
 {% else %}
-QDRANT_URL="${ADMIN_URL}/qdrant"
+QDRANT_URL="${OPENCLAW_URL}/qdrant"
 {% endif %}
 TIMEOUT="{{ smoke_test_timeout }}"
 PROJECT="{{ project_name }}"
 FAILURES=0
 
-# VPN-protected admin services: resolve admin domains via Tailscale IP
+# VPN-protected services: resolve domains via Tailscale IP
 # so Caddy sees a VPN source IP (in {{ caddy_vpn_cidr }}) instead of Docker gateway IP
 TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "")
 CURL_VPN_OPTS=""
 if [ -n "${TAILSCALE_IP}" ]; then
   CURL_VPN_OPTS="--resolve {{ admin_subdomain | default('admin') }}.{{ domain_name }}:443:${TAILSCALE_IP}"
+{% if grafana_subdomain | default('') | length > 0 %}
+  CURL_VPN_OPTS="${CURL_VPN_OPTS} --resolve {{ grafana_subdomain }}.{{ domain_name }}:443:${TAILSCALE_IP}"
+{% endif %}
 {% if n8n_subdomain | default('') | length > 0 %}
   CURL_VPN_OPTS="${CURL_VPN_OPTS} --resolve {{ n8n_subdomain }}.{{ domain_name }}:443:${TAILSCALE_IP}"
 {% endif %}
@@ -126,7 +134,7 @@ echo ""
 # === APPLICATION HEALTH ===
 echo "--- Application Endpoints ---"
 check_http "n8n healthz" "${N8N_URL}/healthz"
-check_http "Grafana health" "${ADMIN_URL}/grafana/api/health"
+check_http "Grafana health" "${GRAFANA_URL}/api/health"
 # LiteLLM /health requires auth (master_key in general_settings)
 # shellcheck disable=SC2086
 LITELLM_STATUS=$(curl -sL -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" \
@@ -234,11 +242,11 @@ else
   echo "SKIP  n8n owner check (could not determine setup state)"
 fi
 
-# LiteLLM UI accessible (on dedicated subdomain, behind API key auth)
+# LiteLLM UI accessible (on dedicated subdomain)
 check_http "LiteLLM UI" "${LITELLM_URL}/ui/" "200"
 
-# Grafana login possible (just check the login page loads)
-check_http "Grafana login page" "${ADMIN_URL}/grafana/login" "200"
+# Grafana login possible (dedicated subdomain)
+check_http "Grafana login page" "${GRAFANA_URL}/login" "200"
 
 echo ""
 

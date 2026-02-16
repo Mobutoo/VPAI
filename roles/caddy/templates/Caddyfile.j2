@@ -56,29 +56,14 @@
     }
 }
 
-# === ADMIN DOMAIN (Grafana + OpenClaw) ===
+# === OpenClaw — dedicated subdomain (javisi) ===
+# OpenClaw Gateway (Control UI + WebSocket on port 18789)
+# basePath=/ — Gateway serves UI at root of its own subdomain
 {{ caddy_admin_domain }} {
     import vpn_only
     import vpn_error_page
 
-    # Grafana — supports sub-path via GF_SERVER_SERVE_FROM_SUB_PATH=true
-    # Do NOT strip_prefix: Grafana handles the /grafana/ prefix itself
-    handle /grafana/* {
-        reverse_proxy grafana:3000
-    }
-
-    # OpenClaw Gateway (Control UI + WebSocket on port 18789)
-    # basePath=/openclaw in openclaw.json — Gateway serves UI at /openclaw/
-    # Do NOT strip_prefix: Gateway expects the full path with prefix
-    handle /openclaw/* {
-        reverse_proxy openclaw:18789
-    }
-
-    handle {
-        root * /srv
-        try_files {path} /admin-landing.html
-        file_server
-    }
+    reverse_proxy openclaw:18789
 
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -87,6 +72,24 @@
         -Server
     }
 }
+
+# === Grafana — dedicated subdomain (tala) ===
+# REX: Grafana on its own subdomain — no need for SERVE_FROM_SUB_PATH
+{% if grafana_subdomain | default('') | length > 0 %}
+{{ caddy_grafana_domain }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy grafana:3000
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+{% endif %}
 
 # === n8n — dedicated subdomain ===
 # REX: n8n does NOT support sub-path deployment (GitHub issue #19635)

@@ -83,5 +83,5 @@
       ℹ️  n8n owner already provisioned or not configured. Skipping.
       {% else %}
       ⚠️  WARNING: n8n owner provisioning returned HTTP {{ n8n_owner_result.stdout | default('unknown') }}.
-      Manual setup may be needed at https://admin.{{ domain_name }}/n8n/
+      Manual setup may be needed at https://{{ caddy_admin_domain }}/n8n/
       {% endif %}

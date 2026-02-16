@@ -25,16 +25,16 @@
     executable: /bin/bash
     cmd: |
       set -euo pipefail
-      for i in $(seq 1 18); do
+      for i in $(seq 1 30); do
         STARTING=$(docker ps --format '{{ '{{' }}.Names{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}' | grep -c 'starting' || true)
         if [ "$STARTING" -eq 0 ]; then
           echo "All services finished health checks after $((i * 10))s"
           exit 0
         fi
-        echo "Waiting... $STARTING service(s) still starting (attempt $i/18)"
+        echo "Waiting... $STARTING service(s) still starting (attempt $i/30)"
         sleep 10
       done
-      echo "WARNING: Some services still starting after 180s, proceeding anyway"
+      echo "WARNING: Some services still starting after 300s, proceeding anyway"
   become: true
   changed_when: false
   failed_when: false

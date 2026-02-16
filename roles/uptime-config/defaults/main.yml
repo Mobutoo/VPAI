@@ -14,14 +14,14 @@ uptime_kuma_monitors:
 
   - name: "{{ project_display_name }} — n8n"
     type: "http"
-    url: "https://admin.{{ domain_name }}/n8n/healthz"
+    url: "https://{{ caddy_admin_domain }}/n8n/healthz"
     interval: 60
     retryInterval: 30
     maxretries: 3
 
   - name: "{{ project_display_name }} — Grafana"
     type: "http"
-    url: "https://admin.{{ domain_name }}/grafana/api/health"
+    url: "https://{{ caddy_admin_domain }}/grafana/api/health"
     interval: 120
     maxretries: 3
 

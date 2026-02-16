@@ -1,6 +1,12 @@
 ---
 # uptime-config — defaults
 
+# n8n URL: dedicated subdomain if set, otherwise sub-path on admin domain
+_n8n_base: >-
+  {{ ('https://' ~ n8n_subdomain ~ '.' ~ domain_name)
+     if (n8n_subdomain | default('')) | length > 0
+     else ('https://' ~ caddy_admin_domain ~ '/n8n') }}
+
 # --- Uptime Kuma monitors ---
 # These are documented in RUNBOOK.md for manual creation on Seko-VPN
 uptime_kuma_monitors:
@@ -14,7 +20,7 @@ uptime_kuma_monitors:
 
   - name: "{{ project_display_name }} — n8n"
     type: "http"
-    url: "https://{{ caddy_admin_domain }}/n8n/healthz"
+    url: "{{ _n8n_base }}/healthz"
     interval: 60
     retryInterval: 30
     maxretries: 3

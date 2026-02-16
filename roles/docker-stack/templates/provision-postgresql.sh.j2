@@ -1,0 +1,40 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# PostgreSQL provisioning script — idempotent
+# Creates databases and users if they don't exist
+
+set -euo pipefail
+
+CONTAINER="{{ project_name }}_postgresql"
+
+{% for db in postgresql_databases %}
+# === Database: {{ db.name }} ===
+DB_EXISTS=$(docker exec "${CONTAINER}" psql -U postgres -tAc \
+  "SELECT 1 FROM pg_database WHERE datname='{{ db.name }}'") || DB_EXISTS=""
+if [ "$DB_EXISTS" != "1" ]; then
+  echo "Creating database {{ db.name }}..."
+  docker exec "${CONTAINER}" psql -U postgres -c \
+    "CREATE DATABASE {{ db.name }};"
+fi
+
+USER_EXISTS=$(docker exec "${CONTAINER}" psql -U postgres -tAc \
+  "SELECT 1 FROM pg_roles WHERE rolname='{{ db.user }}'") || USER_EXISTS=""
+if [ "$USER_EXISTS" != "1" ]; then
+  echo "Creating user {{ db.user }}..."
+  docker exec "${CONTAINER}" psql -U postgres -c \
+    "CREATE USER {{ db.user }} WITH ENCRYPTED PASSWORD '{{ postgresql_password }}';"
+fi
+
+docker exec "${CONTAINER}" psql -U postgres -c \
+  "GRANT ALL PRIVILEGES ON DATABASE {{ db.name }} TO {{ db.user }};"
+docker exec "${CONTAINER}" psql -U postgres -c \
+  "ALTER DATABASE {{ db.name }} OWNER TO {{ db.user }};"
+docker exec "${CONTAINER}" psql -U postgres -d {{ db.name }} -c \
+  "GRANT ALL ON SCHEMA public TO {{ db.user }};"
+{% for ext in db.extensions %}
+docker exec "${CONTAINER}" psql -U postgres -d {{ db.name }} -c \
+  "CREATE EXTENSION IF NOT EXISTS \"{{ ext }}\";"
+{% endfor %}
+
+{% endfor %}
+echo "PostgreSQL provisioning complete."

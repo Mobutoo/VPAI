@@ -56,11 +56,6 @@
 {{ caddy_admin_domain }} {
     import vpn_only
 
-    handle /n8n/* {
-        uri strip_prefix /n8n
-        reverse_proxy n8n:5678
-    }
-
     handle /grafana/* {
         reverse_proxy grafana:3000
     }
@@ -75,6 +70,14 @@
         reverse_proxy qdrant:6333
     }
 
+{% if n8n_subdomain | default('') | length == 0 %}
+    # n8n on admin subdomain sub-path (fallback when no dedicated subdomain)
+    handle /n8n/* {
+        uri strip_prefix /n8n
+        reverse_proxy n8n:5678
+    }
+{% endif %}
+
     handle {
         root * /srv
         try_files {path} /admin-landing.html
@@ -88,3 +91,21 @@
         -Server
     }
 }
+
+{% if n8n_subdomain | default('') | length > 0 %}
+# n8n on dedicated subdomain ({{ caddy_n8n_domain }})
+# REX: n8n does NOT support sub-path deployment (GitHub issue #19635)
+# A dedicated subdomain is the only reliable approach
+{{ caddy_n8n_domain }} {
+    import vpn_only
+
+    reverse_proxy n8n:5678
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+{% endif %}

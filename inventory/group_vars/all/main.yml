@@ -15,6 +15,7 @@ domain_name: "{{ vault_domain_name | default('example.com') }}"
 domain_registrar: "ovh"
 dns_api_endpoint: "ovh-eu"
 admin_subdomain: "javisi"
+n8n_subdomain: "mayi"
 subdomain_preprod: "preprod"
 
 # --- VPS Production ---

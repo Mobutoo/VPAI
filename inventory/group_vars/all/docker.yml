@@ -31,9 +31,9 @@ n8n_memory_limit: "{{ '1024M' if target_env == 'prod' else '512M' }}"
 n8n_memory_reservation: "256M"
 n8n_cpu_limit: "1.0"
 
-# OpenClaw
-openclaw_memory_limit: "{{ '1024M' if target_env == 'prod' else '512M' }}"
-openclaw_memory_reservation: "256M"
+# OpenClaw (Node.js — needs 1.5GB+ for heap, see NODE_OPTIONS in env)
+openclaw_memory_limit: "{{ '1536M' if target_env == 'prod' else '768M' }}"
+openclaw_memory_reservation: "384M"
 openclaw_cpu_limit: "1.0"
 
 # LiteLLM

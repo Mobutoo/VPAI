@@ -8,6 +8,11 @@ set -euo pipefail
 
 BASE_URL="{{ smoke_test_base_url }}"
 ADMIN_URL="{{ smoke_test_admin_url }}"
+{% if n8n_subdomain | default('') | length > 0 %}
+N8N_URL="https://{{ n8n_subdomain }}.{{ domain_name }}"
+{% else %}
+N8N_URL="${ADMIN_URL}/n8n"
+{% endif %}
 TIMEOUT="{{ smoke_test_timeout }}"
 PROJECT="{{ project_name }}"
 FAILURES=0
@@ -89,7 +94,7 @@ echo ""
 
 # === APPLICATION HEALTH ===
 echo "--- Application Endpoints ---"
-check_http "n8n healthz" "${ADMIN_URL}/n8n/healthz"
+check_http "n8n healthz" "${N8N_URL}/healthz"
 check_http "Grafana health" "${ADMIN_URL}/grafana/api/health"
 check_http "LiteLLM health" "${BASE_URL}/litellm/health"
 
@@ -176,7 +181,7 @@ echo ""
 echo "--- Service Provisioning ---"
 
 # n8n owner provisioned (check if setup page is gone)
-N8N_SETTINGS=$(curl -s "${ADMIN_URL}/n8n/rest/settings" --max-time "${TIMEOUT}" 2>/dev/null || echo '{}')
+N8N_SETTINGS=$(curl -s "${N8N_URL}/rest/settings" --max-time "${TIMEOUT}" 2>/dev/null || echo '{}')
 N8N_SETUP_PAGE=$(echo "$N8N_SETTINGS" | grep -o '"showSetupPage":[a-z]*' | cut -d: -f2 || echo "unknown")
 if [ "$N8N_SETUP_PAGE" = "false" ]; then
   echo "PASS  n8n owner provisioned (setup complete)"

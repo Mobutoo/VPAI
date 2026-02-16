@@ -13,6 +13,7 @@
   loop:
     - "/opt/{{ project_name }}"
     - "/opt/{{ project_name }}/logs/caddy"
+    - "/opt/{{ project_name }}/scripts"
   become: true
 
 # === CLEANUP : Stop Phase B apps before redeploy (infra stays running) ===
@@ -82,6 +83,30 @@
   ansible.builtin.fail:
     msg: "PostgreSQL failed to become healthy. Check logs above."
   when: pg_health.stdout | default('') != 'healthy'
+
+# --- PostgreSQL provisioning (idempotent — creates DBs/users if missing) ---
+# REX: init.sql only runs on FIRST PostgreSQL initialization (empty data dir)
+# Subsequent deploys need explicit provisioning for new databases/users
+- name: Deploy PostgreSQL provisioning script
+  ansible.builtin.template:
+    src: provision-postgresql.sh.j2
+    dest: "/opt/{{ project_name }}/scripts/provision-postgresql.sh"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  become: true
+
+- name: Provision PostgreSQL databases and users
+  ansible.builtin.command:
+    cmd: "/opt/{{ project_name }}/scripts/provision-postgresql.sh"
+  become: true
+  register: pg_provision
+  changed_when: "'Creating' in pg_provision.stdout"
+
+- name: Show PostgreSQL provisioning output
+  ansible.builtin.debug:
+    msg: "{{ pg_provision.stdout_lines }}"
+  when: pg_provision.stdout_lines | default([]) | length > 0
 
 # --- Redis ---
 - name: Wait for Redis to be healthy

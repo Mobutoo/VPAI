@@ -97,7 +97,13 @@
 {% if telegram_openclaw_bot_token | default('') | length > 0 %}
   "channels": {
     "telegram": {
-      "botToken": "${TELEGRAM_BOT_TOKEN}"
+      "botToken": "${TELEGRAM_BOT_TOKEN}",
+{% if telegram_openclaw_chat_id | default('') | length > 0 %}
+      "dmPolicy": "allowlist",
+      "allowFrom": ["{{ telegram_openclaw_chat_id }}"]
+{% else %}
+      "dmPolicy": "pairing"
+{% endif %}
     }
   },
 {% endif %}

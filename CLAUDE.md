@@ -312,6 +312,7 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **`trustedProxies`** : Necessaire derriere un reverse proxy pour X-Forwarded-For
 - **`allowInsecureAuth`** : Necessaire car WebCrypto requiert HTTPS ou localhost
 - **Token bootstrap** : Le Control UI stocke le gateway token dans `localStorage` du navigateur. Au premier acces, localStorage est vide et l'UI boucle sur "token missing" sans afficher de prompt de saisie. **Fix** : route `/__bootstrap__` dans Caddy qui injecte le token via JS et redirige. Premier acces : `https://<admin_subdomain>.<domain>/__bootstrap__`
+- **Telegram pairing** : Par defaut `dmPolicy: "pairing"` — le bot envoie un code que l'admin doit approuver via `docker exec <c> node openclaw.mjs pairing approve telegram <CODE>`. **Automatisation** : si `telegram_openclaw_chat_id` est renseigne, `dmPolicy` passe a `"allowlist"` avec `allowFrom: [chat_id]` — plus de pairing interactif. CLI approve : `openclaw pairing approve <channel> <code>`
 
 ### LiteLLM -- Config Syntax
 

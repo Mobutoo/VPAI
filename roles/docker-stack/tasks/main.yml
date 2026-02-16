@@ -143,8 +143,8 @@
       {{ project_name }}_caddy
   register: caddy_health
   changed_when: false
-  retries: 10
-  delay: 3
+  retries: 15
+  delay: 10
   until: caddy_health.stdout | default('') == 'healthy'
   become: true
   failed_when: false

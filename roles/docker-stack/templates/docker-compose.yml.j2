@@ -116,6 +116,8 @@ services:
       - CHOWN
       - SETGID
       - SETUID
+      - DAC_OVERRIDE
+      - FOWNER
     command:
       - "-storageDataPath=/storage"
       - "-retentionPeriod=30d"
@@ -150,6 +152,8 @@ services:
       - CHOWN
       - SETGID
       - SETUID
+      - DAC_OVERRIDE
+      - FOWNER
     volumes:
       - /opt/{{ project_name }}/data/loki:/loki
       - /opt/{{ project_name }}/configs/loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
@@ -256,6 +260,9 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - DAC_OVERRIDE
+      - FOWNER
     environment:
       TZ: "{{ timezone }}"
       CONFIG: "/diun.yml"

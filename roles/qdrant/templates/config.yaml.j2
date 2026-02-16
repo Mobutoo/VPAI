@@ -1,14 +1,15 @@
 # {{ ansible_managed }}
 # Qdrant configuration
+# API key is set via QDRANT__SERVICE__API_KEY environment variable
 
 storage:
   storage_path: /qdrant/storage
 
 service:
-  api_key: {{ qdrant_api_key }}
   host: 0.0.0.0
   http_port: 6333
   grpc_port: 6334
+  enable_tls: false
 
 optimizers:
   default_segment_number: 2

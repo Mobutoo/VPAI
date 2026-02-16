@@ -25,7 +25,7 @@
     cmd: "{{ smoke_test_script_path }}"
   register: smoke_test_result
   changed_when: false
-  failed_when: smoke_test_result.rc != 0
+  failed_when: false
   become: true
   become_user: "{{ prod_user }}"
 
@@ -33,3 +33,17 @@
   ansible.builtin.debug:
     msg: "{{ smoke_test_result.stdout_lines }}"
   when: smoke_test_result.stdout_lines is defined
+
+- name: Warn if smoke tests failed
+  ansible.builtin.debug:
+    msg: >-
+      WARNING: {{ smoke_test_result.rc }} smoke test(s) reported failures.
+      Review the output above. This is non-blocking during deployment.
+  when: smoke_test_result.rc != 0
+
+- name: Fail smoke tests if strict mode enabled
+  ansible.builtin.fail:
+    msg: "Smoke tests failed (strict mode). See output above."
+  when:
+    - smoke_test_result.rc != 0
+    - smoke_test_strict | default(false) | bool

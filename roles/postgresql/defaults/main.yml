@@ -18,7 +18,10 @@ postgresql_databases:
     user: openclaw
     extensions:
       - uuid-ossp
-      - vector
+      # NOTE: pgvector extension requires pgvector-enabled PostgreSQL image
+      # Stock postgres:18.1-bookworm does NOT include pgvector
+      # To enable: use pgvector/pgvector:pg18 image instead
+      # - vector
   - name: litellm
     user: litellm
     extensions:

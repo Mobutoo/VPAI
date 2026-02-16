@@ -162,7 +162,7 @@
         </div>
 
         <div class="footer">
-            {{ project_display_name }} • Secured by VPN • {{ ansible_date_time.iso8601 | default('') }}
+            {{ project_display_name }} • Secured by VPN • {{ ansible_facts['date_time']['iso8601'] | default('') }}
         </div>
     </div>
 

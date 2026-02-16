@@ -1,9 +1,10 @@
 # {{ ansible_managed }}
-# PostgreSQL configuration — tuned for {{ target_env }}
+# PostgreSQL configuration - tuned for {{ target_env }}
 
 listen_addresses = '*'
 port = 5432
 max_connections = 100
+hba_file = '/etc/postgresql/pg_hba.conf'
 
 # Memory
 shared_buffers = {{ postgresql_shared_buffers }}
@@ -15,13 +16,8 @@ maintenance_work_mem = {{ postgresql_maintenance_work_mem }}
 wal_buffers = 16MB
 checkpoint_completion_target = 0.9
 
-# Logging
+# Logging (stdout for Docker - no logging_collector)
 log_timezone = '{{ timezone }}'
-logging_collector = on
-log_directory = 'log'
-log_filename = 'postgresql-%Y-%m-%d.log'
-log_rotation_age = 1d
-log_rotation_size = 100MB
 
 # Locale
 datestyle = 'iso, mdy'

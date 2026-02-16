@@ -20,13 +20,13 @@
 }
 
 {{ caddy_domain }} {
+    handle /health {
+        respond "OK" 200
+    }
+
     handle /litellm/* {
         uri strip_prefix /litellm
         reverse_proxy litellm:4000
-    }
-
-    handle /health {
-        respond "OK" 200
     }
 
     handle {
@@ -41,13 +41,15 @@
         -Server
     }
 
-    rate_limit {
-        zone global {
-            key {remote_host}
-            events {{ caddy_rate_limit_events }}
-            window {{ caddy_rate_limit_window }}
-        }
-    }
+    # NOTE: rate_limit requires caddy-ratelimit plugin (not in stock image)
+    # To enable, build custom Caddy image with: xcaddy build --with github.com/mholt/caddy-ratelimit
+    # rate_limit {
+    #     zone global {
+    #         key {remote_host}
+    #         events {{ caddy_rate_limit_events }}
+    #         window {{ caddy_rate_limit_window }}
+    #     }
+    # }
 }
 
 {{ caddy_admin_domain }} {

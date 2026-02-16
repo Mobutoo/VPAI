@@ -19,7 +19,7 @@
           Project: {{ project_display_name }}
           Environment: {{ target_env | default('prod') }}
           Target: {{ inventory_hostname }}
-          Date: {{ ansible_date_time.iso8601 }}
+          Date: {{ ansible_facts['date_time']['iso8601'] }}
           ========================================
       tags: [always]
 

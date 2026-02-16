@@ -126,7 +126,7 @@
     path: "{{ common_swap_file }}"
   register: common_swap_file_check
   become: true
-  when: common_swap_enable and ansible_memtotal_mb < 6144
+  when: common_swap_enable and ansible_facts['memtotal_mb'] < 6144
 
 - name: Create swap file
   ansible.builtin.command:
@@ -136,7 +136,7 @@
   changed_when: true
   when:
     - common_swap_enable
-    - ansible_memtotal_mb < 6144
+    - ansible_facts['memtotal_mb'] < 6144
     - not (common_swap_file_check.stat.exists | default(false))
 
 - name: Set swap file permissions
@@ -146,7 +146,7 @@
     group: root
     mode: "0600"
   become: true
-  when: common_swap_enable and ansible_memtotal_mb < 6144
+  when: common_swap_enable and ansible_facts['memtotal_mb'] < 6144
 
 - name: Format swap file
   ansible.builtin.command:
@@ -155,7 +155,7 @@
   changed_when: true
   when:
     - common_swap_enable
-    - ansible_memtotal_mb < 6144
+    - ansible_facts['memtotal_mb'] < 6144
     - not (common_swap_file_check.stat.exists | default(false))
 
 - name: Enable swap file
@@ -164,7 +164,7 @@
   become: true
   changed_when: true
   failed_when: false
-  when: common_swap_enable and ansible_memtotal_mb < 6144
+  when: common_swap_enable and ansible_facts['memtotal_mb'] < 6144
 
 - name: Add swap to fstab
   ansible.builtin.lineinfile:
@@ -173,7 +173,7 @@
     line: "{{ common_swap_file }} none swap sw 0 0"
     state: present
   become: true
-  when: common_swap_enable and ansible_memtotal_mb < 6144
+  when: common_swap_enable and ansible_facts['memtotal_mb'] < 6144
 
 - name: Create project base directory
   ansible.builtin.file:

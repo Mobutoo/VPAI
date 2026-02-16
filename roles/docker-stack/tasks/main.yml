@@ -1,44 +1,36 @@
 ---
 # docker-stack — tasks
-# Déploie la stack Docker en 3 phases isolées pour une meilleure résilience
+# Deploie la stack Docker en phases isolees avec healthchecks individuels
+# Chaque service est verifie separement pour faciliter le troubleshooting
 
-- name: Create project root directory
+- name: Create project directories
   ansible.builtin.file:
-    path: "/opt/{{ project_name }}"
+    path: "{{ item }}"
     state: directory
     owner: "{{ prod_user }}"
     group: "{{ prod_user }}"
     mode: "0755"
+  loop:
+    - "/opt/{{ project_name }}"
+    - "/opt/{{ project_name }}/logs/caddy"
   become: true
 
-# === CLEANUP : Remove old compose stacks to avoid label conflicts ===
-- name: Stop old docker-compose stacks if they exist
+# === CLEANUP : Stop Phase B apps before redeploy (infra stays running) ===
+- name: Stop Phase B apps stack if it exists
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
       set -o pipefail
       cd /opt/{{ project_name }}
-      docker compose -f docker-compose.yml down 2>/dev/null || true
-      docker compose -f docker-compose-infra.yml down 2>/dev/null || true
+      if [ -f docker-compose.yml ]; then
+        docker compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
+      fi
   become: true
   changed_when: false
   failed_when: false
 
-- name: Remove project Docker networks if they exist (clean slate)
-  ansible.builtin.command:
-    cmd: "docker network rm {{ project_name }}_{{ item }}"
-  loop:
-    - frontend
-    - backend
-    - egress
-    - monitoring
-  become: true
-  changed_when: false
-  failed_when: false
-  register: network_cleanup
-
-# === PHASE A : INFRASTRUCTURE ===
-- name: Deploy docker-compose-infra.yml (PostgreSQL, Redis, Qdrant, Caddy, Networks)
+# === PHASE A : INFRASTRUCTURE (all services start independently) ===
+- name: Deploy docker-compose-infra.yml template
   ansible.builtin.template:
     src: docker-compose-infra.yml.j2
     dest: "/opt/{{ project_name }}/docker-compose-infra.yml"
@@ -55,24 +47,132 @@
     state: present
   become: true
   register: docker_infra_result
+  failed_when: false
 
-- name: Display Infrastructure stack status
+- name: Show Phase A errors if any
   ansible.builtin.debug:
-    msg: "✅ Infrastructure deployed: {{ docker_infra_result.containers | map(attribute='Name') | join(', ') }}"
-  when: docker_infra_result.containers is defined
+    msg: >-
+      Phase A returned: {{ docker_infra_result.msg | default('OK') }}
+  when: docker_infra_result.failed | default(false)
 
+# === INDIVIDUAL HEALTH CHECKS (with diagnostic logs on failure) ===
+
+# --- PostgreSQL ---
 - name: Wait for PostgreSQL to be healthy
   ansible.builtin.command:
-    cmd: "docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}' {{ project_name }}_postgresql"
-  register: postgres_health
+    cmd: >-
+      docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}'
+      {{ project_name }}_postgresql
+  register: pg_health
+  changed_when: false
+  retries: 20
+  delay: 5
+  until: pg_health.stdout | default('') == 'healthy'
+  become: true
+  failed_when: false
+
+- name: Show PostgreSQL logs if unhealthy
+  ansible.builtin.command:
+    cmd: "docker logs {{ project_name }}_postgresql --tail 30"
+  become: true
+  changed_when: false
+  when: pg_health.stdout | default('') != 'healthy'
+
+- name: Fail if PostgreSQL is unhealthy
+  ansible.builtin.fail:
+    msg: "PostgreSQL failed to become healthy. Check logs above."
+  when: pg_health.stdout | default('') != 'healthy'
+
+# --- Redis ---
+- name: Wait for Redis to be healthy
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}'
+      {{ project_name }}_redis
+  register: redis_health
   changed_when: false
   retries: 10
   delay: 3
-  until: postgres_health.stdout | default('') == 'healthy'
+  until: redis_health.stdout | default('') == 'healthy'
   become: true
+  failed_when: false
+
+- name: Show Redis logs if unhealthy
+  ansible.builtin.command:
+    cmd: "docker logs {{ project_name }}_redis --tail 30"
+  become: true
+  changed_when: false
+  when: redis_health.stdout | default('') != 'healthy'
+
+- name: Fail if Redis is unhealthy
+  ansible.builtin.fail:
+    msg: "Redis failed to become healthy. Check logs above."
+  when: redis_health.stdout | default('') != 'healthy'
+
+# --- Qdrant ---
+- name: Wait for Qdrant to be healthy
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}'
+      {{ project_name }}_qdrant
+  register: qdrant_health
+  changed_when: false
+  retries: 10
+  delay: 3
+  until: qdrant_health.stdout | default('') == 'healthy'
+  become: true
+  failed_when: false
+
+- name: Show Qdrant logs if unhealthy
+  ansible.builtin.command:
+    cmd: "docker logs {{ project_name }}_qdrant --tail 30"
+  become: true
+  changed_when: false
+  when: qdrant_health.stdout | default('') != 'healthy'
+
+- name: Fail if Qdrant is unhealthy
+  ansible.builtin.fail:
+    msg: "Qdrant failed to become healthy. Check logs above."
+  when: qdrant_health.stdout | default('') != 'healthy'
+
+# --- Caddy ---
+- name: Wait for Caddy to be healthy
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}'
+      {{ project_name }}_caddy
+  register: caddy_health
+  changed_when: false
+  retries: 10
+  delay: 3
+  until: caddy_health.stdout | default('') == 'healthy'
+  become: true
+  failed_when: false
+
+- name: Show Caddy logs if unhealthy
+  ansible.builtin.command:
+    cmd: "docker logs {{ project_name }}_caddy --tail 30"
+  become: true
+  changed_when: false
+  when: caddy_health.stdout | default('') != 'healthy'
+
+# Caddy unhealthy is non-blocking (recovers when backends come up)
+- name: Warn if Caddy is unhealthy (non-blocking)
+  ansible.builtin.debug:
+    msg: "WARNING: Caddy not yet healthy. Will recover when backends are up."
+  when: caddy_health.stdout | default('') != 'healthy'
+
+- name: Display Phase A health summary
+  ansible.builtin.debug:
+    msg: >-
+      Phase A:
+      PG={{ pg_health.stdout | default('?') }}
+      Redis={{ redis_health.stdout | default('?') }}
+      Qdrant={{ qdrant_health.stdout | default('?') }}
+      Caddy={{ caddy_health.stdout | default('?') }}
 
 # === PHASE B : APPLICATIONS ===
-- name: Deploy docker-compose.yml (Full stack for now, will be split later)
+- name: Deploy docker-compose.yml template (apps + monitoring)
   ansible.builtin.template:
     src: docker-compose.yml.j2
     dest: "/opt/{{ project_name }}/docker-compose.yml"
@@ -90,20 +190,23 @@
     state: present
   become: true
   register: docker_apps_result
-  failed_when: false  # Ne pas bloquer si une app échoue
+  failed_when: false
 
 - name: Display Applications stack status
   ansible.builtin.debug:
     msg: |
-      {% if docker_apps_result.failed %}
-      ⚠️  Applications deployment had errors (check logs above)
+      {% if docker_apps_result.failed | default(false) %}
+      Phase B errors: {{ docker_apps_result.msg | default('unknown') }}
       {% else %}
-      ✅ Applications deployed: {{ docker_apps_result.containers | map(attribute='Name') | join(', ') }}
+      Phase B deployed successfully
       {% endif %}
 
+# === FINAL STATUS ===
 - name: List all running containers
   ansible.builtin.command:
-    cmd: "docker ps --format 'table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}'"
+    cmd: >-
+      docker ps --format
+      'table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}'
   register: docker_ps_output
   changed_when: false
   become: true

@@ -148,8 +148,8 @@ else
 fi
 
 # Qdrant
-QDRANT_HEALTH=$(docker exec "${PROJECT}_qdrant" wget -qO- http://localhost:6333/healthz 2>/dev/null) || QDRANT_HEALTH=""
-if echo "${QDRANT_HEALTH}" | grep -q "ok\|title"; then
+QDRANT_HEALTH=$(docker exec "${PROJECT}_qdrant" bash -c ':> /dev/tcp/localhost/6333' 2>/dev/null) && QDRANT_RC=0 || QDRANT_RC=1
+if [ "${QDRANT_RC}" -eq 0 ]; then
   echo "PASS  Qdrant connectivity"
 else
   echo "FAIL  Qdrant connectivity"

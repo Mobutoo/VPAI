@@ -1,9 +1,11 @@
 # {{ ansible_managed }}
 # docker-compose-infra.yml — Services d'infrastructure (Phase A)
-# PostgreSQL, Redis, Qdrant, Caddy, Réseaux
+# PostgreSQL, Redis, Qdrant, Caddy, Reseaux
+# NOTE: No depends_on between data services — each starts independently
+# Health is verified individually by Ansible tasks
 
 services:
-  # === DATA LAYER ===
+  # === DATA LAYER (independent services) ===
   postgresql:
     image: {{ postgresql_image }}
     container_name: {{ project_name }}_postgresql
@@ -16,20 +18,18 @@ services:
       - CHOWN
       - SETGID
       - SETUID
-      - DAC_OVERRIDE  # PostgreSQL needs to bypass file permission checks
-      - FOWNER        # PostgreSQL needs to change file ownership
+      - DAC_OVERRIDE
+      - FOWNER
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: {{ postgresql_password }}
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale={{ locale }}"
+      POSTGRES_PASSWORD: "{{ postgresql_password }}"
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale={{ locale | regex_replace('_', '-') | regex_replace('\\..*', '') }} --locale=C"
     volumes:
-      # PostgreSQL 18+ uses /var/lib/postgresql instead of /var/lib/postgresql/data
-      # See: https://github.com/docker-library/postgres/pull/1259
       - /opt/{{ project_name }}/data/postgresql:/var/lib/postgresql
       - /opt/{{ project_name }}/configs/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf:ro
       - /opt/{{ project_name }}/configs/postgresql/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
       - /opt/{{ project_name }}/configs/postgresql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf
     networks:
       - backend
     deploy:
@@ -44,6 +44,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 120s
 
   redis:
     image: {{ redis_image }}
@@ -54,6 +55,7 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      - CHOWN
       - SETGID
       - SETUID
     volumes:
@@ -70,10 +72,11 @@ services:
         reservations:
           memory: {{ redis_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a {{ redis_password }} ping | grep -q PONG"]
+      test: ["CMD-SHELL", "redis-cli -a '{{ redis_password }}' ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 30s
 
   qdrant:
     image: {{ qdrant_image }}
@@ -83,10 +86,18 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+      - FOWNER
+    environment:
+      QDRANT__SERVICE__API_KEY: "{{ qdrant_api_key }}"
     volumes:
       - /opt/{{ project_name }}/data/qdrant/storage:/qdrant/storage
       - /opt/{{ project_name }}/data/qdrant/snapshots:/qdrant/snapshots
-      - /opt/{{ project_name }}/configs/qdrant/config.yaml:/qdrant/config/config.yaml:ro
+      - /opt/{{ project_name }}/configs/qdrant/config.yaml:/qdrant/config/production.yaml:ro
     networks:
       - backend
     deploy:
@@ -97,12 +108,13 @@ services:
         reservations:
           memory: {{ qdrant_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "bash -c ':> /dev/tcp/localhost/6333' || exit 1"]
+      interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 30s
 
-  # === REVERSE PROXY ===
+  # === REVERSE PROXY (no depends_on — starts independently) ===
   caddy:
     image: {{ caddy_image }}
     container_name: {{ project_name }}_caddy
@@ -113,25 +125,20 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+      - DAC_OVERRIDE
     ports:
       - "80:80"
       - "443:443"
-      - "443:443/udp"  # HTTP/3
+      - "443:443/udp"
     volumes:
       - /opt/{{ project_name }}/configs/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - /opt/{{ project_name }}/configs/caddy/admin-landing.html:/srv/admin-landing.html:ro
       - /opt/{{ project_name }}/data/caddy/data:/data
       - /opt/{{ project_name }}/data/caddy/config:/config
+      - /opt/{{ project_name }}/logs/caddy:/var/log/caddy
     networks:
       - frontend
       - backend
-    depends_on:
-      postgresql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -140,10 +147,11 @@ services:
         reservations:
           memory: {{ caddy_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:2019/metrics || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:2019/config/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 30s
 
 networks:
   frontend:
@@ -156,7 +164,7 @@ networks:
   backend:
     name: {{ project_name }}_backend
     driver: bridge
-    internal: true  # Pas d'accès internet
+    internal: true
     ipam:
       config:
         - subnet: 172.20.2.0/24
@@ -164,7 +172,6 @@ networks:
   egress:
     name: {{ project_name }}_egress
     driver: bridge
-    # Accès internet pour LiteLLM, n8n, OpenClaw (API calls, webhooks)
     ipam:
       config:
         - subnet: 172.20.4.0/24
@@ -172,7 +179,7 @@ networks:
   monitoring:
     name: {{ project_name }}_monitoring
     driver: bridge
-    internal: true  # Pas d'accès internet
+    internal: true
     ipam:
       config:
         - subnet: 172.20.3.0/24

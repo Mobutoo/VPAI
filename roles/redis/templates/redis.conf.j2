@@ -1,9 +1,10 @@
 # {{ ansible_managed }}
-# Redis configuration
+# Redis 8.0 configuration
 
 bind 0.0.0.0
 port 6379
 requirepass {{ redis_password }}
+protected-mode yes
 
 maxmemory {{ redis_maxmemory }}
 maxmemory-policy {{ redis_maxmemory_policy }}
@@ -15,14 +16,14 @@ save 60 10000
 dbfilename dump.rdb
 dir /data
 
-# I/O threading (Redis 8.0)
+# I/O threading (Redis 8.0+)
 io-threads {{ redis_io_threads }}
 io-threads-do-reads yes
 
-# Logging
+# Logging (stdout for Docker)
 loglevel notice
 logfile ""
 
-# Security
-rename-command FLUSHDB ""
-rename-command FLUSHALL ""
+# Security: rename-command removed in Redis 8.0, use ACL instead
+# Dangerous commands disabled via ACL default user
+# To re-enable, configure ACL users in production

@@ -104,3 +104,16 @@
       ansible.builtin.include_role:
         name: smoke-tests
       tags: [smoke-tests, always]
+
+# === VPN SERVER — Split DNS for admin domain access ===
+# Deploys extra_records.json on Headscale server so VPN clients
+# resolve admin domains to the VPS Tailscale IP (not public IP).
+# Requires tailscale_ip fact from headscale-node role (set in play 1).
+- name: Update VPN DNS records
+  hosts: vpn
+  gather_facts: false
+  tags: [vpn-dns, phase5]
+
+  roles:
+    - role: vpn-dns
+      tags: [vpn-dns]

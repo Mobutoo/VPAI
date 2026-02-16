@@ -1,0 +1,96 @@
+---
+# vpn-dns — tasks
+# Deploys Headscale extra_records JSON for Split DNS
+# Admin domains resolve to VPS Tailscale IP for VPN clients
+#
+# Runs on: vpn-server (Seko-VPN / Headscale control server)
+# Requires: tailscale_ip fact from headscale-node role (set on prod-server)
+
+- name: Verify Tailscale IP is available from prod-server
+  ansible.builtin.assert:
+    that:
+      - hostvars[groups['prod'][0]]['tailscale_ip'] is defined
+      - hostvars[groups['prod'][0]]['tailscale_ip'] | length > 0
+    fail_msg: >-
+      Tailscale IP not found for prod-server.
+      Ensure headscale-node role ran before vpn-dns.
+    quiet: true
+
+- name: Display DNS records to deploy
+  ansible.builtin.debug:
+    msg: >-
+      Deploying {{ vpn_dns_records | length }} extra DNS record(s)
+      to {{ vpn_dns_extra_records_path }}:
+      {% for r in vpn_dns_records %}
+      {{ r.name }} -> {{ r.value }}{% if not loop.last %}, {% endif %}
+      {% endfor %}
+
+- name: Deploy extra-records.json
+  ansible.builtin.template:
+    src: extra-records.json.j2
+    dest: "{{ vpn_dns_extra_records_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  register: vpn_dns_file_result
+
+# Ensure headscale config references the extra_records_path
+# This is a one-time check — does not modify the full headscale config
+- name: Check if extra_records_path is configured in headscale
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      grep -q 'extra_records_path' /etc/headscale/config.yaml && echo "found" || echo "missing"
+  register: vpn_dns_config_check
+  changed_when: false
+  become: true
+
+- name: Warn if extra_records_path not in headscale config
+  ansible.builtin.debug:
+    msg: |
+      ⚠ extra_records_path is NOT configured in /etc/headscale/config.yaml
+      Add this line to the dns section:
+        dns:
+          extra_records_path: "{{ vpn_dns_extra_records_path }}"
+      Then restart headscale: systemctl restart headscale
+  when: vpn_dns_config_check.stdout == 'missing'
+
+# Inject extra_records_path into headscale config if missing
+- name: Add extra_records_path to headscale config if missing
+  ansible.builtin.lineinfile:
+    path: /etc/headscale/config.yaml
+    regexp: '^\s*extra_records_path:'
+    insertafter: '^\s*extra_records:'
+    line: '  extra_records_path: "{{ vpn_dns_extra_records_path }}"'
+    state: present
+  become: true
+  when: vpn_dns_config_check.stdout == 'missing'
+  notify: Restart headscale
+
+# If only the JSON file changed (not config.yaml), Headscale picks it up
+# automatically with extra_records_path. But if it was just added, restart.
+- name: Restart headscale if config was updated
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify Headscale is running
+  ansible.builtin.systemd:
+    name: "{{ vpn_dns_headscale_service }}"
+    state: started
+  become: true
+  changed_when: false
+
+- name: Display completion message
+  ansible.builtin.debug:
+    msg: |
+      ✓ Headscale extra DNS records deployed to {{ vpn_dns_extra_records_path }}
+      VPN clients will resolve admin domains via Tailscale:
+      {% for r in vpn_dns_records %}
+        {{ r.name }} -> {{ r.value }}
+      {% endfor %}
+      {% if vpn_dns_config_check.stdout == 'missing' %}
+      NOTE: extra_records_path was added to headscale config and service restarted.
+      {% else %}
+      Headscale monitors the JSON file — changes are picked up automatically.
+      {% endif %}

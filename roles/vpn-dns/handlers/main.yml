@@ -1,0 +1,8 @@
+---
+# vpn-dns — handlers
+
+- name: Restart headscale
+  ansible.builtin.systemd:
+    name: "{{ vpn_dns_headscale_service }}"
+    state: restarted
+  become: true

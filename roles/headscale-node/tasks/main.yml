@@ -108,3 +108,40 @@
 - name: Display Tailscale IP
   ansible.builtin.debug:
     msg: "Tailscale IP assigned: {{ tailscale_ip }}"
+
+# === VPN SPLIT DNS DOCUMENTATION ===
+# Admin UIs are VPN-only (Caddy ACL). For web access, VPN clients must
+# resolve admin subdomains to the VPS's Tailscale IP so traffic routes
+# through the VPN tunnel and Caddy sees a VPN source IP.
+- name: Display Split DNS configuration instructions
+  ansible.builtin.debug:
+    msg: |
+      ━━━ VPN SPLIT DNS CONFIGURATION REQUIRED ━━━
+      Admin UIs (Grafana, n8n, OpenClaw, Qdrant) are VPN-only.
+      VPN clients must resolve admin domains to the Tailscale IP.
+
+      VPS Tailscale IP: {{ tailscale_ip }}
+
+      OPTION 1 — Headscale config (recommended, affects all VPN clients):
+        Edit /etc/headscale/config.yaml on Seko-VPN and add:
+          dns:
+            magic_dns: true
+            base_domain: ts.net
+            extra_records:
+              - name: "{{ caddy_admin_domain }}"
+                type: A
+                value: "{{ tailscale_ip }}"
+      {% if n8n_subdomain | default('') | length > 0 %}
+              - name: "{{ caddy_n8n_domain }}"
+                type: A
+                value: "{{ tailscale_ip }}"
+      {% endif %}
+        Then restart Headscale: systemctl restart headscale
+
+      OPTION 2 — Client /etc/hosts (per-machine, immediate):
+        Add to /etc/hosts (or C:\Windows\System32\drivers\etc\hosts):
+          {{ tailscale_ip }}  {{ caddy_admin_domain }}
+      {% if n8n_subdomain | default('') | length > 0 %}
+          {{ tailscale_ip }}  {{ caddy_n8n_domain }}
+      {% endif %}
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

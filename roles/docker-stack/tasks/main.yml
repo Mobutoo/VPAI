@@ -226,6 +226,50 @@
       Phase B deployed successfully
       {% endif %}
 
+# Restart LiteLLM to ensure it connects to the provisioned database
+# REX: LiteLLM may be in error state if it started before DB was provisioned
+- name: Check LiteLLM container health
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}'
+      {{ project_name }}_litellm
+  register: litellm_precheck
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Restart LiteLLM if not healthy
+  ansible.builtin.command:
+    cmd: "docker restart {{ project_name }}_litellm"
+  become: true
+  changed_when: true
+  when: litellm_precheck.stdout | default('') != 'healthy'
+
+- name: Wait for LiteLLM to be healthy
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}'
+      {{ project_name }}_litellm
+  register: litellm_health
+  changed_when: false
+  retries: 20
+  delay: 10
+  until: litellm_health.stdout | default('') == 'healthy'
+  become: true
+  failed_when: false
+
+- name: Show LiteLLM logs if unhealthy
+  ansible.builtin.command:
+    cmd: "docker logs {{ project_name }}_litellm --tail 30"
+  become: true
+  changed_when: false
+  when: litellm_health.stdout | default('') != 'healthy'
+
+- name: Warn if LiteLLM is unhealthy
+  ansible.builtin.debug:
+    msg: "WARNING: LiteLLM not yet healthy after restart. Check logs above."
+  when: litellm_health.stdout | default('') != 'healthy'
+
 # === FINAL STATUS ===
 - name: List all running containers
   ansible.builtin.command:

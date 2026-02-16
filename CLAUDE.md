@@ -258,11 +258,49 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **Healthchecks individuels** : Chaque service Phase A a un check + diagnostic logs si unhealthy
 - **Caddy unhealthy non-bloquant** : Warning au lieu de fail (Caddy recupere quand les backends demarrent)
 
+### VPN ACL et Admin Access -- Architecture
+
+- **Admin UIs (Grafana, n8n, OpenClaw, Qdrant)** : Accessibles UNIQUEMENT via VPN
+- **ACL Caddy** : `remote_ip {{ caddy_vpn_cidr }}` (100.64.0.0/10) sur les domaines admin
+- **Split DNS OBLIGATOIRE** : Les clients VPN doivent resoudre les sous-domaines admin vers l'IP Tailscale du VPS (pas l'IP publique)
+- **Sans split DNS** : Le trafic passe par Internet et Caddy voit l'IP publique du client -> blocage meme si VPN actif
+- **Config Headscale** : `dns.extra_records` avec les sous-domaines admin -> IP Tailscale du VPS
+- **Alternative** : `/etc/hosts` cote client avec les entries admin -> IP Tailscale du VPS
+- **Smoke tests** : Utilisent `--resolve domain:443:<TAILSCALE_IP>` pour forcer le routage VPN
+- **VPN error page** : `error @blocked 403` + `handle_errors` (retourne HTTP 403, pas 200)
+
+### Grafana -- Sub-path avec SERVE_FROM_SUB_PATH
+
+- **Ne PAS strip_prefix** quand Grafana utilise `GF_SERVER_SERVE_FROM_SUB_PATH=true`
+- Grafana gere le prefix `/grafana/` lui-meme, Caddy doit juste proxifier sans modifier l'URI
+- Strip prefix + SERVE_FROM_SUB_PATH = boucle de redirection infinie
+
+### n8n -- Sous-domaine dedie obligatoire
+
+- **n8n NE supporte PAS le sub-path** (GitHub issue #19635)
+- **Variable** : `n8n_subdomain` dans l'inventaire (ex: `mayi`)
+- **Caddyfile** : Bloc dedie `{{ caddy_n8n_domain }}` avec `import vpn_only` + `import vpn_error_page`
+- **Fallback** : Si `n8n_subdomain` vide, n8n est monte en sub-path sur le domaine admin (page blanche probable)
+
+### PostgreSQL -- Provisioning Idempotent
+
+- **`init.sql` ne s'execute que lors de la PREMIERE initialisation** (data dir vide)
+- **Script `provision-postgresql.sh`** : Verifie et cree les DBs/users a chaque deploy
+- **Execute apres Phase A** dans les tasks docker-stack
+- **LiteLLM restart** : Restart automatique si pas healthy apres Phase B (timing DB provisioning)
+
+### OpenClaw -- Node.js Heap Memory
+
+- **`NODE_OPTIONS=--max-old-space-size=768`** dans openclaw.env.j2
+- **Limite Docker** : 1536M minimum pour OpenClaw (image 6.38GB, runtime ~800MB)
+
 ### Smoke Tests
 
 - **Non-bloquants par defaut** : `failed_when: false`, resultats affiches en warning
 - **Mode strict** : `smoke_test_strict: true` pour bloquer le playbook sur echec
 - **Qdrant connectivity** : Via `docker exec` + `bash -c ':> /dev/tcp/localhost/6333'`
+- **VPN-protected endpoints** : Resolus via IP Tailscale avec `curl --resolve`
+- **LiteLLM UI** : Teste sur le domaine public (pas admin), accessible via API key
 
 ### Debian 13 (Trixie) -- Specifique
 

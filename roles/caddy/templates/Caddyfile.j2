@@ -17,7 +17,11 @@
 
 (vpn_only) {
     @blocked not remote_ip {{ caddy_vpn_cidr }}
-    handle @blocked {
+    error @blocked 403
+}
+
+(vpn_error_page) {
+    handle_errors {
         root * /srv
         rewrite * /restricted-zone.html
         file_server
@@ -59,6 +63,7 @@
 
 {{ caddy_admin_domain }} {
     import vpn_only
+    import vpn_error_page
 
     handle /grafana/* {
         reverse_proxy grafana:3000
@@ -102,6 +107,7 @@
 # A dedicated subdomain is the only reliable approach
 {{ caddy_n8n_domain }} {
     import vpn_only
+    import vpn_error_page
 
     reverse_proxy n8n:5678
 

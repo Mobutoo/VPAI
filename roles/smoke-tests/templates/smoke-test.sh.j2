@@ -17,10 +17,25 @@ TIMEOUT="{{ smoke_test_timeout }}"
 PROJECT="{{ project_name }}"
 FAILURES=0
 
+# VPN-protected admin services: resolve admin domains via Tailscale IP
+# so Caddy sees a VPN source IP (in {{ caddy_vpn_cidr }}) instead of Docker gateway IP
+TAILSCALE_IP=$(tailscale ip -4 2>/dev/null || echo "")
+CURL_VPN_OPTS=""
+if [ -n "${TAILSCALE_IP}" ]; then
+  CURL_VPN_OPTS="--resolve {{ admin_subdomain | default('admin') }}.{{ domain_name }}:443:${TAILSCALE_IP}"
+{% if n8n_subdomain | default('') | length > 0 %}
+  CURL_VPN_OPTS="${CURL_VPN_OPTS} --resolve {{ n8n_subdomain }}.{{ domain_name }}:443:${TAILSCALE_IP}"
+{% endif %}
+  echo "INFO  Using Tailscale IP ${TAILSCALE_IP} for VPN-protected endpoints"
+else
+  echo "WARN  Tailscale not available — VPN-protected endpoint tests may fail"
+fi
+
 check_http() {
   local name="$1" url="$2" expected="${3:-200}"
   local status
-  status=$(curl -sL -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" "$url" 2>/dev/null) || status="000"
+  # shellcheck disable=SC2086
+  status=$(curl -sL -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" ${CURL_VPN_OPTS} "$url" 2>/dev/null) || status="000"
   if [ "$status" = "$expected" ]; then
     echo "PASS  $name (HTTP $status)"
   else
@@ -181,7 +196,8 @@ echo ""
 echo "--- Service Provisioning ---"
 
 # n8n owner provisioned (check if setup page is gone)
-N8N_SETTINGS=$(curl -s "${N8N_URL}/rest/settings" --max-time "${TIMEOUT}" 2>/dev/null || echo '{}')
+# shellcheck disable=SC2086
+N8N_SETTINGS=$(curl -s ${CURL_VPN_OPTS} "${N8N_URL}/rest/settings" --max-time "${TIMEOUT}" 2>/dev/null || echo '{}')
 N8N_SETUP_PAGE=$(echo "$N8N_SETTINGS" | grep -o '"showSetupPage":[a-z]*' | cut -d: -f2 || echo "unknown")
 if [ "$N8N_SETUP_PAGE" = "false" ]; then
   echo "PASS  n8n owner provisioned (setup complete)"
@@ -191,8 +207,8 @@ else
   echo "SKIP  n8n owner check (could not determine setup state)"
 fi
 
-# LiteLLM UI accessible
-check_http "LiteLLM UI" "${ADMIN_URL}/litellm/ui/" "200"
+# LiteLLM UI accessible (on public domain, behind API key auth)
+check_http "LiteLLM UI" "${BASE_URL}/litellm/ui/" "200"
 
 # Grafana login possible (just check the login page loads)
 check_http "Grafana login page" "${ADMIN_URL}/grafana/login" "200"

@@ -976,6 +976,118 @@ DNS_RESULT=$(getent hosts "domain.tld" | awk '{print $1}' | head -1)
 
 **Garde-fou** : Un handler de restart DOIT pointer vers le fichier compose qui contient le service. Verifier la correspondance handler <-> compose file pour chaque role.
 
+### Erreur 29 -- Grafana redirect loop avec strip_prefix + SERVE_FROM_SUB_PATH
+
+**Symptome** : Page Grafana login retourne HTTP 000 (boucle de redirection infinie)
+
+**Cause racine** : Caddy `uri strip_prefix /grafana` + Grafana `GF_SERVER_SERVE_FROM_SUB_PATH=true` creent un cycle. Caddy recoit `/grafana/login`, strip vers `/login`, Grafana redirige vers `/grafana/login`, Caddy strip encore...
+
+**Fix** : Supprimer `uri strip_prefix /grafana` dans le Caddyfile. Grafana gere le prefix lui-meme avec `SERVE_FROM_SUB_PATH`.
+```caddy
+handle /grafana/* {
+    reverse_proxy grafana:3000
+}
+```
+
+**Garde-fou** : Quand un service gere son propre sub-path (comme `SERVE_FROM_SUB_PATH` ou `SUBFOLDER_PREFIX`), ne PAS strip le prefix dans Caddy.
+
+### Erreur 30 -- LiteLLM P1000 PostgreSQL auth failure
+
+**Symptome** : `Error: P1000: Authentication failed against database server at postgresql`
+
+**Cause racine** : L'`init.sql` de PostgreSQL ne s'execute que lors de la PREMIERE initialisation (data dir vide). Si la DB a ete initialisee sans les users/databases de LiteLLM, les deploiements suivants ne les creent jamais.
+
+**Fix** : Creer un script de provisioning idempotent `provision-postgresql.sh.j2` qui verifie et cree les DBs/users apres chaque deploy :
+```bash
+DB_EXISTS=$(docker exec "$CONTAINER" psql -U postgres -tAc \
+  "SELECT 1 FROM pg_database WHERE datname='litellm'") || DB_EXISTS=""
+if [ "$DB_EXISTS" != "1" ]; then
+  docker exec "$CONTAINER" psql -U postgres -c "CREATE DATABASE litellm;"
+fi
+```
+
+**Garde-fou** : Ne JAMAIS se fier a `init.sql` pour creer des databases/users sur un PostgreSQL existant. Utiliser un script de provisioning idempotent execute apres chaque deploy.
+
+### Erreur 31 -- OpenClaw OOM (JavaScript heap out of memory)
+
+**Symptome** : `FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory` a 509MB
+
+**Cause racine** : Node.js a une limite de heap par defaut d'environ 512MB. OpenClaw (6.38GB image) depasse cette limite au demarrage.
+
+**Fix** : Ajouter `NODE_OPTIONS=--max-old-space-size=768` dans openclaw.env.j2 et augmenter la limite memoire Docker a 1536M.
+
+**Garde-fou** : Tout conteneur Node.js avec `cap_drop: ALL` + limite memoire doit avoir `NODE_OPTIONS` explicite.
+
+### Erreur 32 -- n8n ne supporte pas le sub-path
+
+**Symptome** : Page blanche lors de l'acces a n8n via `/n8n/` sur le domaine admin
+
+**Cause racine** : n8n ne supporte PAS le deploiement en sub-path (GitHub issue #19635). Les assets JS/CSS sont charges depuis la racine `/` et echouent silencieusement.
+
+**Fix** : Utiliser un sous-domaine dedie pour n8n (ex: `mayi.ewutelo.cloud`) :
+```caddy
+mayi.ewutelo.cloud {
+    import vpn_only
+    import vpn_error_page
+    reverse_proxy n8n:5678
+}
+```
+
+**Garde-fou** : n8n necessite un sous-domaine dedie. Ne PAS tenter le deploiement en sub-path.
+
+### Erreur 33 -- Caddy VPN ACL bloque aussi les utilisateurs VPN
+
+**Symptome** : L'utilisateur connecte au VPN (IP 100.64.0.2) voit la page Zone 51 (403) sur les domaines admin
+
+**Cause racine** : Le DNS public (`javisi.ewutelo.cloud`) resout vers l'IP publique du VPS (137.74.x.x). Le navigateur envoie le trafic via Internet, pas via le tunnel VPN. Caddy voit l'IP publique de l'utilisateur, pas son IP VPN. La directive `remote_ip 100.64.0.0/10` ne matche jamais.
+
+**Fix** : Configurer le Split DNS pour que les clients VPN resolvent les sous-domaines admin vers l'IP Tailscale du VPS :
+
+**Option 1** (Headscale config) :
+```yaml
+dns:
+  extra_records:
+    - name: "javisi.ewutelo.cloud"
+      type: A
+      value: "<IP_TAILSCALE_DU_VPS>"
+    - name: "mayi.ewutelo.cloud"
+      type: A
+      value: "<IP_TAILSCALE_DU_VPS>"
+```
+
+**Option 2** (client /etc/hosts) :
+```
+<IP_TAILSCALE_DU_VPS>  javisi.ewutelo.cloud mayi.ewutelo.cloud
+```
+
+Pour les smoke tests depuis le VPS, utiliser `curl --resolve domain:443:<TAILSCALE_IP>` pour forcer le routage via Tailscale.
+
+**Garde-fou** : L'ACL `remote_ip` de Caddy ne fonctionne que si le trafic arrive via le VPN. Les sous-domaines admin doivent etre resolus vers l'IP VPN du VPS (split DNS ou /etc/hosts).
+
+### Erreur 34 -- vpn_only snippet retournait HTTP 200 avec file_server
+
+**Symptome** : Les smoke tests passent alors que la page Zone 51 est servie (faux positifs)
+
+**Cause racine** : Le snippet `(vpn_only)` utilisait `root * /srv` + `rewrite * /restricted-zone.html` + `file_server`. Le `file_server` retourne HTTP 200 pour les fichiers existants, meme quand c'est une page de blocage.
+
+**Fix** : Utiliser `error @blocked 403` + `handle_errors` pour retourner HTTP 403 avec la page HTML :
+```caddy
+(vpn_only) {
+    @blocked not remote_ip {{ caddy_vpn_cidr }}
+    error @blocked 403
+}
+
+(vpn_error_page) {
+    handle_errors {
+        root * /srv
+        rewrite * /restricted-zone.html
+        file_server
+    }
+}
+```
+
+**Garde-fou** : Les pages de blocage doivent retourner le code HTTP correct (403, pas 200). Utiliser `error` + `handle_errors` au lieu de `file_server` direct.
+
 ---
 
 *Fin du Golden Prompt -- Pret pour le developpement.*

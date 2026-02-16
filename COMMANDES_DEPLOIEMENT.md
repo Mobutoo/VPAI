@@ -100,6 +100,7 @@ docker ps -a
 # Logs d'un container
 docker logs javisi_caddy --tail 50
 docker logs javisi_postgresql --tail 50
+docker logs javisi_openclaw --tail 50
 
 # Redémarrer un container
 docker restart javisi_caddy
@@ -110,3 +111,13 @@ cd /opt/javisi && docker compose -f docker-compose-infra.yml up -d
 # Relancer la stack apps
 cd /opt/javisi && docker compose -f docker-compose.yml up -d
 ```
+
+## Architecture des sous-domaines (1 service = 1 subdomain)
+
+| Sous-domaine | Service | Acces |
+|--------------|---------|-------|
+| `javisi.<domain>` | OpenClaw (Gateway WebSocket :18789) | VPN |
+| `tala.<domain>` | Grafana (:3000) | VPN |
+| `mayi.<domain>` | n8n (:5678) | VPN |
+| `llm.<domain>` | LiteLLM (:4000) | VPN |
+| `qd.<domain>` | Qdrant (:6333) | VPN |

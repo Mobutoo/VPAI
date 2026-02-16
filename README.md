@@ -9,10 +9,14 @@ VPAI is a production-ready Ansible project that provisions and configures 12+ Do
 ## What It Deploys
 
 ```
-Internet ──▶ Caddy (TLS auto) ──▶ Backend Network (isolated)
-                                      ├── n8n          — Workflow automation
-                                      ├── OpenClaw     — AI agent platform
-                                      ├── LiteLLM      — Multi-LLM proxy (OpenAI, Anthropic)
+Internet ──▶ Caddy (TLS auto) ──▶ 6 dedicated subdomains (1 service = 1 subdomain)
+                                      ├── javisi.domain → OpenClaw  — AI agent gateway (WebSocket)
+                                      ├── tala.domain   → Grafana   — Dashboards & alerting
+                                      ├── mayi.domain   → n8n       — Workflow automation
+                                      ├── llm.domain    → LiteLLM   — Multi-LLM proxy
+                                      └── qd.domain     → Qdrant    — Vector search engine
+
+                                   Backend Network (isolated)
                                       ├── PostgreSQL    — Relational database
                                       ├── Redis         — Cache & message broker
                                       └── Qdrant        — Vector search engine
@@ -20,8 +24,7 @@ Internet ──▶ Caddy (TLS auto) ──▶ Backend Network (isolated)
                                    Monitoring Network (isolated)
                                       ├── VictoriaMetrics — Time-series metrics
                                       ├── Loki            — Log aggregation
-                                      ├── Alloy           — Metrics & logs collector
-                                      └── Grafana         — Dashboards & alerting
+                                      └── Alloy           — Metrics & logs collector
 
                                    System
                                       ├── DIUN         — Docker image update notifier
@@ -108,10 +111,10 @@ VPAI uses four isolated Docker networks for defense in depth:
 
 | Network | Type | Purpose |
 |---------|------|---------|
-| `frontend` | External | Caddy ↔ Grafana (public-facing) |
+| `frontend` | External | Caddy ↔ Grafana (reverse proxy) |
 | `backend` | Internal | App ↔ DB communication (no internet) |
 | `monitoring` | Internal | Metrics & logs pipeline |
-| `egress` | External | Outbound API calls (OpenAI, Anthropic, webhooks) |
+| `egress` | External | Outbound API calls (OpenAI, Anthropic, Telegram) |
 
 ## Documentation
 

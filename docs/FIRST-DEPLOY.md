@@ -75,7 +75,7 @@ PREMIER DÉPLOIEMENT (depuis ta machine)
          ↓ Configure firewall, hardening, TLS auto
 
 VÉRIFICATION POST-DEPLOY
-├─ 8. Accéder aux services : https://admin.<domain>/n8n, /grafana, /litellm
+├─ 8. Accéder aux services : https://<subdomain>.<domain> (1 service = 1 subdomain)
 └─ 9. Vérifier les logs : ssh <user>@<IP> "docker compose -f /opt/.../docker-compose.yml logs"
 
 CI/CD (optionnel, après le 1er déploiement)
@@ -104,8 +104,11 @@ ansible prod -m ping --vault-password-file .vault_password
 # 5. Déployer
 make deploy-prod
 
-# 6. Accéder
-open https://<admin-subdomain>.<ton-domaine>/n8n
+# 6. Accéder (1 service = 1 sous-domaine)
+open https://<n8n-subdomain>.<ton-domaine>/
+open https://<grafana-subdomain>.<ton-domaine>/
+open https://<litellm-subdomain>.<ton-domaine>/
+open https://<openclaw-subdomain>.<ton-domaine>/
 # Login : email/password du wizard (dans users.yml + secrets.yml)
 ```
 
@@ -728,25 +731,29 @@ docker compose logs --tail 20 2>&1 | grep -i error
 
 ### 10.3 Tester chaque service
 
+> **Architecture** : Chaque service a son propre sous-domaine (1 service = 1 subdomain).
+> Les sous-domaines admin sont accessibles uniquement via VPN.
+
 | Service | URL de test | Attendu |
 |---------|-------------|---------|
 | Caddy (HTTPS) | `curl -I https://ton-domaine.com/health` | 200 OK |
-| n8n | `curl https://admin.ton-domaine.com/n8n/healthz` (VPN) | 200 OK |
-| Grafana | `curl https://admin.ton-domaine.com/grafana/api/health` (VPN) | 200 OK |
-| LiteLLM | `curl -H "Authorization: Bearer sk-..." https://ton-domaine.com/litellm/health` | 200 OK |
-| PostgreSQL | `docker exec vpai_postgresql pg_isready` | accepting connections |
-| Redis | `docker exec vpai_redis redis-cli -a <password> ping` | PONG |
-| Qdrant | `curl http://localhost:6333/healthz` (depuis le VPS) | 200 OK |
+| n8n | `curl https://<n8n-subdomain>.ton-domaine.com/healthz` (VPN) | 200 OK |
+| Grafana | `curl https://<grafana-subdomain>.ton-domaine.com/api/health` (VPN) | 200 OK |
+| LiteLLM | `curl -H "Authorization: Bearer sk-..." https://<litellm-subdomain>.ton-domaine.com/health` (VPN) | 200 OK |
+| OpenClaw | `curl https://<admin-subdomain>.ton-domaine.com/` (VPN) | 200 OK |
+| Qdrant | `curl -H "api-key: ..." https://<qdrant-subdomain>.ton-domaine.com/healthz` (VPN) | 200 OK |
+| PostgreSQL | `docker exec <project>_postgresql pg_isready` | accepting connections |
+| Redis | `docker exec <project>_redis redis-cli -a <password> ping` | PONG |
 
 ### 10.4 Tester l'API LiteLLM
 
 ```bash
-# Lister les modeles disponibles
-curl -s https://ton-domaine.com/litellm/v1/models \
+# Lister les modeles disponibles (sous-domaine dedie)
+curl -s https://<litellm-subdomain>.ton-domaine.com/v1/models \
   -H "Authorization: Bearer sk-ta-litellm-master-key" | jq '.data[].id'
 
 # Tester un appel Claude
-curl -s https://ton-domaine.com/litellm/v1/chat/completions \
+curl -s https://<litellm-subdomain>.ton-domaine.com/v1/chat/completions \
   -H "Authorization: Bearer sk-ta-litellm-master-key" \
   -H "Content-Type: application/json" \
   -d '{"model": "claude-sonnet", "messages": [{"role": "user", "content": "Hello!"}]}' | jq '.choices[0].message.content'
@@ -984,7 +991,7 @@ find roles/ -name '*.yml' -exec sed -i 's/\r$//' {} \;
 
 Le compte owner est cree automatiquement par Ansible via l'API `/rest/owner/setup`.
 
-- **URL** : `https://admin.<votre-domaine>/n8n/`
+- **URL** : `https://<n8n-subdomain>.<votre-domaine>/` (ex: `https://mayi.example.com/`)
 - **Email** : la valeur de `n8n_owner_email` dans `users.yml`
 - **Mot de passe** : la valeur de `n8n_owner_password` dans `secrets.yml`
 
@@ -993,7 +1000,7 @@ n8n affichera le formulaire de setup initial. Remplissez-le avec les memes crede
 
 ### 15.2 Grafana
 
-- **URL** : `https://admin.<votre-domaine>/grafana/`
+- **URL** : `https://<grafana-subdomain>.<votre-domaine>/` (ex: `https://tala.example.com/`)
 - **Utilisateur** : la valeur de `grafana_admin_user` dans `users.yml` (defaut: `admin`)
 - **Mot de passe** : la valeur de `grafana_admin_password` dans `secrets.yml`
 
@@ -1001,15 +1008,21 @@ n8n affichera le formulaire de setup initial. Remplissez-le avec les memes crede
 
 ### 15.3 LiteLLM
 
-- **URL** : `https://admin.<votre-domaine>/litellm/`
+- **URL** : `https://<litellm-subdomain>.<votre-domaine>/` (ex: `https://llm.example.com/`)
 - **Utilisateur** : la valeur de `litellm_ui_username` dans `users.yml`
 - **Mot de passe** : la valeur de `litellm_ui_password` dans `secrets.yml`
 
 ### 15.4 OpenClaw
 
-- **URL** : `https://admin.<votre-domaine>/openclaw/`
+- **URL** : `https://<admin-subdomain>.<votre-domaine>/` (ex: `https://javisi.example.com/`)
 - **Acces API** : cle `openclaw_api_key` dans `secrets.yml`
+- **Gateway token** : cle `openclaw_gateway_token` dans `secrets.yml` (auth Control UI)
 - **Notifications** : Bot Telegram dedie si configure (voir `main.yml`)
+
+### 15.5 Qdrant
+
+- **URL** : `https://<qdrant-subdomain>.<votre-domaine>/dashboard` (ex: `https://qd.example.com/dashboard`)
+- **API Key** : cle `qdrant_api_key` dans `secrets.yml`
 
 ---
 

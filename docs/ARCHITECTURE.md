@@ -19,7 +19,7 @@ graph TB
         subgraph BackendNet["Backend Network (172.20.2.0/24) — internal"]
             n8n["n8n<br/>:5678"]
             LiteLLM["LiteLLM<br/>:4000"]
-            OpenClaw["OpenClaw<br/>:8080"]
+            OpenClaw["OpenClaw<br/>:18789"]
             PostgreSQL["PostgreSQL<br/>:5432"]
             Redis["Redis<br/>:6379"]
             Qdrant["Qdrant<br/>:6333"]
@@ -58,13 +58,11 @@ graph TB
     Caddy -->|"reverse proxy"| LiteLLM
     Caddy -->|"reverse proxy"| OpenClaw
     Caddy -->|"reverse proxy"| Grafana
+    Caddy -->|"reverse proxy"| Qdrant
 
     n8n --> PostgreSQL
     LiteLLM --> PostgreSQL
     LiteLLM --> Redis
-    OpenClaw --> PostgreSQL
-    OpenClaw --> Redis
-    OpenClaw --> Qdrant
     OpenClaw -->|"API proxy"| LiteLLM
 
     n8n -.->|"egress"| Internet
@@ -126,20 +124,20 @@ graph LR
 
 ## 3. Service Matrix
 
-| Service | Frontend | Backend | Monitoring | Egress | Ports |
-|---------|:--------:|:-------:|:----------:|:------:|-------|
-| Caddy | X | X | | | 80, 443 |
-| PostgreSQL | | X | | | 5432 |
-| Redis | | X | | | 6379 |
-| Qdrant | | X | | | 6333 |
-| n8n | | X | | X | 5678 |
-| LiteLLM | | X | | X | 4000 |
-| OpenClaw | | X | | X | 8080 |
-| VictoriaMetrics | | | X | | 8428 |
-| Loki | | | X | | 3100 |
-| Alloy | | X | X | | 12345 |
-| Grafana | X | | X | | 3000 |
-| DIUN | | | | | — |
+| Service | Frontend | Backend | Monitoring | Egress | Ports | Subdomain |
+|---------|:--------:|:-------:|:----------:|:------:|-------|-----------|
+| Caddy | X | X | | | 80, 443 | `domain` (root) |
+| PostgreSQL | | X | | | 5432 | — (internal) |
+| Redis | | X | | | 6379 | — (internal) |
+| Qdrant | | X | | | 6333 | `qdrant_subdomain` |
+| n8n | | X | | X | 5678 | `n8n_subdomain` |
+| LiteLLM | | X | | X | 4000 | `litellm_subdomain` |
+| OpenClaw | | X | | X | 18789 | `admin_subdomain` |
+| VictoriaMetrics | | | X | | 8428 | — (internal) |
+| Loki | | | X | | 3100 | — (internal) |
+| Alloy | | X | X | | 12345 | — (internal) |
+| Grafana | X | | X | | 3000 | `grafana_subdomain` |
+| DIUN | | | | | — | — |
 
 ## 4. Data Flow
 
@@ -227,16 +225,18 @@ sequenceDiagram
 graph TD
     PG["PostgreSQL"] --> N8N["n8n"]
     PG --> LL["LiteLLM"]
-    PG --> OC["OpenClaw"]
     RD["Redis"] --> LL
-    RD --> OC
-    QD["Qdrant"] --> OC
+    QD["Qdrant"]
+    LL --> OC["OpenClaw"]
     N8N --> CDY["Caddy"]
     LL --> CDY
+    OC --> CDY
+    QD --> CDY
+    GF["Grafana"] --> CDY
 
     VM["VictoriaMetrics"] --> ALY["Alloy"]
     LK["Loki"] --> ALY
-    VM --> GF["Grafana"]
+    VM --> GF
     LK --> GF
 
     style PG fill:#4DB6AC
@@ -251,3 +251,6 @@ graph TD
     style ALY fill:#90CAF9
     style GF fill:#90CAF9
 ```
+
+> **Note** : OpenClaw est un agent IA Gateway WebSocket (port 18789), file-based.
+> Il ne depend PAS de PostgreSQL, Redis ou Qdrant. Il utilise LiteLLM comme proxy LLM.

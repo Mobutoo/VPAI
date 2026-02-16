@@ -85,7 +85,6 @@ services:
       - CHOWN
       - SETGID
       - SETUID
-    pids_limit: 512
     env_file:
       - /opt/{{ project_name }}/configs/openclaw/openclaw.env
     volumes:
@@ -100,6 +99,7 @@ services:
         limits:
           memory: {{ openclaw_memory_limit }}
           cpus: "{{ openclaw_cpu_limit }}"
+          pids: 512
         reservations:
           memory: {{ openclaw_memory_reservation }}
     # OpenClaw Gateway healthcheck: verify the WebSocket control plane is responsive

@@ -766,6 +766,115 @@ deb [arch=amd64 signed-by=/etc/apt/keyrings/<service>.gpg] <REPO_URL> <SUITE> ma
 
 **Garde-fou** : Ne pas inclure `apt-transport-https` ni `software-properties-common` dans les paquets a installer sur Debian 12+.
 
+### Erreur 14 -- PostgreSQL ICU Locale dans Docker
+
+**Symptome** : `initdb: error: invalid locale name "fr_FR.UTF-8"`
+
+**Cause racine** : L'image Docker `postgres:18.1-bookworm` n'a PAS les locales systeme installees (pas de `fr_FR.UTF-8`). Le `POSTGRES_INITDB_ARGS` utilisait `--locale=fr_FR.UTF-8` qui n'existe pas.
+
+**Fix** : Utiliser le provider ICU (independant des locales systeme) :
+```yaml
+POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale=fr-FR --locale=C"
+```
+
+**Garde-fou** : Ne JAMAIS utiliser `--locale=xx_XX.UTF-8` dans les images Docker PostgreSQL. Toujours utiliser `--locale-provider=icu` avec `--icu-locale`.
+
+### Erreur 15 -- PostgreSQL logging_collector dans Docker
+
+**Symptome** : PostgreSQL crash loop avec `logging_collector = on`
+
+**Cause racine** : `logging_collector = on` tente d'ecrire dans `/var/log/postgresql/` qui n'existe pas dans le conteneur Docker. Docker capte deja stdout/stderr.
+
+**Fix** : `logging_collector = off` dans postgresql.conf.j2
+
+**Garde-fou** : Ne JAMAIS activer `logging_collector` dans un conteneur Docker.
+
+### Erreur 16 -- Qdrant PermissionDenied avec cap_drop ALL
+
+**Symptome** : `Failed to remove snapshots temp directory at ./snapshots/tmp: PermissionDenied`
+
+**Cause racine** : `cap_drop: ALL` retire `DAC_OVERRIDE`. Meme si l'UID du conteneur (1000) matche le proprietaire des fichiers, certaines operations de fichier necessitent `DAC_OVERRIDE`.
+
+**Fix** :
+```yaml
+cap_add:
+  - CHOWN
+  - SETGID
+  - SETUID
+  - DAC_OVERRIDE
+  - FOWNER
+```
+
+**Garde-fou** : Tout conteneur qui ecrit dans des volumes montes avec `cap_drop: ALL` a quasi-certainement besoin de `DAC_OVERRIDE`. Tester systematiquement.
+
+### Erreur 17 -- Qdrant image sans wget/curl
+
+**Symptome** : `exec: "wget": executable file not found in $PATH`
+
+**Cause racine** : L'image Qdrant v1.16.3 est minimale -- ni `wget`, ni `curl`, ni `nc`.
+
+**Fix** : Healthcheck via bash :
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "bash -c ':> /dev/tcp/localhost/6333' || exit 1"]
+```
+
+**Garde-fou** : Avant d'ecrire un healthcheck, verifier les outils disponibles dans l'image avec `docker exec <container> which wget curl nc`.
+
+### Erreur 18 -- Qdrant config path (production.yaml)
+
+**Symptome** : Qdrant utilise la config par defaut malgre le volume mount
+
+**Cause racine** : Config montee comme `/qdrant/config/config.yaml` mais Qdrant attend `/qdrant/config/production.yaml`.
+
+**Fix** : `- .../config.yaml:/qdrant/config/production.yaml:ro`
+
+**Garde-fou** : Verifier la documentation officielle du conteneur pour le chemin exact du fichier de config.
+
+### Erreur 19 -- Redis 8.0 rename-command supprime
+
+**Symptome** : Redis crash au demarrage avec `rename-command`
+
+**Cause racine** : `rename-command` a ete supprime dans Redis 8.0. Etait deprecated depuis 7.x.
+
+**Fix** : Supprimer `rename-command` du redis.conf. Utiliser les ACL Redis a la place.
+
+**Garde-fou** : `grep -r 'rename-command' roles/redis/` doit renvoyer **rien** sur Redis 8.0+.
+
+### Erreur 20 -- Caddy healthcheck localhost vs domain
+
+**Symptome** : Caddy `(unhealthy)` alors que le service tourne correctement
+
+**Cause racine** : Le healthcheck `wget -qO- http://localhost:80/health` echoue car `/health` est defini dans le bloc domain (`{{ caddy_domain }}`). Le Host header `localhost` ne matche aucun site block Caddy.
+
+**Fix** : Utiliser l'admin API Caddy (toujours disponible sur localhost:2019) :
+```yaml
+healthcheck:
+  test: ["CMD-SHELL", "wget -qO- http://localhost:2019/config/ || exit 1"]
+```
+
+**Garde-fou** : Pour Caddy, toujours utiliser l'admin API pour les healthchecks Docker, jamais les routes applicatives.
+
+### Erreur 21 -- Phase B duplique les services Phase A
+
+**Symptome** : Docker Compose tente de recreer des conteneurs deja running
+
+**Cause racine** : `docker-compose.yml` (Phase B) contenait les definitions completes de PG, Redis, Qdrant et Caddy, identiques a celles de `docker-compose-infra.yml` (Phase A).
+
+**Fix** : Phase B ne contient plus que les services applicatifs (n8n, LiteLLM, OpenClaw, monitoring, DIUN). Pas de duplication.
+
+**Garde-fou** : Un service ne doit apparaitre que dans UN SEUL fichier compose. Verifier avec `grep -h 'container_name:' roles/docker-stack/templates/*.j2 | sort | uniq -d` (doit etre vide).
+
+### Erreur 22 -- Makefile EXTRA_VARS
+
+**Symptome** : `make deploy-prod -e ansible_port_override=804` ne transmet pas la variable
+
+**Cause racine** : Le `-e` de make est un flag make (variables d'environnement), pas un flag Ansible. Le Makefile n'avait pas de mecanisme pour passer des extra-vars.
+
+**Fix** : Ajout de `$(if $(EXTRA_VARS),-e "$(EXTRA_VARS)")` dans le Makefile.
+
+**Garde-fou** : Utiliser `make deploy-prod EXTRA_VARS="key=value"` (pas `-e`).
+
 ---
 
-*Fin du Golden Prompt — Prêt pour le développement.*
+*Fin du Golden Prompt -- Pret pour le developpement.*

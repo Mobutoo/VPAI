@@ -1,535 +1,209 @@
-# REX - Premier Déploiement VPAI (2026-02-15)
+# REX - Deploiement VPAI (15-16 fevrier 2026)
 
-## 📋 Contexte
+## Contexte
 
-**Date** : 15 février 2026
-**Projet** : VPAI - Stack AI/Automatisation auto-hébergée
+**Dates** : 15-16 fevrier 2026
+**Projet** : VPAI - Stack AI/Automatisation auto-hebergee
 **Environnement** : VPS OVH Production (Debian 13 Trixie)
 **IP** : 137.74.114.167
-**Utilisateur** : mobuone
-**Objectif** : Premier déploiement complet de la stack (PostgreSQL, Redis, Qdrant, Caddy, n8n, LiteLLM, OpenClaw, Monitoring)
+**Objectif** : Deploiement complet de la stack (PostgreSQL, Redis, Qdrant, Caddy, n8n, LiteLLM, OpenClaw, Monitoring)
 
 ---
 
-## 🎯 Résumé Exécutif
+## Resume
 
-**Durée** : ~6 heures de debugging itératif
-**Résultat** : Architecture corrigée, prête pour déploiement
-**Erreurs critiques découvertes** : 8
-**Commits** : 6 commits de correctifs
-**Apprentissages clés** : PostgreSQL 18+, Docker Compose phases, isolation réseau, ordre d'exécution
+**Duree totale** : ~10 heures de debugging iteratif (2 sessions)
+**Erreurs critiques** : 16
+**Resultat** : Phase A (infra) fonctionnelle -- PG, Redis, Qdrant healthy. Phase B en cours.
 
 ---
 
-## 🐛 Erreurs Critiques Rencontrées et Solutions
+## Session 1 -- Erreurs 1 a 8 (15 fevrier)
 
-### 1. ⚠️ **LOCKOUT SSH par Hardening Prématuré**
+### 1. LOCKOUT SSH par Hardening Premature
 
-**Symptôme** :
-```
-Connection timed out after hardening role
-SSH inaccessible via réseau normal
-```
+**Symptome** : `Connection timed out` apres le role hardening
+**Cause** : Hardening execute en Phase 1, SSH restreint au VPN avant validation VPN
+**Fix** : Hardening deplace en Phase 6 (dernier role), `hardening_ssh_force_open: true` par defaut
+**Impact** : CRITIQUE -- Perte d'acces total au serveur
 
-**Cause Racine** :
-- Rôle `hardening` exécuté en **Phase 1** (trop tôt)
-- SSH restreint au VPN (IP Headscale) AVANT validation du VPN
-- Lockout immédiat, impossible de se reconnecter
+### 2. Role docker-stack Manquant
 
-**Solution Appliquée** :
-1. ✅ Hardening déplacé de **Phase 1 → Phase 6** (DERNIER rôle)
-2. ✅ `hardening_ssh_force_open: true` par défaut (SSH reste sur 0.0.0.0)
-3. ✅ Documentation ajoutée : "Garder une fenêtre SSH ouverte pendant le déploiement"
+**Symptome** : Aucun conteneur cree, `docker ps -a` vide
+**Cause** : Roles individuels preparent les configs mais aucun ne fait `docker compose up`
+**Fix** : Creation du role `docker-stack` en Phase 4.5, deploiement en 2 phases (A: infra, B: apps)
+**Impact** : CRITIQUE
 
-**Prévention** :
-```yaml
-# hardening/defaults/main.yml
-hardening_ssh_force_open: true  # DEFAULT: Safe mode
-# L'admin doit explicitement mettre false APRÈS validation VPN
-```
+### 3. Roles Executes 2 Fois
 
-**Impact** : 🔴 CRITIQUE - Perte d'accès total au serveur
+**Symptome** : Taches dupliquees dans l'output Ansible
+**Cause** : `docker-stack/meta/main.yml` declarait des dependances vers tous les roles
+**Fix** : `dependencies: []` dans meta/main.yml
+**Impact** : MOYEN
 
-**Commit** : `d0d7a2c` - "fix: Move hardening to Phase 6"
+### 4. Connectivite VPN Bloque Deploiement
 
-**Leçon** : **JAMAIS** restreindre SSH avant validation complète de l'accès alternatif (VPN).
+**Symptome** : `ping -c 3 87.106.30.160` 100% packet loss
+**Cause** : VPS utilise son propre routage, pas de route VPN configuree
+**Fix** : `failed_when: false` sur la verification VPN
+**Impact** : MOYEN
 
----
+### 5. Images Docker Inexistantes
 
-### 2. 📦 **Rôle docker-stack Manquant**
+**Symptome** : `redis:8.0.10-bookworm` not found, `openclaw:v2026.2.14` not found
+**Fix** : `redis:8.0-bookworm`, `openclaw:latest` (temporaire)
+**Impact** : CRITIQUE
 
-**Symptôme** :
-```
-Aucun conteneur créé
-docker ps -a : vide
-Rôles n8n, postgresql, etc. préparent configs mais rien ne démarre
-```
+### 6. Reseaux Docker -- Conflit de Labels
 
-**Cause Racine** :
-- Rôles individuels (n8n, postgresql, redis) préparent **UNIQUEMENT les configs**
-- Aucun rôle ne déploie le `docker-compose.yml` centralisé
-- `docker compose up` jamais exécuté
+**Symptome** : `network javisi_backend has incorrect label com.docker.compose.network`
+**Cause** : Reseaux crees par ancien compose avec labels differents
+**Fix** : Cleanup automatique des reseaux avant deploiement
+**Impact** : CRITIQUE
 
-**Solution Appliquée** :
-1. ✅ Création du rôle `docker-stack` (nouveau)
-2. ✅ Ajouté en **Phase 4.5** (après configs, avant provisioning)
-3. ✅ Déploiement en 2 phases :
-   - **Phase A** : Infra (PostgreSQL, Redis, Qdrant, Caddy) + Réseaux
-   - **Phase B** : Apps (n8n, LiteLLM, OpenClaw, Monitoring)
+### 7. Provisioning n8n AVANT Creation Conteneur
 
-**Architecture Finale** :
-```
-Phase 1-3: Préparation configs (postgresql, redis, n8n, etc.)
-Phase 4.5: docker-stack → Crée TOUS les conteneurs
-Phase 4.6: n8n-provision → Configure owner n8n
-```
+**Symptome** : `docker exec javisi_n8n` -> `No such container`
+**Cause** : Role n8n essayait de provisionner avant docker-stack
+**Fix** : Separation en 2 roles : n8n (config Phase 3) + n8n-provision (Phase 4.6)
+**Impact** : CRITIQUE
 
-**Impact** : 🔴 CRITIQUE - Sans ce rôle, rien ne démarre jamais
+### 8. PostgreSQL 18+ -- Volume Mount & Capabilities
 
-**Commit** : `820076a` - "feat: Split docker-stack into phased deployment"
-
-**Leçon** : Architecture centralisée (un docker-compose.yml) nécessite un rôle orchestrateur.
+**Symptome** : `chmod: changing permissions: Operation not permitted`
+**Causes** :
+- Volume mount `/var/lib/postgresql/data` -> `/var/lib/postgresql` (PG18+ change)
+- Capabilities manquantes : `DAC_OVERRIDE` + `FOWNER`
+**Fix** : Correction du volume mount + ajout des capabilities
+**Impact** : CRITIQUE
 
 ---
 
-### 3. 🔄 **Rôles Exécutés 2 Fois (Duplication)**
+## Session 2 -- Erreurs 9 a 16 (16 fevrier)
 
-**Symptôme** :
-```
-TASK [postgresql : Create config directory]
-TASK [postgresql : Create config directory]  # Exécuté 2 fois !
-```
+### 9. PostgreSQL -- ICU Locale et logging_collector
 
-**Cause Racine** :
-- `docker-stack/meta/main.yml` déclarait des dépendances vers TOUS les rôles
-- Ansible exécute les dépendances AVANT le rôle
-- Rôles déjà dans le playbook → Double exécution
+**Symptome** : `initdb: error: invalid locale name "fr_FR.UTF-8"` + crash loop sur logging_collector
+**Causes** :
+- L'image Docker postgres:18.1-bookworm n'a PAS le locale `fr_FR.UTF-8` installe
+- `logging_collector = on` tente d'ecrire dans `/var/log/postgresql/` qui n'existe pas dans Docker
+- Le fichier `postgresql.conf.j2` contenait le byte `0x97` (Windows-1252) et des fins de ligne CRLF
+**Fix** :
+- ICU locale : `--locale-provider=icu --icu-locale=fr-FR --locale=C`
+- `logging_collector = off` (Docker capte stdout/stderr)
+- Re-encodage UTF-8 + LF du fichier
+**Impact** : CRITIQUE
 
-**Solution Appliquée** :
-```yaml
-# docker-stack/meta/main.yml
-dependencies: []  # Vide, pas de dépendances
-```
+### 10. Qdrant -- PermissionDenied sur snapshots/tmp
 
-**Impact** : 🟡 MOYEN - Ralentit déploiement, risque d'état incohérent
+**Symptome** : `Failed to remove snapshots temp directory at ./snapshots/tmp: PermissionDenied`
+**Cause** : `cap_drop: ALL` sans `DAC_OVERRIDE` -- Qdrant (UID 1000) ne pouvait pas ecrire dans ses propres repertoires montes
+**Fix** :
+- Ajout `DAC_OVERRIDE` + `FOWNER` aux capabilities Qdrant
+- `chown -R 1000:1000` sur le repertoire data dans Ansible
+- Suppression du repertoire `snapshots/tmp` residuel
+**Impact** : CRITIQUE
 
-**Commit** : `d0d7a2c` - "fix: Add docker-stack role and fix deployment issues"
+### 11. Qdrant -- Healthcheck sans wget/curl
 
-**Leçon** : Rôle orchestrateur ne doit PAS déclarer de dépendances si rôles déjà dans le playbook.
+**Symptome** : `exec: "wget": executable file not found in $PATH`
+**Cause** : L'image Qdrant v1.16.3 ne contient ni `wget`, ni `curl`, ni `nc`
+**Fix** : Healthcheck via bash : `bash -c ':> /dev/tcp/localhost/6333' || exit 1`
+**Impact** : CRITIQUE
 
----
+### 12. Qdrant -- Config montee au mauvais chemin
 
-### 4. 🌐 **Connectivité VPN Bloque Déploiement**
+**Symptome** : Configuration par defaut utilisee malgre le volume mount
+**Cause** : Config montee comme `/qdrant/config/config.yaml` mais Qdrant attend `production.yaml`
+**Fix** : Mount en `/qdrant/config/production.yaml:ro`
+**Impact** : MOYEN
 
-**Symptôme** :
-```
-TASK [headscale-node : Verify VPN connectivity]
-FAILED - RETRYING: ping -c 3 87.106.30.160
-100% packet loss
-```
+### 13. Redis 8.0 -- rename-command supprime
 
-**Cause Racine** :
-- Rôle `headscale-node` essayait de ping Seko-VPN (87.106.30.160)
-- VPS utilise son propre routage (pas de route VPN configurée)
-- Vérification de connectivité bloquante par défaut
+**Symptome** : Redis crash au demarrage
+**Cause** : `rename-command` a ete supprime dans Redis 8.0 (deprecated depuis 7.x, retire dans 8.0)
+**Fix** : Suppression de `rename-command FLUSHDB ""` et `rename-command FLUSHALL ""` du redis.conf. Utiliser les ACL a la place.
+**Impact** : CRITIQUE
 
-**Solution Appliquée** :
-```yaml
-# headscale-node/tasks/main.yml
-- name: Verify VPN connectivity (non-blocking)
-  ansible.builtin.command:
-    cmd: "ping -c 3 -W 5 {{ headscale_vpn_ip }}"
-  failed_when: false  # Ne pas bloquer si ping échoue
-  register: vpn_connectivity_check
-```
+### 14. Caddy -- Healthcheck echoue sur localhost
 
-**Impact** : 🟡 MOYEN - Bloque progression sans raison valide
+**Symptome** : Caddy `Up X minutes (unhealthy)` malgre le service qui tourne
+**Cause** : Le healthcheck `wget -qO- http://localhost:80/health` echoue car `/health` est defini dans le bloc `{{ caddy_domain }}`. Quand le Host header est `localhost`, Caddy ne matche aucun site block.
+**Fix** : Changer le healthcheck pour utiliser l'admin API Caddy : `wget -qO- http://localhost:2019/config/` (toujours disponible, independant du domaine)
+**Impact** : CRITIQUE
 
-**Commit** : `d0d7a2c` - "fix: headscale-node: make VPN connectivity check non-blocking"
+### 15. Caddy -- Capabilities manquantes pour les logs
 
-**Leçon** : VPN mesh != routage automatique. Le VPS garde son routage normal.
+**Symptome** : `permission denied` sur `/var/log/caddy/access.log`
+**Cause** : `cap_drop: ALL` retire `DAC_OVERRIDE`, meme si le repertoire est `chmod 777`
+**Fix** : Ajout `DAC_OVERRIDE` aux capabilities Caddy (en plus de `NET_BIND_SERVICE`)
+**Impact** : CRITIQUE
 
----
+### 16. Phase B duplique les services infra
 
-### 5. 🖼️ **Images Docker Inexistantes**
-
-**Symptôme** :
-```
-Error: redis:8.0.10-bookworm: not found
-Error: ghcr.io/openclaw/openclaw:v2026.2.14: not found
-```
-
-**Cause Racine** :
-- `redis:8.0.10-bookworm` → Tag patch n'existe pas (uniquement `8.0-bookworm`)
-- `openclaw:v2026.2.14` → Version fictive du PRD, n'existe pas
-
-**Solution Appliquée** :
-```yaml
-# inventory/group_vars/all/versions.yml
-redis_image: "redis:8.0-bookworm"  # Corrigé
-openclaw_image: "ghcr.io/openclaw/openclaw:latest"  # Temporaire
-```
-
-**Vérification Ajoutée** :
-```bash
-# Script de vérification avant déploiement
-for image in $(list_all_images); do
-  docker manifest inspect "$image" || echo "ERREUR: $image"
-done
-```
-
-**Impact** : 🔴 CRITIQUE - Bloque déploiement complet
-
-**Commit** : `fff33cd` - "fix: Move n8n provisioning after docker-stack and fix Redis version"
-
-**Leçon** : **TOUJOURS** vérifier l'existence des images avant déploiement.
+**Symptome** : Docker Compose tente de recreer PG/Redis/Qdrant/Caddy lors du deploiement Phase B
+**Cause** : `docker-compose.yml` (Phase B) contenait les definitions completes de PG, Redis, Qdrant et Caddy, dupliquant Phase A
+**Fix** :
+- Phase B ne contient plus que les apps (n8n, LiteLLM, OpenClaw) + monitoring + DIUN
+- Les `depends_on` vers les services infra ont ete supprimes (infra deja healthy depuis Phase A)
+- Seule Phase B est arretee lors du cleanup (Phase A reste running)
+**Impact** : CRITIQUE
 
 ---
 
-### 6. 🔗 **Réseaux Docker - Conflit de Labels**
+## Erreurs supplementaires (transverses)
 
-**Symptôme** :
-```
-Error: network javisi_backend was found but has incorrect label
-com.docker.compose.network set to "" (expected: "backend")
-```
+### Makefile -- EXTRA_VARS non transmises
 
-**Cause Racine** :
-- Réseaux créés par ancien `docker-compose.yml` (monolithique)
-- Nouveau `docker-compose-infra.yml` attend des labels différents
-- Docker Compose refuse de réutiliser réseaux avec mauvais labels
+**Symptome** : `make deploy-prod -e ansible_port_override=804` ne transmet pas la variable a Ansible
+**Cause** : Le `-e` de make est un flag make (variables d'environnement), pas un flag Ansible. Le Makefile ne passait pas d'extra-vars.
+**Fix** : Ajout du support `EXTRA_VARS` dans le Makefile : `$(if $(EXTRA_VARS),-e "$(EXTRA_VARS)")`
+**Usage** : `make deploy-prod EXTRA_VARS="ansible_port_override=22"`
 
-**Solution Appliquée** :
-```yaml
-# docker-stack/tasks/main.yml
-- name: Stop old docker-compose stacks if they exist
-  ansible.builtin.shell:
-    cmd: |
-      docker compose -f docker-compose.yml down || true
-      docker compose -f docker-compose-infra.yml down || true
+### Inventaire -- Port SSH par defaut
 
-- name: Remove project Docker networks
-  ansible.builtin.command:
-    cmd: "docker network rm {{ project_name }}_{{ item }}"
-  loop: [frontend, backend, egress, monitoring]
-  failed_when: false
-```
+**Symptome** : Apres hardening, `make deploy-prod` essaie toujours le port 22
+**Cause** : `ansible_port: "{{ ansible_port_override | default(22) }}"` -- le defaut etait 22
+**Fix** : Change en `default(prod_ssh_port)` -- le defaut est maintenant `prod_ssh_port` (804)
 
-**Impact** : 🔴 CRITIQUE - Empêche création de l'infra
+### inject_facts_as_vars deprecie
 
-**Commit** : `a476f4f` - "fix: Add network cleanup to docker-stack role"
-
-**Leçon** : Cleanup des réseaux nécessaire pour déploiements idempotents.
+**Symptome** : Warnings de depreciation sur chaque tache
+**Fix** : `inject_facts_as_vars = False` dans ansible.cfg, remplacer `ansible_date_time.xxx` par `ansible_facts['date_time']['xxx']`
 
 ---
 
-### 7. 🗂️ **Provisioning n8n AVANT Création Conteneur**
+## Statistiques Globales
 
-**Symptôme** :
-```
-TASK [n8n : Wait for n8n container to be healthy]
-Error: No such container: javisi_n8n
-```
-
-**Cause Racine** :
-- Rôle `n8n` (Phase 3) essayait de provisionner l'owner
-- `docker exec javisi_n8n` échouait car conteneur pas encore créé
-- `docker-stack` (Phase 4.5) crée les conteneurs **APRÈS**
-
-**Solution Appliquée** :
-1. ✅ Suppression provisioning du rôle `n8n`
-2. ✅ Création rôle `n8n-provision` (nouveau)
-3. ✅ Ajouté en **Phase 4.6** (après docker-stack)
-
-**Ordre Corrigé** :
-```
-Phase 3: n8n role → Prépare configs UNIQUEMENT
-Phase 4.5: docker-stack → Crée conteneur n8n
-Phase 4.6: n8n-provision → Provisionne owner (conteneur existe maintenant)
-```
-
-**Impact** : 🔴 CRITIQUE - Bloque déploiement n8n
-
-**Commit** : `fff33cd` - "fix: Move n8n provisioning after docker-stack"
-
-**Leçon** : Séparer préparation config (avant conteneurs) et provisioning (après conteneurs).
+| Metrique | Session 1 | Session 2 | Total |
+|----------|-----------|-----------|-------|
+| Erreurs critiques | 6 | 8 | 14 |
+| Erreurs moyennes | 2 | 2 | 4 |
+| Fichiers modifies | 14 | 31 | ~35 (avec recouvrements) |
+| Temps debugging | ~6h | ~4h | ~10h |
 
 ---
 
-### 8. 💾 **PostgreSQL 18+ - Volume Mount & Capabilities**
+## Lecons Cles
 
-**Symptôme** :
-```
-PostgreSQL container: restarting (unhealthy)
-Error: chmod: changing permissions: Operation not permitted
-PostgreSQL data in /var/lib/postgresql/data (unused mount)
-```
+### A FAIRE
 
-**Causes Racines (2 problèmes)** :
+1. **`cap_drop: ALL` + `cap_add` minimal** est la bonne approche, MAIS `DAC_OVERRIDE` est quasi-systematiquement necessaire des qu'un conteneur ecrit dans un volume monte
+2. **Verifier les outils disponibles dans l'image** avant d'ecrire un healthcheck (wget, curl, bash...)
+3. **Les healthchecks sur `localhost` doivent matcher le bon Host header** -- utiliser l'admin API quand possible
+4. **Un fichier compose par phase** -- pas de duplication de services entre les 2 fichiers
+5. **Le port SSH par defaut dans l'inventaire** doit etre le port cible (804), avec override possible pour le premier deploiement
 
-#### A. Volume Mount Path Incorrect
-- ❌ Ancien format (< 18) : `/var/lib/postgresql/data`
-- ✅ Nouveau format (18+) : `/var/lib/postgresql`
-- Référence : https://github.com/docker-library/postgres/pull/1259
+### A EVITER
 
-#### B. Capabilities Linux Insuffisantes
-- PostgreSQL 18+ a besoin de `DAC_OVERRIDE` et `FOWNER`
-- Capabilities initiales : `CHOWN`, `SETGID`, `SETUID` seulement
-- Impossibilité de `chmod`/`chown` dans `/var/lib/postgresql/18/docker`
-
-**Solutions Appliquées** :
-
-```yaml
-# docker-compose-infra.yml - Volume
-volumes:
-  - /opt/{{ project_name }}/data/postgresql:/var/lib/postgresql  # Corrigé
-
-# docker-compose-infra.yml - Capabilities
-cap_add:
-  - CHOWN
-  - SETGID
-  - SETUID
-  - DAC_OVERRIDE  # Bypass file permission checks
-  - FOWNER        # Bypass ownership checks
-```
-
-**Analyse Sécurité** :
-- ✅ `cap_drop: ALL` en premier (défense en profondeur)
-- ✅ Seulement 5 capabilities spécifiques (minimal set)
-- ✅ `no-new-privileges:true` (pas d'escalade)
-- ✅ UID 999 non-root
-- ✅ Réseau `backend` internal (pas d'internet)
-
-**Impact** : 🔴 CRITIQUE - PostgreSQL ne démarre jamais
-
-**Commits** :
-- `a63a305` - "fix: PostgreSQL 18+ volume mount path"
-- `5b82149` - "fix: Add DAC_OVERRIDE and FOWNER capabilities"
-
-**Leçon** : PostgreSQL 18+ est un **major upgrade** avec breaking changes (volume + capabilities).
+1. Ne jamais dupliquer des services entre Phase A et Phase B
+2. Ne pas supposer que `wget`/`curl` existe dans toutes les images Docker
+3. Ne pas utiliser les locales systeme dans les images Docker (utiliser ICU)
+4. Ne pas utiliser `rename-command` dans Redis 8.0+
+5. Ne pas faire `make deploy-prod -e ...` (le `-e` est un flag make, pas Ansible)
 
 ---
 
-## 📊 Statistiques du Debugging
-
-| Métrique | Valeur |
-|----------|--------|
-| **Erreurs critiques** | 8 |
-| **Erreurs bloquantes** | 6 (SSH, docker-stack, images, réseaux, n8n, PostgreSQL) |
-| **Erreurs moyennes** | 2 (VPN, duplication rôles) |
-| **Commits de fix** | 6 |
-| **Lignes modifiées** | ~800 |
-| **Fichiers impactés** | 14 |
-| **Temps debugging** | ~6h |
-| **Images vérifiées** | 12/12 ✅ |
-
----
-
-## 🏗️ Architecture Finale Déployée
-
-### Réseaux Docker (Isolation par Service)
-
-```yaml
-networks:
-  frontend:        # 172.20.1.0/24 - Public (Caddy, Grafana)
-  backend:         # 172.20.2.0/24 - Internal, NO internet (PostgreSQL, Redis, Qdrant)
-  egress:          # 172.20.4.0/24 - Apps avec internet (n8n, LiteLLM, OpenClaw)
-  monitoring:      # 172.20.3.0/24 - Internal, NO internet (VictoriaMetrics, Loki)
-```
-
-### Matrice Réseaux par Service
-
-| Service | frontend | backend | egress | monitoring |
-|---------|----------|---------|--------|------------|
-| **Caddy** | ✅ | ✅ | ❌ | ❌ |
-| **PostgreSQL** | ❌ | ✅ | ❌ | ❌ |
-| **Redis** | ❌ | ✅ | ❌ | ❌ |
-| **Qdrant** | ❌ | ✅ | ❌ | ❌ |
-| **n8n** | ❌ | ✅ | ✅ | ❌ |
-| **LiteLLM** | ❌ | ✅ | ✅ | ❌ |
-| **OpenClaw** | ❌ | ✅ | ✅ | ❌ |
-| **Grafana** | ✅ | ❌ | ❌ | ✅ |
-| **VictoriaMetrics** | ❌ | ❌ | ❌ | ✅ |
-| **Loki** | ❌ | ❌ | ❌ | ✅ |
-| **Alloy** | ❌ | ✅ | ❌ | ✅ |
-| **DIUN** | host | host | host | host |
-
-### Ordre d'Exécution des Phases
-
-```
-Phase 1 — Fondations
-├─ common
-├─ docker
-└─ headscale-node
-
-Phase 2 — Données & Reverse Proxy
-├─ postgresql (config)
-├─ redis (config)
-├─ qdrant (config)
-└─ caddy (config)
-
-Phase 3 — Applications
-├─ n8n (config)
-├─ litellm (config)
-└─ openclaw (config)
-
-Phase 4 — Observabilité
-├─ monitoring (config)
-└─ diun (config)
-
-Phase 4.5 — Déploiement Docker Stack ⭐ NOUVEAU
-├─ docker-stack
-│   ├─ Phase A: Infra (PostgreSQL, Redis, Qdrant, Caddy) + Réseaux
-│   └─ Phase B: Apps (n8n, LiteLLM, OpenClaw, Monitoring)
-
-Phase 4.6 — Provisioning Post-Déploiement ⭐ NOUVEAU
-└─ n8n-provision
-
-Phase 5 — Résilience
-├─ backup-config
-└─ uptime-config
-
-Phase 6 — Hardening (DERNIER) ⭐ DÉPLACÉ
-└─ hardening
-```
-
----
-
-## 🔐 Posture de Sécurité Finale
-
-### Hardening Appliqué
-- ✅ SSH sur port custom (804), clé publique uniquement
-- ✅ UFW firewall (ports 80, 443 publics uniquement)
-- ✅ Fail2Ban actif
-- ✅ CrowdSec (repo Debian 12 bookworm)
-- ⚠️ SSH accessible sur 0.0.0.0 (`hardening_ssh_force_open: true` par défaut)
-
-### Isolation Conteneurs
-- ✅ `cap_drop: ALL` sur tous les services
-- ✅ Capabilities minimales par service
-- ✅ `no-new-privileges:true` partout
-- ✅ UIDs non-root (999 pour PostgreSQL, 1000 pour n8n)
-- ✅ Réseaux internes sans internet (backend, monitoring)
-- ✅ Admin UIs VPN-only (n8n, Grafana, OpenClaw, Qdrant)
-
-### Points d'Attention Sécurité
-- ⚠️ OpenClaw utilise `:latest` (temporaire, à pinner)
-- ⚠️ SSH sur 0.0.0.0 par défaut (sécurité > facilité)
-- ⚠️ PostgreSQL avec `DAC_OVERRIDE` et `FOWNER` (nécessaire pour PG18+)
-
----
-
-## 📚 Apprentissages Clés pour Futurs Déploiements
-
-### ✅ À FAIRE
-
-1. **Vérifier TOUTES les images Docker AVANT déploiement**
-   ```bash
-   docker manifest inspect <image>:<tag>
-   ```
-
-2. **Garder une fenêtre SSH ouverte pendant hardening**
-   - Tester accès VPN AVANT de restreindre SSH
-   - Valider que `hardening_ssh_force_open: true` au début
-
-3. **Ordre d'exécution critique** :
-   - Configs AVANT conteneurs
-   - Conteneurs AVANT provisioning
-   - Hardening en DERNIER
-
-4. **PostgreSQL 18+ nécessite** :
-   - Volume mount : `/var/lib/postgresql` (pas `/data`)
-   - Capabilities : `DAC_OVERRIDE` + `FOWNER`
-
-5. **Cleanup réseaux Docker** :
-   - Supprimer anciens réseaux avant redéploiement
-   - Éviter conflits de labels compose
-
-### ❌ À ÉVITER
-
-1. ❌ **Hardening trop tôt** → Lockout SSH
-2. ❌ **Dépendances dans meta/main.yml** → Double exécution
-3. ❌ **Vérifications bloquantes sur VPN** → Déploiement cassé
-4. ❌ **Utiliser `:latest` en production** → Non-déterministe
-5. ❌ **Provisionner avant création conteneurs** → Erreurs obscures
-6. ❌ **Oublier de vérifier les images** → Déploiement cassé
-7. ❌ **Ignorer les breaking changes PostgreSQL** → Crash loops
-
----
-
-## 🎓 Recommandations pour Code Review (Opus 4.6)
-
-### Points à Vérifier Prioritairement
-
-1. **Sécurité Hardening** :
-   - [ ] `hardening_ssh_force_open: true` par défaut est-il acceptable ?
-   - [ ] Ordre Phase 6 pour hardening est-il optimal ?
-   - [ ] Capabilities PostgreSQL (`DAC_OVERRIDE`, `FOWNER`) sont-elles minimales ?
-
-2. **Architecture Réseau** :
-   - [ ] Isolation réseau conforme TECHNICAL-SPEC ?
-   - [ ] Réseau `egress` correctement configuré pour LiteLLM/n8n/OpenClaw ?
-   - [ ] `backend` et `monitoring` bien `internal: true` ?
-
-3. **Ordre d'Exécution** :
-   - [ ] Séparation config/provisioning cohérente partout ?
-   - [ ] Autres services (LiteLLM, OpenClaw) nécessitent-ils provisioning ?
-   - [ ] Dépendances `depends_on` dans docker-compose correctes ?
-
-4. **Gestion des Erreurs** :
-   - [ ] `failed_when: false` utilisé judicieusement (docker-stack Phase B) ?
-   - [ ] Healthchecks timeout/retries bien calibrés ?
-   - [ ] Messages d'erreur explicites pour l'utilisateur ?
-
-5. **Idempotence** :
-   - [ ] Cleanup réseaux/stacks suffisant ?
-   - [ ] Rôles peuvent s'exécuter 2 fois sans casser ?
-   - [ ] Permissions fichiers correctes (PostgreSQL 999:999) ?
-
-6. **PostgreSQL 18+ Spécifique** :
-   - [ ] Volume mount cohérent dans docker-compose.yml ET docker-compose-infra.yml ?
-   - [ ] Migration depuis PostgreSQL 17 documentée ?
-   - [ ] Backup/restore compatible nouvelle structure ?
-
-7. **Images Docker** :
-   - [ ] Toutes les images pinnées (sauf OpenClaw temporaire) ?
-   - [ ] Script de vérification images à automatiser en CI ?
-   - [ ] OpenClaw `:latest` → Trouver version stable ?
-
----
-
-## 🚀 Prochaines Étapes
-
-### Immédiat (Avant Next Deploy)
-- [ ] Tester déploiement complet avec corrections
-- [ ] Valider healthchecks de tous les services
-- [ ] Vérifier connectivité admin UIs via VPN
-- [ ] Tester smoke tests
-
-### Court Terme
-- [ ] Pinner version OpenClaw (remplacer `:latest`)
-- [ ] Automatiser vérification images en CI
-- [ ] Documenter procédure migration PostgreSQL 17→18
-- [ ] Tester backup/restore avec nouvelle structure PostgreSQL
-
-### Moyen Terme
-- [ ] Monitorer métriques ressources (CPU/RAM PostgreSQL avec nouvelles capabilities)
-- [ ] Audit sécurité complet (CrowdSec, Fail2Ban logs)
-- [ ] Plan de rollback si PostgreSQL 18 pose problèmes
-- [ ] Envisager réseau `egress` avec proxy sortant (contrôle API calls)
-
----
-
-## 📎 Références
-
-- [PostgreSQL Docker 18+ Breaking Changes](https://github.com/docker-library/postgres/pull/1259)
-- [PostgreSQL Upgrade Discussion](https://github.com/docker-library/postgres/issues/37)
-- [Docker Compose Network Labels](https://docs.docker.com/compose/compose-file/06-networks/)
-- [Linux Capabilities Man Page](https://man7.org/linux/man-pages/man7/capabilities.7.html)
-
----
-
-**Auteur** : Claude Sonnet 4.5 (avec utilisateur mobuone)
-**Date** : 2026-02-15
-**Version** : 1.0
-**Statut** : DRAFT - En attente review Opus 4.6
+**Auteur** : Claude Opus 4.6 (avec utilisateur mobuone)
+**Date** : 2026-02-16
+**Version** : 2.0

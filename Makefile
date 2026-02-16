@@ -131,13 +131,14 @@ deploy-preprod: lint ## Déployer en pré-production (Hetzner permanent)
 		--diff
 
 .PHONY: deploy-prod
-deploy-prod: lint ## Déployer en production (avec confirmation)
+deploy-prod: lint ## Déployer en production (usage: make deploy-prod EXTRA_VARS="ansible_port_override=804")
 	@echo "$(RED)>>> PRODUCTION DEPLOYMENT$(NC)"
 	@echo "$(YELLOW)>>> Are you sure? Type 'yes' to continue:$(NC)"
 	@read CONFIRM && \
 	if [ "$$CONFIRM" = "yes" ]; then \
 		$(ANSIBLE_PLAYBOOK) playbooks/site.yml \
 			-e "target_env=prod" \
+			$(if $(EXTRA_VARS),-e "$(EXTRA_VARS)") \
 			--diff; \
 	else \
 		echo "$(YELLOW)>>> Aborted$(NC)"; exit 1; \

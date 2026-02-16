@@ -161,7 +161,7 @@
 {% if grafana_subdomain | default('') | length > 0 %}
             <a href="https://{{ caddy_grafana_domain }}/">[GRAFANA]</a>
 {% endif %}
-            <a href="/">[OPENCLAW]</a>
+            <a href="https://{{ caddy_admin_domain }}/">[OPENCLAW]</a>
 {% if qdrant_subdomain | default('') | length > 0 %}
             <a href="https://{{ caddy_qdrant_domain }}/">[QDRANT]</a>
 {% endif %}

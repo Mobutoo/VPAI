@@ -37,15 +37,31 @@
 }
 {% endif %}
 
-# === PUBLIC DOMAIN ===
+# === PUBLIC DOMAIN — Admin Portal ===
 {{ caddy_domain }} {
+    # /health is public (Uptime Kuma, smoke tests) — matched first by path specificity
     handle /health {
         respond "OK" 200
     }
 
+    # Admin portal (catch-all) — VPN-protected
     handle {
-        respond "Not Found" 404
+{% if caddy_vpn_enforce | default(true) | bool %}
+        @blocked_root not remote_ip {{ caddy_vpn_cidr }}
+        error @blocked_root 403
+{% endif %}
+        root * /srv
+        rewrite * /admin-landing.html
+        file_server
     }
+
+{% if caddy_vpn_enforce | default(true) | bool %}
+    handle_errors {
+        root * /srv
+        rewrite * /restricted-zone.html
+        file_server
+    }
+{% endif %}
 
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"

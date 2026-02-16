@@ -130,7 +130,7 @@ groups:
               to: 0
             datasourceUid: VictoriaMetrics
             model:
-              expr: "increase(container_restart_count[15m])"
+              expr: "changes(container_start_time_seconds{name=~\".+\"}[15m])"
               intervalMs: 30000
               maxDataPoints: 43200
           - refId: B

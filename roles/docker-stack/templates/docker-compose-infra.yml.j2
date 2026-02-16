@@ -160,7 +160,7 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.1.0/24
+        - subnet: {{ docker_network_frontend_subnet }}
 
   backend:
     name: {{ project_name }}_backend
@@ -168,14 +168,14 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: 172.20.2.0/24
+        - subnet: {{ docker_network_backend_subnet }}
 
   egress:
     name: {{ project_name }}_egress
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.4.0/24
+        - subnet: {{ docker_network_egress_subnet }}
 
   monitoring:
     name: {{ project_name }}_monitoring
@@ -183,4 +183,4 @@ networks:
     internal: true
     ipam:
       config:
-        - subnet: 172.20.3.0/24
+        - subnet: {{ docker_network_monitoring_subnet }}

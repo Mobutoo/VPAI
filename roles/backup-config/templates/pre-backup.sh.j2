@@ -13,7 +13,7 @@ echo "[$(date)] Starting pre-backup..."
 
 # === PostgreSQL dump ===
 echo "[$(date)] Dumping PostgreSQL databases..."
-for DB in n8n openclaw litellm; do
+for DB in n8n litellm; do
   docker exec "${PROJECT}_postgresql" \
     pg_dump -U postgres -Fc --file="/tmp/${DB}_backup.dump" "${DB}"
   docker cp "${PROJECT}_postgresql:/tmp/${DB}_backup.dump" \
@@ -33,10 +33,12 @@ cp "/opt/${PROJECT}/data/redis/dump.rdb" \
 echo "[$(date)] Redis snapshot completed"
 
 # === Qdrant snapshots ===
+# NOTE: Qdrant image has no wget/curl — call API from host via Docker network
 echo "[$(date)] Creating Qdrant snapshot..."
-SNAPSHOT_RESULT=$(docker exec "${PROJECT}_qdrant" \
-  wget -qO- --header="api-key: {{ qdrant_api_key }}" \
-  --post-data='' "http://localhost:6333/snapshots")
+QDRANT_IP=$(docker inspect -f '{{ '{{' }}range .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}.IPAddress{{ '}}' }}{{ '{{' }}end{{ '}}' }}' "${PROJECT}_qdrant" | head -c -1)
+SNAPSHOT_RESULT=$(curl -sS --max-time 30 \
+  -X POST "http://${QDRANT_IP}:6333/snapshots" \
+  -H "api-key: {{ qdrant_api_key }}") || true
 SNAPSHOT_NAME=$(echo "${SNAPSHOT_RESULT}" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
 if [ -n "${SNAPSHOT_NAME}" ]; then
   echo "${SNAPSHOT_NAME}" > "${BACKUP_DIR}/qdrant/latest-snapshot-${TIMESTAMP}.txt"

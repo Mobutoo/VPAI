@@ -37,7 +37,7 @@
     dest: "{{ caddy_config_dir }}/Caddyfile"
     owner: "{{ prod_user }}"
     group: "{{ prod_user }}"
-    mode: "0644"
+    mode: "0640"
   become: true
   notify: Restart caddy stack
 

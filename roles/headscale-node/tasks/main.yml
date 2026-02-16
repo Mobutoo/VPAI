@@ -70,6 +70,7 @@
       {% if headscale_advertise_routes | length > 0 %}--advertise-routes={{ headscale_advertise_routes | join(',') }}{% endif %}
   become: true
   changed_when: true
+  no_log: true
   register: tailscale_up_result
   when: >-
     tailscale_status_raw.rc != 0 or

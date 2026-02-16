@@ -34,7 +34,7 @@
           Target: {{ inventory_hostname }}
           Database: {{ restore_db | default('all') }}
           Service: {{ restore_service | default('all') }}
-          Date: {{ ansible_date_time.iso8601 }}
+          Date: {{ ansible_facts['date_time']['iso8601'] }}
           ========================================
 
   tasks:

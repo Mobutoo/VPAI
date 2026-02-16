@@ -1,5 +1,15 @@
 ---
-# diun — meta
+galaxy_info:
+  role_name: diun
+  author: VPAI
+  description: Docker Image Update Notifier — watches for new image versions
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
 
 dependencies:
   - role: docker

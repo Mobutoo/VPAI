@@ -323,6 +323,12 @@ services:
           cpus: "{{ diun_cpu_limit }}"
         reservations:
           memory: {{ diun_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
 networks:
   frontend:

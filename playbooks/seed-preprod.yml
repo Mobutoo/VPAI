@@ -13,7 +13,7 @@
   gather_facts: true
 
   vars:
-    seed_dir: "/tmp/vpai-seed-{{ ansible_date_time.epoch }}"
+    seed_dir: "/tmp/vpai-seed-{{ ansible_facts['date_time']['epoch'] }}"
     seed_db: ""
 
   pre_tasks:
@@ -30,7 +30,7 @@
           Environment: {{ target_env | default('preprod') }}
           Target: {{ inventory_hostname }}
           Database filter: {{ seed_db | default('all') }}
-          Date: {{ ansible_date_time.iso8601 }}
+          Date: {{ ansible_facts['date_time']['iso8601'] }}
           ========================================
 
   tasks:

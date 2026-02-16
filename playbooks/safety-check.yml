@@ -27,8 +27,8 @@
           SSH User: {{ ansible_user | default('unknown') }}
           SSH Port: {{ ansible_port | default(22) }}
           Environment: {{ target_env | default('prod') }}
-          RAM: {{ ansible_memtotal_mb }} MB
-          Swap: {{ ansible_swaptotal_mb }} MB
+          RAM: {{ ansible_facts['memtotal_mb'] }} MB
+          Swap: {{ ansible_facts['swaptotal_mb'] }} MB
           ==========================================
 
     # === 2. UFW FIREWALL STATUS ===

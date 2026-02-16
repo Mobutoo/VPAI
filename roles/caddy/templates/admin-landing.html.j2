@@ -155,10 +155,19 @@
         </div>
 
         <div class="nav">
-            <a href="/n8n/">[N8N]</a>
-            <a href="/grafana/">[GRAFANA]</a>
-            <a href="/openclaw/">[OPENCLAW]</a>
-            <a href="/qdrant/">[QDRANT]</a>
+{% if n8n_subdomain | default('') | length > 0 %}
+            <a href="https://{{ caddy_n8n_domain }}/">[N8N]</a>
+{% endif %}
+{% if grafana_subdomain | default('') | length > 0 %}
+            <a href="https://{{ caddy_grafana_domain }}/">[GRAFANA]</a>
+{% endif %}
+            <a href="/">[OPENCLAW]</a>
+{% if qdrant_subdomain | default('') | length > 0 %}
+            <a href="https://{{ caddy_qdrant_domain }}/">[QDRANT]</a>
+{% endif %}
+{% if litellm_subdomain | default('') | length > 0 %}
+            <a href="https://{{ caddy_litellm_domain }}/">[LITELLM]</a>
+{% endif %}
         </div>
 
         <div class="footer">

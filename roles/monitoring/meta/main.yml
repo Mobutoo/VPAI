@@ -1,5 +1,15 @@
 ---
-# monitoring — meta
+galaxy_info:
+  role_name: monitoring
+  author: VPAI
+  description: Observability stack — Grafana, VictoriaMetrics, Loki, Alloy, cAdvisor provisioning
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
 
 dependencies:
   - role: docker

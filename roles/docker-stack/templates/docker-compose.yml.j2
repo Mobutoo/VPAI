@@ -88,8 +88,7 @@ services:
     env_file:
       - /opt/{{ project_name }}/configs/openclaw/openclaw.env
     volumes:
-      - /opt/{{ project_name }}/configs/openclaw/openclaw.json:/home/node/.openclaw/openclaw.json:ro
-      - /opt/{{ project_name }}/data/openclaw/workspace:/home/node/.openclaw/workspace
+      - /opt/{{ project_name }}/data/openclaw:/home/node/.openclaw
     networks:
       - backend
       - egress

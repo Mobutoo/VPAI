@@ -1,5 +1,6 @@
 # {{ ansible_managed }}
 # Loki configuration for {{ project_display_name }}
+# Loki 3.x single-node (monolithic) mode
 
 auth_enabled: false
 
@@ -17,8 +18,16 @@ common:
       rules_directory: /loki/rules
   replication_factor: 1
   ring:
+    instance_addr: 127.0.0.1
     kvstore:
       store: inmemory
+
+ingester:
+  chunk_idle_period: 1h
+  max_chunk_age: 2h
+  chunk_retain_period: 30s
+  wal:
+    dir: /loki/wal
 
 query_range:
   results_cache:

@@ -13,7 +13,9 @@
   },
   "agents": {
     "defaults": {
-      "model": "{{ openclaw_default_model }}"
+      "model": {
+        "primary": "{{ openclaw_default_model }}"
+      }
     }
   },
   "models": {
@@ -55,7 +57,7 @@
 {% if telegram_openclaw_bot_token | default('') | length > 0 %}
   "channels": {
     "telegram": {
-      "token": "${TELEGRAM_BOT_TOKEN}"
+      "botToken": "${TELEGRAM_BOT_TOKEN}"
     }
   },
 {% endif %}

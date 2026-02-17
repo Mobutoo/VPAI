@@ -61,11 +61,13 @@ openclaw_agent_explorer_name: "explorer"
 # Model assignments per agent/task (routed through LiteLLM)
 # Strategy: open-source first, Anthropic/OpenAI only when precision demands it
 # Review: builder uses qwen3-coder, review by different family (GLM-5 or gpt-codex)
-openclaw_concierge_model: "custom-litellm/kimi-k2"
+# NOTE: kimi-k2 ecarté du concierge/tutor — tokens tool_call_begin/end fuient en texte brut
+# via OpenRouter (bug upstream kimi-k2 tool calling). minimax-m25 = Function Calling #1 (76.8%)
+openclaw_concierge_model: "custom-litellm/minimax-m25"
 openclaw_builder_model: "custom-litellm/qwen3-coder"
 openclaw_writer_model: "custom-litellm/glm-5"
 openclaw_artist_model: "custom-litellm/minimax-m25"
-openclaw_tutor_model: "custom-litellm/kimi-k2"
+openclaw_tutor_model: "custom-litellm/minimax-m25"
 openclaw_explorer_model: "custom-litellm/grok-search"
 openclaw_code_model: "custom-litellm/qwen3-coder"
 openclaw_quick_model: "custom-litellm/deepseek-v3"

@@ -360,11 +360,15 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **Structure** : Chaque skill est un DOSSIER `skills/<name>/SKILL.md`, PAS un fichier plat `skills/<name>.md`
 - **Decouverte** : OpenClaw scanne `~/.openclaw/skills/` pour des sous-dossiers contenant `SKILL.md`
 - **Precedence** : `workspace/skills/` > `~/.openclaw/skills/` > skills bundled
-- **Frontmatter YAML** optionnel mais recommande : `name`, `description`, `metadata.openclaw.emoji`
+- **Frontmatter YAML OBLIGATOIRE** : `name` et `description` sont REQUIS. Sans `description`, le skill est charge puis **silencieusement rejete** (`loadSkillFromFile` retourne `skill: null`). Le skill n'apparait ni dans l'UI ni dans le system prompt.
+- **Format frontmatter** : `---\nname: mon-skill\ndescription: What this skill does (trigger phrase for the model).\nmetadata: { "openclaw": { "emoji": "icon", "always": true } }\n---`
+- **`always: true`** : Force l'inclusion du skill meme si ses binaires requis ne sont pas presents (utile pour les skills webhook-only)
 - **Description** : Sert de "trigger phrase" — si mal formulee, le skill n'est jamais invoque
 - **Injection** : Les skills eligibles sont injectes en XML compact dans le system prompt
 - **REX** : Les fichiers plats `.md` directement dans `skills/` sont IGNORES silencieusement
+- **REX** : Un SKILL.md sans frontmatter YAML est detecte sur disque mais rejete au chargement (count: 0). Le diagnostic "description is required" n'est qu'un warning dans les logs, pas une erreur visible
 - **Config extra dirs** : `skills.load.extraDirs` dans openclaw.json pour charger depuis d'autres chemins
+- **Test rapide** : `docker exec <c> node --input-type=module -e "import{loadSkillsFromDir}from'@mariozechner/pi-coding-agent';const r=loadSkillsFromDir({dir:'/home/node/.openclaw/skills',source:'t'});console.log(r.skills.length,r.diagnostics)"`
 
 ### OpenClaw -- Sandbox (Isolation des Workspaces)
 

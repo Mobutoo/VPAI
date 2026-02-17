@@ -32,6 +32,7 @@ Headers:
   X-Webhook-Secret: ${N8N_WEBHOOK_SECRET}
 Body:
   {
+    "secret": "${N8N_WEBHOOK_SECRET}",
     "model": "<nom_du_modele_qui_a_genere_la_reponse>",
     "rating": "like ou dislike",
     "agent": "<agent_id_qui_a_repondu>",
@@ -39,6 +40,8 @@ Body:
     "context": "<resume_court_du_prompt_en_5_mots>"
   }
 ```
+
+Note : Le secret est envoye a la fois dans le header ET dans le body pour compatibilite n8n task runners.
 
 ## Regle importante
 
@@ -56,7 +59,10 @@ POST {{ n8n_webhook_base_url }}/webhook/ai-model-scores
 Headers:
   Content-Type: application/json
   X-Webhook-Secret: ${N8N_WEBHOOK_SECRET}
-Body: {}
+Body:
+  {
+    "secret": "${N8N_WEBHOOK_SECRET}"
+  }
 ```
 
 Reponse : tableau JSON avec les scores par modele (likes, dislikes, cout, latence, score global).

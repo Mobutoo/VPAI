@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Validate webhook secret from OpenClaw\nconst receivedSecret = $input.first().json.headers['x-webhook-secret'];\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nif (!expectedSecret) {\n  throw new Error('N8N_WEBHOOK_HMAC_SECRET env var is not configured');\n}\n\nif (receivedSecret !== expectedSecret) {\n  throw new Error('Invalid webhook secret');\n}\n\n// Pass through the body fields\nconst body = $input.first().json.body;\nreturn [{\n  json: {\n    data: body.data || '',\n    format: body.format || 'json',\n    authenticated: true\n  }\n}];"
+        "jsCode": "// Validate webhook secret — supports header (standard) and body.secret (fallback)\nconst data = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nif (!expectedSecret) {\n  throw new Error('N8N_WEBHOOK_HMAC_SECRET env var is not configured');\n}\n\nconst headers = data.headers || {};\nconst body = data.body || data || {};\nconst receivedSecret = headers['x-webhook-secret'] || body.secret || '';\n\nif (receivedSecret !== expectedSecret) {\n  throw new Error('Invalid webhook secret (checked header + body)');\n}\n\nreturn [{\n  json: {\n    data: body.data || '',\n    format: body.format || 'json',\n    authenticated: true\n  }\n}];"
       },
       "id": "c3d4e5f6-3001-4000-8003-000000000002",
       "name": "Validate Secret",

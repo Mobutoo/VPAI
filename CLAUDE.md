@@ -296,6 +296,17 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **Caddyfile** : Bloc dedie `{{ caddy_n8n_domain }}` avec `import vpn_only` + `import vpn_error_page`
 - **Fallback** : Si `n8n_subdomain` vide, n8n est monte en sub-path sur le domaine admin (page blanche probable)
 
+### n8n 2.0+ -- Task Runners et Code Node Sandbox
+
+- **Task Runners** : Active par defaut en n8n 2.0+ (`N8N_RUNNERS_ENABLED=true`, `N8N_RUNNERS_MODE=internal`)
+- **`require()` BLOQUE** par defaut : Les Code nodes s'executent dans un sandbox isole. Pour utiliser `fs`, `path`, `crypto` : `NODE_FUNCTION_ALLOW_BUILTIN=fs,path,crypto`
+- **`$env` BLOQUE** par defaut : `N8N_BLOCK_ENV_ACCESS_IN_NODE=true` par defaut. Pour lire les env vars dans les Code nodes : `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`
+- **Symptome** : Le webhook retourne HTTP 200 avec body vide (si `responseMode=responseNode`), aucune erreur visible. Le Code node echoue silencieusement dans le sandbox.
+- **Webhook v2** : Le contenu est structure en `{ headers, body, query, params }`. Acceder au body via `$input.first().json.body`, headers via `$input.first().json.headers['x-header-name']` (lowercase)
+- **Validation secret** : Pattern robuste = verifier header d'abord, puis `body.secret` en fallback. Le skill OpenClaw envoie le secret dans les DEUX (ceinture+bretelles)
+- **Import workflows** : `n8n import:workflow` SKIP si le workflow existe deja (par nom). Pour mettre a jour : supprimer via UI/API puis reimporter + `n8n publish:workflow --id=<ID>` + restart
+- **Login API** : En n8n v2.7+, le champ est `emailOrLdapLoginId` (pas `email`)
+
 ### PostgreSQL -- Provisioning Idempotent
 
 - **`init.sql` ne s'execute que lors de la PREMIERE initialisation** (data dir vide)

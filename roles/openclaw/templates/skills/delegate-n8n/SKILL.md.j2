@@ -35,12 +35,15 @@ Headers:
   X-Webhook-Secret: ${N8N_WEBHOOK_SECRET}
 Body:
   {
+    "secret": "${N8N_WEBHOOK_SECRET}",
     "task": "description de la tache",
     "input": "donnees d'entree",
     "model": "claude-haiku",
     "callback_agent": "<ton agent id>"
   }
 ```
+
+Note : Le secret est envoye a la fois dans le header ET dans le body pour compatibilite n8n task runners.
 
 ## Format de reponse attendu
 

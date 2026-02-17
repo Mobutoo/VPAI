@@ -88,7 +88,18 @@
 
 # ========================================================================
 # AI Workflow Import (OpenClaw -> n8n delegation)
+# Supports both initial import AND updates via checksum comparison.
+# Strategy: compare md5 of local JSON vs stored checksum on server.
+# If different or new: delete old workflow via n8n API, reimport, publish.
 # ========================================================================
+
+- name: Ensure n8n workflow checksum directory exists
+  ansible.builtin.file:
+    path: "/opt/{{ project_name }}/configs/n8n/workflow-checksums"
+    state: directory
+    mode: "0755"
+  become: true
+  when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Copy n8n workflow files to server
   ansible.builtin.copy:
@@ -103,53 +114,25 @@
     - ai-model-scoring
   when: n8n_container_check.stdout | default('') | length > 0
 
-- name: Copy workflow files into n8n container
-  ansible.builtin.command:
-    cmd: >-
-      docker cp /tmp/n8n-workflow-{{ item }}.json
-      {{ project_name }}_n8n:/tmp/n8n-workflow-{{ item }}.json
-  become: true
-  changed_when: false
-  loop:
-    - ai-translate
-    - ai-summarize
-    - ai-format
-    - ai-model-scoring
-  when: n8n_container_check.stdout | default('') | length > 0
-
-- name: Check existing n8n workflows
+- name: Check workflow update status (checksum comparison)
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
       set -euo pipefail
-      docker exec {{ project_name }}_n8n n8n list:workflow 2>/dev/null || echo ""
-  register: n8n_existing_workflows
-  changed_when: false
-  failed_when: false
-  become: true
-  when: n8n_container_check.stdout | default('') | length > 0
-
-- name: Import n8n AI workflows via CLI
-  ansible.builtin.shell:
-    executable: /bin/bash
-    cmd: |
-      set -euo pipefail
-      WORKFLOW_NAME="{{ item.name }}"
-      WORKFLOW_FILE="/tmp/n8n-workflow-{{ item.file }}.json"
-
-      # Check if workflow already exists by name
-      EXISTING=$(docker exec {{ project_name }}_n8n n8n list:workflow 2>/dev/null || echo "")
-      if echo "$EXISTING" | grep -qF "$WORKFLOW_NAME"; then
-        echo "SKIP: Workflow '$WORKFLOW_NAME' already exists"
-        exit 0
+      CHECKSUM_DIR="/opt/{{ project_name }}/configs/n8n/workflow-checksums"
+      FILE="/tmp/n8n-workflow-{{ item.file }}.json"
+      NEW_MD5=$(md5sum "$FILE" | cut -d' ' -f1)
+      OLD_MD5=""
+      if [ -f "$CHECKSUM_DIR/{{ item.file }}.md5" ]; then
+        OLD_MD5=$(cat "$CHECKSUM_DIR/{{ item.file }}.md5")
       fi
-
-      # Import the workflow
-      docker exec {{ project_name }}_n8n n8n import:workflow --input="$WORKFLOW_FILE" 2>&1
-      echo "IMPORTED: $WORKFLOW_NAME"
-  register: n8n_workflow_import
-  changed_when: "'IMPORTED:' in n8n_workflow_import.stdout"
-  failed_when: false
+      if [ "$NEW_MD5" = "$OLD_MD5" ]; then
+        echo "UNCHANGED"
+      else
+        echo "NEEDS_UPDATE"
+      fi
+  register: n8n_workflow_check
+  changed_when: false
   become: true
   loop:
     - { file: "ai-translate", name: "AI Translate" }
@@ -160,12 +143,123 @@
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
 
+- name: Display workflow update status
+  ansible.builtin.debug:
+    msg: >-
+      {% for result in n8n_workflow_check.results | default([]) %}
+      {{ result.item.name }}: {{ result.stdout | default('skipped') }}
+      {% endfor %}
+  when: n8n_container_check.stdout | default('') | length > 0
+
+- name: Copy workflow files into n8n container
+  ansible.builtin.command:
+    cmd: >-
+      docker cp /tmp/n8n-workflow-{{ item.item.file }}.json
+      {{ project_name }}_n8n:/tmp/n8n-workflow-{{ item.item.file }}.json
+  become: true
+  changed_when: false
+  loop: "{{ n8n_workflow_check.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when:
+    - n8n_container_check.stdout | default('') | length > 0
+    - item.stdout | default('') == 'NEEDS_UPDATE'
+
+- name: Delete existing workflows that need update via n8n API
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      WORKFLOW_NAME="{{ item.item.name }}"
+
+      # Get workflow ID from list
+      WORKFLOW_ID=$(docker exec {{ project_name }}_n8n n8n list:workflow 2>/dev/null | \
+        grep -F "$WORKFLOW_NAME" | head -1 | cut -d'|' -f1 | xargs)
+
+      if [ -z "$WORKFLOW_ID" ]; then
+        echo "NEW: Workflow '$WORKFLOW_NAME' does not exist yet"
+        exit 0
+      fi
+
+      # n8n v2.7+: Deactivate -> Archive -> Delete (via Node.js, no curl in container)
+      cat > /tmp/n8n-delete-wf.js << 'DELSCRIPT'
+      const http = require('http');
+      const [wfId, email, pw] = process.argv.slice(2);
+      function req(method, path, body, cookie) {
+        return new Promise((resolve, reject) => {
+          const h = { 'Content-Type': 'application/json' };
+          if (cookie) h['Cookie'] = cookie;
+          const r = http.request({ hostname: '127.0.0.1', port: 5678, path, method, headers: h }, (res) => {
+            let d = ''; res.on('data', c => d += c);
+            res.on('end', () => {
+              const sc = res.headers['set-cookie'];
+              resolve({ s: res.statusCode, d, c: sc ? sc[0].split(';')[0] : null });
+            });
+          });
+          r.on('error', reject);
+          if (body) r.write(JSON.stringify(body));
+          r.end();
+        });
+      }
+      (async () => {
+        const login = await req('POST', '/rest/login', { emailOrLdapLoginId: email, password: pw });
+        if (login.s !== 200 || !login.c) { console.log('LOGIN_FAILED'); process.exit(1); }
+        await req('PATCH', '/rest/workflows/' + wfId, { active: false }, login.c);
+        await req('POST', '/rest/workflows/' + wfId + '/archive', null, login.c);
+        const del = await req('DELETE', '/rest/workflows/' + wfId, null, login.c);
+        console.log(del.s === 200 ? 'DELETED' : 'FAIL:' + del.s);
+      })().catch(() => { console.log('ERROR'); process.exit(1); });
+      DELSCRIPT
+
+      docker cp /tmp/n8n-delete-wf.js {{ project_name }}_n8n:/home/node/n8n-delete-wf.js
+      RESULT=$(docker exec {{ project_name }}_n8n node /home/node/n8n-delete-wf.js \
+        "$WORKFLOW_ID" "{{ n8n_owner_email }}" "{{ n8n_owner_password }}" 2>&1)
+
+      if [ "$RESULT" = "DELETED" ]; then
+        echo "DELETED: $WORKFLOW_NAME (ID: $WORKFLOW_ID)"
+      else
+        echo "WARN: $RESULT for $WORKFLOW_NAME (ID: $WORKFLOW_ID)"
+      fi
+  register: n8n_workflow_delete
+  changed_when: "'DELETED:' in (n8n_workflow_delete.stdout | default(''))"
+  failed_when: false
+  no_log: true
+  become: true
+  loop: "{{ n8n_workflow_check.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when:
+    - n8n_container_check.stdout | default('') | length > 0
+    - item.stdout | default('') == 'NEEDS_UPDATE'
+
+- name: Import n8n AI workflows via CLI
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      WORKFLOW_NAME="{{ item.item.name }}"
+      WORKFLOW_FILE="/tmp/n8n-workflow-{{ item.item.file }}.json"
+
+      # Import the workflow
+      docker exec {{ project_name }}_n8n n8n import:workflow --input="$WORKFLOW_FILE" 2>&1
+      echo "IMPORTED: $WORKFLOW_NAME"
+  register: n8n_workflow_import
+  changed_when: "'IMPORTED:' in n8n_workflow_import.stdout"
+  failed_when: false
+  become: true
+  loop: "{{ n8n_workflow_check.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when:
+    - n8n_container_check.stdout | default('') | length > 0
+    - item.stdout | default('') == 'NEEDS_UPDATE'
+
 - name: Activate imported n8n AI workflows
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
       set -euo pipefail
-      WORKFLOW_NAME="{{ item.name }}"
+      WORKFLOW_NAME="{{ item.item.name }}"
 
       # Get workflow ID from list (format: "ID|Name")
       WORKFLOW_ID=$(docker exec {{ project_name }}_n8n n8n list:workflow 2>/dev/null | \
@@ -183,6 +277,23 @@
   changed_when: "'ACTIVATED:' in n8n_workflow_activate.stdout"
   failed_when: false
   become: true
+  loop: "{{ n8n_workflow_check.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when:
+    - n8n_container_check.stdout | default('') | length > 0
+    - item.stdout | default('') == 'NEEDS_UPDATE'
+
+- name: Store workflow checksums after successful deploy
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      CHECKSUM_DIR="/opt/{{ project_name }}/configs/n8n/workflow-checksums"
+      FILE="/tmp/n8n-workflow-{{ item.file }}.json"
+      md5sum "$FILE" | cut -d' ' -f1 > "$CHECKSUM_DIR/{{ item.file }}.md5"
+  become: true
+  changed_when: false
   loop:
     - { file: "ai-translate", name: "AI Translate" }
     - { file: "ai-summarize", name: "AI Summarize" }
@@ -199,7 +310,7 @@
   changed_when: true
   when:
     - n8n_container_check.stdout | default('') | length > 0
-    - n8n_workflow_activate.results | default([]) | selectattr('changed', 'equalto', true) | list | length > 0
+    - n8n_workflow_check.results | default([]) | selectattr('stdout', 'equalto', 'NEEDS_UPDATE') | list | length > 0
 
 - name: Clean up temporary workflow files
   ansible.builtin.file:
@@ -213,12 +324,17 @@
     - ai-model-scoring
   when: n8n_container_check.stdout | default('') | length > 0
 
-- name: Display n8n workflow import results
+- name: Display n8n workflow update results
   ansible.builtin.debug:
     msg: >-
+      {% set updated = n8n_workflow_check.results | default([]) | selectattr('stdout', 'equalto', 'NEEDS_UPDATE') | list %}
+      {% if updated | length > 0 %}
+      Updated {{ updated | length }} workflow(s):
       {% for result in n8n_workflow_import.results | default([]) %}
-      {{ result.item.name }}: {{ result.stdout | default('skipped') }}
+      {{ result.item.item.name | default('?') }}: {{ result.stdout | default('skipped') }}
       {% endfor %}
+      {% else %}
+      All workflows up to date (checksums match).
+      {% endif %}
   when:
     - n8n_container_check.stdout | default('') | length > 0
-    - n8n_workflow_import is defined

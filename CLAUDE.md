@@ -305,7 +305,11 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **Webhook v2** : Le contenu est structure en `{ headers, body, query, params }`. Acceder au body via `$input.first().json.body`, headers via `$input.first().json.headers['x-header-name']` (lowercase)
 - **Validation secret** : Pattern robuste = verifier header d'abord, puis `body.secret` en fallback. Le skill OpenClaw envoie le secret dans les DEUX (ceinture+bretelles)
 - **Import workflows** : `n8n import:workflow` SKIP si le workflow existe deja (par nom). Pour mettre a jour : supprimer via UI/API puis reimporter + `n8n publish:workflow --id=<ID>` + restart
+- **Suppression workflow v2.7+** : Deactivate (PATCH active:false) → Archive (POST /rest/workflows/:id/archive) → Delete (DELETE). Sans archive, DELETE retourne 400 "Workflow must be archived before it can be deleted"
+- **`NODE_FUNCTION_ALLOW_EXTERNAL`** : Pour utiliser des packages npm (ex: `pg`) dans les Code nodes. Le module `pg` est deja installe dans l'image n8n (dependance interne). Ajouter `NODE_FUNCTION_ALLOW_EXTERNAL=pg` dans l'env
 - **Login API** : En n8n v2.7+, le champ est `emailOrLdapLoginId` (pas `email`)
+- **Pas de curl dans le container n8n** : Uniquement BusyBox wget (sans --method). Utiliser Node.js (http built-in) ou un container temporaire pour les appels API REST
+- **Provisioning checksum-based** : Les checksums MD5 des fichiers JSON workflow sont stockes dans `/opt/<project>/configs/n8n/workflow-checksums/`. Si le checksum change → delete + reimport
 
 ### PostgreSQL -- Provisioning Idempotent
 

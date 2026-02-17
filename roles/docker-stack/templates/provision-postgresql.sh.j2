@@ -37,4 +37,28 @@ docker exec "${CONTAINER}" psql -U postgres -d {{ db.name }} -c \
 {% endfor %}
 
 {% endfor %}
+
+# === Model Scores table (in n8n database) ===
+# Used by the AI Model Scoring n8n workflow — PostgreSQL as source of truth
+echo "Provisioning model_scores table in n8n database..."
+docker exec "${CONTAINER}" psql -U n8n -d n8n -c "
+CREATE TABLE IF NOT EXISTS model_scores (
+  model       TEXT PRIMARY KEY,
+  total_calls     INTEGER DEFAULT 0,
+  successful_calls INTEGER DEFAULT 0,
+  failed_calls    INTEGER DEFAULT 0,
+  total_tokens    BIGINT DEFAULT 0,
+  total_cost      DOUBLE PRECISION DEFAULT 0,
+  total_latency_ms DOUBLE PRECISION DEFAULT 0,
+  likes           INTEGER DEFAULT 0,
+  dislikes        INTEGER DEFAULT 0,
+  score           INTEGER DEFAULT 50,
+  avg_cost_per_call DOUBLE PRECISION DEFAULT 0,
+  avg_latency_ms  DOUBLE PRECISION DEFAULT 0,
+  source          TEXT DEFAULT 'unknown',
+  first_seen      TIMESTAMPTZ DEFAULT NOW(),
+  last_updated    TIMESTAMPTZ DEFAULT NOW()
+);
+"
+
 echo "PostgreSQL provisioning complete."

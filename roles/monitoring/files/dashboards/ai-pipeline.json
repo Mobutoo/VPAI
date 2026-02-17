@@ -1,0 +1,484 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "LiteLLM Proxy Detail",
+      "type": "link",
+      "url": "/d/litellm-proxy"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "Qdrant Collections Detail",
+      "type": "link",
+      "url": "/d/qdrant-collections"
+    }
+  ],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Overview",
+      "type": "row"
+    },
+    {
+      "title": "Total AI Requests (24h)",
+      "description": "Total number of AI requests processed in the last 24 hours",
+      "type": "stat",
+      "id": 1,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum(increase(litellm_requests_total[24h]))",
+          "legendFormat": "Requests",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 100 },
+              { "color": "yellow", "value": 10000 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "Total Spend (24h)",
+      "description": "Estimated cost of AI API calls in the last 24 hours",
+      "type": "stat",
+      "id": 2,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum(increase(litellm_spend_total[24h]))",
+          "legendFormat": "Spend",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "orange", "value": 20 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "Cache Hit Rate",
+      "description": "Percentage of requests served from semantic cache",
+      "type": "gauge",
+      "id": 3,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "rate(litellm_cache_hits_total[1h]) / (rate(litellm_cache_hits_total[1h]) + rate(litellm_cache_misses_total[1h])) * 100",
+          "legendFormat": "Hit Rate",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 20 },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 70 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "orientation": "auto"
+      }
+    },
+    {
+      "title": "Qdrant Total Points",
+      "description": "Total number of vectors stored across all Qdrant collections",
+      "type": "stat",
+      "id": 4,
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum(qdrant_points_total)",
+          "legendFormat": "Total Points",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "purple", "value": null },
+              { "color": "blue", "value": 1000 },
+              { "color": "green", "value": 10000 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "Request Analytics",
+      "type": "row"
+    },
+    {
+      "title": "Requests/min by Model",
+      "description": "Rate of AI requests broken down by model",
+      "type": "timeseries",
+      "id": 5,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum by (model) (rate(litellm_requests_total[5m])) * 60",
+          "legendFormat": "{{ model }}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 15,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "lineWidth": 2,
+            "stacking": { "mode": "none", "group": "A" },
+            "axisPlacement": "auto",
+            "thresholdsStyle": { "mode": "off" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      }
+    },
+    {
+      "title": "Request Latency p95 / p50 by Model",
+      "description": "Response time percentiles for AI requests",
+      "type": "timeseries",
+      "id": 6,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, model) (rate(litellm_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 — {{ model }}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, model) (rate(litellm_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50 — {{ model }}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "lineWidth": 2,
+            "stacking": { "mode": "none", "group": "A" },
+            "axisPlacement": "auto",
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 102,
+      "title": "Cost & Tokens",
+      "type": "row"
+    },
+    {
+      "title": "Token Usage/min by Model",
+      "description": "Input and output token consumption rate per model",
+      "type": "timeseries",
+      "id": 7,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum by (model) (rate(litellm_tokens_total{type=\"input\"}[5m])) * 60",
+          "legendFormat": "{{ model }} input",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (model) (rate(litellm_tokens_total{type=\"output\"}[5m])) * 60",
+          "legendFormat": "{{ model }} output",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "linear",
+            "fillOpacity": 60,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineWidth": 1,
+            "stacking": { "mode": "normal", "group": "A" },
+            "axisPlacement": "auto",
+            "thresholdsStyle": { "mode": "off" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum", "mean", "max"] }
+      }
+    },
+    {
+      "title": "Cost $/hour by Model",
+      "description": "Estimated hourly cost per model based on spend rate",
+      "type": "timeseries",
+      "id": 8,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum by (model) (rate(litellm_spend_total[1h])) * 3600",
+          "legendFormat": "{{ model }}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 3,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 20,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "lineWidth": 2,
+            "stacking": { "mode": "none", "group": "A" },
+            "axisPlacement": "auto",
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 103,
+      "title": "Cache & Vector DB",
+      "type": "row"
+    },
+    {
+      "title": "Qdrant Search Latency by Collection",
+      "description": "Average search duration per Qdrant collection",
+      "type": "timeseries",
+      "id": 9,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "qdrant_search_avg_duration_seconds",
+          "legendFormat": "{{ collection }}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "lineWidth": 2,
+            "stacking": { "mode": "none", "group": "A" },
+            "axisPlacement": "auto",
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "red", "value": 2 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      }
+    },
+    {
+      "title": "Qdrant REST Operations/sec",
+      "description": "Rate of REST API operations on Qdrant by method and status",
+      "type": "timeseries",
+      "id": 10,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum by (method, status) (rate(qdrant_rest_responses_total[5m]))",
+          "legendFormat": "{{ method }} [{{ status }}]",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 15,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "lineWidth": 2,
+            "stacking": { "mode": "none", "group": "A" },
+            "axisPlacement": "auto",
+            "thresholdsStyle": { "mode": "off" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["ai", "pipeline"],
+  "templating": { "list": [] },
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "AI Pipeline Overview",
+  "uid": "ai-pipeline",
+  "version": 1
+}

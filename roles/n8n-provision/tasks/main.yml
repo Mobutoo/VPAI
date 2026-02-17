@@ -85,3 +85,135 @@
       ⚠️  WARNING: n8n owner provisioning returned HTTP {{ n8n_owner_result.stdout | default('unknown') }}.
       Manual setup may be needed at https://{{ caddy_admin_domain }}/n8n/
       {% endif %}
+
+# ========================================================================
+# AI Workflow Import (OpenClaw -> n8n delegation)
+# ========================================================================
+
+- name: Copy n8n workflow files to server
+  ansible.builtin.copy:
+    src: "workflows/{{ item }}.json"
+    dest: "/tmp/n8n-workflow-{{ item }}.json"
+    mode: "0644"
+  become: true
+  loop:
+    - ai-translate
+    - ai-summarize
+    - ai-format
+  when: n8n_container_check.stdout | default('') | length > 0
+
+- name: Copy workflow files into n8n container
+  ansible.builtin.command:
+    cmd: >-
+      docker cp /tmp/n8n-workflow-{{ item }}.json
+      {{ project_name }}_n8n:/tmp/n8n-workflow-{{ item }}.json
+  become: true
+  changed_when: false
+  loop:
+    - ai-translate
+    - ai-summarize
+    - ai-format
+  when: n8n_container_check.stdout | default('') | length > 0
+
+- name: Check existing n8n workflows
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      docker exec {{ project_name }}_n8n n8n list:workflow 2>/dev/null || echo ""
+  register: n8n_existing_workflows
+  changed_when: false
+  failed_when: false
+  become: true
+  when: n8n_container_check.stdout | default('') | length > 0
+
+- name: Import n8n AI workflows via CLI
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      WORKFLOW_NAME="{{ item.name }}"
+      WORKFLOW_FILE="/tmp/n8n-workflow-{{ item.file }}.json"
+
+      # Check if workflow already exists by name
+      EXISTING=$(docker exec {{ project_name }}_n8n n8n list:workflow 2>/dev/null || echo "")
+      if echo "$EXISTING" | grep -qF "$WORKFLOW_NAME"; then
+        echo "SKIP: Workflow '$WORKFLOW_NAME' already exists"
+        exit 0
+      fi
+
+      # Import the workflow
+      docker exec {{ project_name }}_n8n n8n import:workflow --input="$WORKFLOW_FILE" 2>&1
+      echo "IMPORTED: $WORKFLOW_NAME"
+  register: n8n_workflow_import
+  changed_when: "'IMPORTED:' in n8n_workflow_import.stdout"
+  failed_when: false
+  become: true
+  loop:
+    - { file: "ai-translate", name: "AI Translate" }
+    - { file: "ai-summarize", name: "AI Summarize" }
+    - { file: "ai-format", name: "AI Format" }
+  loop_control:
+    label: "{{ item.name }}"
+  when: n8n_container_check.stdout | default('') | length > 0
+
+- name: Activate imported n8n AI workflows
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      WORKFLOW_NAME="{{ item.name }}"
+
+      # Get workflow ID from list (format: "ID|Name")
+      WORKFLOW_ID=$(docker exec {{ project_name }}_n8n n8n list:workflow 2>/dev/null | \
+        grep -F "$WORKFLOW_NAME" | head -1 | cut -d'|' -f1 | xargs)
+
+      if [ -z "$WORKFLOW_ID" ]; then
+        echo "SKIP: Workflow '$WORKFLOW_NAME' not found, cannot activate"
+        exit 0
+      fi
+
+      # Publish (activate) via n8n CLI (v2.7+ uses publish:workflow)
+      docker exec {{ project_name }}_n8n n8n publish:workflow --id="$WORKFLOW_ID" 2>&1 || true
+      echo "ACTIVATED: $WORKFLOW_NAME (ID: $WORKFLOW_ID)"
+  register: n8n_workflow_activate
+  changed_when: "'ACTIVATED:' in n8n_workflow_activate.stdout"
+  failed_when: false
+  become: true
+  loop:
+    - { file: "ai-translate", name: "AI Translate" }
+    - { file: "ai-summarize", name: "AI Summarize" }
+    - { file: "ai-format", name: "AI Format" }
+  loop_control:
+    label: "{{ item.name }}"
+  when: n8n_container_check.stdout | default('') | length > 0
+
+- name: Restart n8n to activate published workflows
+  ansible.builtin.command:
+    cmd: "docker restart {{ project_name }}_n8n"
+  become: true
+  changed_when: true
+  when:
+    - n8n_container_check.stdout | default('') | length > 0
+    - n8n_workflow_activate.results | default([]) | selectattr('changed', 'equalto', true) | list | length > 0
+
+- name: Clean up temporary workflow files
+  ansible.builtin.file:
+    path: "/tmp/n8n-workflow-{{ item }}.json"
+    state: absent
+  become: true
+  loop:
+    - ai-translate
+    - ai-summarize
+    - ai-format
+  when: n8n_container_check.stdout | default('') | length > 0
+
+- name: Display n8n workflow import results
+  ansible.builtin.debug:
+    msg: >-
+      {% for result in n8n_workflow_import.results | default([]) %}
+      {{ result.item.name }}: {{ result.stdout | default('skipped') }}
+      {% endfor %}
+  when:
+    - n8n_container_check.stdout | default('') | length > 0
+    - n8n_workflow_import is defined

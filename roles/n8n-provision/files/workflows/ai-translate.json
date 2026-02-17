@@ -1,0 +1,140 @@
+{
+  "name": "AI Translate",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "ai-translate",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-1001-4000-8001-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate webhook secret from OpenClaw\nconst receivedSecret = $input.first().json.headers['x-webhook-secret'];\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nif (!expectedSecret) {\n  throw new Error('N8N_WEBHOOK_HMAC_SECRET env var is not configured');\n}\n\nif (receivedSecret !== expectedSecret) {\n  throw new Error('Invalid webhook secret');\n}\n\n// Pass through the body fields\nconst body = $input.first().json.body;\nreturn [{\n  json: {\n    text: body.text || '',\n    target_lang: body.target_lang || 'en',\n    authenticated: true\n  }\n}];"
+      },
+      "id": "a1b2c3d4-1001-4000-8001-000000000002",
+      "name": "Validate Secret",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://litellm:4000/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.LITELLM_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a professional translator. Translate the following text to {{ $json.target_lang }}. Only output the translation, nothing else.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.text) }}\n    }\n  ],\n  \"max_tokens\": 4096,\n  \"temperature\": 0.3\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "a1b2c3d4-1001-4000-8001-000000000003",
+      "name": "Call LiteLLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst body = response.body || response;\n\nconst choice = body.choices && body.choices[0];\nconst result = choice ? choice.message.content.trim() : '';\nconst model = body.model || 'claude-haiku';\nconst usage = body.usage || {};\n\nreturn [{\n  json: {\n    status: 'success',\n    result: result,\n    model_used: model,\n    tokens_used: {\n      prompt: usage.prompt_tokens || 0,\n      completion: usage.completion_tokens || 0,\n      total: usage.total_tokens || 0\n    }\n  }\n}];"
+      },
+      "id": "a1b2c3d4-1001-4000-8001-000000000004",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "a1b2c3d4-1001-4000-8001-000000000005",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1140, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Secret": {
+      "main": [
+        [
+          {
+            "node": "Call LiteLLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call LiteLLM": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "active": false
+}

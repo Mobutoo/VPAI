@@ -1,0 +1,58 @@
+# Skill: Recherche de contenu (RAG)
+
+Recherche semantique dans le contenu indexe du workspace via Qdrant.
+
+## Quand utiliser ce skill
+
+- L'utilisateur cherche une information dans ses notes, livres, prospection
+- Tu as besoin de contexte supplementaire pour repondre
+- "Cherche dans mes notes sur...", "Qu'est-ce que j'ai ecrit sur..."
+- Retrouver un document, un chapitre, une idee precedente
+
+## Comment utiliser
+
+### Etape 1 : Generer l'embedding de la requete
+
+```
+POST http://litellm:4000/v1/embeddings
+Headers:
+  Content-Type: application/json
+  Authorization: Bearer ${LITELLM_API_KEY}
+Body:
+  {
+    "model": "embedding",
+    "input": "<la requete de recherche>"
+  }
+```
+
+### Etape 2 : Rechercher dans Qdrant
+
+```
+POST http://qdrant:6333/collections/{{ qdrant_rag_collection }}/points/search
+Headers:
+  Content-Type: application/json
+  api-key: ${QDRANT_API_KEY}
+Body:
+  {
+    "vector": [<embedding de l'etape 1>],
+    "limit": 5,
+    "score_threshold": 0.7,
+    "with_payload": true
+  }
+```
+
+### Etape 3 : Utiliser les resultats
+
+La reponse contient les chunks les plus pertinents avec :
+- `payload.filename` : fichier source
+- `payload.path` : chemin complet
+- `payload.content` : extrait du texte
+- `payload.type` : type de contenu (book, prospection, note)
+- `score` : pertinence (0-1)
+
+Injecte les chunks pertinents dans ton contexte pour formuler ta reponse.
+
+## Limites
+- L'index est mis a jour toutes les 6h par un cron n8n
+- Les fichiers tres recents peuvent ne pas etre encore indexes
+- Seuil de pertinence : 0.7 (ajuster si trop/pas assez de resultats)

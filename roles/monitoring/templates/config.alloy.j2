@@ -80,6 +80,25 @@ prometheus.scrape "litellm" {
 }
 
 // ============================================================
+// METRICS: Qdrant (vector DB — collections, points, latency)
+// ============================================================
+
+prometheus.scrape "qdrant" {
+  targets = [{
+    __address__ = "qdrant:6333",
+  }]
+  forward_to      = [prometheus.remote_write.victoriametrics.receiver]
+  scrape_interval = "30s"
+  job_name        = "qdrant"
+  metrics_path    = "/metrics"
+
+  // Qdrant requires api-key header when QDRANT__SERVICE__API_KEY is set
+  custom_headers = {
+    "api-key" = "{{ qdrant_api_key }}",
+  }
+}
+
+// ============================================================
 // METRICS: Remote Write to VictoriaMetrics
 // ============================================================
 

@@ -25,6 +25,64 @@ openclaw_sandbox_image: "openclaw-sandbox:bookworm-slim"
 openclaw_sandbox_memory: "1g"
 openclaw_sandbox_cpus: 1
 
+# --- Volume Isolation (moltworker pattern) ---
+# When enabled, splits the flat openclaw data dir into 3 layers:
+#   system/ (ro) — openclaw.json, agents/, skills/, plugins/
+#   workspace/ (rw) — user livrables (books, prospection, output)
+#   state/ (rw) — sessions, canvas, cron, memory
+# This prevents prompt injection or compromised agents from modifying system configs.
+openclaw_volume_isolation: true
+openclaw_system_dir: "/opt/{{ project_name }}/data/openclaw/system"
+openclaw_workspace_dir: "/opt/{{ project_name }}/data/openclaw/workspace"
+openclaw_state_dir: "/opt/{{ project_name }}/data/openclaw/state"
+
+# Workspace subdirectories (user data — livrables, content, projects)
+openclaw_workspace_subdirs:
+  - books
+  - prospection
+  - output
+
+# State subdirectories (runtime data — sessions, canvas, cron, memory)
+openclaw_state_subdirs:
+  - sessions
+  - canvas
+  - cron
+  - memory
+
+# --- Multi-Agent Configuration ---
+# Agent names (placeholders — updated later when user chooses names)
+openclaw_agent_concierge_name: "concierge"
+openclaw_agent_builder_name: "builder"
+openclaw_agent_writer_name: "writer"
+openclaw_agent_artist_name: "artist"
+openclaw_agent_tutor_name: "tutor"
+
+# Model assignments per agent/task (routed through LiteLLM)
+openclaw_concierge_model: "custom-litellm/kimi-k2"
+openclaw_builder_model: "custom-litellm/claude-sonnet"
+openclaw_writer_model: "custom-litellm/claude-sonnet"
+openclaw_artist_model: "custom-litellm/claude-haiku"
+openclaw_tutor_model: "custom-litellm/kimi-k2"
+openclaw_code_model: "custom-litellm/claude-opus"
+openclaw_quick_model: "custom-litellm/claude-haiku"
+openclaw_cheap_model: "custom-litellm/minimax-m25"
+
+# --- n8n Integration ---
+openclaw_n8n_integration: true
+openclaw_n8n_workflows:
+  - name: translate
+    path: ai-translate
+    description: "Traduire du contenu via LiteLLM (haiku)"
+  - name: summarize
+    path: ai-summarize
+    description: "Resumer du contenu long via LiteLLM"
+  - name: format-data
+    path: ai-format
+    description: "Formater des donnees structurees"
+
 # --- Telegram Bot (dedicated, distinct from monitoring bot) ---
 # telegram_openclaw_bot_token is in main.yml (from vault)
 # telegram_openclaw_chat_id is in main.yml (from vault)
+
+# --- WhatsApp (Tutor channel — child tablet) ---
+# whatsapp_tutor_enabled and phone set in main.yml

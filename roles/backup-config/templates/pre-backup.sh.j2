@@ -47,6 +47,21 @@ else
   echo "[$(date)] WARNING: Qdrant snapshot name could not be extracted"
 fi
 
+# === OpenClaw workspace backup ===
+{% if openclaw_volume_isolation | default(false) %}
+echo "[$(date)] Backing up OpenClaw workspace..."
+mkdir -p "${BACKUP_DIR}/openclaw"
+# Backup workspace (user content — books, prospection, output)
+tar -czf "${BACKUP_DIR}/openclaw/workspace-${TIMESTAMP}.tar.gz" \
+  -C "{{ openclaw_workspace_dir }}" . 2>/dev/null || \
+  echo "[$(date)] WARNING: OpenClaw workspace backup failed"
+# Backup state (sessions, memory — not canvas/cron which are ephemeral)
+tar -czf "${BACKUP_DIR}/openclaw/state-${TIMESTAMP}.tar.gz" \
+  -C "{{ openclaw_state_dir }}" sessions memory 2>/dev/null || \
+  echo "[$(date)] WARNING: OpenClaw state backup failed"
+echo "[$(date)] OpenClaw backup completed"
+{% endif %}
+
 # === n8n workflow export ===
 echo "[$(date)] Exporting n8n workflows..."
 docker exec "${PROJECT}_n8n" \

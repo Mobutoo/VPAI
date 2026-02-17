@@ -1,7 +1,24 @@
 # {{ ansible_managed }}
-# LiteLLM proxy configuration
+# LiteLLM proxy configuration — Intelligent routing with tiered models
+# Architecture: OpenClaw -> LiteLLM -> (Anthropic, OpenAI, OpenRouter, Google, BytePlus)
+# Cache: Redis exact match + Qdrant semantic similarity
 
 model_list:
+  # ============================================================
+  # TIER PREMIUM — Complex reasoning, architecture, code review
+  # ============================================================
+  - model_name: "claude-opus"
+    litellm_params:
+      model: "anthropic/claude-opus-4-20250514"
+      api_key: "os.environ/ANTHROPIC_API_KEY"
+      max_tokens: 16384
+    model_info:
+      max_input_tokens: 200000
+      max_output_tokens: 16384
+      metadata:
+        tier: "premium"
+        tags: ["code", "architecture", "reasoning", "review-premium"]
+
   - model_name: "claude-sonnet"
     litellm_params:
       model: "anthropic/claude-sonnet-4-20250514"
@@ -10,38 +27,229 @@ model_list:
     model_info:
       max_input_tokens: 200000
       max_output_tokens: 8192
+      metadata:
+        tier: "medium"
+        tags: ["writing", "analysis", "default", "code"]
 
   - model_name: "claude-haiku"
     litellm_params:
       model: "anthropic/claude-haiku-4-5-20251001"
       api_key: "os.environ/ANTHROPIC_API_KEY"
       max_tokens: 8192
+    model_info:
+      max_input_tokens: 200000
+      max_output_tokens: 8192
+      metadata:
+        tier: "low"
+        tags: ["translation", "summary", "quick", "classification"]
 
+  # ============================================================
+  # TIER MEDIUM — OpenAI fallbacks and review
+  # ============================================================
   - model_name: "gpt-4o"
     litellm_params:
       model: "openai/gpt-4o"
       api_key: "os.environ/OPENAI_API_KEY"
+    model_info:
+      metadata:
+        tier: "medium"
+        tags: ["multimodal", "fallback", "analysis"]
 
   - model_name: "gpt-4o-mini"
     litellm_params:
       model: "openai/gpt-4o-mini"
       api_key: "os.environ/OPENAI_API_KEY"
+    model_info:
+      metadata:
+        tier: "low"
+        tags: ["classification", "formatting", "quick"]
 
+  # GPT-5.2 Codex — Code review specialist (placeholder for 5.3 when API public)
+  - model_name: "gpt-codex"
+    litellm_params:
+      model: "openai/codex-mini-latest"
+      api_key: "os.environ/OPENAI_API_KEY"
+    model_info:
+      metadata:
+        tier: "medium"
+        tags: ["code", "review-smart", "review-premium"]
+
+  # ============================================================
+  # TIER ULTRA-LOW — OpenRouter bulk/cheap models
+  # ============================================================
+{% if openrouter_api_key | default('') | length > 0 %}
+  # Kimi K2.5 — Concierge primary (multimodal, agent swarm, tool calling)
+  - model_name: "kimi-k2"
+    litellm_params:
+      model: "openrouter/moonshotai/kimi-k2"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+    model_info:
+      metadata:
+        tier: "ultra-low"
+        tags: ["concierge", "agent", "tool-calling", "multimodal"]
+
+  # MiniMax M2.5 — Review standard, bulk, concierge fallback
+  # 230B MoE (10B active), SWE-Bench 80.2%, Function Calling #1 (76.8%)
+  - model_name: "minimax-m25"
+    litellm_params:
+      model: "openrouter/minimax/minimax-m1"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+    model_info:
+      metadata:
+        tier: "ultra-low"
+        tags: ["bulk", "review-standard", "data", "cheap", "fallback"]
+
+  # DeepSeek R1 — Math, chain of reasoning, infra code
+  - model_name: "deepseek-r1"
+    litellm_params:
+      model: "openrouter/deepseek/deepseek-r1"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+    model_info:
+      metadata:
+        tier: "ultra-low"
+        tags: ["math", "reasoning-chain", "infra"]
+
+  # DeepSeek V3.2 — General code generation, pipeline gen
+  - model_name: "deepseek-v3"
+    litellm_params:
+      model: "openrouter/deepseek/deepseek-chat"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+    model_info:
+      metadata:
+        tier: "ultra-low"
+        tags: ["code", "gen-infra", "pipeline"]
+
+  # Seedream 4.5 — Image generation via OpenRouter
+  - model_name: "seedream"
+    litellm_params:
+      model: "openrouter/bytedance/seedream-4.5"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+    model_info:
+      metadata:
+        tier: "ultra-low"
+        tags: ["image-gen", "creative"]
+{% endif %}
+
+  # ============================================================
+  # TIER FREE — Qwen3 Coder for trivial tasks
+  # ============================================================
+{% if openrouter_api_key | default('') | length > 0 %}
+  - model_name: "qwen3-coder"
+    litellm_params:
+      model: "openrouter/qwen/qwen3-coder"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+    model_info:
+      metadata:
+        tier: "free"
+        tags: ["bash", "trivial", "formatting"]
+{% endif %}
+
+  # ============================================================
+  # GOOGLE — Video generation (Veo 3)
+  # ============================================================
+{% if google_gemini_api_key | default('') | length > 0 %}
+  - model_name: "gemini-flash"
+    litellm_params:
+      model: "gemini/gemini-2.0-flash"
+      api_key: "os.environ/GOOGLE_GEMINI_API_KEY"
+    model_info:
+      metadata:
+        tier: "low"
+        tags: ["quick", "multimodal", "fallback"]
+{% endif %}
+
+  # ============================================================
+  # EMBEDDINGS — Used by semantic cache + RAG
+  # ============================================================
+  - model_name: "embedding"
+    litellm_params:
+      model: "openai/text-embedding-3-small"
+      api_key: "os.environ/OPENAI_API_KEY"
+    model_info:
+      metadata:
+        tier: "embedding"
+        tags: ["embedding"]
+
+# ================================================================
+# ROUTER SETTINGS — Intelligent routing
+# ================================================================
+router_settings:
+  routing_strategy: "{{ litellm_routing_strategy }}"
+  enable_tag_filtering: {{ litellm_enable_tag_filtering | lower }}
+  # Cooldown a model for 60s after failure before retrying
+  cooldown_time: 60
+  # Number of retries across different deployments
+  num_retries: {{ litellm_num_retries }}
+  # Timeout per request
+  timeout: {{ litellm_request_timeout }}
+
+# ================================================================
+# LITELLM SETTINGS — Cache, fallbacks, callbacks
+# ================================================================
 litellm_settings:
   drop_params: true
   set_verbose: false
-  num_retries: 2
-  request_timeout: 120
-  fallbacks: [{"claude-sonnet": ["gpt-4o"]}]
+  num_retries: {{ litellm_num_retries }}
+  request_timeout: {{ litellm_request_timeout }}
+
+  # Fallback chains: primary -> fallback1 -> fallback2
+  fallbacks:
+    - claude-opus: ["claude-sonnet", "gpt-4o"]
+{% if openrouter_api_key | default('') | length > 0 %}
+    - claude-sonnet: ["gpt-4o", "minimax-m25"]
+    - kimi-k2: ["minimax-m25", "claude-haiku"]
+    - minimax-m25: ["gpt-4o-mini", "claude-haiku"]
+    - deepseek-r1: ["claude-haiku", "gpt-4o-mini"]
+    - deepseek-v3: ["minimax-m25", "gpt-4o-mini"]
+{% else %}
+    - claude-sonnet: ["gpt-4o"]
+{% endif %}
+    - gpt-4o: ["claude-sonnet"]
+    - gpt-4o-mini: ["claude-haiku"]
+    - gpt-codex: ["claude-sonnet", "gpt-4o"]
+
+  # Prometheus metrics
   success_callback: ["prometheus"]
   failure_callback: ["prometheus"]
+
+  # Semantic cache: Redis exact match + Qdrant similarity search
   cache: true
   cache_params:
-    type: "redis"
+    type: "{{ litellm_cache_type }}"
+    # Redis for exact match
     host: "os.environ/REDIS_HOST"
     port: "os.environ/REDIS_PORT"
     password: "os.environ/REDIS_PASSWORD"
+    ttl: {{ litellm_cache_ttl }}
+    # Qdrant for semantic similarity
+    similarity_threshold: {{ litellm_cache_similarity_threshold }}
+    qdrant_semantic_cache_embedding_model: "{{ qdrant_embedding_model }}"
+    qdrant_collection_name: "{{ qdrant_cache_collection }}"
+    qdrant_api_base: "http://qdrant:6333"
+    qdrant_api_key: "os.environ/QDRANT_API_KEY"
 
+  # Provider budget caps (USD per day)
+  provider_budget_config:
+    anthropic:
+      budget_limit: {{ litellm_anthropic_budget_daily }}
+      time_period: "1d"
+    openai:
+      budget_limit: {{ litellm_openai_budget_daily }}
+      time_period: "1d"
+{% if openrouter_api_key | default('') | length > 0 %}
+    openrouter:
+      budget_limit: {{ litellm_openrouter_budget_daily }}
+      time_period: "1d"
+{% endif %}
+{% if google_gemini_api_key | default('') | length > 0 %}
+    gemini:
+      budget_limit: {{ litellm_google_budget_daily }}
+      time_period: "1d"
+{% endif %}
+
+# ================================================================
+# GENERAL SETTINGS — Auth, database
+# ================================================================
 general_settings:
   master_key: "os.environ/LITELLM_MASTER_KEY"
   database_url: "os.environ/DATABASE_URL"

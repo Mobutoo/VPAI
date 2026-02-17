@@ -21,6 +21,10 @@ services:
       - /opt/{{ project_name }}/configs/n8n/n8n.env
     volumes:
       - /opt/{{ project_name }}/data/n8n:/home/node/.n8n
+{% if openclaw_n8n_integration | default(false) and openclaw_volume_isolation | default(false) %}
+      # Read-only access to OpenClaw workspace for RAG content indexing
+      - {{ openclaw_workspace_dir }}:/home/node/openclaw-workspace:ro
+{% endif %}
     networks:
       - backend
       - egress
@@ -88,7 +92,18 @@ services:
     env_file:
       - /opt/{{ project_name }}/configs/openclaw/openclaw.env
     volumes:
+{% if openclaw_volume_isolation | default(false) %}
+      # Moltworker pattern: system (ro) + workspace (rw) + state subdirs (rw)
+      # Parent mount is read-only; subsequent mounts override specific paths with rw
+      - {{ openclaw_system_dir }}:/home/node/.openclaw:ro
+      - {{ openclaw_workspace_dir }}:/home/node/.openclaw/workspace
+      - {{ openclaw_state_dir }}/sessions:/home/node/.openclaw/sessions
+      - {{ openclaw_state_dir }}/canvas:/home/node/.openclaw/canvas
+      - {{ openclaw_state_dir }}/cron:/home/node/.openclaw/cron
+      - {{ openclaw_state_dir }}/memory:/home/node/.openclaw/memory
+{% else %}
       - /opt/{{ project_name }}/data/openclaw:/home/node/.openclaw
+{% endif %}
       # Docker socket required for sandbox: Gateway spawns isolated containers
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:

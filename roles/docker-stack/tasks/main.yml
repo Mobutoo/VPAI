@@ -160,6 +160,96 @@
     msg: "Qdrant failed to become healthy. Check logs above."
   when: qdrant_health.stdout | default('') != 'healthy'
 
+# --- Qdrant Collection Provisioning (idempotent) ---
+# Creates collections needed by LiteLLM semantic cache and RAG indexing
+# REX: Qdrant image has no curl/wget — use docker exec + bash /dev/tcp
+- name: Provision Qdrant semantic_cache collection
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      CONTAINER="{{ project_name }}_qdrant"
+      COLLECTION="{{ qdrant_cache_collection }}"
+      API_KEY="{{ qdrant_api_key }}"
+
+      # Check if collection exists
+      EXISTS=$(docker exec "${CONTAINER}" bash -c \
+        "exec 3<>/dev/tcp/localhost/6333; \
+         printf 'GET /collections/${COLLECTION} HTTP/1.1\r\nHost: localhost\r\napi-key: ${API_KEY}\r\n\r\n' >&3; \
+         timeout 5 cat <&3" 2>/dev/null | head -1 || echo "")
+
+      if echo "${EXISTS}" | grep -q "200 OK"; then
+        echo "EXISTS"
+      else
+        # Create collection with cosine distance
+        DIMS="{{ qdrant_embedding_dimensions }}"
+        BODY="{\"vectors\":{\"size\":${DIMS},\"distance\":\"Cosine\"}}"
+        LEN=$(echo -n "${BODY}" | wc -c)
+        HDR="PUT /collections/${COLLECTION} HTTP/1.1\r\n"
+        HDR="${HDR}Host: localhost\r\napi-key: ${API_KEY}\r\n"
+        HDR="${HDR}Content-Type: application/json\r\n"
+        HDR="${HDR}Content-Length: ${LEN}\r\n\r\n"
+        docker exec "${CONTAINER}" bash -c \
+          "exec 3<>/dev/tcp/localhost/6333; \
+           printf '${HDR}${BODY}' >&3; \
+           timeout 5 cat <&3"
+        echo "CREATED"
+      fi
+  become: true
+  register: qdrant_cache_provision
+  changed_when: "'CREATED' in qdrant_cache_provision.stdout"
+  failed_when: false
+  no_log: true
+
+- name: Show Qdrant semantic_cache provisioning result
+  ansible.builtin.debug:
+    msg: "Qdrant {{ qdrant_cache_collection }}: {{ qdrant_cache_provision.stdout_lines | default(['unknown']) | last }}"
+
+- name: Provision Qdrant content_index collection (RAG)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      CONTAINER="{{ project_name }}_qdrant"
+      COLLECTION="{{ qdrant_rag_collection }}"
+      API_KEY="{{ qdrant_api_key }}"
+
+      # Check if collection exists
+      EXISTS=$(docker exec "${CONTAINER}" bash -c \
+        "exec 3<>/dev/tcp/localhost/6333; \
+         printf 'GET /collections/${COLLECTION} HTTP/1.1\r\nHost: localhost\r\napi-key: ${API_KEY}\r\n\r\n' >&3; \
+         timeout 5 cat <&3" 2>/dev/null | head -1 || echo "")
+
+      if echo "${EXISTS}" | grep -q "200 OK"; then
+        echo "EXISTS"
+      else
+        # Create collection with cosine distance + indexing config
+        DIMS="{{ qdrant_embedding_dimensions }}"
+        BODY="{\"vectors\":{\"size\":${DIMS},"
+        BODY="${BODY}\"distance\":\"Cosine\"},"
+        BODY="${BODY}\"optimizers_config\":"
+        BODY="${BODY}{\"indexing_threshold\":10000}}"
+        LEN=$(echo -n "${BODY}" | wc -c)
+        HDR="PUT /collections/${COLLECTION} HTTP/1.1\r\n"
+        HDR="${HDR}Host: localhost\r\napi-key: ${API_KEY}\r\n"
+        HDR="${HDR}Content-Type: application/json\r\n"
+        HDR="${HDR}Content-Length: ${LEN}\r\n\r\n"
+        docker exec "${CONTAINER}" bash -c \
+          "exec 3<>/dev/tcp/localhost/6333; \
+           printf '${HDR}${BODY}' >&3; \
+           timeout 5 cat <&3"
+        echo "CREATED"
+      fi
+  become: true
+  register: qdrant_rag_provision
+  changed_when: "'CREATED' in qdrant_rag_provision.stdout"
+  failed_when: false
+  no_log: true
+
+- name: Show Qdrant content_index provisioning result
+  ansible.builtin.debug:
+    msg: "Qdrant {{ qdrant_rag_collection }}: {{ qdrant_rag_provision.stdout_lines | default(['unknown']) | last }}"
+
 # --- Caddy ---
 - name: Wait for Caddy to be healthy
   ansible.builtin.command:

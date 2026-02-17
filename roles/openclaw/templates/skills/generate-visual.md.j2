@@ -1,0 +1,72 @@
+# Skill: Generation Visuelle
+
+Genere des images et videos via les APIs de generation disponibles.
+
+## Images — Seedream 4.5 (prioritaire)
+
+### Via LiteLLM (OpenRouter)
+```
+POST http://litellm:4000/v1/images/generations
+Headers:
+  Content-Type: application/json
+  Authorization: Bearer ${LITELLM_API_KEY}
+Body:
+  {
+    "model": "seedream",
+    "prompt": "<description detaillee de l'image>",
+    "n": 1,
+    "size": "1024x1024"
+  }
+```
+
+Cout : ~$0.04/image
+
+### Fallback : DALL-E 3 (via OpenAI)
+Meme format, modele "gpt-4o" avec mode image generation.
+
+## Videos — Seedance 2.0 (quand disponible)
+
+{% if byteplus_api_key | default('') | length > 0 %}
+### Via BytePlus API
+```
+POST https://api.byteplus.com/v1/video/generate
+Headers:
+  Content-Type: application/json
+  Authorization: Bearer ${BYTEPLUS_API_KEY}
+Body:
+  {
+    "prompt": "<description de la video>",
+    "duration": 5,
+    "resolution": "720p",
+    "style": "cinematic"
+  }
+```
+
+Cout : ~$0.10-0.80/min
+{% else %}
+Seedance 2.0 non configure (cle BytePlus manquante).
+{% endif %}
+
+{% if google_gemini_api_key | default('') | length > 0 %}
+### Fallback : Veo 3 Fast (via Google Gemini)
+```
+POST https://generativelanguage.googleapis.com/v1/models/veo-3-fast:generateVideo
+Headers:
+  Content-Type: application/json
+  Authorization: Bearer ${GOOGLE_GEMINI_API_KEY}
+Body:
+  {
+    "prompt": "<description de la video>",
+    "duration_seconds": 5
+  }
+```
+
+Cout : ~$0.15/sec
+{% endif %}
+
+## Regles de generation
+- Toujours sauvegarder le prompt avec le fichier genere
+- Format nommage : `YYYY-MM-DD_description.ext`
+- Repertoire : /workspace/output/images/ ou /workspace/output/videos/
+- Budget : Seedream ($0.04) > DALL-E (~$0.08) pour les images
+- Pas de contenu inapproprie

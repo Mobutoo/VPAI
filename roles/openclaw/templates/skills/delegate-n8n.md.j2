@@ -1,0 +1,63 @@
+# Skill: Deleguer a n8n
+
+Delegue des taches repetitives, bulk, ou basees sur des templates a n8n.
+
+## Quand utiliser ce skill
+
+Utilise ce skill quand la tache est :
+- **Repetable avec un template** (traduction, formatage, resume)
+- **N'a pas besoin de l'historique de conversation**
+- **Implique une orchestration API externe**
+- **Du traitement bulk (>10 items)**
+
+## Workflows n8n disponibles
+
+{% for workflow in openclaw_n8n_workflows %}
+### {{ workflow.name }}
+- **Description** : {{ workflow.description }}
+- **Endpoint** : `{{ n8n_webhook_base_url }}/webhook/{{ workflow.path }}`
+{% endfor %}
+
+## Comment appeler un workflow n8n
+
+Utilise l'outil `web_fetch` pour envoyer une requete POST au webhook n8n :
+
+```
+POST {{ n8n_webhook_base_url }}/webhook/<path>
+Headers:
+  Content-Type: application/json
+  X-Webhook-Secret: ${N8N_WEBHOOK_SECRET}
+Body:
+  {
+    "task": "description de la tache",
+    "input": "donnees d'entree",
+    "model": "claude-haiku",
+    "callback_agent": "<ton agent id>"
+  }
+```
+
+## Format de reponse attendu
+
+```json
+{
+  "status": "success|error",
+  "result": "...",
+  "tokens_used": 0,
+  "model_used": "..."
+}
+```
+
+## Bareme de delegation
+
+| Critere | -> OpenClaw | -> n8n |
+|---|---|---|
+| Contexte conversation | X | |
+| Decision/jugement | X | |
+| Creation creative | X | |
+| Code/architecture | X | |
+| Repetitif/template | | X |
+| Bulk (>10 items) | | X |
+| API externes (CRM) | | X |
+| Traduction | | X |
+| Formatage donnees | | X |
+| Scraping web | | X |

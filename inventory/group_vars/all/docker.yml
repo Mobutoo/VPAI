@@ -21,8 +21,8 @@ postgresql_memory_limit: "{{ '1536M' if target_env == 'prod' else '768M' }}"
 postgresql_memory_reservation: "{{ '512M' if target_env == 'prod' else '256M' }}"
 postgresql_cpu_limit: "{{ '1.5' if target_env == 'prod' else '0.75' }}"
 
-# Redis
-redis_memory_limit: "{{ '512M' if target_env == 'prod' else '256M' }}"
+# Redis (768M prod: exact cache + semantic cache metadata)
+redis_memory_limit: "{{ '768M' if target_env == 'prod' else '384M' }}"
 redis_memory_reservation: "128M"
 redis_cpu_limit: "0.5"
 
@@ -41,8 +41,8 @@ litellm_memory_limit: "{{ '1024M' if target_env == 'prod' else '512M' }}"
 litellm_memory_reservation: "256M"
 litellm_cpu_limit: "1.0"
 
-# Qdrant
-qdrant_memory_limit: "{{ '1024M' if target_env == 'prod' else '512M' }}"
+# Qdrant (1536M prod: 2 collections — semantic_cache + content_index RAG)
+qdrant_memory_limit: "{{ '1536M' if target_env == 'prod' else '768M' }}"
 qdrant_memory_reservation: "256M"
 qdrant_cpu_limit: "0.75"
 

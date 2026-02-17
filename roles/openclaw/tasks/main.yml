@@ -4,8 +4,10 @@
 # It does NOT use PostgreSQL/Redis/Qdrant directly — it's file-based
 # Models are routed through LiteLLM proxy via models.providers config
 #
-# Volume layout: /opt/<project>/data/openclaw/ maps to /home/node/.openclaw/
-# OpenClaw needs full RW access to .openclaw/ (canvas, cron, sessions, plugins)
+# Volume isolation (moltworker pattern):
+#   system/  (ro) — openclaw.json, agents/, skills/ (immutable at runtime)
+#   workspace/ (rw) — user livrables (books, prospection, output)
+#   state/ (rw) — sessions, canvas, cron, memory (runtime data)
 
 - name: Create OpenClaw config directory
   ansible.builtin.file:
@@ -16,7 +18,75 @@
     mode: "0755"
   become: true
 
-- name: Create OpenClaw data directory
+# --- Volume Isolation: 3-layer directory structure ---
+- name: Create OpenClaw system directory (immutable at runtime)
+  ansible.builtin.file:
+    path: "{{ openclaw_system_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  when: openclaw_volume_isolation | default(false)
+
+- name: Create OpenClaw system subdirectories
+  ansible.builtin.file:
+    path: "{{ openclaw_system_dir }}/{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  loop:
+    - agents
+    - skills
+    - plugins
+  when: openclaw_volume_isolation | default(false)
+
+- name: Create OpenClaw workspace directory (user livrables)
+  ansible.builtin.file:
+    path: "{{ openclaw_workspace_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  when: openclaw_volume_isolation | default(false)
+
+- name: Create OpenClaw workspace subdirectories
+  ansible.builtin.file:
+    path: "{{ openclaw_workspace_dir }}/{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  loop: "{{ openclaw_workspace_subdirs }}"
+  when: openclaw_volume_isolation | default(false)
+
+- name: Create OpenClaw state directory (runtime data)
+  ansible.builtin.file:
+    path: "{{ openclaw_state_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  when: openclaw_volume_isolation | default(false)
+
+- name: Create OpenClaw state subdirectories
+  ansible.builtin.file:
+    path: "{{ openclaw_state_dir }}/{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  loop: "{{ openclaw_state_subdirs }}"
+  when: openclaw_volume_isolation | default(false)
+
+# --- Legacy flat layout (fallback when isolation disabled) ---
+- name: Create OpenClaw flat data directory (legacy)
   ansible.builtin.file:
     path: "{{ openclaw_data_dir }}"
     state: directory
@@ -24,8 +94,9 @@
     group: "1000"
     mode: "0755"
   become: true
+  when: not (openclaw_volume_isolation | default(false))
 
-- name: Create OpenClaw subdirectories
+- name: Create OpenClaw flat subdirectories (legacy)
   ansible.builtin.file:
     path: "{{ openclaw_data_dir }}/{{ item }}"
     state: directory
@@ -37,15 +108,137 @@
     - workspace
     - canvas
     - cron
+  when: not (openclaw_volume_isolation | default(false))
 
+# --- Migration: flat -> 3-layer (one-shot, non-destructive) ---
+# Copies data from old flat layout to new structure if old dir exists
+# Old directory is NOT deleted (safe rollback)
+- name: Check if legacy flat OpenClaw data exists
+  ansible.builtin.stat:
+    path: "{{ openclaw_data_dir }}/openclaw.json"
+  register: openclaw_legacy_check
+  become: true
+  when: openclaw_volume_isolation | default(false)
+
+- name: Migrate legacy OpenClaw data to isolated layout
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      SRC="{{ openclaw_data_dir }}"
+      SYS="{{ openclaw_system_dir }}"
+      WRK="{{ openclaw_workspace_dir }}"
+      STA="{{ openclaw_state_dir }}"
+
+      MIGRATED=0
+
+      # Migrate system files (config, agents, skills)
+      for item in openclaw.json agents skills plugins; do
+        if [ -e "${SRC}/${item}" ] && [ ! -e "${SYS}/${item}" ]; then
+          cp -a "${SRC}/${item}" "${SYS}/${item}"
+          MIGRATED=1
+        fi
+      done
+
+      # Migrate workspace content
+      if [ -d "${SRC}/workspace" ]; then
+        cp -a "${SRC}/workspace/"* "${WRK}/" 2>/dev/null || true
+        MIGRATED=1
+      fi
+
+      # Migrate state directories
+      for item in sessions canvas cron memory; do
+        if [ -d "${SRC}/${item}" ] && [ ! -d "${STA}/${item}" ]; then
+          mkdir -p "${STA}/${item}"
+          cp -a "${SRC}/${item}/"* "${STA}/${item}/" 2>/dev/null || true
+          MIGRATED=1
+        fi
+      done
+
+      # Fix ownership
+      chown -R 1000:1000 "${SYS}" "${WRK}" "${STA}"
+
+      if [ "${MIGRATED}" -eq 1 ]; then
+        echo "MIGRATED"
+      else
+        echo "NOTHING_TO_MIGRATE"
+      fi
+  become: true
+  register: openclaw_migration
+  changed_when: "'MIGRATED' in openclaw_migration.stdout"
+  when:
+    - openclaw_volume_isolation | default(false)
+    - openclaw_legacy_check.stat.exists | default(false)
+
+- name: Show OpenClaw migration result
+  ansible.builtin.debug:
+    msg: "OpenClaw migration: {{ openclaw_migration.stdout | default('skipped') }}"
+  when:
+    - openclaw_volume_isolation | default(false)
+    - openclaw_migration is not skipped
+
+# --- Deploy configurations ---
 - name: Deploy OpenClaw Gateway configuration (openclaw.json)
   ansible.builtin.template:
     src: openclaw.json.j2
-    dest: "{{ openclaw_data_dir }}/openclaw.json"
+    dest: "{{ openclaw_system_dir if (openclaw_volume_isolation | default(false)) else openclaw_data_dir }}/openclaw.json"
     owner: "1000"
     group: "1000"
     mode: "0600"
   become: true
+  notify: Restart openclaw stack
+
+# Create agent directories in system/ for persona files
+- name: Create agent persona directories
+  ansible.builtin.file:
+    path: "{{ openclaw_system_dir }}/agents/{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  loop:
+    - "{{ openclaw_agent_concierge_name }}"
+    - "{{ openclaw_agent_builder_name }}"
+    - "{{ openclaw_agent_writer_name }}"
+    - "{{ openclaw_agent_artist_name }}"
+    - "{{ openclaw_agent_tutor_name }}"
+  when: openclaw_volume_isolation | default(false)
+
+# Deploy agent IDENTITY.md files (only with volume isolation)
+- name: Deploy agent persona files
+  ansible.builtin.template:
+    src: "agents/{{ item }}/IDENTITY.md.j2"
+    dest: "{{ openclaw_system_dir }}/agents/{{ item }}/IDENTITY.md"
+    owner: "1000"
+    group: "1000"
+    mode: "0644"
+  become: true
+  loop:
+    - "{{ openclaw_agent_concierge_name }}"
+    - "{{ openclaw_agent_builder_name }}"
+    - "{{ openclaw_agent_writer_name }}"
+    - "{{ openclaw_agent_artist_name }}"
+    - "{{ openclaw_agent_tutor_name }}"
+  when: openclaw_volume_isolation | default(false)
+  notify: Restart openclaw stack
+
+# Deploy skill files (only with volume isolation)
+- name: Deploy OpenClaw skill files
+  ansible.builtin.template:
+    src: "skills/{{ item }}.md.j2"
+    dest: "{{ openclaw_system_dir }}/skills/{{ item }}.md"
+    owner: "1000"
+    group: "1000"
+    mode: "0644"
+  become: true
+  loop:
+    - delegate-n8n
+    - search-content
+    - generate-visual
+  when:
+    - openclaw_volume_isolation | default(false)
+    - openclaw_n8n_integration | default(false)
   notify: Restart openclaw stack
 
 - name: Deploy OpenClaw environment file

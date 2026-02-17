@@ -218,14 +218,70 @@ echo "--- LiteLLM API ---"
 MODELS=$(curl -s -H "Authorization: Bearer {{ litellm_master_key }}" \
   ${CURL_VPN_OPTS} "${LITELLM_URL}/v1/models" --max-time "${TIMEOUT}" 2>/dev/null | \
   grep -o '"id"' | wc -l) || MODELS=0
-if [ "${MODELS}" -gt 0 ]; then
-  echo "PASS  LiteLLM models (${MODELS} models available)"
+if [ "${MODELS}" -ge 8 ]; then
+  echo "PASS  LiteLLM models (${MODELS} models available, expected >= 8)"
+elif [ "${MODELS}" -gt 0 ]; then
+  echo "WARN  LiteLLM models (${MODELS} available, expected >= 8 — some providers may not be configured)"
 else
   echo "FAIL  LiteLLM models (no models found)"
   FAILURES=$((FAILURES + 1))
 fi
 
 echo ""
+
+# === QDRANT COLLECTIONS ===
+echo "--- Qdrant Collections ---"
+# Check semantic_cache collection exists
+QDRANT_IP=$(docker inspect -f '{{ '{{' }}range .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}.IPAddress{{ '}}' }}{{ '{{' }}end{{ '}}' }}' "${PROJECT}_qdrant" 2>/dev/null | head -c -1) || QDRANT_IP=""
+if [ -n "${QDRANT_IP}" ]; then
+  SC_STATUS=$(curl -s --max-time 5 -H "api-key: {{ qdrant_api_key }}" \
+    "http://${QDRANT_IP}:6333/collections/{{ qdrant_cache_collection }}" 2>/dev/null | \
+    grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4) || SC_STATUS=""
+  if [ "${SC_STATUS}" = "green" ] || [ -n "${SC_STATUS}" ]; then
+    echo "PASS  Qdrant {{ qdrant_cache_collection }} collection (${SC_STATUS:-exists})"
+  else
+    echo "WARN  Qdrant {{ qdrant_cache_collection }} collection not found (created on first LiteLLM cache write)"
+  fi
+
+  CI_STATUS=$(curl -s --max-time 5 -H "api-key: {{ qdrant_api_key }}" \
+    "http://${QDRANT_IP}:6333/collections/{{ qdrant_rag_collection }}" 2>/dev/null | \
+    grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4) || CI_STATUS=""
+  if [ "${CI_STATUS}" = "green" ] || [ -n "${CI_STATUS}" ]; then
+    echo "PASS  Qdrant {{ qdrant_rag_collection }} collection (${CI_STATUS:-exists})"
+  else
+    echo "WARN  Qdrant {{ qdrant_rag_collection }} collection not found (created on first RAG indexation)"
+  fi
+else
+  echo "SKIP  Qdrant collections (could not get container IP)"
+fi
+
+echo ""
+
+{% if openclaw_volume_isolation | default(false) %}
+# === VOLUME ISOLATION ===
+echo "--- OpenClaw Volume Isolation ---"
+# Test system directory is read-only
+TOUCH_RO=$(docker exec "${PROJECT}_openclaw" touch /home/node/.openclaw/test_ro 2>&1) && RO_OK=1 || RO_OK=0
+if [ "${RO_OK}" -eq 0 ]; then
+  echo "PASS  OpenClaw system directory is read-only"
+else
+  docker exec "${PROJECT}_openclaw" rm -f /home/node/.openclaw/test_ro 2>/dev/null || true
+  echo "FAIL  OpenClaw system directory is writable (should be ro)"
+  FAILURES=$((FAILURES + 1))
+fi
+
+# Test workspace is writable
+TOUCH_WS=$(docker exec "${PROJECT}_openclaw" touch /home/node/.openclaw/workspace/test_rw 2>&1) && WS_OK=1 || WS_OK=0
+if [ "${WS_OK}" -eq 1 ]; then
+  docker exec "${PROJECT}_openclaw" rm -f /home/node/.openclaw/workspace/test_rw 2>/dev/null || true
+  echo "PASS  OpenClaw workspace directory is writable"
+else
+  echo "FAIL  OpenClaw workspace directory is not writable"
+  FAILURES=$((FAILURES + 1))
+fi
+
+echo ""
+{% endif %}
 
 # === SERVICE PROVISIONING ===
 echo "--- Service Provisioning ---"

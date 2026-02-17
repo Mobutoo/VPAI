@@ -7,3 +7,18 @@ litellm_config_dir: "/opt/{{ project_name }}/configs/litellm"
 litellm_ui_username: ""
 # litellm_ui_password is in secrets.yml (vault)
 # litellm_salt_key is in secrets.yml (vault)
+
+# --- Routing ---
+# Strategy: usage-based-routing-v2 distributes across providers weighted by capacity
+litellm_routing_strategy: "usage-based-routing-v2"
+litellm_enable_tag_filtering: true
+
+# --- Cache ---
+# Semantic cache: Redis exact match + Qdrant semantic similarity
+litellm_cache_type: "qdrant-semantic"
+litellm_cache_ttl: 3600
+litellm_cache_similarity_threshold: 0.85
+
+# --- Request settings ---
+litellm_num_retries: 2
+litellm_request_timeout: 120

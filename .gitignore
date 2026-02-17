@@ -32,6 +32,7 @@ collections/
 
 # --- Claude Code ---
 .claude/
+CLAUDE.md
 
 # --- SSH ---
 *.pem

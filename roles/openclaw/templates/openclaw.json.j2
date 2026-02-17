@@ -250,6 +250,23 @@
     },
     "fs": {
       "workspaceOnly": true
+    },
+    "web": {
+      "search": {
+        "enabled": {{ 'true' if brave_search_api_key | default('') | length > 0 else 'false' }},
+        "provider": "brave",
+        "maxResults": 5,
+        "timeoutSeconds": 30,
+        "cacheTtlMinutes": 15
+      },
+      "fetch": {
+        "enabled": true,
+        "maxChars": 50000,
+        "timeoutSeconds": 30,
+        "cacheTtlMinutes": 15,
+        "maxRedirects": 3,
+        "readability": true
+      }
     }
   },
   "channels": {

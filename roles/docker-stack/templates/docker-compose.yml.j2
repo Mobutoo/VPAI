@@ -118,9 +118,11 @@ services:
           pids: 512
         reservations:
           memory: {{ openclaw_memory_reservation }}
-    # OpenClaw Gateway healthcheck: verify the WebSocket control plane is responsive
+    # OpenClaw Gateway healthcheck: verify WebSocket upgrade (101) — not just HTTP 200 (SPA fallback)
+    # HTTP GET always returns 200/index.html even when Gateway is in restart loop.
+    # Only a successful WebSocket upgrade proves the Gateway is truly accepting connections.
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"const h=require('http');h.get('http://127.0.0.1:{{ openclaw_gateway_port }}/',r=>{process.exit(r.statusCode<500?0:1)}).on('error',()=>process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"const h=require('http');const r=h.request({host:'127.0.0.1',port:{{ openclaw_gateway_port }},path:'/',headers:{'Connection':'Upgrade','Upgrade':'websocket','Sec-WebSocket-Key':'aGVhbHRoY2hlY2s=','Sec-WebSocket-Version':'13'}});r.on('upgrade',(res)=>{process.exit(res.statusCode===101?0:1)});r.on('error',()=>process.exit(1));r.setTimeout(5000,()=>process.exit(1));r.end()\""]
       interval: 30s
       timeout: 10s
       retries: 5

@@ -50,10 +50,19 @@
     "list": [
       {
         "id": "{{ openclaw_agent_concierge_name }}",
+        "default": true,
         "model": {
           "primary": "{{ openclaw_concierge_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace",
+        "subagents": {
+          "allowAgents": [
+            "{{ openclaw_agent_builder_name }}",
+            "{{ openclaw_agent_writer_name }}",
+            "{{ openclaw_agent_artist_name }}",
+            "{{ openclaw_agent_tutor_name }}"
+          ]
+        },
         "tools": {
           "fs": { "workspaceOnly": true },
           "elevated": { "enabled": false }
@@ -244,6 +253,20 @@
     }
 {% endif %}
   },
+  "bindings": [
+{% if telegram_openclaw_bot_token | default('') | length > 0 %}
+    {
+      "agentId": "{{ openclaw_agent_concierge_name }}",
+      "match": { "channel": "telegram" }
+    }{{ ',' if whatsapp_tutor_enabled | default(false) else '' }}
+{% endif %}
+{% if whatsapp_tutor_enabled | default(false) %}
+    {
+      "agentId": "{{ openclaw_agent_tutor_name }}",
+      "match": { "channel": "whatsapp" }
+    }
+{% endif %}
+  ],
   "logging": {
     "level": "info"
   }

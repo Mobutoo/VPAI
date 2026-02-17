@@ -92,10 +92,8 @@ prometheus.scrape "qdrant" {
   job_name        = "qdrant"
   metrics_path    = "/metrics"
 
-  // Qdrant requires api-key header when QDRANT__SERVICE__API_KEY is set
-  custom_headers = {
-    "api-key" = "{{ qdrant_api_key }}",
-  }
+  // Qdrant accepts Authorization: Bearer <api-key> (GitHub issue #2845)
+  bearer_token = "{{ qdrant_api_key }}"
 }
 
 // ============================================================

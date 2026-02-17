@@ -260,13 +260,23 @@ echo ""
 {% if openclaw_volume_isolation | default(false) %}
 # === VOLUME ISOLATION ===
 echo "--- OpenClaw Volume Isolation ---"
-# Test system directory is read-only
-TOUCH_RO=$(docker exec "${PROJECT}_openclaw" touch /home/node/.openclaw/test_ro 2>&1) && RO_OK=1 || RO_OK=0
+# Test config file is read-only (mounted as :ro)
+CP_RO=$(docker exec "${PROJECT}_openclaw" cp /home/node/.openclaw/openclaw.json /home/node/.openclaw/openclaw.json.bak 2>&1) && RO_OK=1 || RO_OK=0
 if [ "${RO_OK}" -eq 0 ]; then
-  echo "PASS  OpenClaw system directory is read-only"
+  echo "PASS  OpenClaw config (openclaw.json) is read-only"
 else
-  docker exec "${PROJECT}_openclaw" rm -f /home/node/.openclaw/test_ro 2>/dev/null || true
-  echo "FAIL  OpenClaw system directory is writable (should be ro)"
+  docker exec "${PROJECT}_openclaw" rm -f /home/node/.openclaw/openclaw.json.bak 2>/dev/null || true
+  echo "FAIL  OpenClaw config is writable (should be ro)"
+  FAILURES=$((FAILURES + 1))
+fi
+
+# Test agents directory is read-only (mounted as :ro)
+TOUCH_AGENTS=$(docker exec "${PROJECT}_openclaw" touch /home/node/.openclaw/agents/test_ro 2>&1) && AGENTS_RO=1 || AGENTS_RO=0
+if [ "${AGENTS_RO}" -eq 0 ]; then
+  echo "PASS  OpenClaw agents directory is read-only"
+else
+  docker exec "${PROJECT}_openclaw" rm -f /home/node/.openclaw/agents/test_ro 2>/dev/null || true
+  echo "FAIL  OpenClaw agents directory is writable (should be ro)"
   FAILURES=$((FAILURES + 1))
 fi
 

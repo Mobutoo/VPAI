@@ -50,21 +50,17 @@
     "list": [
       {
         "id": "{{ openclaw_agent_concierge_name }}",
-        "description": "Concierge/Dispatcher — comprend, trie, delegue, resume",
         "model": {
           "primary": "{{ openclaw_concierge_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace",
-        "channels": ["telegram"],
         "tools": {
           "fs": { "workspaceOnly": true },
-          "exec": { "enabled": false },
           "elevated": { "enabled": false }
         }
       },
       {
         "id": "{{ openclaw_agent_builder_name }}",
-        "description": "Code, infra, labs, SaaS — modes: direct, pipeline, incident, lab, saas",
         "model": {
           "primary": "{{ openclaw_builder_model }}"
         },
@@ -80,43 +76,34 @@
       },
       {
         "id": "{{ openclaw_agent_writer_name }}",
-        "description": "Texte long — modes: manga, roman, business, admin, review",
         "model": {
           "primary": "{{ openclaw_writer_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace",
         "tools": {
           "fs": { "workspaceOnly": true },
-          "exec": { "enabled": false },
           "elevated": { "enabled": false }
         }
       },
       {
         "id": "{{ openclaw_agent_artist_name }}",
-        "description": "Generation visuelle — images (Seedream 4.5) et videos (Seedance 2.0 / Veo 3)",
         "model": {
           "primary": "{{ openclaw_artist_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace",
         "tools": {
           "fs": { "workspaceOnly": true },
-          "exec": { "enabled": false },
           "elevated": { "enabled": false }
         }
       },
       {
         "id": "{{ openclaw_agent_tutor_name }}",
-        "description": "Tuteur scolaire — canal WhatsApp isole, tablette enfant",
         "model": {
           "primary": "{{ openclaw_tutor_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace/tutor",
-{% if whatsapp_tutor_enabled | default(false) %}
-        "channels": ["whatsapp"],
-{% endif %}
         "tools": {
           "fs": { "workspaceOnly": true },
-          "exec": { "enabled": false },
           "elevated": { "enabled": false }
         }
       }
@@ -218,7 +205,7 @@
             "reasoning": false,
             "input": ["text"],
             "contextWindow": 8191,
-            "maxTokens": 0
+            "maxTokens": 1
           }
         ]
       }

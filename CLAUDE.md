@@ -142,7 +142,7 @@ Phase 6 -- Hardening (DERNIER)
 | Reseau | Subnet | Internal | Services |
 |--------|--------|----------|----------|
 | `frontend` | 172.20.1.0/24 | Non | Caddy, Grafana |
-| `backend` | 172.20.2.0/24 | Oui | PG, Redis, Qdrant, n8n, LiteLLM, OpenClaw, Caddy, Alloy |
+| `backend` | 172.20.2.0/24 | Oui | PG, Redis, Qdrant, n8n, LiteLLM, OpenClaw, Caddy, Alloy, Grafana |
 | `egress` | 172.20.4.0/24 | Non | n8n, LiteLLM, OpenClaw |
 | `monitoring` | 172.20.3.0/24 | Oui | cAdvisor, VictoriaMetrics, Loki, Alloy, Grafana |
 | `sandbox` | 172.20.5.0/24 | Oui | LiteLLM, OpenClaw sandbox containers (sous-agents isoles) |
@@ -214,13 +214,17 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **rate_limit** : Plugin non inclus dans l'image stock `caddy:alpine`. Commenter ou builder une image custom.
 - **Logs** : Volume `/var/log/caddy` monte et accessible en ecriture
 
-### Monitoring -- UIDs Conteneurs
+### Monitoring -- UIDs Conteneurs et Architecture
 
 - **VictoriaMetrics** : UID 1000 (pas `{{ prod_user }}`)
 - **Loki** : UID 10001 (pas `{{ prod_user }}`)
 - **Grafana** : UID 472
 - **cAdvisor** : Root (read-only volumes /sys, /var/lib/docker, docker.sock). Pas de data persistant.
 - **Regle** : Les dirs de data doivent etre `chown` avec l'UID du conteneur, pas l'utilisateur systeme
+- **Flux de donnees** : Container metrics (cAdvisor) → Alloy → VictoriaMetrics → Grafana. Logs (Docker socket) → Alloy → Loki → Grafana
+- **Metriques LiteLLM** : `litellm_requests_total`, `litellm_tokens_total`, `litellm_spend_total`, `litellm_request_duration_seconds_bucket` — scrapes par Alloy, stockees dans VictoriaMetrics
+- **Metriques Qdrant** : `qdrant_points_total`, `qdrant_search_avg_duration_seconds`, `qdrant_rest_responses_total`
+- **Dashboards AI** : Combinent VictoriaMetrics (metriques temps-reel) + PostgreSQL (scoring/feedback historique)
 
 ### cAdvisor -- Container Metrics
 
@@ -310,6 +314,9 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **Login API** : En n8n v2.7+, le champ est `emailOrLdapLoginId` (pas `email`)
 - **Pas de curl dans le container n8n** : Uniquement BusyBox wget (sans --method). Utiliser Node.js (http built-in) ou un container temporaire pour les appels API REST
 - **Provisioning checksum-based** : Les checksums MD5 des fichiers JSON workflow sont stockes dans `/opt/<project>/configs/n8n/workflow-checksums/`. Si le checksum change → delete + reimport
+- **Workflow `ai-model-scoring`** : 4 branches — feedback webhook (UPSERT + score recalc), scores webhook (SELECT + JSON), cron 6h (LiteLLM spend logs → UPSERT), weekly discovery. Stockage PostgreSQL (table `model_scores` dans DB `n8n`) + export JSON cache (`/home/node/.n8n/model-scores.json`)
+- **`require('pg')` dans Code nodes** : Le module `pg` est une dependance interne de l'image n8n. `NODE_FUNCTION_ALLOW_EXTERNAL=pg` autorise son usage. Connection : `host: 'postgresql', port: 5432, database: 'n8n'`
+- **Score formula** : `score = (likeRatio * 40) + (successRate * 30) + (costEfficiency * 20) + (speedScore * 10)` — recalcule a chaque feedback et chaque collecte cron
 
 ### PostgreSQL -- Provisioning Idempotent
 
@@ -317,6 +324,17 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **Script `provision-postgresql.sh`** : Verifie et cree les DBs/users a chaque deploy
 - **Execute apres Phase A** dans les tasks docker-stack
 - **LiteLLM restart** : Restart automatique si pas healthy apres Phase B (timing DB provisioning)
+- **Table `model_scores`** : Dans la base `n8n`, creee par `provision-postgresql.sh`. Stocke les metriques de scoring des modeles IA (likes, dislikes, score pondere, couts, latence). Source de verite pour le workflow n8n `ai-model-scoring` et les dashboards Grafana
+
+### Grafana -- Datasources et Dashboards
+
+- **Datasources provisionnes** : VictoriaMetrics (prometheus, default), Loki (logs), PostgreSQL (n8n database pour model_scores)
+- **PostgreSQL datasource** : Accede via le reseau `backend` (Grafana doit etre sur `backend` en plus de `frontend` + `monitoring`)
+- **UID datasources** : `VictoriaMetrics`, `Loki`, `PostgreSQL-n8n` — utilises dans les requetes des dashboards
+- **Dashboards (9 fichiers)** : system-overview, docker-containers, postgresql, litellm-proxy, logs-explorer, ai-pipeline, qdrant-collections, ai-model-scoring, ai-cost-cockpit
+- **PostgreSQL dans Grafana** : Plugin built-in, pas besoin d'installer un plugin additionnel
+- **Requetes SQL** : Utiliser `$__timeFrom()` et `$__timeTo()` pour les filtres temporels Grafana, `$__timeGroup(column, interval)` pour le time-series grouping
+- **Projections de couts** : Calculees en SQL via `AVG()` sur la periode selectionnee, extrapolees a 1 mois / 3 mois / 1 an
 
 ### OpenClaw -- Gateway Architecture (WebSocket, NOT HTTP REST)
 

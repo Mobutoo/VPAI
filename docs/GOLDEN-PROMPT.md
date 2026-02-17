@@ -417,18 +417,59 @@ Opus 4.6 — Checklist de review FINALE :
 
 ---
 
+## Phase 7 -- Post-Deploiement : AI Pipeline & Observabilite Avancee (REX)
+
+> **Statut** : Complete (commits b94db16 → 8655373)
+> **Date** : Fevrier 2026
+
+### 7.1 Workflows n8n AI (ai-translate, ai-summarize, ai-format)
+
+- **Provisionnement automatise** : Import via `n8n import:workflow` + `n8n publish:workflow` + restart
+- **Checksum-based updates** : MD5 des fichiers JSON compare avec checksums serveur → reimport si different
+- **Deletion v2.7+** : Deactivate (PATCH active:false) → Archive (POST /workflows/:id/archive) → Delete
+- **Validation HMAC** : Double envoi du secret (header X-Webhook-Secret + body.secret)
+- **REX** : `require()` bloque par le sandbox Task Runner. Fix : `NODE_FUNCTION_ALLOW_BUILTIN=fs,path,crypto`
+
+### 7.2 Workflow ai-model-scoring (PostgreSQL + JSON)
+
+- **Architecture hybride** : PostgreSQL (source de verite) + JSON cache (lecture rapide)
+- **Table `model_scores`** : 15 colonnes (model PK, calls, tokens, cost, latency, likes, dislikes, score)
+- **4 branches** : Feedback (UPSERT + score recalc), Scores (SELECT), Cron 6h (LiteLLM spend logs), Weekly discovery
+- **Score formula** : `(likeRatio*40) + (successRate*30) + (costEfficiency*20) + (speedScore*10)`
+- **REX** : `require('pg')` possible car pg est une dependance interne n8n. `NODE_FUNCTION_ALLOW_EXTERNAL=pg`
+- **REX** : Pas de curl dans le container n8n (BusyBox Alpine). Utiliser Node.js http built-in
+
+### 7.3 Dashboards Grafana (9 dashboards)
+
+Dashboards provisionnes automatiquement via fichiers JSON :
+1. **system-overview** : CPU, RAM, Disk, Load, Network
+2. **docker-containers** : CPU/RAM/Network par container, restarts
+3. **postgresql** : Metriques container PG
+4. **litellm-proxy** : Requests/min, Latency p95/p50, Tokens, Cost $/h
+5. **logs-explorer** : Log volume, Error logs, filtrable par container
+6. **ai-pipeline** : Vue d'ensemble AI (requests 24h, spend, cache, Qdrant)
+7. **qdrant-collections** : Points, search latency, REST ops
+8. **ai-model-scoring** : Leaderboard modeles, feedback likes/dislikes, evolution scores
+9. **ai-cost-cockpit** : Couts, tokens, latence, distribution, projections 1m/3m/1an
+
+- **Datasources** : VictoriaMetrics (prometheus), Loki (logs), PostgreSQL (model_scores)
+- **PostgreSQL datasource** : Connecte a la DB `n8n` via reseau `backend` Docker
+
+---
+
 ## Résumé des Phases
 
-| Phase | Rôles | Effort estimé | Checkpoint |
+| Phase | Roles | Effort estime | Checkpoint |
 |-------|-------|--------------|------------|
-| 1 — Fondations | common, hardening, docker, headscale-node | 4-6h | Security + Docker setup |
-| 2 — Données & Proxy | caddy, postgresql, redis, qdrant | 4-6h | Data layer + routing |
-| 3 — Applications | n8n, openclaw, litellm | 4-6h | App connectivity |
-| 4 — Observabilité | monitoring, diun | 4-6h | Metrics + logs + alerts |
-| 5 — Résilience | backup-config, uptime-config, smoke-tests | 3-4h | Backup + monitoring externe |
-| 6 — CI/CD & Docs | workflows, docs, polish | 3-4h | **Review finale** |
+| 1 -- Fondations | common, hardening, docker, headscale-node | 4-6h | Security + Docker setup |
+| 2 -- Donnees & Proxy | caddy, postgresql, redis, qdrant | 4-6h | Data layer + routing |
+| 3 -- Applications | n8n, openclaw, litellm | 4-6h | App connectivity |
+| 4 -- Observabilite | monitoring, diun | 4-6h | Metrics + logs + alerts |
+| 5 -- Resilience | backup-config, uptime-config, smoke-tests | 3-4h | Backup + monitoring externe |
+| 6 -- CI/CD & Docs | workflows, docs, polish | 3-4h | **Review finale** |
+| 7 -- AI Pipeline | n8n-provision, monitoring (dashboards) | 6-8h | Workflows + Cockpit Grafana |
 
-**Total estimé** : 22-32 heures de développement Claude Code.
+**Total estime** : 28-40 heures de developpement Claude Code.
 
 ---
 

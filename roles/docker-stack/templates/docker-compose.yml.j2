@@ -299,6 +299,7 @@ services:
     networks:
       - frontend
       - monitoring
+      - backend  # For PostgreSQL datasource (model_scores table)
     deploy:
       resources:
         limits:

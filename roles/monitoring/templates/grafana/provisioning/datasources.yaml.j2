@@ -23,3 +23,22 @@ datasources:
     editable: false
     jsonData:
       maxLines: 1000
+
+  # PostgreSQL — AI model scoring data (model_scores table in n8n database)
+  - name: PostgreSQL-n8n
+    uid: PostgreSQL-n8n
+    type: postgres
+    access: proxy
+    url: postgresql:5432
+    editable: false
+    jsonData:
+      database: "n8n"
+      sslmode: "disable"
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+      postgresVersion: 1800
+      timescaledb: false
+    secureJsonData:
+      user: "n8n"
+      password: "{{ postgresql_password }}"

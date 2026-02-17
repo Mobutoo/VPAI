@@ -1,0 +1,1086 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 2,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "AI Model Scoring",
+      "type": "link",
+      "url": "/d/ai-model-scoring"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "AI Pipeline Overview",
+      "type": "link",
+      "url": "/d/ai-pipeline"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "LiteLLM Proxy Detail",
+      "type": "link",
+      "url": "/d/litellm-proxy"
+    }
+  ],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 200,
+      "title": "Executive Summary",
+      "type": "row"
+    },
+    {
+      "title": "Total Spend (24h)",
+      "description": "Total AI API cost in the last 24 hours from LiteLLM metrics",
+      "type": "stat",
+      "id": 1,
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum(increase(litellm_spend_total[24h]))",
+          "legendFormat": "24h Spend",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "orange", "value": 20 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "Requests (24h)",
+      "description": "Total AI requests processed in 24h",
+      "type": "stat",
+      "id": 2,
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum(increase(litellm_requests_total[24h]))",
+          "legendFormat": "Requests",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 10 },
+              { "color": "#6ed0e0", "value": 100 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "Tokens (24h)",
+      "description": "Total tokens consumed (input + output) in 24h",
+      "type": "stat",
+      "id": 3,
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum(increase(litellm_tokens_total[24h]))",
+          "legendFormat": "Tokens",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "purple", "value": null },
+              { "color": "blue", "value": 10000 },
+              { "color": "green", "value": 100000 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "Failed Requests (24h)",
+      "description": "Total failed AI requests in 24h (non-2xx responses)",
+      "type": "stat",
+      "id": 4,
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum(increase(litellm_requests_total{status!~\"2..\"}[24h])) or vector(0)",
+          "legendFormat": "Failures",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "orange", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "Avg Latency p50 (5m)",
+      "description": "Median response time across all models (5-minute window)",
+      "type": "stat",
+      "id": 5,
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(litellm_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 3 },
+              { "color": "orange", "value": 10 },
+              { "color": "red", "value": 30 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "Cost Rate ($/h)",
+      "description": "Current burn rate extrapolated to hourly cost",
+      "type": "stat",
+      "id": 6,
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum(rate(litellm_spend_total[1h])) * 3600",
+          "legendFormat": "$/hour",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.5 },
+              { "color": "orange", "value": 2 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 201,
+      "title": "Cost Analysis (Real-Time)",
+      "type": "row"
+    },
+    {
+      "title": "Cost $/hour by Model (time series)",
+      "description": "Hourly spend rate per model over time",
+      "type": "timeseries",
+      "id": 7,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum by (model) (rate(litellm_spend_total[1h])) * 3600",
+          "legendFormat": "{{ model }}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 4,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 25,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "lineWidth": 2,
+            "stacking": { "mode": "normal", "group": "A" },
+            "axisPlacement": "auto",
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "sum"] }
+      }
+    },
+    {
+      "title": "Cumulative Spend Over Time",
+      "description": "Running total of AI spend, showing cost accumulation pattern",
+      "type": "timeseries",
+      "id": 8,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum(increase(litellm_spend_total[1h]))",
+          "legendFormat": "Cumulative Spend",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 30,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "lineWidth": 2,
+            "stacking": { "mode": "none", "group": "A" },
+            "axisPlacement": "auto",
+            "thresholdsStyle": { "mode": "off" },
+            "gradientMode": "scheme"
+          },
+          "color": { "mode": "continuous-GrYlRd" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "single", "sort": "none" },
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["lastNotNull"] }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 202,
+      "title": "Token Usage & Distribution",
+      "type": "row"
+    },
+    {
+      "title": "Token Usage/min by Model (stacked)",
+      "description": "Input and output token consumption rate, stacked by model",
+      "type": "timeseries",
+      "id": 9,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum by (model) (rate(litellm_tokens_total{type=\"input\"}[5m])) * 60",
+          "legendFormat": "{{ model }} (input)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (model) (rate(litellm_tokens_total{type=\"output\"}[5m])) * 60",
+          "legendFormat": "{{ model }} (output)",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "linear",
+            "fillOpacity": 70,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineWidth": 1,
+            "stacking": { "mode": "normal", "group": "A" },
+            "axisPlacement": "auto",
+            "thresholdsStyle": { "mode": "off" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum", "mean", "max"] }
+      }
+    },
+    {
+      "title": "Request Distribution by Model (pie)",
+      "description": "Share of API requests per model",
+      "type": "piechart",
+      "id": 10,
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum by (model) (increase(litellm_requests_total[24h]))",
+          "legendFormat": "{{ model }}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "pieType": "donut",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }
+      }
+    },
+    {
+      "title": "Cost Distribution by Model (pie)",
+      "description": "Share of spend per model",
+      "type": "piechart",
+      "id": 11,
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum by (model) (increase(litellm_spend_total[24h]))",
+          "legendFormat": "{{ model }}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 3,
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "pieType": "donut",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 203,
+      "title": "Latency & Reliability",
+      "type": "row"
+    },
+    {
+      "title": "Request Latency p95 / p50 by Model",
+      "description": "Response time percentiles — p95 (slow path) and p50 (typical)",
+      "type": "timeseries",
+      "id": 12,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, model) (rate(litellm_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p95 {{ model }}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, model) (rate(litellm_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "p50 {{ model }}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "lineWidth": 2,
+            "stacking": { "mode": "none", "group": "A" },
+            "axisPlacement": "auto",
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "orange", "value": 15 },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      }
+    },
+    {
+      "title": "Error Rate by Model (%)",
+      "description": "Percentage of failed requests per model over time",
+      "type": "timeseries",
+      "id": 13,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
+      "targets": [
+        {
+          "expr": "sum by (model) (rate(litellm_requests_total{status!~\"2..\"}[5m])) / sum by (model) (rate(litellm_requests_total[5m])) * 100",
+          "legendFormat": "{{ model }}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 15,
+            "pointSize": 5,
+            "showPoints": "auto",
+            "spanNulls": true,
+            "lineWidth": 2,
+            "stacking": { "mode": "none", "group": "A" },
+            "axisPlacement": "auto",
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "transparent", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
+      "id": 204,
+      "title": "Model Comparison (PostgreSQL Historical)",
+      "type": "row"
+    },
+    {
+      "title": "Model Cost Efficiency Ranking",
+      "description": "All models ranked by cost per 1K tokens (lower is better). Compares primary, fallback, and premium tiers",
+      "type": "table",
+      "id": 14,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 33 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT model AS \"Model\", CASE WHEN model IN ('claude-opus', 'claude-sonnet', 'perplexity-pro', 'gpt-codex') THEN 'Premium' WHEN model IN ('kimi-k2', 'minimax-m25', 'deepseek-r1') THEN 'Primary' WHEN model IN ('deepseek-v3', 'glm-5', 'grok-search') THEN 'Fallback' WHEN model IN ('qwen3-coder') THEN 'Free' ELSE 'Other' END AS \"Tier\", total_calls AS \"Total Calls\", total_tokens AS \"Total Tokens\", ROUND(total_cost::numeric, 4) AS \"Total Cost ($)\", CASE WHEN total_tokens > 0 THEN ROUND((total_cost / total_tokens * 1000)::numeric, 5) ELSE 0 END AS \"Cost/1K Tokens ($)\", ROUND(avg_cost_per_call::numeric, 5) AS \"Avg Cost/Call ($)\", ROUND(avg_latency_ms::numeric, 0) AS \"Avg Latency (ms)\", CASE WHEN total_calls > 0 THEN ROUND(successful_calls::numeric / total_calls * 100, 1) ELSE 100 END AS \"Success %\", score AS \"Score\", likes AS \"Likes\", dislikes AS \"Dislikes\" FROM model_scores WHERE total_calls > 0 ORDER BY CASE WHEN total_tokens > 0 THEN total_cost / total_tokens ELSE 999 END ASC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false,
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Tier" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "mappings", "value": [
+                { "type": "value", "options": { "Premium": { "color": "purple", "index": 0, "text": "Premium" }, "Primary": { "color": "blue", "index": 1, "text": "Primary" }, "Fallback": { "color": "orange", "index": 2, "text": "Fallback" }, "Free": { "color": "green", "index": 3, "text": "Free" }, "Other": { "color": "text", "index": 4, "text": "Other" } } }
+              ] },
+              { "id": "custom.width", "value": 100 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Cost/1K Tokens ($)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 5 },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.001 }, { "color": "orange", "value": 0.01 }, { "color": "red", "value": 0.05 }] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Total Cost ($)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 4 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Avg Cost/Call ($)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 5 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Avg Latency (ms)" },
+            "properties": [
+              { "id": "unit", "value": "ms" },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 3000 }, { "color": "orange", "value": 8000 }, { "color": "red", "value": 15000 }] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Score" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 100 },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 30 }, { "color": "yellow", "value": 50 }, { "color": "green", "value": 70 }] } },
+              { "id": "custom.width", "value": 180 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Success %" },
+            "properties": [
+              { "id": "unit", "value": "percent" },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 80 }, { "color": "green", "value": 95 }] } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": true,
+          "reducer": ["sum"],
+          "fields": ["Total Calls", "Total Tokens", "Total Cost ($)", "Likes", "Dislikes"]
+        },
+        "sortBy": [{ "displayName": "Cost/1K Tokens ($)", "desc": false }]
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 41 },
+      "id": 205,
+      "title": "Cost Projections",
+      "type": "row"
+    },
+    {
+      "title": "Cost Projection Table",
+      "description": "Extrapolated costs based on current daily average. Shows projected spend at 1 week, 1 month, 3 months, and 1 year",
+      "type": "table",
+      "id": 15,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 42 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "WITH daily_stats AS (SELECT model, CASE WHEN EXTRACT(EPOCH FROM (NOW() - first_seen)) > 86400 THEN total_cost / (EXTRACT(EPOCH FROM (NOW() - first_seen)) / 86400) ELSE total_cost END AS daily_cost, CASE WHEN EXTRACT(EPOCH FROM (NOW() - first_seen)) > 86400 THEN total_calls::numeric / (EXTRACT(EPOCH FROM (NOW() - first_seen)) / 86400) ELSE total_calls::numeric END AS daily_calls, CASE WHEN EXTRACT(EPOCH FROM (NOW() - first_seen)) > 86400 THEN total_tokens::numeric / (EXTRACT(EPOCH FROM (NOW() - first_seen)) / 86400) ELSE total_tokens::numeric END AS daily_tokens, first_seen, total_cost, total_calls, total_tokens FROM model_scores WHERE total_calls > 0 ) SELECT model AS \"Model\", ROUND(daily_cost::numeric, 4) AS \"Daily Cost ($)\", ROUND(daily_calls, 1) AS \"Daily Calls\", ROUND(daily_tokens, 0) AS \"Daily Tokens\", ROUND((daily_cost * 7)::numeric, 3) AS \"1 Week ($)\", ROUND((daily_cost * 30)::numeric, 2) AS \"1 Month ($)\", ROUND((daily_cost * 90)::numeric, 2) AS \"3 Months ($)\", ROUND((daily_cost * 365)::numeric, 2) AS \"1 Year ($)\", ROUND((daily_cost * 30)::numeric * 0.92, 2) AS \"EUR/Month\", ROUND(total_cost::numeric, 4) AS \"Spent So Far ($)\", first_seen::date AS \"Tracking Since\" FROM daily_stats ORDER BY daily_cost DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false,
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "1 Month ($)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 2 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 5 }, { "color": "orange", "value": 20 }, { "color": "red", "value": 50 }] } },
+              { "id": "custom.width", "value": 130 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "3 Months ($)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 2 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 15 }, { "color": "orange", "value": 60 }, { "color": "red", "value": 150 }] } },
+              { "id": "custom.width", "value": 130 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "1 Year ($)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 2 },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 50 }, { "color": "orange", "value": 200 }, { "color": "red", "value": 500 }] } },
+              { "id": "custom.width", "value": 130 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "EUR/Month" },
+            "properties": [
+              { "id": "unit", "value": "currencyEUR" },
+              { "id": "decimals", "value": 2 },
+              { "id": "custom.width", "value": 120 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Daily Cost ($)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 4 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "1 Week ($)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 3 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Spent So Far ($)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 4 }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": true,
+          "reducer": ["sum"],
+          "fields": ["Daily Cost ($)", "1 Week ($)", "1 Month ($)", "3 Months ($)", "1 Year ($)", "EUR/Month", "Spent So Far ($)"]
+        },
+        "sortBy": [{ "displayName": "1 Month ($)", "desc": true }]
+      }
+    },
+    {
+      "title": "Monthly Budget Projection (All Models)",
+      "description": "Total projected monthly cost aggregated across all models, with budget thresholds",
+      "type": "stat",
+      "id": 16,
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 50 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(SUM(CASE WHEN EXTRACT(EPOCH FROM (NOW() - first_seen)) > 86400 THEN total_cost / (EXTRACT(EPOCH FROM (NOW() - first_seen)) / 86400) * 30 ELSE total_cost * 30 END)::numeric, 2) AS \"monthly\" FROM model_scores WHERE total_calls > 0",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "orange", "value": 30 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "text": { "titleSize": 14, "valueSize": 36 }
+      }
+    },
+    {
+      "title": "Quarterly Projection",
+      "description": "3-month projected cost",
+      "type": "stat",
+      "id": 17,
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 50 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(SUM(CASE WHEN EXTRACT(EPOCH FROM (NOW() - first_seen)) > 86400 THEN total_cost / (EXTRACT(EPOCH FROM (NOW() - first_seen)) / 86400) * 90 ELSE total_cost * 90 END)::numeric, 2) AS \"quarterly\" FROM model_scores WHERE total_calls > 0",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 30 },
+              { "color": "orange", "value": 100 },
+              { "color": "red", "value": 200 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "text": { "titleSize": 14, "valueSize": 36 }
+      }
+    },
+    {
+      "title": "Annual Projection",
+      "description": "1-year projected cost at current usage rate",
+      "type": "stat",
+      "id": 18,
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 50 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(SUM(CASE WHEN EXTRACT(EPOCH FROM (NOW() - first_seen)) > 86400 THEN total_cost / (EXTRACT(EPOCH FROM (NOW() - first_seen)) / 86400) * 365 ELSE total_cost * 365 END)::numeric, 2) AS \"annual\" FROM model_scores WHERE total_calls > 0",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 100 },
+              { "color": "orange", "value": 300 },
+              { "color": "red", "value": 600 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "text": { "titleSize": 14, "valueSize": 36 }
+      }
+    },
+    {
+      "title": "Monthly Projection (EUR)",
+      "description": "Estimated monthly cost in Euros (USD * 0.92 rate)",
+      "type": "stat",
+      "id": 19,
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 50 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT ROUND(SUM(CASE WHEN EXTRACT(EPOCH FROM (NOW() - first_seen)) > 86400 THEN total_cost / (EXTRACT(EPOCH FROM (NOW() - first_seen)) / 86400) * 30 ELSE total_cost * 30 END)::numeric * 0.92, 2) AS \"eur_monthly\" FROM model_scores WHERE total_calls > 0",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyEUR",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "orange", "value": 30 },
+              { "color": "red", "value": 50 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "text": { "titleSize": 14, "valueSize": 36 }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 55 },
+      "id": 206,
+      "title": "Tier Analysis (Premium vs Open-Source)",
+      "type": "row"
+    },
+    {
+      "title": "Spend by Model Tier",
+      "description": "Cost comparison: Premium (Claude/GPT/Perplexity) vs Primary (Kimi/MiniMax/DeepSeek-R1) vs Fallback (DeepSeek-V3/GLM-5/Grok) vs Free (Qwen3)",
+      "type": "piechart",
+      "id": 20,
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 56 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT CASE WHEN model IN ('claude-opus', 'claude-sonnet', 'perplexity-pro', 'gpt-codex', 'claude-haiku') THEN 'Premium' WHEN model IN ('kimi-k2', 'minimax-m25', 'deepseek-r1') THEN 'Primary' WHEN model IN ('deepseek-v3', 'glm-5', 'grok-search', 'gpt-4o', 'gpt-4o-mini') THEN 'Fallback' WHEN model IN ('qwen3-coder') THEN 'Free' ELSE 'Other' END AS \"Tier\", ROUND(SUM(total_cost)::numeric, 4) AS \"Cost\" FROM model_scores WHERE total_calls > 0 GROUP BY 1 ORDER BY 2 DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Premium" }, "properties": [{ "id": "color", "value": { "fixedColor": "purple", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Primary" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Fallback" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Free" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^Cost$/", "values": false },
+        "pieType": "donut",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }
+      }
+    },
+    {
+      "title": "Requests by Model Tier",
+      "description": "Number of requests split by model tier",
+      "type": "piechart",
+      "id": 21,
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 56 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT CASE WHEN model IN ('claude-opus', 'claude-sonnet', 'perplexity-pro', 'gpt-codex', 'claude-haiku') THEN 'Premium' WHEN model IN ('kimi-k2', 'minimax-m25', 'deepseek-r1') THEN 'Primary' WHEN model IN ('deepseek-v3', 'glm-5', 'grok-search', 'gpt-4o', 'gpt-4o-mini') THEN 'Fallback' WHEN model IN ('qwen3-coder') THEN 'Free' ELSE 'Other' END AS \"Tier\", SUM(total_calls) AS \"Calls\" FROM model_scores WHERE total_calls > 0 GROUP BY 1 ORDER BY 2 DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Premium" }, "properties": [{ "id": "color", "value": { "fixedColor": "purple", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Primary" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Fallback" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Free" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^Calls$/", "values": false },
+        "pieType": "donut",
+        "tooltip": { "mode": "single", "sort": "none" },
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }
+      }
+    },
+    {
+      "title": "Cost Savings vs Premium-Only",
+      "description": "How much you save by using open-source models. Compares actual spend to hypothetical cost if all calls used claude-sonnet pricing",
+      "type": "stat",
+      "id": 22,
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 56 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "WITH actual AS (SELECT SUM(total_cost) AS real_cost, SUM(total_tokens) AS total_tok FROM model_scores WHERE total_calls > 0), hypothetical AS (SELECT total_tok * 0.006 AS claude_cost FROM (SELECT SUM(total_tokens) AS total_tok FROM model_scores WHERE total_calls > 0) t) SELECT ROUND(hypothetical.claude_cost::numeric, 2) AS \"premium_only_cost\", ROUND(actual.real_cost::numeric, 2) AS \"actual_cost\", ROUND((hypothetical.claude_cost - actual.real_cost)::numeric, 2) AS \"savings\", CASE WHEN hypothetical.claude_cost > 0 THEN ROUND(((hypothetical.claude_cost - actual.real_cost) / hypothetical.claude_cost * 100)::numeric, 1) ELSE 0 END AS \"savings_pct\" FROM actual, hypothetical",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 20 },
+              { "color": "yellow", "value": 40 },
+              { "color": "green", "value": 60 },
+              { "color": "#6ed0e0", "value": 80 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^savings_pct$/", "values": false },
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "text": { "titleSize": 14, "valueSize": 48 }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["ai", "cost", "cockpit", "budget"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "AI Cost Cockpit",
+  "uid": "ai-cost-cockpit",
+  "version": 1
+}

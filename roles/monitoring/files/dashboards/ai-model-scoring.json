@@ -1,0 +1,692 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "AI Cost Cockpit",
+      "type": "link",
+      "url": "/d/ai-cost-cockpit"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "AI Pipeline Overview",
+      "type": "link",
+      "url": "/d/ai-pipeline"
+    }
+  ],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Model Leaderboard",
+      "type": "row"
+    },
+    {
+      "title": "Top Model (by Score)",
+      "description": "Highest-scoring AI model based on weighted formula: quality 40% + reliability 30% + cost-efficiency 20% + speed 10%",
+      "type": "stat",
+      "id": 1,
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT model AS \"Model\", score AS \"Score\" FROM model_scores WHERE total_calls > 0 ORDER BY score DESC LIMIT 1",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 30 },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 70 },
+              { "color": "#6ed0e0", "value": 90 }
+            ]
+          },
+          "color": { "mode": "thresholds" },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "/^Score$/", "values": false },
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "text": { "titleSize": 14, "valueSize": 32 }
+      }
+    },
+    {
+      "title": "Models Tracked",
+      "description": "Total number of AI models with recorded activity",
+      "type": "stat",
+      "id": 2,
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT COUNT(*) AS \"count\" FROM model_scores WHERE total_calls > 0",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 3 },
+              { "color": "#6ed0e0", "value": 8 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "Total Feedback",
+      "description": "Total likes and dislikes received across all models",
+      "type": "stat",
+      "id": 3,
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT COALESCE(SUM(likes), 0) + COALESCE(SUM(dislikes), 0) AS \"total\" FROM model_scores",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "purple", "value": null },
+              { "color": "blue", "value": 10 },
+              { "color": "green", "value": 50 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "Global Satisfaction Rate",
+      "description": "Overall like ratio across all models: likes / (likes + dislikes)",
+      "type": "gauge",
+      "id": 4,
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT CASE WHEN COALESCE(SUM(likes), 0) + COALESCE(SUM(dislikes), 0) > 0 THEN ROUND(COALESCE(SUM(likes), 0)::numeric / (COALESCE(SUM(likes), 0) + COALESCE(SUM(dislikes), 0)) * 100, 1) ELSE 50 END AS \"rate\" FROM model_scores",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 40 },
+              { "color": "yellow", "value": 60 },
+              { "color": "green", "value": 75 },
+              { "color": "#6ed0e0", "value": 90 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "orientation": "auto"
+      }
+    },
+    {
+      "title": "Total API Calls",
+      "description": "Total number of API calls across all tracked models",
+      "type": "stat",
+      "id": 5,
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT COALESCE(SUM(total_calls), 0) AS \"calls\" FROM model_scores",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "green", "value": 100 },
+              { "color": "#6ed0e0", "value": 1000 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "Global Success Rate",
+      "description": "Overall API success rate: successful_calls / total_calls",
+      "type": "gauge",
+      "id": 6,
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT CASE WHEN COALESCE(SUM(total_calls), 0) > 0 THEN ROUND(COALESCE(SUM(successful_calls), 0)::numeric / SUM(total_calls) * 100, 1) ELSE 100 END AS \"rate\" FROM model_scores",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 80 },
+              { "color": "yellow", "value": 90 },
+              { "color": "green", "value": 95 },
+              { "color": "#6ed0e0", "value": 99 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "orientation": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101,
+      "title": "Score Leaderboard",
+      "type": "row"
+    },
+    {
+      "title": "Model Scores Ranking",
+      "description": "All models ranked by composite score. Formula: Quality (40%) + Reliability (30%) + Cost-efficiency (20%) + Speed (10%)",
+      "type": "table",
+      "id": 7,
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 6 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT model AS \"Model\", score AS \"Score\", likes AS \"Likes\", dislikes AS \"Dislikes\", CASE WHEN likes + dislikes > 0 THEN ROUND(likes::numeric / (likes + dislikes) * 100, 1) ELSE 50 END AS \"Like %\", total_calls AS \"Calls\", successful_calls AS \"Success\", failed_calls AS \"Failures\", CASE WHEN total_calls > 0 THEN ROUND(successful_calls::numeric / total_calls * 100, 1) ELSE 100 END AS \"Success %\", ROUND(avg_cost_per_call::numeric, 5) AS \"Avg Cost ($)\", ROUND(avg_latency_ms::numeric, 0) AS \"Avg Latency (ms)\", total_tokens AS \"Total Tokens\", ROUND(total_cost::numeric, 4) AS \"Total Cost ($)\", source AS \"Source\", last_updated AS \"Last Updated\" FROM model_scores WHERE total_calls > 0 OR likes > 0 OR dislikes > 0 ORDER BY score DESC, total_calls DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "inspect": false,
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Score" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 100 },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 30 }, { "color": "yellow", "value": 50 }, { "color": "green", "value": 70 }, { "color": "#6ed0e0", "value": 90 }] } },
+              { "id": "custom.width", "value": 200 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Like %" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 40 }, { "color": "yellow", "value": 60 }, { "color": "green", "value": 75 }] } },
+              { "id": "unit", "value": "percent" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Success %" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 80 }, { "color": "yellow", "value": 90 }, { "color": "green", "value": 95 }] } },
+              { "id": "unit", "value": "percent" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Failures" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 10 }] } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Avg Cost ($)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 5 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Total Cost ($)" },
+            "properties": [
+              { "id": "unit", "value": "currencyUSD" },
+              { "id": "decimals", "value": 4 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Avg Latency (ms)" },
+            "properties": [
+              { "id": "unit", "value": "ms" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Last Updated" },
+            "properties": [
+              { "id": "unit", "value": "dateTimeFromNow" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Model" },
+            "properties": [
+              { "id": "custom.width", "value": 150 }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": true,
+          "reducer": ["sum"],
+          "fields": ["Calls", "Success", "Failures", "Likes", "Dislikes", "Total Tokens", "Total Cost ($)"]
+        },
+        "sortBy": [{ "displayName": "Score", "desc": true }]
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "id": 102,
+      "title": "Score Visualization",
+      "type": "row"
+    },
+    {
+      "title": "Model Scores (Bar Chart)",
+      "description": "Composite score comparison across all tracked models",
+      "type": "barchart",
+      "id": 8,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 17 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT model AS \"Model\", score AS \"Score\" FROM model_scores WHERE total_calls > 0 OR likes > 0 ORDER BY score DESC LIMIT 15",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 30 },
+              { "color": "yellow", "value": 50 },
+              { "color": "green", "value": 70 },
+              { "color": "#6ed0e0", "value": 90 }
+            ]
+          },
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "fillOpacity": 80,
+            "gradientMode": "scheme",
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always",
+        "barWidth": 0.75,
+        "groupWidth": 0.7,
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0,
+        "stacking": "none",
+        "legend": { "displayMode": "hidden", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      }
+    },
+    {
+      "title": "Likes vs Dislikes by Model",
+      "description": "User feedback distribution per model",
+      "type": "barchart",
+      "id": 9,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 17 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT model AS \"Model\", likes AS \"Likes\", dislikes AS \"Dislikes\" FROM model_scores WHERE likes > 0 OR dislikes > 0 ORDER BY likes DESC LIMIT 15",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 1
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Likes" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Dislikes" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always",
+        "barWidth": 0.75,
+        "groupWidth": 0.7,
+        "xTickLabelRotation": 0,
+        "stacking": "normal",
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "id": 103,
+      "title": "Performance Metrics",
+      "type": "row"
+    },
+    {
+      "title": "Cost per Call by Model",
+      "description": "Average cost per API call for each model (lower is better)",
+      "type": "barchart",
+      "id": 10,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT model AS \"Model\", ROUND(avg_cost_per_call::numeric, 5) AS \"Avg Cost ($)\" FROM model_scores WHERE total_calls > 0 ORDER BY avg_cost_per_call ASC LIMIT 15",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "currencyUSD",
+          "decimals": 5,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.001 },
+              { "color": "orange", "value": 0.01 },
+              { "color": "red", "value": 0.1 }
+            ]
+          },
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "fillOpacity": 80,
+            "gradientMode": "scheme",
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always",
+        "barWidth": 0.75,
+        "groupWidth": 0.7,
+        "stacking": "none",
+        "legend": { "displayMode": "hidden", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      }
+    },
+    {
+      "title": "Average Latency by Model",
+      "description": "Average response time per model (lower is better)",
+      "type": "barchart",
+      "id": 11,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "SELECT model AS \"Model\", ROUND(avg_latency_ms::numeric, 0) AS \"Avg Latency (ms)\" FROM model_scores WHERE total_calls > 0 AND avg_latency_ms > 0 ORDER BY avg_latency_ms ASC LIMIT 15",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2000 },
+              { "color": "orange", "value": 5000 },
+              { "color": "red", "value": 10000 }
+            ]
+          },
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "fillOpacity": 80,
+            "gradientMode": "scheme",
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "showValue": "always",
+        "barWidth": 0.75,
+        "groupWidth": 0.7,
+        "stacking": "none",
+        "legend": { "displayMode": "hidden", "placement": "bottom" },
+        "tooltip": { "mode": "single", "sort": "none" }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "id": 104,
+      "title": "Score Breakdown",
+      "type": "row"
+    },
+    {
+      "title": "Score Components Radar",
+      "description": "Breakdown of the 4 score components for each model: Quality (like ratio), Reliability (success rate), Cost efficiency, Speed",
+      "type": "table",
+      "id": 12,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 35 },
+      "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
+      "targets": [
+        {
+          "rawSql": "WITH max_vals AS (SELECT MAX(NULLIF(avg_cost_per_call, 0)) AS max_cost, MAX(NULLIF(avg_latency_ms, 0)) AS max_latency FROM model_scores WHERE total_calls > 0) SELECT ms.model AS \"Model\", ms.score AS \"Total Score\", ROUND((CASE WHEN ms.likes + ms.dislikes > 0 THEN ms.likes::numeric / (ms.likes + ms.dislikes) ELSE 0.5 END) * 40, 1) AS \"Quality (40%)\", ROUND((CASE WHEN ms.total_calls > 0 THEN ms.successful_calls::numeric / ms.total_calls ELSE 1 END) * 30, 1) AS \"Reliability (30%)\", ROUND((CASE WHEN mv.max_cost > 0 AND ms.avg_cost_per_call > 0 THEN (1 - ms.avg_cost_per_call / mv.max_cost) ELSE 0.5 END) * 20, 1) AS \"Cost Eff. (20%)\", ROUND((CASE WHEN mv.max_latency > 0 AND ms.avg_latency_ms > 0 THEN (1 - ms.avg_latency_ms / mv.max_latency) ELSE 0.5 END) * 10, 1) AS \"Speed (10%)\" FROM model_scores ms CROSS JOIN max_vals mv WHERE ms.total_calls > 0 ORDER BY ms.score DESC",
+          "format": "table",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "center",
+            "cellOptions": { "type": "auto" },
+            "inspect": false,
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Total Score" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 100 },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "orange", "value": 30 }, { "color": "yellow", "value": 50 }, { "color": "green", "value": 70 }] } },
+              { "id": "custom.width", "value": 200 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Quality (40%)" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 40 },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } },
+              { "id": "custom.width", "value": 160 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Reliability (30%)" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 30 },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } },
+              { "id": "custom.width", "value": 160 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Cost Eff. (20%)" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 20 },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } },
+              { "id": "custom.width", "value": 160 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Speed (10%)" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic" } },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 10 },
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } },
+              { "id": "custom.width", "value": 160 }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "md",
+        "sortBy": [{ "displayName": "Total Score", "desc": true }]
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["ai", "scoring", "models"],
+  "templating": { "list": [] },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "AI Model Scoring",
+  "uid": "ai-model-scoring",
+  "version": 1
+}

@@ -9,9 +9,17 @@ Template portable : toutes les valeurs sont des variables Jinja2, aucun nom hard
 
 - **Repository** : `Mobutoo/VPAI` (prive) | **Branche** : `main`
 - **Remote** : `git@github-seko:Mobutoo/vpai.git`
-- **SSH Host** : `github-seko` (alias dans `~/.ssh/config`, cle `~/.ssh/id_ed25519_seko`)
+- **SSH Host GitHub** : `github-seko` (alias dans `~/.ssh/config`, cle `~/.ssh/seko-vpn-deploy`)
 
 > Toujours utiliser `github-seko`, jamais `github.com` directement.
+
+## Acces SSH au VPS (Seko-AI)
+
+- **IP** : `137.74.114.167` | **Port** : `804` | **User** : `mobuone`
+- **Hostname serveur** : `sese`
+- **Cle SSH** : `~/.ssh/seko-vpn-deploy`
+- **Commande** : `ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@137.74.114.167`
+- **Docker remote** : `ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@137.74.114.167 'docker <cmd>'`
 
 ## Documents de Reference
 

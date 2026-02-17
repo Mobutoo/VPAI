@@ -1,125 +1,185 @@
-# RUNBOOK — Operational Procedures
+# RUNBOOK — Procedures Operationnelles
 
-> **Project**: VPAI — Self-Hosted AI Infrastructure Stack
-> **Version**: 1.0.0
+> **Projet** : VPAI — Stack AI Auto-Hebergee
+> **Version** : 1.1.0
+> **Noms reels** : projet = `javisi`, containers = `javisi_<service>`, data = `/opt/javisi/`
 
 ---
 
-## Table of Contents
+## Table des Matieres
 
 1. [Stack Start / Stop](#1-stack-start--stop)
 2. [Service Update](#2-service-update)
-3. [Zerobyte Backup Configuration (Seko-VPN)](#3-zerobyte-backup-configuration-seko-vpn)
-4. [Uptime Kuma Configuration (Seko-VPN)](#4-uptime-kuma-configuration-seko-vpn)
-5. [Adding a New LiteLLM Model](#5-adding-a-new-litellm-model)
-6. [Secret Rotation](#6-secret-rotation)
-7. [Restore from Backup](#7-restore-from-backup)
-8. [Incident Response](#8-incident-response)
+3. [Redeploy Cible (sans downtime)](#3-redeploy-cible-sans-downtime)
+4. [Zerobyte Backup Configuration (Seko-VPN)](#4-zerobyte-backup-configuration-seko-vpn)
+5. [Uptime Kuma Configuration (Seko-VPN)](#5-uptime-kuma-configuration-seko-vpn)
+6. [OpenClaw — Gestion des Modeles et Agents](#6-openclaw--gestion-des-modeles-et-agents)
+7. [Ajout d'un Nouveau Modele LiteLLM](#7-ajout-dun-nouveau-modele-litellm)
+8. [Secret Rotation](#8-secret-rotation)
+9. [Restore from Backup](#9-restore-from-backup)
+10. [Incident Response](#10-incident-response)
 
 ---
 
 ## 1. Stack Start / Stop
 
-### Start the full stack
+### Demarrer la stack complete
 
 ```bash
-cd /opt/vpai
+# Phase A — Infra (PostgreSQL, Redis, Qdrant, Caddy)
+cd /opt/javisi
+docker compose -f docker-compose-infra.yml up -d
+
+# Phase B — Applications (n8n, LiteLLM, OpenClaw, Monitoring)
 docker compose up -d
 ```
 
-### Stop the full stack
+### Arreter la stack
 
 ```bash
-cd /opt/vpai
+cd /opt/javisi
+# Arreter seulement les apps (infra reste active)
 docker compose down
+
+# Arreter tout (apps + infra)
+docker compose down
+docker compose -f docker-compose-infra.yml down
 ```
 
-### Restart a single service
+### Restart d'un service unique
 
 ```bash
+cd /opt/javisi
 docker compose restart <service_name>
+# Exemples : grafana, n8n, litellm, openclaw, alloy, victoriametrics
 ```
 
-### View logs
+### Voir les logs
 
 ```bash
-# All services
+# Tous les services (Phase B)
 docker compose logs -f --tail 100
 
-# Single service
+# Service specifique (Phase B)
 docker compose logs -f --tail 100 litellm
+docker compose logs -f --tail 100 openclaw
+
+# Service Phase A (infra)
+docker compose -f docker-compose-infra.yml logs -f --tail 100 postgresql
+docker compose -f docker-compose-infra.yml logs -f --tail 100 redis
+```
+
+### Verifier la sante de la stack
+
+```bash
+# Status de tous les containers
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+# Services unhealthy uniquement
+docker ps --filter "health=unhealthy" --format "table {{.Names}}\t{{.Status}}"
 ```
 
 ---
 
 ## 2. Service Update
 
-### Update a single service via Ansible
+### Via Ansible (recommande)
 
-1. Update the image version in `inventory/group_vars/all/versions.yml`
-2. Run:
+1. Mettre a jour la version dans `inventory/group_vars/all/versions.yml`
+2. Deployer depuis la machine de deploiement (WSL Ubuntu) :
 
 ```bash
+cd ~/seko/VPAI
+source .venv/bin/activate
+
+# Service specifique avec tag
 ansible-playbook playbooks/site.yml --tags <service_name> -e "target_env=prod" --diff
+
+# Exemples
+ansible-playbook playbooks/site.yml --tags litellm -e "target_env=prod"
+ansible-playbook playbooks/site.yml --tags monitoring -e "target_env=prod"
+ansible-playbook playbooks/site.yml --tags openclaw -e "target_env=prod"
 ```
 
-### Manual Docker update
+### Mise a jour manuelle Docker
 
 ```bash
-cd /opt/vpai
+cd /opt/javisi
 docker compose pull <service_name>
 docker compose up -d <service_name>
 ```
 
 ---
 
-## 3. Zerobyte Backup Configuration (Seko-VPN)
+## 3. Redeploy Cible (sans downtime)
 
-> **Location**: Seko-VPN server, Zerobyte UI at port 4096
-> **Prerequisite**: VPN connectivity between Seko-AI and Seko-VPN
+### Grafana datasources + dashboards uniquement
 
-### 3.1 Create S3 Repositories
+```bash
+ansible-playbook playbooks/site.yml --tags monitoring -e "target_env=prod"
+# Regenere datasources.yaml + 9 fichiers JSON dashboards
+# Grafana recharge automatiquement sans restart
+```
 
-Two repositories to create — one encrypted (backups), one raw (shared files):
+### OpenClaw config uniquement (modeles, agents, skills)
 
-**Repository 1: vpai-backups (Restic encrypted)**
+```bash
+ansible-playbook playbooks/site.yml --tags openclaw -e "target_env=prod"
+# Regenere openclaw.json et openclaw.env, restart le container
+```
 
-1. Go to **Repositories** > **Add Repository**
-2. Configure:
-   - **Name**: `vpai-backups`
-   - **Type**: Restic + S3
-   - **Endpoint**: `fsn1.your-objectstorage.com`
-   - **Bucket**: (value from vault `s3_bucket_backups`)
-   - **Access Key**: (from Hetzner Object Storage)
-   - **Secret Key**: (from Hetzner Object Storage)
-   - **Region**: `fsn1`
-   - **Encryption**: Enable (set a strong password, store in vault)
+### Workflows n8n uniquement
 
-**Repository 2: vpai-shared (raw files for seed/exports)**
+```bash
+ansible-playbook playbooks/site.yml --tags n8n-provision -e "target_env=prod"
+# Reimporte les workflows modifies (checksum-based)
+```
 
-1. Go to **Repositories** > **Add Repository**
-2. Configure:
-   - **Name**: `vpai-shared`
-   - **Type**: rclone + S3
-   - **Bucket**: (value from vault `s3_bucket_shared`)
-   - Same credentials as above
-   - **Encryption**: None (files must remain browsable)
+### Dry run avant redeploy
 
-### 3.2 Create Volumes
+```bash
+cd ~/seko/VPAI && source .venv/bin/activate
+ansible-playbook playbooks/site.yml --tags <role> --check --diff -e "target_env=prod"
+```
+
+---
+
+## 4. Zerobyte Backup Configuration (Seko-VPN)
+
+> **Localisation** : Serveur Seko-VPN, Zerobyte UI sur port 4096
+> **Prerequis** : Connectivite VPN entre Seko-AI et Seko-VPN
+
+### 4.1 Creer les Repositories S3
+
+**Repository 1 — vpai-backups (Restic chiffre)**
+
+1. Aller dans **Repositories** > **Add Repository**
+2. Configurer :
+   - **Name** : `vpai-backups` | **Type** : Restic + S3
+   - **Endpoint** : `fsn1.your-objectstorage.com`
+   - **Bucket** : (valeur de vault `s3_bucket_backups`)
+   - **Access Key / Secret Key** : (depuis Hetzner Object Storage)
+   - **Region** : `fsn1` | **Encryption** : Activer (stocker le password dans vault)
+
+**Repository 2 — vpai-shared (fichiers bruts)**
+
+- Meme procedure, **Type** : rclone + S3 | **Encryption** : Aucune
+
+### 4.2 Creer les Volumes
 
 | Volume Name | Type | Source Path (via VPN) |
-|-------------|------|-----------------------|
-| `vpai-postgres` | Directory | `/opt/vpai/backups/pg_dump/` |
-| `vpai-redis` | Directory | `/opt/vpai/data/redis/` |
-| `vpai-qdrant` | Directory | `/opt/vpai/backups/qdrant/` |
-| `vpai-n8n` | Directory | `/opt/vpai/backups/n8n/` |
-| `vpai-configs` | Directory | `/opt/vpai/configs/` |
-| `vpai-grafana` | Directory | `/opt/vpai/backups/grafana/` |
+|---|---|---|
+| `vpai-postgres` | Directory | `/opt/javisi/backups/pg_dump/` |
+| `vpai-redis` | Directory | `/opt/javisi/data/redis/` |
+| `vpai-qdrant` | Directory | `/opt/javisi/backups/qdrant/` |
+| `vpai-n8n` | Directory | `/opt/javisi/backups/n8n/` |
+| `vpai-configs` | Directory | `/opt/javisi/configs/` |
+| `vpai-grafana` | Directory | `/opt/javisi/backups/grafana/` |
 
-### 3.3 Create Backup Jobs (GFS Retention)
+### 4.3 Creer les Jobs (Retention GFS)
 
-| Job | Volume | Repository | Schedule | GFS Retention |
-|-----|--------|------------|----------|---------------|
+| Job | Volume | Repository | Schedule | Retention GFS |
+|---|---|---|---|---|
 | DB Full | `vpai-postgres` | vpai-backups | Daily 03:00 | 7d / 4w / 6m / 2y |
 | Redis | `vpai-redis` | vpai-backups | Daily 03:05 | 7d / 4w |
 | Qdrant | `vpai-qdrant` | vpai-backups | Daily 03:10 | 7d / 4w / 6m |
@@ -128,139 +188,242 @@ Two repositories to create — one encrypted (backups), one raw (shared files):
 | Grafana | `vpai-grafana` | vpai-backups | Weekly Sun 03:00 | 4w / 6m |
 | Seed | `vpai-postgres` | vpai-shared | Daily 03:30 | Latest only |
 
-For each Restic job, configure retention: Keep Daily=7, Weekly=4, Monthly=6, Yearly=2, Auto-prune=Yes.
+Pour chaque job Restic : Keep Daily=7, Weekly=4, Monthly=6, Yearly=2, Auto-prune=Yes.
 
-> Full strategy with tiering and NAS integration: `docs/BACKUP-STRATEGY.md`
+> Strategie complete avec tiering NAS : `docs/BACKUP-STRATEGY.md`
 
-### 3.4 Verify Backup
+### 4.4 Verifier le Backup
 
 ```bash
-# On Seko-AI: trigger a manual pre-backup
-/opt/vpai/scripts/pre-backup.sh
+# Sur Seko-AI : declencher un pre-backup manuel
+/opt/javisi/scripts/pre-backup.sh
 
-# On Seko-VPN: trigger a manual Zerobyte job via UI > Jobs > Run Now
-# Verify via Zerobyte UI > Repository > Browse
+# Sur Seko-VPN : declencher via Zerobyte UI > Jobs > Run Now
+# Verifier via Zerobyte UI > Repository > Browse
 ```
 
 ---
 
-## 4. Uptime Kuma Configuration (Seko-VPN)
+## 5. Uptime Kuma Configuration (Seko-VPN)
 
-> **Location**: Seko-VPN server, Uptime Kuma instance
-> **Prerequisite**: VPN connectivity to Seko-AI
+> **Prerequis** : Connectivite VPN vers Seko-AI
 
-### 4.1 Create Notification Group
+### 5.1 Creer le Groupe de Notification
 
-1. Go to **Settings** > **Notifications** > **Setup Notification**
-2. Create a webhook notification matching your configured method
-3. Test the notification
+1. **Settings** > **Notifications** > **Setup Notification**
+2. Creer un webhook correspondant a la methode configuree + tester
 
-### 4.2 Create Monitors
+### 5.2 Creer les Moniteurs
 
-| # | Name | Type | URL/Host | Interval |
-|---|------|------|----------|----------|
+| # | Name | Type | URL/Host | Intervalle |
+|---|---|---|---|---|
 | 1 | VPAI — HTTPS | HTTP(s) | `https://<domain>/health` | 60s |
-| 2 | VPAI — n8n | HTTP(s) | `https://admin.<domain>/n8n/healthz` | 60s |
-| 3 | VPAI — Grafana | HTTP(s) | `https://admin.<domain>/grafana/api/health` | 120s |
+| 2 | VPAI — n8n | HTTP(s) | `https://mayi.<domain>/healthz` | 60s |
+| 3 | VPAI — Grafana | HTTP(s) | `https://tala.<domain>/api/health` | 120s |
 | 4 | VPAI — PostgreSQL | TCP Port | `<headscale_ip>:5432` | 120s |
 | 5 | VPAI — TLS Certificate | HTTP(s) | `https://<domain>` | 86400s |
 | 6 | VPAI — Backup Heartbeat | Push | — | 86400s |
 
-**Notes**:
-- Monitors 2-4 require VPN access
-- Monitor 5: Enable "Certificate Expiry Notification"
-- Monitor 6: Copy the push URL and set it as `vault_backup_heartbeat_url`
-
-A rendered reference with actual URLs is deployed at `/opt/vpai/docs/uptime-kuma-monitors.md`.
+**Notes** :
+- Moniteurs 2-4 : requierent l'acces VPN (headscale)
+- Moniteur 5 : activer "Certificate Expiry Notification"
+- Moniteur 6 : copier l'URL push → stocker dans vault comme `vault_backup_heartbeat_url`
 
 ---
 
-## 5. Adding a New LiteLLM Model
+## 6. OpenClaw — Gestion des Modeles et Agents
 
-1. Edit `roles/litellm/templates/litellm_config.yaml.j2`
-2. Add the model under `model_list`
-3. If new provider, add the API key to `secrets.yml`
-4. Deploy: `ansible-playbook playbooks/site.yml --tags litellm -e "target_env=prod"`
+### 6.1 Assignation Actuelle des Modeles
+
+| Agent | Persona | Modele | Note |
+|---|---|---|---|
+| Concierge | Mobutoo | minimax-m25 | kimi-k2 ecarte (token leakage bug) |
+| Builder | Imhotep | qwen3-coder | Code gen FREE |
+| Writer | Thot | glm-5 | Low hallucination, agent-oriented |
+| Artist | Basquiat | minimax-m25 | 1M context, multimodal |
+| Tutor | Piccolo | minimax-m25 | kimi-k2 ecarte |
+| Explorer | R2D2 | grok-search | Web + X search #1 |
+
+### 6.2 Changer le Modele d'un Agent
+
+1. Editer `roles/openclaw/defaults/main.yml` — variable `openclaw_<agent>_model`
+2. Deployer : `ansible-playbook playbooks/site.yml --tags openclaw -e "target_env=prod"`
+3. Verifier : `docker exec javisi_openclaw cat /home/node/.openclaw/openclaw.json | jq '.agents'`
+
+### 6.3 Verifier les Skills Charges
+
+```bash
+docker exec javisi_openclaw node --input-type=module -e \
+  "import{loadSkillsFromDir}from'@mariozechner/pi-coding-agent'; \
+  const r=loadSkillsFromDir({dir:'/home/node/.openclaw/skills',source:'t'}); \
+  console.log(r.skills.length,r.diagnostics)"
+```
+
+### 6.4 Approuver le Pairing Telegram (si necessaire)
+
+```bash
+# Si dmPolicy=pairing, approuver le code envoye par le bot
+docker exec javisi_openclaw node openclaw.mjs pairing approve telegram <CODE>
+```
+
+### 6.5 Bootstrap Token (premier acces UI)
+
+```
+https://<admin_subdomain>.<domain>/__bootstrap__
+# Injecte le gateway token dans localStorage et redirige vers l'UI
+```
 
 ---
 
-## 6. Secret Rotation
+## 7. Ajout d'un Nouveau Modele LiteLLM
 
-### Secrets to rotate periodically
+1. Editer `roles/litellm/templates/litellm_config.yaml.j2` — ajouter dans `model_list`
+2. Si nouveau provider : ajouter la cle API dans vault
+   `ansible-vault edit inventory/group_vars/all/secrets.yml`
+3. Ajouter le modele dans `roles/openclaw/templates/openclaw.json.j2` (section providers)
+4. Deployer les deux :
+   `ansible-playbook playbooks/site.yml --tags litellm,openclaw -e "target_env=prod"`
+5. Verifier les modeles :
+   ```bash
+   docker exec javisi_litellm curl -sH \
+     "Authorization: Bearer <litellm_master_key>" \
+     http://localhost:4000/v1/models | jq '.data[].id'
+   ```
 
-| Secret | Services Affected | Frequency |
-|--------|-------------------|-----------|
-| `postgresql_password` | postgresql, n8n, litellm, openclaw | Quarterly |
-| `redis_password` | redis, litellm, openclaw | Quarterly |
-| `grafana_admin_password` | grafana | Quarterly |
-| `litellm_master_key` | litellm, openclaw, caddy | Quarterly |
-| `n8n_encryption_key` | n8n | **Never** (breaks encrypted data) |
-| `qdrant_api_key` | qdrant, openclaw | Quarterly |
+---
+
+## 8. Secret Rotation
+
+### Secrets et Services Affectes
+
+| Secret | Services Affectes | Frequence |
+|---|---|---|
+| `postgresql_password` | postgresql, n8n, litellm, openclaw, grafana-datasource | Trimestriel |
+| `redis_password` | redis, litellm, openclaw | Trimestriel |
+| `grafana_admin_password` | grafana | Trimestriel |
+| `litellm_master_key` | litellm, openclaw, caddy | Trimestriel |
+| `n8n_encryption_key` | n8n | **JAMAIS** (casse les donnees chiffrees) |
+| `qdrant_api_key` | qdrant, openclaw | Trimestriel |
+| `openclaw_gateway_token` | openclaw, caddy (route bootstrap) | Trimestriel |
 
 ### Procedure
 
-1. `ansible-vault edit inventory/group_vars/all/secrets.yml`
-2. Change the secret value
-3. Redeploy affected services with `--tags`
+```bash
+# 1. Editer le vault
+ansible-vault edit inventory/group_vars/all/secrets.yml
+
+# 2. Changer la valeur du secret
+
+# 3. Redeployer les services affectes (adapter les tags)
+ansible-playbook playbooks/site.yml --tags postgresql,n8n,litellm,openclaw -e "target_env=prod"
+```
 
 ---
 
-## 7. Restore from Backup
+## 9. Restore from Backup
 
-### 7.1 PostgreSQL Restore
-
-```bash
-cp /opt/vpai/backups/pg_dump/<db>-<timestamp>.dump /tmp/restore.dump
-docker cp /tmp/restore.dump vpai_postgresql:/tmp/restore.dump
-docker exec vpai_postgresql pg_restore -U postgres -d <db> --clean --if-exists /tmp/restore.dump
-docker exec vpai_postgresql rm /tmp/restore.dump
-```
-
-### 7.2 Redis Restore
+### 9.1 PostgreSQL
 
 ```bash
-docker compose stop redis
-cp /opt/vpai/backups/redis/dump-<timestamp>.rdb /opt/vpai/data/redis/dump.rdb
-docker compose start redis
+# Copier le dump dans le container
+cp /opt/javisi/backups/pg_dump/<db>-<timestamp>.dump /tmp/restore.dump
+docker cp /tmp/restore.dump javisi_postgresql:/tmp/restore.dump
+
+# Restaurer
+docker exec javisi_postgresql pg_restore -U postgres -d <db> --clean --if-exists /tmp/restore.dump
+
+# Nettoyer
+docker exec javisi_postgresql rm /tmp/restore.dump && rm /tmp/restore.dump
 ```
 
-### 7.3 Full Stack Restore from S3
+Bases disponibles : `n8n`, `litellm`, `openclaw`
 
-1. On Seko-VPN: Restore via Zerobyte UI
-2. On Seko-AI: `docker compose down`
-3. Restore data from mounted volumes
-4. `docker compose up -d`
-5. `/opt/vpai/scripts/smoke-test.sh`
+### 9.2 Redis
+
+```bash
+cd /opt/javisi
+docker compose -f docker-compose-infra.yml stop redis
+cp /opt/javisi/backups/redis/dump-<timestamp>.rdb /opt/javisi/data/redis/dump.rdb
+docker compose -f docker-compose-infra.yml start redis
+```
+
+### 9.3 Restauration Complete depuis S3
+
+1. Sur Seko-VPN : Restaurer via Zerobyte UI (choisir snapshot, cible = volumes)
+2. Sur Seko-AI :
+   ```bash
+   cd /opt/javisi
+   docker compose down
+   docker compose -f docker-compose-infra.yml down
+   # (Restaurer les donnees depuis les volumes montes par Zerobyte)
+   docker compose -f docker-compose-infra.yml up -d
+   sleep 30  # Attendre que l'infra soit healthy
+   docker compose up -d
+   /opt/javisi/scripts/smoke-test.sh
+   ```
 
 ---
 
-## 8. Incident Response
+## 10. Incident Response
 
-### Container Crash
+### Container en Crash Loop
 
-All containers have `restart: unless-stopped`. Check logs:
 ```bash
-docker compose logs --tail 50 <service>
+# Logs du service
+docker logs --tail 50 javisi_<service>
+docker logs --tail 50 --since 5m javisi_<service>
+
+# Verifier OOMKilled
+docker inspect javisi_<service> | jq '.[0].State'
+docker stats --no-stream
 ```
+
+**Causes frequentes** :
+- **OOMKilled** → augmenter `mem_limit` dans `inventory/group_vars/all/docker.yml`
+- **Config invalide** → corriger le template Jinja2 + redeploy cible
+- **PostgreSQL pas encore pret** → `docker compose restart <service>` apres 30s
 
 ### VPS Down
 
-1. Create new VPS from latest snapshot
-2. Update DNS
-3. Restore from Zerobyte S3
-4. Re-run Ansible
-5. Smoke tests
+1. Creer un nouveau VPS depuis le dernier snapshot
+2. Mettre a jour le DNS (nouvelle IP publique)
+3. Restaurer depuis Zerobyte S3 (section 9.3)
+4. Re-executer Ansible : `make deploy-prod EXTRA_VARS="ansible_port_override=22"`
+5. Smoke tests : `/opt/javisi/scripts/smoke-test.sh`
 
-### Database Corruption
+### Corruption de Base de Donnees
 
-1. Stop affected service
-2. Restore from backup (section 7)
-3. Restart and verify
+1. Arreter le service : `docker compose stop <service>`
+2. Restaurer depuis backup (section 9.1)
+3. Redemarrer et verifier : `docker compose start <service>`
 
-### Security Compromise
+### Compromission Securite
 
-1. **Isolate** — disconnect public internet, keep VPN
-2. **Assess** — check logs, identify vector
-3. **Rotate** — all secrets (section 6)
-4. **Redeploy** — full Ansible from clean state
-5. **Monitor** — 48h increased vigilance
+1. **Isoler** — couper l'internet public (garder VPN)
+2. **Evaluer** — analyser Loki + logs systeme, identifier le vecteur
+3. **Rotater** — tous les secrets (section 8)
+4. **Redeployer** — full Ansible depuis un etat propre
+5. **Surveiller** — 48h vigilance accrue (Grafana + alertes Loki)
+
+### Erreur Datasource Grafana
+
+```bash
+# Tester la connexion PostgreSQL depuis Grafana
+docker inspect javisi_grafana | grep '"IPAddress"'
+docker exec javisi_grafana wget -qO- --post-data="{}" \
+  "http://admin:<grafana_admin_password>@<IP_CONTAINER>:3000/api/datasources/uid/PostgreSQL-n8n/health"
+# OK : {"message":"Database Connection OK","status":"OK"}
+
+# Redeploy monitoring si KO
+ansible-playbook ~/seko/VPAI/playbooks/site.yml --tags monitoring -e "target_env=prod"
+```
+
+### Consulter le Tableau de Scoring IA
+
+```bash
+# Scores des modeles
+docker exec javisi_postgresql psql -U n8n -d n8n -c \
+  "SELECT model, total_calls, likes, dislikes, score, \
+   ROUND(avg_cost_per_call::numeric * 1000, 4) AS cost_per_1k \
+   FROM model_scores ORDER BY score DESC;"
+```

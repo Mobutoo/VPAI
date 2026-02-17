@@ -348,6 +348,24 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **`qdrant_subdomain`** (qd) : Qdrant (dashboard sans support sub-path, issue #94)
 - **Regle** : Chaque service a son propre sous-domaine. Plus de sub-path.
 
+### OpenClaw -- tools.web Config
+
+- **`tools.web.fetch.readability`** : Cle NON RECONNUE par OpenClaw — cause crash-loop du container
+- **Cles valides pour `tools.web.fetch`** : `enabled`, `maxChars`, `timeoutSeconds`, `cacheTtlMinutes`, `maxRedirects`
+- **`tools.web.search.provider`** : `"brave"` (seul provider supporte actuellement)
+- **REX** : Toujours verifier les cles de config contre la doc avant d'ajouter des options
+
+### OpenClaw -- Skills (format obligatoire)
+
+- **Structure** : Chaque skill est un DOSSIER `skills/<name>/SKILL.md`, PAS un fichier plat `skills/<name>.md`
+- **Decouverte** : OpenClaw scanne `~/.openclaw/skills/` pour des sous-dossiers contenant `SKILL.md`
+- **Precedence** : `workspace/skills/` > `~/.openclaw/skills/` > skills bundled
+- **Frontmatter YAML** optionnel mais recommande : `name`, `description`, `metadata.openclaw.emoji`
+- **Description** : Sert de "trigger phrase" — si mal formulee, le skill n'est jamais invoque
+- **Injection** : Les skills eligibles sont injectes en XML compact dans le system prompt
+- **REX** : Les fichiers plats `.md` directement dans `skills/` sont IGNORES silencieusement
+- **Config extra dirs** : `skills.load.extraDirs` dans openclaw.json pour charger depuis d'autres chemins
+
 ### OpenClaw -- Sandbox (Isolation des Workspaces)
 
 - **2 couches d'isolation** : Gateway dans Docker + outils dans des conteneurs sandbox separes

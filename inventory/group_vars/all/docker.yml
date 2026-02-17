@@ -14,6 +14,7 @@ docker_network_frontend_subnet: "172.20.1.0/24"
 docker_network_backend_subnet: "172.20.2.0/24"
 docker_network_monitoring_subnet: "172.20.3.0/24"
 docker_network_egress_subnet: "172.20.4.0/24"
+docker_network_sandbox_subnet: "172.20.5.0/24"
 
 # --- Resource limits (prod / preprod) ---
 # PostgreSQL

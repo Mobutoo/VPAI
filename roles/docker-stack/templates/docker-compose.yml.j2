@@ -62,6 +62,7 @@ services:
     networks:
       - backend
       - egress
+      - sandbox
     deploy:
       resources:
         limits:
@@ -357,4 +358,7 @@ networks:
     external: true
   egress:
     name: {{ project_name }}_egress
+    external: true
+  sandbox:
+    name: {{ project_name }}_sandbox
     external: true

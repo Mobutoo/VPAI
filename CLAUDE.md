@@ -145,6 +145,7 @@ Phase 6 -- Hardening (DERNIER)
 | `backend` | 172.20.2.0/24 | Oui | PG, Redis, Qdrant, n8n, LiteLLM, OpenClaw, Caddy, Alloy |
 | `egress` | 172.20.4.0/24 | Non | n8n, LiteLLM, OpenClaw |
 | `monitoring` | 172.20.3.0/24 | Oui | cAdvisor, VictoriaMetrics, Loki, Alloy, Grafana |
+| `sandbox` | 172.20.5.0/24 | Oui | LiteLLM, OpenClaw sandbox containers (sous-agents isoles) |
 
 ---
 
@@ -356,6 +357,9 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **tools.elevated.enabled** : TOUJOURS `false` (empeche l'execution host non-sandboxee)
 - **tools.fs.workspaceOnly** : `true` (restreint les operations fichiers au workspace)
 - **CVE recentes** : GHSA-gv46-4xfq-jv58 (RCE bypass Gateway), GHSA-xw4p-pw82-hqr7 (path traversal sandbox)
+- **Reseau sandbox dedie** : Les sous-agents sandboxes tournent sur `{{ project_name }}_sandbox` (internal, 172.20.5.0/24)
+- **Seul LiteLLM** est accessible depuis le reseau sandbox — pas PostgreSQL, Redis, Qdrant, n8n
+- **Concierge non-sandboxe** : Tourne dans le Gateway (backend + egress), mais sans outil `exec` ni `elevated`
 
 ### Smoke Tests
 

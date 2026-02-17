@@ -184,3 +184,11 @@ networks:
     ipam:
       config:
         - subnet: {{ docker_network_monitoring_subnet }}
+
+  sandbox:
+    name: {{ project_name }}_sandbox
+    driver: bridge
+    internal: true
+    ipam:
+      config:
+        - subnet: {{ docker_network_sandbox_subnet }}

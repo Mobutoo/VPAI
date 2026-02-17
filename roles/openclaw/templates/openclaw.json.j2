@@ -30,7 +30,7 @@
           "image": "{{ openclaw_sandbox_image | default('openclaw-sandbox:bookworm-slim') }}",
           "readOnlyRoot": true,
           "tmpfs": ["/tmp", "/var/tmp", "/run"],
-          "network": "none",
+          "network": "{{ project_name }}_sandbox",
           "user": "1000:1000",
           "capDrop": ["ALL"],
           "pidsLimit": 256,

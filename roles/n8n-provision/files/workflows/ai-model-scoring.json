@@ -1,0 +1,265 @@
+{
+  "name": "AI Model Scoring",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 */6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000001",
+      "name": "Cron 6h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 100]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://litellm:4000/spend/logs",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.LITELLM_API_KEY }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "start_date",
+              "value": "={{ new Date(Date.now() - 6*60*60*1000).toISOString().split('T')[0] }}"
+            },
+            {
+              "name": "end_date",
+              "value": "={{ new Date().toISOString().split('T')[0] }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000002",
+      "name": "Fetch Spend Logs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate spend logs by model\nconst response = $input.first().json;\nconst logs = response.body || response || [];\nconst fs = require('fs');\nconst SCORES_FILE = '/home/node/.n8n/model-scores.json';\n\n// Load existing scores\nlet scores = {};\ntry {\n  if (fs.existsSync(SCORES_FILE)) {\n    scores = JSON.parse(fs.readFileSync(SCORES_FILE, 'utf8'));\n  }\n} catch (e) {\n  scores = {};\n}\n\n// Process new logs\nconst now = new Date().toISOString();\nif (Array.isArray(logs)) {\n  for (const log of logs) {\n    const model = log.model || 'unknown';\n    if (!scores[model]) {\n      scores[model] = {\n        total_calls: 0,\n        successful_calls: 0,\n        failed_calls: 0,\n        total_tokens: 0,\n        total_cost: 0,\n        total_latency_ms: 0,\n        likes: 0,\n        dislikes: 0,\n        last_updated: now,\n        first_seen: now\n      };\n    }\n    const s = scores[model];\n    s.total_calls += 1;\n    if (log.status === 'success' || !log.status) {\n      s.successful_calls += 1;\n    } else {\n      s.failed_calls += 1;\n    }\n    s.total_tokens += (log.total_tokens || 0);\n    s.total_cost += (log.spend || 0);\n    s.total_latency_ms += (log.completion_time_ms || 0);\n    s.last_updated = now;\n  }\n}\n\n// Calculate derived metrics for each model\nconst maxCost = Math.max(...Object.values(scores).map(s => s.total_calls > 0 ? s.total_cost / s.total_calls : 0), 0.001);\nconst maxLatency = Math.max(...Object.values(scores).map(s => s.total_calls > 0 ? s.total_latency_ms / s.total_calls : 0), 1);\n\nfor (const [model, s] of Object.entries(scores)) {\n  const likeRatio = (s.likes + s.dislikes) > 0 ? s.likes / (s.likes + s.dislikes) : 0.5;\n  const successRate = s.total_calls > 0 ? s.successful_calls / s.total_calls : 1;\n  const avgCost = s.total_calls > 0 ? s.total_cost / s.total_calls : 0;\n  const costEfficiency = 1 - (avgCost / maxCost);\n  const avgLatency = s.total_calls > 0 ? s.total_latency_ms / s.total_calls : 0;\n  const speedScore = 1 - (avgLatency / maxLatency);\n\n  s.score = Math.round(\n    (likeRatio * 40) +\n    (successRate * 30) +\n    (costEfficiency * 20) +\n    (speedScore * 10)\n  );\n  s.avg_cost_per_call = Math.round(avgCost * 10000) / 10000;\n  s.avg_latency_ms = Math.round(avgLatency);\n}\n\n// Save scores\nfs.writeFileSync(SCORES_FILE, JSON.stringify(scores, null, 2));\n\nreturn [{\n  json: {\n    status: 'collected',\n    models_tracked: Object.keys(scores).length,\n    logs_processed: Array.isArray(logs) ? logs.length : 0,\n    timestamp: now\n  }\n}];"
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000003",
+      "name": "Aggregate and Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 100]
+    },
+    {
+      "parameters": {
+        "path": "ai-model-feedback",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000010",
+      "name": "Feedback Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 400],
+      "webhookId": "a81df42c-9bee-4a95-d78a-3b35e7f8a912"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate webhook secret\nconst receivedSecret = $input.first().json.headers['x-webhook-secret'];\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nif (!expectedSecret) {\n  throw new Error('N8N_WEBHOOK_HMAC_SECRET env var is not configured');\n}\n\nif (receivedSecret !== expectedSecret) {\n  throw new Error('Invalid webhook secret');\n}\n\nconst body = $input.first().json.body;\nreturn [{\n  json: {\n    model: body.model || '',\n    rating: body.rating || '',\n    agent: body.agent || '',\n    emoji: body.emoji || '',\n    context: body.context || '',\n    authenticated: true\n  }\n}];"
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000011",
+      "name": "Validate Feedback Secret",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Record feedback (like/dislike) for a model\nconst fs = require('fs');\nconst SCORES_FILE = '/home/node/.n8n/model-scores.json';\nconst input = $input.first().json;\nconst model = input.model;\nconst rating = input.rating;\n\nif (!model || !rating) {\n  return [{ json: { status: 'error', message: 'model and rating are required' } }];\n}\n\n// Load existing scores\nlet scores = {};\ntry {\n  if (fs.existsSync(SCORES_FILE)) {\n    scores = JSON.parse(fs.readFileSync(SCORES_FILE, 'utf8'));\n  }\n} catch (e) {\n  scores = {};\n}\n\nconst now = new Date().toISOString();\nif (!scores[model]) {\n  scores[model] = {\n    total_calls: 0,\n    successful_calls: 0,\n    failed_calls: 0,\n    total_tokens: 0,\n    total_cost: 0,\n    total_latency_ms: 0,\n    likes: 0,\n    dislikes: 0,\n    last_updated: now,\n    first_seen: now,\n    score: 50\n  };\n}\n\nif (rating === 'like') {\n  scores[model].likes += 1;\n} else if (rating === 'dislike') {\n  scores[model].dislikes += 1;\n}\nscores[model].last_updated = now;\n\n// Recalculate score for this model\nconst s = scores[model];\nconst likeRatio = (s.likes + s.dislikes) > 0 ? s.likes / (s.likes + s.dislikes) : 0.5;\nconst successRate = s.total_calls > 0 ? s.successful_calls / s.total_calls : 1;\ns.score = Math.round((likeRatio * 40) + (successRate * 30) + 20 + 10);\n\nfs.writeFileSync(SCORES_FILE, JSON.stringify(scores, null, 2));\n\nreturn [{\n  json: {\n    status: 'recorded',\n    model: model,\n    rating: rating,\n    new_likes: scores[model].likes,\n    new_dislikes: scores[model].dislikes,\n    new_score: scores[model].score\n  }\n}];"
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000012",
+      "name": "Record Feedback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000013",
+      "name": "Respond Feedback",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [920, 400]
+    },
+    {
+      "parameters": {
+        "path": "ai-model-scores",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000020",
+      "name": "Scores Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 700],
+      "webhookId": "b92ef53d-0aff-5ba6-e89b-4c46f8g9b023"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate webhook secret\nconst receivedSecret = $input.first().json.headers['x-webhook-secret'];\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nif (!expectedSecret) {\n  throw new Error('N8N_WEBHOOK_HMAC_SECRET env var is not configured');\n}\n\nif (receivedSecret !== expectedSecret) {\n  throw new Error('Invalid webhook secret');\n}\n\nreturn [{ json: { authenticated: true } }];"
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000021",
+      "name": "Validate Scores Secret",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 700]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Read and return model scores\nconst fs = require('fs');\nconst SCORES_FILE = '/home/node/.n8n/model-scores.json';\n\nlet scores = {};\ntry {\n  if (fs.existsSync(SCORES_FILE)) {\n    scores = JSON.parse(fs.readFileSync(SCORES_FILE, 'utf8'));\n  }\n} catch (e) {\n  scores = {};\n}\n\n// Sort by score descending\nconst sorted = Object.entries(scores)\n  .sort((a, b) => (b[1].score || 0) - (a[1].score || 0))\n  .map(([model, data]) => ({\n    model,\n    score: data.score || 0,\n    likes: data.likes || 0,\n    dislikes: data.dislikes || 0,\n    total_calls: data.total_calls || 0,\n    success_rate: data.total_calls > 0\n      ? Math.round((data.successful_calls / data.total_calls) * 100) + '%'\n      : 'N/A',\n    avg_cost: data.avg_cost_per_call || 0,\n    avg_latency_ms: data.avg_latency_ms || 0,\n    total_cost: Math.round((data.total_cost || 0) * 10000) / 10000,\n    last_updated: data.last_updated || 'never'\n  }));\n\nreturn [{\n  json: {\n    status: 'success',\n    models_tracked: sorted.length,\n    scores: sorted,\n    generated_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000022",
+      "name": "Read Scores",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 700]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000023",
+      "name": "Respond Scores",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [920, 700]
+    }
+  ],
+  "connections": {
+    "Cron 6h": {
+      "main": [
+        [
+          {
+            "node": "Fetch Spend Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Spend Logs": {
+      "main": [
+        [
+          {
+            "node": "Aggregate and Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Feedback Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Feedback Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Feedback Secret": {
+      "main": [
+        [
+          {
+            "node": "Record Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Feedback": {
+      "main": [
+        [
+          {
+            "node": "Respond Feedback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scores Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Scores Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Scores Secret": {
+      "main": [
+        [
+          {
+            "node": "Read Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Scores": {
+      "main": [
+        [
+          {
+            "node": "Respond Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "active": false
+}

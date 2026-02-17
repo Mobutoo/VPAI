@@ -1,0 +1,56 @@
+# Skill: Noter la qualite d'une reponse IA
+
+Enregistre silencieusement un feedback (like/dislike) sur la qualite d'une reponse.
+Ce skill alimente le tableau de ponderation des modeles via n8n.
+
+## Quand utiliser ce skill
+
+### Mecanisme 1 --- Reactions Telegram (principal)
+Quand un system event "Telegram reaction added" est recu :
+- Reactions positives (like) : thumbs up, fire, heart, tada, clap, star
+- Reactions negatives (dislike) : thumbs down, poop, thinking
+
+### Mecanisme 2 --- Langage naturel (fallback)
+Quand l'utilisateur exprime un avis :
+- Positif : "super", "parfait", "bien", "merci", "excellent", "bonne reponse", "top"
+- Negatif : "pas top", "nul", "mauvais", "faux", "incorrect", "a revoir", "bof"
+
+## Comment appeler
+
+Utilise l'outil `web_fetch` pour POST vers le webhook n8n :
+
+```
+POST {{ n8n_webhook_base_url }}/webhook/ai-model-feedback
+Headers:
+  Content-Type: application/json
+  X-Webhook-Secret: ${N8N_WEBHOOK_SECRET}
+Body:
+  {
+    "model": "<nom_du_modele_qui_a_genere_la_reponse>",
+    "rating": "like ou dislike",
+    "agent": "<agent_id_qui_a_repondu>",
+    "emoji": "<emoji_si_reaction_telegram>",
+    "context": "<resume_court_du_prompt_en_5_mots>"
+  }
+```
+
+## Regle importante
+
+- **Ne reponds RIEN a l'utilisateur** apres avoir envoye le feedback
+- Le feedback doit etre **silencieux** (zero friction)
+- Si le webhook echoue, ignore l'erreur sans prevenir l'utilisateur
+- Identifie le modele en regardant quel agent a repondu au message note
+
+## Consultation du tableau de scores
+
+Pour consulter le tableau de ponderation des modeles :
+
+```
+POST {{ n8n_webhook_base_url }}/webhook/ai-model-scores
+Headers:
+  Content-Type: application/json
+  X-Webhook-Secret: ${N8N_WEBHOOK_SECRET}
+Body: {}
+```
+
+Reponse : tableau JSON avec les scores par modele (likes, dislikes, cout, latence, score global).

@@ -59,15 +59,17 @@ openclaw_agent_tutor_name: "tutor"
 openclaw_agent_explorer_name: "explorer"
 
 # Model assignments per agent/task (routed through LiteLLM)
+# Strategy: open-source first, Anthropic/OpenAI only when precision demands it
+# Review: builder uses qwen3-coder, review by different family (GLM-5 or gpt-codex)
 openclaw_concierge_model: "custom-litellm/kimi-k2"
-openclaw_builder_model: "custom-litellm/claude-sonnet"
-openclaw_writer_model: "custom-litellm/claude-sonnet"
-openclaw_artist_model: "custom-litellm/claude-haiku"
+openclaw_builder_model: "custom-litellm/qwen3-coder"
+openclaw_writer_model: "custom-litellm/glm-5"
+openclaw_artist_model: "custom-litellm/minimax-m25"
 openclaw_tutor_model: "custom-litellm/kimi-k2"
-openclaw_explorer_model: "custom-litellm/claude-haiku"
-openclaw_code_model: "custom-litellm/claude-opus"
-openclaw_quick_model: "custom-litellm/claude-haiku"
-openclaw_cheap_model: "custom-litellm/minimax-m25"
+openclaw_explorer_model: "custom-litellm/grok-search"
+openclaw_code_model: "custom-litellm/qwen3-coder"
+openclaw_quick_model: "custom-litellm/deepseek-v3"
+openclaw_cheap_model: "custom-litellm/qwen3-coder"
 
 # --- n8n Integration ---
 openclaw_n8n_integration: true
@@ -81,6 +83,12 @@ openclaw_n8n_workflows:
   - name: format-data
     path: ai-format
     description: "Formater des donnees structurees"
+  - name: model-feedback
+    path: ai-model-feedback
+    description: "Envoyer un feedback like/dislike sur un modele"
+  - name: model-scores
+    path: ai-model-scores
+    description: "Consulter le tableau de ponderation des modeles"
 
 # --- Telegram Bot (dedicated, distinct from monitoring bot) ---
 # telegram_openclaw_bot_token is in main.yml (from vault)

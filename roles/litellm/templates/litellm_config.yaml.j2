@@ -119,6 +119,36 @@ model_list:
         tier: "ultra-low"
         tags: ["code", "gen-infra", "pipeline"]
 
+  # GLM-5 — Code gen, agent, record low hallucination (744B MoE, 40B active, MIT)
+  - model_name: "glm-5"
+    litellm_params:
+      model: "openrouter/z-ai/glm-5"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+    model_info:
+      metadata:
+        tier: "ultra-low"
+        tags: ["code", "agent", "gen-infra", "review-standard"]
+
+  # Grok 4.1 Fast — Web search + X search, #1 Search Arena (1163 Elo), 2M context
+  - model_name: "grok-search"
+    litellm_params:
+      model: "openrouter/x-ai/grok-4.1-fast"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+    model_info:
+      metadata:
+        tier: "ultra-low"
+        tags: ["search", "web", "agent", "tool-calling"]
+
+  # Perplexity Sonar Pro — Premium search with citations, agentic research
+  - model_name: "perplexity-pro"
+    litellm_params:
+      model: "openrouter/perplexity/sonar-pro"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+    model_info:
+      metadata:
+        tier: "medium"
+        tags: ["search-premium", "research", "citations"]
+
   # Seedream 4.5 — Image generation via OpenRouter
   - model_name: "seedream"
     litellm_params:
@@ -141,7 +171,7 @@ model_list:
     model_info:
       metadata:
         tier: "free"
-        tags: ["bash", "trivial", "formatting"]
+        tags: ["code", "code-gen", "trivial", "formatting", "bash"]
 {% endif %}
 
   # ============================================================
@@ -193,20 +223,25 @@ litellm_settings:
   request_timeout: {{ litellm_request_timeout }}
 
   # Fallback chains: primary -> fallback1 -> fallback2
+  # Strategy: open-source fallbacks first, Anthropic/OpenAI as last resort
   fallbacks:
-    - claude-opus: ["claude-sonnet", "gpt-4o"]
+    - claude-opus: ["claude-sonnet", "gpt-codex"]
 {% if openrouter_api_key | default('') | length > 0 %}
-    - claude-sonnet: ["gpt-4o", "minimax-m25"]
-    - kimi-k2: ["minimax-m25", "claude-haiku"]
-    - minimax-m25: ["gpt-4o-mini", "claude-haiku"]
-    - deepseek-r1: ["claude-haiku", "gpt-4o-mini"]
-    - deepseek-v3: ["minimax-m25", "gpt-4o-mini"]
+    - claude-sonnet: ["gpt-4o", "glm-5"]
+    - kimi-k2: ["glm-5", "minimax-m25"]
+    - minimax-m25: ["glm-5", "deepseek-v3"]
+    - deepseek-r1: ["glm-5", "qwen3-coder"]
+    - deepseek-v3: ["glm-5", "qwen3-coder"]
+    - glm-5: ["deepseek-v3", "minimax-m25"]
+    - grok-search: ["perplexity-pro", "claude-haiku"]
+    - perplexity-pro: ["grok-search", "claude-sonnet"]
+    - qwen3-coder: ["deepseek-v3", "glm-5"]
 {% else %}
     - claude-sonnet: ["gpt-4o"]
 {% endif %}
     - gpt-4o: ["claude-sonnet"]
-    - gpt-4o-mini: ["claude-haiku"]
-    - gpt-codex: ["claude-sonnet", "gpt-4o"]
+    - gpt-4o-mini: ["qwen3-coder"]
+    - gpt-codex: ["claude-sonnet", "glm-5"]
 
   # Prometheus metrics
   success_callback: ["prometheus"]

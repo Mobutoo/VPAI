@@ -100,6 +100,7 @@
     - ai-translate
     - ai-summarize
     - ai-format
+    - ai-model-scoring
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Copy workflow files into n8n container
@@ -113,6 +114,7 @@
     - ai-translate
     - ai-summarize
     - ai-format
+    - ai-model-scoring
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Check existing n8n workflows
@@ -153,6 +155,7 @@
     - { file: "ai-translate", name: "AI Translate" }
     - { file: "ai-summarize", name: "AI Summarize" }
     - { file: "ai-format", name: "AI Format" }
+    - { file: "ai-model-scoring", name: "AI Model Scoring" }
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -184,6 +187,7 @@
     - { file: "ai-translate", name: "AI Translate" }
     - { file: "ai-summarize", name: "AI Summarize" }
     - { file: "ai-format", name: "AI Format" }
+    - { file: "ai-model-scoring", name: "AI Model Scoring" }
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -206,6 +210,7 @@
     - ai-translate
     - ai-summarize
     - ai-format
+    - ai-model-scoring
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Display n8n workflow import results

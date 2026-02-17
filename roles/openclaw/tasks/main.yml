@@ -252,6 +252,7 @@
     - delegate-n8n
     - search-content
     - generate-visual
+    - rate-response
   when:
     - openclaw_volume_isolation | default(false)
     - openclaw_n8n_integration | default(false)

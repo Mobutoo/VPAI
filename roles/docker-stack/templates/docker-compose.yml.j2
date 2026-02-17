@@ -93,16 +93,14 @@ services:
       - /opt/{{ project_name }}/configs/openclaw/openclaw.env
     volumes:
 {% if openclaw_volume_isolation | default(false) %}
-      # Volume isolation: config files (ro) + workspace (rw) + state subdirs (rw)
-      # Each path is mounted individually to avoid ro parent + rw child conflict
-      - {{ openclaw_system_dir }}/openclaw.json:/home/node/.openclaw/openclaw.json:ro
-      - {{ openclaw_system_dir }}/agents:/home/node/.openclaw/agents:ro
+      # Volume isolation: system dir as base (rw — OpenClaw writes .tmp files)
+      # Workspace and state subdirs override specific paths from host
+      - {{ openclaw_system_dir }}:/home/node/.openclaw
       - {{ openclaw_workspace_dir }}:/home/node/.openclaw/workspace
       - {{ openclaw_state_dir }}/sessions:/home/node/.openclaw/sessions
       - {{ openclaw_state_dir }}/canvas:/home/node/.openclaw/canvas
       - {{ openclaw_state_dir }}/cron:/home/node/.openclaw/cron
       - {{ openclaw_state_dir }}/memory:/home/node/.openclaw/memory
-      - {{ openclaw_system_dir }}/plugins:/home/node/.openclaw/plugins
 {% else %}
       - /opt/{{ project_name }}/data/openclaw:/home/node/.openclaw
 {% endif %}

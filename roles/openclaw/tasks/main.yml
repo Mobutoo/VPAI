@@ -189,6 +189,7 @@
   notify: Restart openclaw stack
 
 # Create agent directories in system/ for persona files
+# 'main' is the default agent required by OpenClaw Gateway
 - name: Create agent persona directories
   ansible.builtin.file:
     path: "{{ openclaw_system_dir }}/agents/{{ item }}"
@@ -198,6 +199,7 @@
     mode: "0755"
   become: true
   loop:
+    - main
     - "{{ openclaw_agent_concierge_name }}"
     - "{{ openclaw_agent_builder_name }}"
     - "{{ openclaw_agent_writer_name }}"
@@ -206,6 +208,7 @@
   when: openclaw_volume_isolation | default(false)
 
 # Deploy agent IDENTITY.md files (only with volume isolation)
+# 'main' uses the default concierge persona
 - name: Deploy agent persona files
   ansible.builtin.template:
     src: "agents/{{ item }}/IDENTITY.md.j2"
@@ -215,6 +218,7 @@
     mode: "0644"
   become: true
   loop:
+    - main
     - "{{ openclaw_agent_concierge_name }}"
     - "{{ openclaw_agent_builder_name }}"
     - "{{ openclaw_agent_writer_name }}"

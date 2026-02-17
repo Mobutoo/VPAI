@@ -604,7 +604,7 @@
       "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
       "targets": [
         {
-          "rawSql": "SELECT model AS \"Model\", CASE WHEN model IN ('claude-opus', 'claude-sonnet', 'perplexity-pro', 'gpt-codex') THEN 'Premium' WHEN model IN ('kimi-k2', 'minimax-m25', 'deepseek-r1') THEN 'Primary' WHEN model IN ('deepseek-v3', 'glm-5', 'grok-search') THEN 'Fallback' WHEN model IN ('qwen3-coder') THEN 'Free' ELSE 'Other' END AS \"Tier\", total_calls AS \"Total Calls\", total_tokens AS \"Total Tokens\", ROUND(total_cost::numeric, 4) AS \"Total Cost ($)\", CASE WHEN total_tokens > 0 THEN ROUND((total_cost / total_tokens * 1000)::numeric, 5) ELSE 0 END AS \"Cost/1K Tokens ($)\", ROUND(avg_cost_per_call::numeric, 5) AS \"Avg Cost/Call ($)\", ROUND(avg_latency_ms::numeric, 0) AS \"Avg Latency (ms)\", CASE WHEN total_calls > 0 THEN ROUND(successful_calls::numeric / total_calls * 100, 1) ELSE 100 END AS \"Success %\", score AS \"Score\", likes AS \"Likes\", dislikes AS \"Dislikes\" FROM model_scores WHERE total_calls > 0 ORDER BY CASE WHEN total_tokens > 0 THEN total_cost / total_tokens ELSE 999 END ASC",
+          "rawSql": "SELECT model AS \"Model\", CASE WHEN model IN ('claude-opus', 'claude-sonnet', 'perplexity-pro', 'gpt-codex') THEN 'Premium' WHEN model IN ('kimi-k2', 'minimax-m25', 'deepseek-r1') THEN 'Primary' WHEN model IN ('deepseek-v3', 'glm-5', 'grok-search') THEN 'Fallback' WHEN model IN ('qwen3-coder') THEN 'Free' ELSE 'Other' END AS \"Tier\", total_calls AS \"Total Calls\", total_tokens AS \"Total Tokens\", ROUND(total_cost::numeric, 4) AS \"Total Cost ($)\", CASE WHEN total_tokens > 0 THEN ROUND((total_cost / total_tokens * 1000)::numeric, 5) ELSE 0 END AS \"Cost/1K Tokens ($)\", ROUND(avg_cost_per_call::numeric, 5) AS \"Avg Cost/Call ($)\", ROUND(avg_latency_ms::numeric, 0) AS \"Avg Latency (ms)\", CASE WHEN total_calls > 0 THEN ROUND(successful_calls::numeric / total_calls * 100, 1) ELSE 100 END AS \"Success %\", score AS \"Score\", likes AS \"Likes\", dislikes AS \"Dislikes\" FROM model_scores WHERE total_calls > 0 OR likes > 0 OR dislikes > 0 ORDER BY CASE WHEN total_tokens > 0 THEN total_cost / total_tokens ELSE 999 END ASC",
           "format": "table",
           "refId": "A"
         }
@@ -974,7 +974,7 @@
       "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
       "targets": [
         {
-          "rawSql": "SELECT CASE WHEN model IN ('claude-opus', 'claude-sonnet', 'perplexity-pro', 'gpt-codex', 'claude-haiku') THEN 'Premium' WHEN model IN ('kimi-k2', 'minimax-m25', 'deepseek-r1') THEN 'Primary' WHEN model IN ('deepseek-v3', 'glm-5', 'grok-search', 'gpt-4o', 'gpt-4o-mini') THEN 'Fallback' WHEN model IN ('qwen3-coder') THEN 'Free' ELSE 'Other' END AS \"Tier\", ROUND(SUM(total_cost)::numeric, 4) AS \"Cost\" FROM model_scores WHERE total_calls > 0 GROUP BY 1 ORDER BY 2 DESC",
+          "rawSql": "SELECT CASE WHEN model IN ('claude-opus', 'claude-sonnet', 'perplexity-pro', 'gpt-codex', 'claude-haiku') THEN 'Premium' WHEN model IN ('kimi-k2', 'minimax-m25', 'deepseek-r1') THEN 'Primary' WHEN model IN ('deepseek-v3', 'glm-5', 'grok-search', 'gpt-4o', 'gpt-4o-mini') THEN 'Fallback' WHEN model IN ('qwen3-coder') THEN 'Free' ELSE 'Other' END AS \"Tier\", ROUND(SUM(total_cost)::numeric, 4) AS \"Cost\" FROM model_scores WHERE total_calls > 0 OR likes > 0 OR dislikes > 0 GROUP BY 1 ORDER BY 2 DESC",
           "format": "table",
           "refId": "A"
         }
@@ -1007,7 +1007,7 @@
       "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
       "targets": [
         {
-          "rawSql": "SELECT CASE WHEN model IN ('claude-opus', 'claude-sonnet', 'perplexity-pro', 'gpt-codex', 'claude-haiku') THEN 'Premium' WHEN model IN ('kimi-k2', 'minimax-m25', 'deepseek-r1') THEN 'Primary' WHEN model IN ('deepseek-v3', 'glm-5', 'grok-search', 'gpt-4o', 'gpt-4o-mini') THEN 'Fallback' WHEN model IN ('qwen3-coder') THEN 'Free' ELSE 'Other' END AS \"Tier\", SUM(total_calls) AS \"Calls\" FROM model_scores WHERE total_calls > 0 GROUP BY 1 ORDER BY 2 DESC",
+          "rawSql": "SELECT CASE WHEN model IN ('claude-opus', 'claude-sonnet', 'perplexity-pro', 'gpt-codex', 'claude-haiku') THEN 'Premium' WHEN model IN ('kimi-k2', 'minimax-m25', 'deepseek-r1') THEN 'Primary' WHEN model IN ('deepseek-v3', 'glm-5', 'grok-search', 'gpt-4o', 'gpt-4o-mini') THEN 'Fallback' WHEN model IN ('qwen3-coder') THEN 'Free' ELSE 'Other' END AS \"Tier\", SUM(total_calls) AS \"Calls\" FROM model_scores WHERE total_calls > 0 OR likes > 0 OR dislikes > 0 GROUP BY 1 ORDER BY 2 DESC",
           "format": "table",
           "refId": "A"
         }

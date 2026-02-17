@@ -45,7 +45,7 @@
       "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
       "targets": [
         {
-          "rawSql": "SELECT model AS \"Model\", score AS \"Score\" FROM model_scores WHERE total_calls > 0 ORDER BY score DESC LIMIT 1",
+          "rawSql": "SELECT model AS \"Model\", score AS \"Score\" FROM model_scores WHERE total_calls > 0 OR likes > 0 OR dislikes > 0 ORDER BY score DESC LIMIT 1",
           "format": "table",
           "refId": "A"
         }
@@ -88,7 +88,7 @@
       "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
       "targets": [
         {
-          "rawSql": "SELECT COUNT(*) AS \"count\" FROM model_scores WHERE total_calls > 0",
+          "rawSql": "SELECT COUNT(*) AS \"count\" FROM model_scores WHERE total_calls > 0 OR likes > 0 OR dislikes > 0",
           "format": "table",
           "refId": "A"
         }
@@ -403,7 +403,7 @@
       "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
       "targets": [
         {
-          "rawSql": "SELECT model AS \"Model\", score AS \"Score\" FROM model_scores WHERE total_calls > 0 OR likes > 0 ORDER BY score DESC LIMIT 15",
+          "rawSql": "SELECT model AS \"Model\", score AS \"Score\" FROM model_scores WHERE total_calls > 0 OR likes > 0 OR dislikes > 0 ORDER BY score DESC LIMIT 15",
           "format": "table",
           "refId": "A"
         }
@@ -606,7 +606,7 @@
       "datasource": { "type": "postgres", "uid": "PostgreSQL-n8n" },
       "targets": [
         {
-          "rawSql": "WITH max_vals AS (SELECT MAX(NULLIF(avg_cost_per_call, 0)) AS max_cost, MAX(NULLIF(avg_latency_ms, 0)) AS max_latency FROM model_scores WHERE total_calls > 0) SELECT ms.model AS \"Model\", ms.score AS \"Total Score\", ROUND((CASE WHEN ms.likes + ms.dislikes > 0 THEN ms.likes::numeric / (ms.likes + ms.dislikes) ELSE 0.5 END) * 40, 1) AS \"Quality (40%)\", ROUND((CASE WHEN ms.total_calls > 0 THEN ms.successful_calls::numeric / ms.total_calls ELSE 1 END) * 30, 1) AS \"Reliability (30%)\", ROUND((CASE WHEN mv.max_cost > 0 AND ms.avg_cost_per_call > 0 THEN (1 - ms.avg_cost_per_call / mv.max_cost) ELSE 0.5 END) * 20, 1) AS \"Cost Eff. (20%)\", ROUND((CASE WHEN mv.max_latency > 0 AND ms.avg_latency_ms > 0 THEN (1 - ms.avg_latency_ms / mv.max_latency) ELSE 0.5 END) * 10, 1) AS \"Speed (10%)\" FROM model_scores ms CROSS JOIN max_vals mv WHERE ms.total_calls > 0 ORDER BY ms.score DESC",
+          "rawSql": "WITH max_vals AS (SELECT MAX(NULLIF(avg_cost_per_call, 0)) AS max_cost, MAX(NULLIF(avg_latency_ms, 0)) AS max_latency FROM model_scores WHERE total_calls > 0) SELECT ms.model AS \"Model\", ms.score AS \"Total Score\", ROUND((CASE WHEN ms.likes + ms.dislikes > 0 THEN ms.likes::numeric / (ms.likes + ms.dislikes) ELSE 0.5::numeric END) * 40, 1) AS \"Quality (40%)\", ROUND((CASE WHEN ms.total_calls > 0 THEN ms.successful_calls::numeric / ms.total_calls ELSE 1::numeric END) * 30, 1) AS \"Reliability (30%)\", ROUND((CASE WHEN mv.max_cost > 0 AND ms.avg_cost_per_call > 0 THEN (1 - ms.avg_cost_per_call / mv.max_cost)::numeric ELSE 0.5::numeric END) * 20, 1) AS \"Cost Eff. (20%)\", ROUND((CASE WHEN mv.max_latency > 0 AND ms.avg_latency_ms > 0 THEN (1 - ms.avg_latency_ms / mv.max_latency)::numeric ELSE 0.5::numeric END) * 10, 1) AS \"Speed (10%)\" FROM model_scores ms CROSS JOIN max_vals mv WHERE ms.total_calls > 0 OR ms.likes > 0 OR ms.dislikes > 0 ORDER BY ms.score DESC",
           "format": "table",
           "refId": "A"
         }

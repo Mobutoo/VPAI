@@ -30,6 +30,7 @@ datasources:
     type: postgres
     access: proxy
     url: postgresql:5432
+    user: "n8n"
     editable: false
     jsonData:
       database: "n8n"
@@ -40,5 +41,4 @@ datasources:
       postgresVersion: 1800
       timescaledb: false
     secureJsonData:
-      user: "n8n"
       password: "{{ postgresql_password }}"

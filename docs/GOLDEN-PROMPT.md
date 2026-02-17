@@ -454,6 +454,9 @@ Dashboards provisionnes automatiquement via fichiers JSON :
 
 - **Datasources** : VictoriaMetrics (prometheus), Loki (logs), PostgreSQL (model_scores)
 - **PostgreSQL datasource** : Connecte a la DB `n8n` via reseau `backend` Docker
+- **REX CRITIQUE — provisioning PostgreSQL** : Le champ `user` doit etre au niveau RACINE du datasource (pas dans `jsonData`/`secureJsonData`). Seul `password` va dans `secureJsonData`. Symptome si mal place : `"no PostgreSQL user name specified in startup packet"` + `config_user_length: 0`
+- **Test health datasource** : `docker exec javisi_grafana wget -qO- --post-data="{}" http://user:pass@<IP_CONTAINER>:3000/api/datasources/uid/PostgreSQL-n8n/health` → `{"status":"OK"}` si OK
+- **Redeploy partiel monitoring** : `ansible-playbook playbooks/site.yml --tags monitoring` suffit (pas besoin de redeploy complet)
 
 ---
 

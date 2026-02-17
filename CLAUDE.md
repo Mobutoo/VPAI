@@ -336,6 +336,24 @@ Ces regles ont ete decouvertes lors des deploiements. **Les respecter elimine le
 - **Requetes SQL** : Utiliser `$__timeFrom()` et `$__timeTo()` pour les filtres temporels Grafana, `$__timeGroup(column, interval)` pour le time-series grouping
 - **Projections de couts** : Calculees en SQL via `AVG()` sur la periode selectionnee, extrapolees a 1 mois / 3 mois / 1 an
 
+### Grafana -- Provisioning Datasource PostgreSQL (PIEGE CRITIQUE)
+
+- **`user` au niveau RACINE** : Grafana 12 postgres plugin exige `user:` au niveau racine du datasource, PAS dans `jsonData` ni `secureJsonData`. Seul `password` va dans `secureJsonData`.
+- **Format correct** :
+  ```yaml
+  - name: PostgreSQL-n8n
+    url: postgresql:5432
+    user: "n8n"          # RACINE — pas dans jsonData
+    jsonData:
+      database: "n8n"
+      sslmode: "disable"
+    secureJsonData:
+      password: "{{ postgresql_password }}"   # seul le password en secureJsonData
+  ```
+- **Symptome si mal configure** : `"pq: no PostgreSQL user name specified in startup packet"` dans les logs Grafana + `config_user_length: 0` dans le detail de l'erreur health check
+- **Diagnostic depuis le serveur** : `docker exec javisi_grafana wget -qO- --post-data="{}" http://user:pass@<IP_CONTAINER>:3000/api/datasources/uid/PostgreSQL-n8n/health` — repond `{"status":"OK"}` si connexion OK. Utiliser l'IP container (pas `localhost` ni hostname Caddy)
+- **Redeploy monitoring seul** : `ansible-playbook playbooks/site.yml --tags monitoring` suffit pour mettre a jour datasources + dashboards sans toucher au reste
+
 ### OpenClaw -- Gateway Architecture (WebSocket, NOT HTTP REST)
 
 - **OpenClaw est un agent IA Gateway WebSocket** sur port **18789**, PAS un serveur HTTP REST sur 8080

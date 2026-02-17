@@ -278,18 +278,44 @@
 
 ---
 
-## Statistiques Globales
+## Session 4 -- Dashboards Grafana AI (17 fevrier 2026)
 
-| Metrique | Session 1 | Session 2 | Session 3 | Total |
-|----------|-----------|-----------|-----------|-------|
-| Erreurs critiques | 6 | 8 | 10 | 24 |
-| Erreurs moyennes | 2 | 2 | 4 | 8 |
-| Fichiers modifies | 14 | 31 | 12 | ~45 (avec recouvrements) |
-| Temps debugging | ~6h | ~4h | ~4h | ~14h |
+> **Commits** : `a25d3d2` (dashboards) → `5ec327e` (fix datasource)
+> **Objet** : Creation des dashboards AI (ai-model-scoring, ai-cost-cockpit) + datasource PostgreSQL
+
+### 31. Grafana -- Provisioning PostgreSQL : `user` mal place
+
+**Symptome** : `"pq: no PostgreSQL user name specified in startup packet"` sur tous les panels PostgreSQL. Dans les logs Grafana : `config_user_length: 0`.
+**Cause** : Le champ `user` etait place dans `secureJsonData` (puis dans `jsonData`) alors que Grafana 12 postgres plugin l'exige au niveau **racine** du datasource YAML.
+**Fix** :
+```yaml
+- name: PostgreSQL-n8n
+  url: postgresql:5432
+  user: "n8n"           # RACINE — pas dans jsonData/secureJsonData
+  jsonData:
+    database: "n8n"
+    sslmode: "disable"
+  secureJsonData:
+    password: "{{ postgresql_password }}"
+```
+**Diagnostic** : `docker exec javisi_grafana wget -qO- --post-data="{}" http://user:pass@<IP_CONTAINER>:3000/api/datasources/uid/<UID>/health` → `{"status":"OK"}` si OK
+**Impact** : CRITIQUE — Tous les panels SQL retournent "db query error"
+**Piege** : L'API Grafana `/api/datasources` affichait `"user":"n8n"` dans le JSON de retour (correctement), mais le champ interne `config_user_length` restait 0 tant que le fichier YAML n'avait pas `user:` au niveau racine. Tromper.
 
 ---
 
-## Etat Final des Services (fin session 3)
+## Statistiques Globales
+
+| Metrique | Session 1 | Session 2 | Session 3 | Session 4 | Total |
+|----------|-----------|-----------|-----------|-----------|-------|
+| Erreurs critiques | 6 | 8 | 10 | 1 | 25 |
+| Erreurs moyennes | 2 | 2 | 4 | 0 | 8 |
+| Fichiers modifies | 14 | 31 | 12 | 4 | ~55 |
+| Temps debugging | ~6h | ~4h | ~4h | ~1h | ~15h |
+
+---
+
+## Etat Final des Services (fin session 4)
 
 | Service | Phase | Etat | Healthcheck |
 |---------|-------|------|-------------|
@@ -301,10 +327,11 @@
 | LiteLLM | B | Healthy | `python urllib.request` |
 | OpenClaw | B | Running | `kill -0 1` |
 | VictoriaMetrics | B | Healthy | `wget http://127.0.0.1:8428/-/healthy` |
-| Loki | B | Fix en cours | `loki -health` (v3.6.5) |
+| Loki | B | Healthy | `loki -health` (v3.6.5) |
 | Alloy | B | Running | `kill -0 1` |
 | Grafana | B | Healthy | `wget http://127.0.0.1:3000/api/health` |
 | DIUN | B | Running | (pas de healthcheck) |
+| PostgreSQL-n8n (Grafana DS) | -- | **OK** | `wget /api/datasources/uid/PostgreSQL-n8n/health` |
 
 ---
 
@@ -334,6 +361,7 @@
 7. Ne pas utiliser `dig` dans les scripts -- `getent hosts` est plus portable
 8. Ne pas deployer de configs en mode `0600` si le conteneur tourne sous un UID different
 9. Ne pas utiliser `test -d` ou `ls` dans un conteneur distroless
+10. **Ne pas placer `user` dans `jsonData` ou `secureJsonData`** pour le datasource PostgreSQL Grafana -- le placer au niveau racine du datasource YAML (Grafana 12)
 
 ---
 

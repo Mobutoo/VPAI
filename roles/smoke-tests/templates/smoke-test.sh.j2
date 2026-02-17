@@ -261,11 +261,11 @@ echo ""
 # === VOLUME ISOLATION ===
 echo "--- OpenClaw Volume Isolation ---"
 # Test agents directory is persistent (mounted as volume)
-AGENT_DIR=$(docker exec "${PROJECT}_openclaw" ls /home/node/.openclaw/agents/main/IDENTITY.md 2>&1) && AGENT_OK=1 || AGENT_OK=0
+AGENT_DIR=$(docker exec "${PROJECT}_openclaw" ls /home/node/.openclaw/agents/concierge/IDENTITY.md 2>&1) && AGENT_OK=1 || AGENT_OK=0
 if [ "${AGENT_OK}" -eq 1 ]; then
-  echo "PASS  OpenClaw agents directory mounted (main/IDENTITY.md exists)"
+  echo "PASS  OpenClaw agents directory mounted (concierge/IDENTITY.md exists)"
 else
-  echo "WARN  OpenClaw agents/main/IDENTITY.md not found"
+  echo "WARN  OpenClaw agents/concierge/IDENTITY.md not found"
 fi
 
 # Test workspace is writable

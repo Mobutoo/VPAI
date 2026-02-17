@@ -203,6 +203,7 @@
     - "{{ openclaw_agent_writer_name }}"
     - "{{ openclaw_agent_artist_name }}"
     - "{{ openclaw_agent_tutor_name }}"
+    - "{{ openclaw_agent_explorer_name }}"
   when: openclaw_volume_isolation | default(false)
 
 # Deploy agent IDENTITY.md files (only with volume isolation)
@@ -220,6 +221,7 @@
     - "{{ openclaw_agent_writer_name }}"
     - "{{ openclaw_agent_artist_name }}"
     - "{{ openclaw_agent_tutor_name }}"
+    - "{{ openclaw_agent_explorer_name }}"
   when: openclaw_volume_isolation | default(false)
   notify: Restart openclaw stack
 

@@ -60,7 +60,8 @@
             "{{ openclaw_agent_builder_name }}",
             "{{ openclaw_agent_writer_name }}",
             "{{ openclaw_agent_artist_name }}",
-            "{{ openclaw_agent_tutor_name }}"
+            "{{ openclaw_agent_tutor_name }}",
+            "{{ openclaw_agent_explorer_name }}"
           ]
         },
         "tools": {
@@ -111,6 +112,23 @@
           "primary": "{{ openclaw_tutor_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace/tutor",
+        "tools": {
+          "fs": { "workspaceOnly": true },
+          "elevated": { "enabled": false }
+        }
+      },
+      {
+        "id": "{{ openclaw_agent_explorer_name }}",
+        "model": {
+          "primary": "{{ openclaw_explorer_model }}"
+        },
+        "workspace": "/home/node/.openclaw/workspace",
+        "sandbox": {
+          "mode": "always",
+          "docker": {
+            "network": "{{ project_name }}_egress"
+          }
+        },
         "tools": {
           "fs": { "workspaceOnly": true },
           "elevated": { "enabled": false }

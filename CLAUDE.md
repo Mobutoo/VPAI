@@ -15,11 +15,13 @@ Template portable : toutes les valeurs sont des variables Jinja2, aucun nom hard
 
 ## Acces SSH au VPS (Seko-AI)
 
-- **IP** : `137.74.114.167` | **Port** : `804` | **User** : `mobuone`
-- **Hostname serveur** : `sese`
+- **IP** : `<VPS_IP>` | **Port** : `<SSH_PORT>` | **User** : `<SSH_USER>`
+- **Hostname serveur** : `<VPS_HOSTNAME>`
 - **Cle SSH** : `~/.ssh/seko-vpn-deploy`
-- **Commande** : `ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@137.74.114.167`
-- **Docker remote** : `ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@137.74.114.167 'docker <cmd>'`
+- **Commande** : `ssh -i ~/.ssh/seko-vpn-deploy -p <SSH_PORT> <SSH_USER>@<VPS_IP>`
+- **Docker remote** : `ssh -i ~/.ssh/seko-vpn-deploy -p <SSH_PORT> <SSH_USER>@<VPS_IP> 'docker <cmd>'`
+
+> Valeurs reelles dans `inventory/group_vars/all/main.yml` (prod_ssh_port, prod_user) et `inventory/hosts.yml`.
 
 ## Documents de Reference
 

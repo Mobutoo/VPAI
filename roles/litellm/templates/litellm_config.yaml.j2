@@ -306,8 +306,13 @@ litellm_settings:
 {% endif %}
 
 # ================================================================
-# GENERAL SETTINGS — Auth, database
+# GENERAL SETTINGS — Auth, database, budget global
 # ================================================================
 general_settings:
   master_key: "os.environ/LITELLM_MASTER_KEY"
   database_url: "os.environ/DATABASE_URL"
+  # Budget global cross-providers (hard cap absolu, toutes sources confondues)
+  # Géré au niveau LiteLLM — bloque les appels si dépassé (retourne 429)
+  # Les alertes 70%/90% sont gérées par n8n (cron 1h → PostgreSQL → Telegram)
+  max_budget: {{ litellm_budget_global_daily }}
+  budget_duration: "1d"

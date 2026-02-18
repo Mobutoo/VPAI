@@ -1,0 +1,188 @@
+{
+  "name": "Budget Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "bm-0001-0000-0000-0000-000000000001",
+      "name": "Cron 1h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  COALESCE(SUM(spend), 0) AS global_spend,\n  COALESCE(SUM(CASE WHEN model LIKE 'anthropic/%' OR model LIKE 'claude%' THEN spend END), 0) AS anthropic_spend,\n  COALESCE(SUM(CASE WHEN model LIKE 'openai/%' OR model LIKE 'gpt%' OR model LIKE 'codex%' THEN spend END), 0) AS openai_spend,\n  COALESCE(SUM(CASE WHEN model LIKE 'openrouter/%' THEN spend END), 0) AS openrouter_spend,\n  COALESCE(SUM(CASE WHEN model LIKE 'gemini/%' THEN spend END), 0) AS google_spend\nFROM litellm_spendlogs\nWHERE startTime >= NOW() - INTERVAL '24 hours'\n  AND metadata->>'user_api_key' != 'litellm-internal-health-check';",
+        "additionalFields": {}
+      },
+      "id": "bm-0001-0000-0000-0000-000000000002",
+      "name": "Query PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 300],
+      "credentials": {
+        "postgres": {
+          "id": "pg-main",
+          "name": "PostgreSQL Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Budget limits (from Ansible vars — keep in sync with main.yml)\nconst BUDGETS = {\n  global:      5.00,\n  anthropic:   0.75,\n  openai:      0.50,\n  openrouter:  3.25,\n  google:      0.25\n};\n\nconst THRESHOLD_WARNING  = 0.70;  // 70% → alerte warning\nconst THRESHOLD_CRITICAL = 0.90;  // 90% → bascule mode éco\n\nconst row = $input.first().json;\n\nconst spend = {\n  global:     parseFloat(row.global_spend     || 0),\n  anthropic:  parseFloat(row.anthropic_spend  || 0),\n  openai:     parseFloat(row.openai_spend     || 0),\n  openrouter: parseFloat(row.openrouter_spend || 0),\n  google:     parseFloat(row.google_spend     || 0)\n};\n\nconst pct = {};\nfor (const [k, v] of Object.entries(spend)) {\n  pct[k] = v / BUDGETS[k];\n}\n\n// Determine alert level\nlet level = 'ok';\nif (pct.global >= THRESHOLD_CRITICAL) level = 'critical';\nelse if (pct.global >= THRESHOLD_WARNING) level = 'warning';\n\n// Check per-provider overages\nconst overages = [];\nfor (const [k, p] of Object.entries(pct)) {\n  if (k === 'global') continue;\n  if (p >= THRESHOLD_CRITICAL) overages.push({ provider: k, pct: p, spend: spend[k], limit: BUDGETS[k] });\n  else if (p >= THRESHOLD_WARNING) overages.push({ provider: k, pct: p, spend: spend[k], limit: BUDGETS[k] });\n}\n\nreturn [{ json: { spend, pct, budgets: BUDGETS, level, overages, threshold_warning: THRESHOLD_WARNING, threshold_critical: THRESHOLD_CRITICAL } }];"
+      },
+      "id": "bm-0001-0000-0000-0000-000000000003",
+      "name": "Calcul budget",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-level",
+              "leftValue": "={{ $json.level }}",
+              "rightValue": "ok",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bm-0001-0000-0000-0000-000000000004",
+      "name": "Alerte nécessaire?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const d = $input.first().json;\nconst { spend, pct, budgets, level, overages } = d;\n\nconst fmt = (v) => v.toFixed(3);\nconst fmtPct = (p) => Math.round(p * 100);\nconst emoji = (p) => p >= 0.9 ? '🔴' : p >= 0.7 ? '⚠️' : '✅';\n\nconst globalEmoji = level === 'critical' ? '🔴' : '⚠️';\nconst title = level === 'critical'\n  ? `${globalEmoji} ALERTE CRITIQUE — Budget IA à ${fmtPct(pct.global)}%`\n  : `${globalEmoji} Alerte Budget IA — ${fmtPct(pct.global)}% utilisé`;\n\nconst lines = [\n  title,\n  '',\n  `📊 <b>Global</b> : $${fmt(spend.global)} / $${budgets.global} (${fmtPct(pct.global)}%)`,\n  ``,\n  `${emoji(pct.anthropic)} Anthropic  : $${fmt(spend.anthropic)} / $${budgets.anthropic} (${fmtPct(pct.anthropic)}%)`,\n  `${emoji(pct.openai)} OpenAI     : $${fmt(spend.openai)} / $${budgets.openai} (${fmtPct(pct.openai)}%)`,\n  `${emoji(pct.openrouter)} OpenRouter : $${fmt(spend.openrouter)} / $${budgets.openrouter} (${fmtPct(pct.openrouter)}%)`,\n  `${emoji(pct.google)} Google     : $${fmt(spend.google)} / $${budgets.google} (${fmtPct(pct.google)}%)`,\n];\n\nif (level === 'critical') {\n  lines.push('');\n  lines.push('🌿 Bascule automatique en mode éco dans 1 min.');\n  lines.push('Les modèles gratuits (qwen3-coder, glm-5, deepseek-v3) seront utilisés.');\n} else {\n  lines.push('');\n  lines.push('Que souhaitez-vous faire ?');\n}\n\nconst message = lines.join('\\n');\n\n// Inline keyboard (boutons Telegram)\nconst keyboard = level === 'critical' ? [\n  [{ text: '🌿 Activer mode éco maintenant', callback_data: 'budget:eco_on' }],\n  [{ text: '📊 Voir détails', callback_data: 'budget:status' }]\n] : [\n  [{ text: '🌿 Activer mode éco', callback_data: 'budget:eco_on' }, { text: '⏭ Ignorer', callback_data: 'budget:dismiss' }],\n  [{ text: '📊 Voir détails', callback_data: 'budget:status' }]\n];\n\nreturn [{ json: { message, keyboard, level, spend, pct, budgets } }];"
+      },
+      "id": "bm-0001-0000-0000-0000-000000000005",
+      "name": "Formater message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text", "value": "={{ $json.message }}" },
+            { "name": "parse_mode", "value": "HTML" },
+            { "name": "reply_markup", "value": "={{ JSON.stringify({ inline_keyboard: $json.keyboard }) }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bm-0001-0000-0000-0000-000000000006",
+      "name": "Telegram Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-critical",
+              "leftValue": "={{ $('Calcul budget').first().json.level }}",
+              "rightValue": "critical",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bm-0001-0000-0000-0000-000000000007",
+      "name": "Niveau critique?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1580, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://n8n:5678/webhook/budget-control",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "action", "value": "eco_on" },
+            { "name": "source", "value": "auto-90pct" },
+            { "name": "spend_global", "value": "={{ $('Calcul budget').first().json.spend.global }}" },
+            { "name": "pct_global", "value": "={{ $('Calcul budget').first().json.pct.global }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bm-0001-0000-0000-0000-000000000008",
+      "name": "Auto eco_on",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1800, 120]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Budget OK → rien à faire, log silencieux\nreturn [{ json: { status: 'ok', message: 'Budget within limits — no action needed' } }];"
+      },
+      "id": "bm-0001-0000-0000-0000-000000000009",
+      "name": "Budget OK (no-op)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 420]
+    }
+  ],
+  "connections": {
+    "Cron 1h": { "main": [[{ "node": "Query PostgreSQL", "type": "main", "index": 0 }]] },
+    "Query PostgreSQL": { "main": [[{ "node": "Calcul budget", "type": "main", "index": 0 }]] },
+    "Calcul budget": { "main": [[{ "node": "Alerte nécessaire?", "type": "main", "index": 0 }]] },
+    "Alerte nécessaire?": {
+      "main": [
+        [{ "node": "Formater message", "type": "main", "index": 0 }],
+        [{ "node": "Budget OK (no-op)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Formater message": { "main": [[{ "node": "Telegram Alert", "type": "main", "index": 0 }]] },
+    "Telegram Alert": { "main": [[{ "node": "Niveau critique?", "type": "main", "index": 0 }]] },
+    "Niveau critique?": {
+      "main": [
+        [{ "node": "Auto eco_on", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "budget" }, { "name": "monitoring" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-02-18T00:00:00.000Z",
+  "versionId": "1"
+}

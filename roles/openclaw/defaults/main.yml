@@ -92,6 +92,24 @@ openclaw_n8n_workflows:
     path: ai-model-scores
     description: "Consulter le tableau de ponderation des modeles"
 
+# --- Budget Control (commands Telegram → n8n webhook) ---
+# Commandes reconnues par le concierge OpenClaw (via Telegram) :
+#   /budget          → statut détaillé (spend 24h par provider)
+#   /budget eco on   → activer mode éco (modèles gratuits forcés)
+#   /budget eco off  → retour mode normal
+# Ces commandes appellent le webhook n8n "budget-control"
+openclaw_budget_webhook_url: "http://n8n:5678/webhook/budget-control"
+openclaw_budget_commands:
+  - trigger: "/budget eco on"
+    action: "eco_on"
+    description: "Activer mode économie (modèles gratuits)"
+  - trigger: "/budget eco off"
+    action: "eco_off"
+    description: "Désactiver mode économie (retour normal)"
+  - trigger: "/budget"
+    action: "status"
+    description: "Afficher le budget IA actuel"
+
 # --- Telegram Bot (dedicated, distinct from monitoring bot) ---
 # telegram_openclaw_bot_token is in main.yml (from vault)
 # telegram_openclaw_chat_id is in main.yml (from vault)

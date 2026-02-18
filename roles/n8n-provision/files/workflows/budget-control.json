@@ -1,0 +1,202 @@
+{
+  "name": "Budget Control",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "budget-control",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "bc-0001-0000-0000-0000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "budget-control"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-action",
+              "leftValue": "={{ $json.body.action }}",
+              "rightValue": "eco_on",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bc-0001-0000-0000-0000-000000000002",
+      "name": "Action?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "litellm:budget:mode",
+        "value": "eco",
+        "keyType": "string",
+        "expire": true,
+        "ttl": 86400
+      },
+      "id": "bc-0001-0000-0000-0000-000000000003",
+      "name": "Redis SET eco",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [700, 100],
+      "credentials": {
+        "redis": {
+          "id": "redis-main",
+          "name": "Redis Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "set",
+        "key": "litellm:budget:mode",
+        "value": "normal",
+        "keyType": "string",
+        "expire": false
+      },
+      "id": "bc-0001-0000-0000-0000-000000000004",
+      "name": "Redis SET normal",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [700, 260],
+      "credentials": {
+        "redis": {
+          "id": "redis-main",
+          "name": "Redis Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n  COALESCE(SUM(spend), 0) AS global_spend,\n  COALESCE(SUM(CASE WHEN model LIKE 'anthropic/%' OR model LIKE 'claude%' THEN spend END), 0) AS anthropic_spend,\n  COALESCE(SUM(CASE WHEN model LIKE 'openai/%' OR model LIKE 'gpt%' OR model LIKE 'codex%' THEN spend END), 0) AS openai_spend,\n  COALESCE(SUM(CASE WHEN model LIKE 'openrouter/%' THEN spend END), 0) AS openrouter_spend,\n  COALESCE(SUM(CASE WHEN model LIKE 'gemini/%' THEN spend END), 0) AS google_spend\nFROM litellm_spendlogs\nWHERE startTime >= NOW() - INTERVAL '24 hours'\n  AND metadata->>'user_api_key' != 'litellm-internal-health-check';",
+        "additionalFields": {}
+      },
+      "id": "bc-0001-0000-0000-0000-000000000005",
+      "name": "Query Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [700, 420],
+      "credentials": {
+        "postgres": {
+          "id": "pg-main",
+          "name": "PostgreSQL Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "key": "litellm:budget:mode",
+        "keyType": "string"
+      },
+      "id": "bc-0001-0000-0000-0000-000000000006",
+      "name": "Redis GET mode",
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [700, 580],
+      "credentials": {
+        "redis": {
+          "id": "redis-main",
+          "name": "Redis Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Formater la réponse status budget\nconst BUDGETS = { global: 5.00, anthropic: 0.75, openai: 0.50, openrouter: 3.25, google: 0.25 };\n\nconst row = $('Query Status').first().json;\nconst currentMode = $('Redis GET mode').first().json.value || 'normal';\n\nconst spend = {\n  global:     parseFloat(row.global_spend     || 0),\n  anthropic:  parseFloat(row.anthropic_spend  || 0),\n  openai:     parseFloat(row.openai_spend     || 0),\n  openrouter: parseFloat(row.openrouter_spend || 0),\n  google:     parseFloat(row.google_spend     || 0)\n};\n\nconst fmt = (v) => v.toFixed(3);\nconst fmtPct = (v, max) => Math.round((v / max) * 100);\nconst emoji = (p, max) => (v => v >= 0.9 ? '🔴' : v >= 0.7 ? '⚠️' : '✅')(p / max);\nconst modeEmoji = currentMode === 'eco' ? '🌿' : currentMode === 'blocked' ? '🚫' : '✅';\n\nconst lines = [\n  `📊 <b>Budget IA — État actuel</b>`,\n  ``,\n  `Mode : ${modeEmoji} <b>${currentMode.toUpperCase()}</b>`,\n  ``,\n  `${emoji(spend.global, BUDGETS.global)} <b>Global</b>     : $${fmt(spend.global)} / $${BUDGETS.global} (${fmtPct(spend.global, BUDGETS.global)}%)`,\n  `${emoji(spend.anthropic, BUDGETS.anthropic)} Anthropic  : $${fmt(spend.anthropic)} / $${BUDGETS.anthropic} (${fmtPct(spend.anthropic, BUDGETS.anthropic)}%)`,\n  `${emoji(spend.openai, BUDGETS.openai)} OpenAI     : $${fmt(spend.openai)} / $${BUDGETS.openai} (${fmtPct(spend.openai, BUDGETS.openai)}%)`,\n  `${emoji(spend.openrouter, BUDGETS.openrouter)} OpenRouter : $${fmt(spend.openrouter)} / $${BUDGETS.openrouter} (${fmtPct(spend.openrouter, BUDGETS.openrouter)}%)`,\n  `${emoji(spend.google, BUDGETS.google)} Google     : $${fmt(spend.google)} / $${BUDGETS.google} (${fmtPct(spend.google, BUDGETS.google)}%)`,\n  ``,\n  `Fenêtre : 24 dernières heures`\n];\n\nreturn [{ json: { message: lines.join('\\n'), mode: currentMode } }];"
+      },
+      "id": "bc-0001-0000-0000-0000-000000000007",
+      "name": "Formater status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "const action = $('Webhook').first().json.body.action;\nconst source = $('Webhook').first().json.body.source || 'manual';\n\nlet message;\nif (action === 'eco_on') {\n  message = `🌿 <b>Mode éco activé</b>\\n\\nSource : ${source}\\nModèles gratuits/ultra-low utilisés:\\n• qwen3-coder (FREE)\\n• glm-5 (ultra-low)\\n• deepseek-v3 (ultra-low)\\n\\nDésactiver : /budget eco off`;\n} else if (action === 'eco_off') {\n  message = `✅ <b>Mode normal rétabli</b>\\n\\nSource : ${source}\\nLes modèles standards sont à nouveau utilisés.`;\n} else if (action === 'dismiss') {\n  message = `⏭ Alerte ignorée. La prochaine vérification est dans 1 heure.`;\n}\n\nreturn [{ json: { message } }];"
+      },
+      "id": "bc-0001-0000-0000-0000-000000000008",
+      "name": "Formater réponse action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text", "value": "={{ $json.message }}" },
+            { "name": "parse_mode", "value": "HTML" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bc-0001-0000-0000-0000-000000000009",
+      "name": "Telegram Notify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, action: $('Webhook').first().json.body.action }) }}"
+      },
+      "id": "bc-0001-0000-0000-0000-000000000010",
+      "name": "HTTP Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1360, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Action?", "type": "main", "index": 0 }]]
+    },
+    "Action?": {
+      "main": [
+        [{ "node": "Redis SET eco",    "type": "main", "index": 0 }],
+        [{ "node": "Redis SET normal", "type": "main", "index": 0 }],
+        [{ "node": "Query Status",     "type": "main", "index": 0 }],
+        [{ "node": "Redis SET eco",    "type": "main", "index": 0 }]
+      ]
+    },
+    "Redis SET eco":    { "main": [[{ "node": "Formater réponse action", "type": "main", "index": 0 }]] },
+    "Redis SET normal": { "main": [[{ "node": "Formater réponse action", "type": "main", "index": 0 }]] },
+    "Query Status":     { "main": [[{ "node": "Redis GET mode",          "type": "main", "index": 0 }]] },
+    "Redis GET mode":   { "main": [[{ "node": "Formater status",         "type": "main", "index": 0 }]] },
+    "Formater réponse action": { "main": [[{ "node": "Telegram Notify",  "type": "main", "index": 0 }]] },
+    "Formater status":         { "main": [[{ "node": "Telegram Notify",  "type": "main", "index": 0 }]] },
+    "Telegram Notify":         { "main": [[{ "node": "HTTP Response",    "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "budget" }, { "name": "control" }],
+  "triggerCount": 0,
+  "updatedAt": "2026-02-18T00:00:00.000Z",
+  "versionId": "1"
+}

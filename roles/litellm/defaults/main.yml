@@ -22,3 +22,8 @@ litellm_cache_similarity_threshold: 0.85
 # --- Request settings ---
 litellm_num_retries: 2
 litellm_request_timeout: 120
+
+# --- Budget global (hard cap cross-providers) ---
+litellm_budget_global_daily: 5.00
+litellm_budget_alert_warning: 0.70
+litellm_budget_alert_critical: 0.90

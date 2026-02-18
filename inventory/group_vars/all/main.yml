@@ -132,11 +132,24 @@ qdrant_rag_collection: "content_index"
 qdrant_embedding_model: "text-embedding-3-small"
 qdrant_embedding_dimensions: 1536
 
-# --- LiteLLM budget caps (USD per day per provider) ---
-litellm_anthropic_budget_daily: 20
-litellm_openai_budget_daily: 10
-litellm_openrouter_budget_daily: 5
-litellm_google_budget_daily: 3
+# --- LiteLLM budget caps (USD per day) ---
+# Budget global cross-providers (hard cap absolu)
+litellm_budget_global_daily: 5.00
+
+# Budget par provider (somme = budget global)
+# Répartition : OpenRouter 65%, Anthropic 15%, OpenAI 10%, Google 5%, zAI 5%
+litellm_anthropic_budget_daily: 0.75
+litellm_openai_budget_daily: 0.50
+litellm_openrouter_budget_daily: 3.25
+litellm_google_budget_daily: 0.25
+
+# Seuils d'alerte (% du budget global) — notification Telegram
+litellm_budget_alert_warning: 0.70   # 70% → alerte warning
+litellm_budget_alert_critical: 0.90  # 90% → bascule automatique mode éco
+
+# Mode éco : modèles gratuits/ultra-low en fallback (qwen3-coder, glm-5, deepseek-v3)
+# Contrôlé par Redis key "litellm:budget:mode" = normal | eco | blocked
+litellm_budget_eco_models: ["qwen3-coder", "glm-5", "deepseek-v3"]
 
 # --- WhatsApp (OpenClaw Tutor channel — child tablet) ---
 whatsapp_tutor_enabled: false

@@ -120,6 +120,8 @@
     - email-cleanup
     - email-reply-suggest
     - content-generate
+    - budget-monitor
+    - budget-control
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Check workflow update status (checksum comparison)
@@ -155,6 +157,8 @@
     - { file: "email-cleanup",       name: "Email Cleanup & Classifier" }
     - { file: "email-reply-suggest", name: "Email Reply Suggest" }
     - { file: "content-generate",    name: "Content Generate" }
+    - { file: "budget-monitor",      name: "Budget Monitor" }
+    - { file: "budget-control",      name: "Budget Control" }
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -323,6 +327,8 @@
     - { file: "email-cleanup",       name: "Email Cleanup & Classifier" }
     - { file: "email-reply-suggest", name: "Email Reply Suggest" }
     - { file: "content-generate",    name: "Content Generate" }
+    - { file: "budget-monitor",      name: "Budget Monitor" }
+    - { file: "budget-control",      name: "Budget Control" }
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -354,6 +360,8 @@
     - email-cleanup
     - email-reply-suggest
     - content-generate
+    - budget-monitor
+    - budget-control
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Display n8n workflow update results

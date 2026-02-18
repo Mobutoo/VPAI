@@ -192,6 +192,22 @@
             "contextWindow": 200000,
             "maxTokens": 16384
           },
+          {
+            "id": "qwen3-coder",
+            "name": "Qwen3 Coder (FREE — mode éco)",
+            "reasoning": false,
+            "input": ["text"],
+            "contextWindow": 131072,
+            "maxTokens": 4096
+          },
+          {
+            "id": "deepseek-v3",
+            "name": "DeepSeek V3.2 (ultra-low — mode éco)",
+            "reasoning": false,
+            "input": ["text"],
+            "contextWindow": 131072,
+            "maxTokens": 4096
+          },
 {% if openrouter_api_key | default('') | length > 0 %}
           {
             "id": "kimi-k2",

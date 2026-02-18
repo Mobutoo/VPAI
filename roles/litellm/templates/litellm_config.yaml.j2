@@ -230,6 +230,11 @@ router_settings:
   num_retries: {{ litellm_num_retries }}
   # Timeout per request
   timeout: {{ litellm_request_timeout }}
+  # REX: LiteLLM health checks appellent TOUS les modèles toutes les ~38s.
+  # Perplexity Sonar Pro seul a coûté $11.64 en 16h (1488 health checks à $0.01/check).
+  # Désactivé globalement — on détecte les pannes via les fallbacks et métriques Prometheus.
+  disable_cooldowns: false
+  health_check_interval: 0
 
 # ================================================================
 # LITELLM SETTINGS — Cache, fallbacks, callbacks

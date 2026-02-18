@@ -145,20 +145,20 @@
   changed_when: false
   become: true
   loop:
-    - { file: "ai-translate",        name: "AI Translate" }
-    - { file: "ai-summarize",        name: "AI Summarize" }
-    - { file: "ai-format",           name: "AI Format" }
-    - { file: "ai-model-scoring",    name: "AI Model Scoring" }
-    - { file: "cve-watcher",         name: "CVE Watcher" }
-    - { file: "openclaw-delegate",   name: "OpenClaw Delegate" }
-    - { file: "ig-comment-reply",    name: "Instagram Comment Reply" }
-    - { file: "ig-dm-reply",         name: "Instagram DM Reply" }
-    - { file: "video-generate",      name: "Video Generate (Seedance)" }
-    - { file: "email-cleanup",       name: "Email Cleanup & Classifier" }
-    - { file: "email-reply-suggest", name: "Email Reply Suggest" }
-    - { file: "content-generate",    name: "Content Generate" }
-    - { file: "budget-monitor",      name: "Budget Monitor" }
-    - { file: "budget-control",      name: "Budget Control" }
+    - {file: "ai-translate", name: "AI Translate"}
+    - {file: "ai-summarize", name: "AI Summarize"}
+    - {file: "ai-format", name: "AI Format"}
+    - {file: "ai-model-scoring", name: "AI Model Scoring"}
+    - {file: "cve-watcher", name: "CVE Watcher"}
+    - {file: "openclaw-delegate", name: "OpenClaw Delegate"}
+    - {file: "ig-comment-reply", name: "Instagram Comment Reply"}
+    - {file: "ig-dm-reply", name: "Instagram DM Reply"}
+    - {file: "video-generate", name: "Video Generate (Seedance)"}
+    - {file: "email-cleanup", name: "Email Cleanup & Classifier"}
+    - {file: "email-reply-suggest", name: "Email Reply Suggest"}
+    - {file: "content-generate", name: "Content Generate"}
+    - {file: "budget-monitor", name: "Budget Monitor"}
+    - {file: "budget-control", name: "Budget Control"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -315,20 +315,20 @@
   become: true
   changed_when: false
   loop:
-    - { file: "ai-translate",        name: "AI Translate" }
-    - { file: "ai-summarize",        name: "AI Summarize" }
-    - { file: "ai-format",           name: "AI Format" }
-    - { file: "ai-model-scoring",    name: "AI Model Scoring" }
-    - { file: "cve-watcher",         name: "CVE Watcher" }
-    - { file: "openclaw-delegate",   name: "OpenClaw Delegate" }
-    - { file: "ig-comment-reply",    name: "Instagram Comment Reply" }
-    - { file: "ig-dm-reply",         name: "Instagram DM Reply" }
-    - { file: "video-generate",      name: "Video Generate (Seedance)" }
-    - { file: "email-cleanup",       name: "Email Cleanup & Classifier" }
-    - { file: "email-reply-suggest", name: "Email Reply Suggest" }
-    - { file: "content-generate",    name: "Content Generate" }
-    - { file: "budget-monitor",      name: "Budget Monitor" }
-    - { file: "budget-control",      name: "Budget Control" }
+    - {file: "ai-translate", name: "AI Translate"}
+    - {file: "ai-summarize", name: "AI Summarize"}
+    - {file: "ai-format", name: "AI Format"}
+    - {file: "ai-model-scoring", name: "AI Model Scoring"}
+    - {file: "cve-watcher", name: "CVE Watcher"}
+    - {file: "openclaw-delegate", name: "OpenClaw Delegate"}
+    - {file: "ig-comment-reply", name: "Instagram Comment Reply"}
+    - {file: "ig-dm-reply", name: "Instagram DM Reply"}
+    - {file: "video-generate", name: "Video Generate (Seedance)"}
+    - {file: "email-cleanup", name: "Email Cleanup & Classifier"}
+    - {file: "email-reply-suggest", name: "Email Reply Suggest"}
+    - {file: "content-generate", name: "Content Generate"}
+    - {file: "budget-monitor", name: "Budget Monitor"}
+    - {file: "budget-control", name: "Budget Control"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0

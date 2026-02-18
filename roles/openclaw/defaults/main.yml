@@ -57,6 +57,7 @@ openclaw_agent_writer_name: "writer"
 openclaw_agent_artist_name: "artist"
 openclaw_agent_tutor_name: "tutor"
 openclaw_agent_explorer_name: "explorer"
+openclaw_agent_marketer_name: "marketer"
 
 # Model assignments per agent/task (routed through LiteLLM)
 # Strategy: open-source first, Anthropic/OpenAI only when precision demands it
@@ -69,6 +70,7 @@ openclaw_writer_model: "custom-litellm/glm-5"
 openclaw_artist_model: "custom-litellm/minimax-m25"
 openclaw_tutor_model: "custom-litellm/minimax-m25"
 openclaw_explorer_model: "custom-litellm/grok-search"
+openclaw_marketer_model: "custom-litellm/minimax-m25"
 openclaw_code_model: "custom-litellm/qwen3-coder"
 openclaw_quick_model: "custom-litellm/deepseek-v3"
 openclaw_cheap_model: "custom-litellm/qwen3-coder"

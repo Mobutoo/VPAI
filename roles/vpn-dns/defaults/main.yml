@@ -27,7 +27,24 @@ vpn_dns_records: "{{ _vpn_dns_records_default }}"
 
 # Internal: build default records list from standard variables
 # Uses the tailscale_ip fact set by headscale-node role on prod-server
-_vpn_dns_vps_ts_ip: "{{ hostvars[groups['prod'][0]]['tailscale_ip'] }}"
+# I3 fix : garde defensif — evite un crash Jinja2 opaque si prod vide ou tailscale_ip absent
+_vpn_dns_vps_ts_ip: >-
+  {{
+    hostvars[groups['prod'][0]]['tailscale_ip']
+    if (groups['prod'] | default([]) | length > 0
+        and 'tailscale_ip' in hostvars[groups['prod'][0]])
+    else ''
+  }}
+
+# Tailscale IP du Pi (connue apres enregistrement Tailscale — vide sinon)
+# Les records mc/oc sont ajoutes seulement si l'IP est disponible
+_vpn_dns_workstation_ts_ip: >-
+  {{
+    hostvars[groups['workstation'][0]]['tailscale_ip']
+    if (groups['workstation'] | default([]) | length > 0
+        and 'tailscale_ip' in hostvars[groups['workstation'][0]])
+    else ''
+  }}
 
 _vpn_dns_records_default: >-
   {{
@@ -59,5 +76,17 @@ _vpn_dns_records_default: >-
     ([{"name": qdrant_subdomain ~ "." ~ domain_name, "type": "A",
        "value": _vpn_dns_vps_ts_ip}]
      if (qdrant_subdomain | default('')) | length > 0
+     else [])
+    +
+    ([{"name": mc_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_workstation_ts_ip}]
+     if (mc_subdomain | default('')) | length > 0
+        and _vpn_dns_workstation_ts_ip | length > 0
+     else [])
+    +
+    ([{"name": oc_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_workstation_ts_ip}]
+     if (oc_subdomain | default('')) | length > 0
+        and _vpn_dns_workstation_ts_ip | length > 0
      else [])
   }}

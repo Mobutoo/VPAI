@@ -12,7 +12,10 @@
       "enabled": true,
       "basePath": "/",
       "allowInsecureAuth": true,
-      "allowedOrigins": ["https://{{ admin_subdomain }}.{{ domain_name }}"]
+      "allowedOrigins": [
+        "https://{{ admin_subdomain }}.{{ domain_name }}",
+        "https://{{ mc_subdomain | default('mc') }}.{{ domain_name }}"
+      ]
     }
   },
   "agents": {
@@ -61,7 +64,8 @@
             "{{ openclaw_agent_writer_name }}",
             "{{ openclaw_agent_artist_name }}",
             "{{ openclaw_agent_tutor_name }}",
-            "{{ openclaw_agent_explorer_name }}"
+            "{{ openclaw_agent_explorer_name }}",
+            "{{ openclaw_agent_marketer_name }}"
           ]
         },
         "tools": {
@@ -129,6 +133,17 @@
             "network": "{{ project_name }}_egress"
           }
         },
+        "tools": {
+          "fs": { "workspaceOnly": true },
+          "elevated": { "enabled": false }
+        }
+      },
+      {
+        "id": "{{ openclaw_agent_marketer_name }}",
+        "model": {
+          "primary": "{{ openclaw_marketer_model }}"
+        },
+        "workspace": "/home/node/.openclaw/workspace",
         "tools": {
           "fs": { "workspaceOnly": true },
           "elevated": { "enabled": false }

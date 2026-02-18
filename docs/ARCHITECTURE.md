@@ -42,6 +42,7 @@ graph TB
         Headscale["Headscale"]
         Zerobyte["Zerobyte<br/>:4096"]
         UptimeKuma["Uptime Kuma"]
+        WebhookRelay["Webhook Relay\n(Caddy apt)"]
     end
 
     subgraph S3["Hetzner Object Storage (4.99 EUR/month)"]
@@ -53,12 +54,13 @@ graph TB
         PreprodStack["VPAI Mirror<br/>(seeded from S3)"]
     end
 
-    Internet -->|":443 HTTPS"| Caddy
-    Caddy -->|"reverse proxy"| n8n
-    Caddy -->|"reverse proxy"| LiteLLM
-    Caddy -->|"reverse proxy"| OpenClaw
-    Caddy -->|"reverse proxy"| Grafana
-    Caddy -->|"reverse proxy"| Qdrant
+    Internet -->|":443 HTTPS (public: health + webhooks relay)"| Caddy
+    VPNClient["Client VPN\n(Tailscale)"] -->|"Tailscale mesh\n(100.64.x.x)"| Caddy
+    Caddy -->|"reverse proxy\n(VPN-only ACL)"| n8n
+    Caddy -->|"reverse proxy\n(VPN-only ACL)"| LiteLLM
+    Caddy -->|"reverse proxy\n(VPN-only ACL)"| OpenClaw
+    Caddy -->|"reverse proxy\n(VPN-only ACL)"| Grafana
+    Caddy -->|"reverse proxy\n(VPN-only ACL)"| Qdrant
 
     n8n --> PostgreSQL
     LiteLLM --> PostgreSQL
@@ -120,6 +122,27 @@ graph LR
     OC --- Egress
 
     Egress -.-> ExtAPI((External APIs))
+```
+
+## 2.5 VPN Access Control — Split DNS
+
+```
+Client Windows (Tailscale connecté)
+    │
+    ├─ DNS query: mayi.ewutelo.cloud
+    │   └─ DNS Tailscale (100.100.100.100) → extra_records Headscale
+    │       └─ Répond: 100.64.0.14 (IP Tailscale du VPS)
+    │
+    └─ HTTPS → 100.64.0.14:443 → Docker DNAT → Caddy
+        └─ client_ip = 172.20.1.1 (gateway bridge Docker, HTTP/3 QUIC/UDP)
+        └─ 172.20.1.0/24 autorisé dans snippet vpn_only → Accès OK
+```
+
+Sans Split DNS (ou `override_local_dns: false`) :
+```
+Client → DNS public → 137.74.114.167 (IP publique VPS)
+    └─ HTTPS → IP publique → Caddy
+        └─ client_ip = IP publique client → NOT IN 100.64.0.0/10 → 403 Forbidden
 ```
 
 ## 3. Service Matrix

@@ -427,3 +427,63 @@ docker exec javisi_postgresql psql -U n8n -d n8n -c \
    ROUND(avg_cost_per_call::numeric * 1000, 4) AS cost_per_1k \
    FROM model_scores ORDER BY score DESC;"
 ```
+
+---
+
+## 11. VPN Mode Toggle
+
+### Activer le mode VPN-only
+
+```bash
+make vpn-on   # Applique UFW + Caddy VPN enforce avec dead man switch 15min
+```
+
+Prérequis : Tailscale doit être connecté sur le client, Split DNS opérationnel.
+
+### Désactiver (retour mode public)
+
+```bash
+make vpn-off
+```
+
+### Vérifier l'état
+
+```bash
+# Vérifier que le Split DNS fonctionne (Windows PowerShell)
+Resolve-DnsName mayi.ewutelo.cloud   # Doit retourner 100.64.0.14
+
+# Vérifier les extra_records Headscale sur le serveur
+ansible vpn-server -m shell -a 'cat /opt/services/headscale/config/config.yaml' -b | grep -A 20 extra_records
+
+# Vérifier que Caddy applique l'ACL VPN
+ansible prod-server -m shell -a 'grep -A3 "vpn_only" /opt/javisi/configs/caddy/Caddyfile' -b
+```
+
+### Dead Man Switch
+
+Le playbook `vpn-toggle.yml` programme un revert UFW automatique dans **15 minutes** via `at`. Si le déploiement échoue ou si tu es locké dehors, UFW revient en mode ouvert après 15 min.
+
+## 12. LiteLLM — Surveillance des Coûts
+
+### Vérifier les dépenses par modèle
+
+```bash
+# Top 10 modèles les plus coûteux
+ansible prod-server -m shell -a "docker exec javisi_postgresql psql -U litellm -d litellm -t -A -c \"SELECT model, SUM(spend) as total, COUNT(*) as calls FROM \\\"LiteLLM_SpendLogs\\\" GROUP BY model ORDER BY total DESC LIMIT 10;\"" -b
+```
+
+### Détecter les health checks parasites
+
+```bash
+# Health checks par modèle (tag litellm-internal-health-check)
+ansible prod-server -m shell -a "docker exec javisi_postgresql psql -U litellm -d litellm -t -A -c \"SELECT model, COUNT(*), SUM(spend) FROM \\\"LiteLLM_SpendLogs\\\" WHERE request_tags::text LIKE '%health%' GROUP BY model ORDER BY SUM(spend) DESC;\"" -b
+```
+
+Si des modèles apparaissent → vérifier `health_check_interval: 0` dans `litellm_config.yaml.j2`.
+
+### Budget par provider (limite quotidienne)
+
+Configuré dans `inventory/group_vars/all/main.yml` :
+- `litellm_anthropic_budget_daily` (défaut: 20$)
+- `litellm_openrouter_budget_daily` (défaut: 5$)
+- `litellm_openai_budget_daily`

@@ -165,14 +165,20 @@
 
 ### 6.2 VPN ACL et Admin Access
 
-- **Admin UIs (Grafana, n8n, OpenClaw, Qdrant)** : Accessibles UNIQUEMENT via VPN
-- **ACL Caddy** : `remote_ip {{ caddy_vpn_cidr }}` (100.64.0.0/10) sur les domaines admin
-- **Split DNS OBLIGATOIRE** : Les clients VPN doivent resoudre les sous-domaines admin vers l'IP Tailscale du VPS
-- **Sans split DNS** : Le trafic passe par Internet → Caddy voit l'IP publique → blocage meme si VPN actif
-- **Config Headscale** : `dns.extra_records` avec les sous-domaines admin → IP Tailscale du VPS
-- **Alternative** : `/etc/hosts` cote client avec les entries admin → IP Tailscale du VPS
-- **Smoke tests** : Utilisent `--resolve domain:443:<TAILSCALE_IP>` pour forcer le routage VPN
+- **Admin UIs (Grafana, n8n, OpenClaw, Qdrant)** : Accessibles UNIQUEMENT via VPN (`caddy_vpn_enforce: true` permanent depuis v1.2.0)
+- **ACL Caddy** : snippet `vpn_only` → `@blocked not client_ip {{ caddy_vpn_cidr }} {{ caddy_docker_frontend_cidr }}`
+- **Split DNS OBLIGATOIRE** : Les clients VPN doivent résoudre les sous-domaines admin vers l'IP Tailscale du VPS
+- **Sans split DNS** : Le trafic passe par Internet → Caddy voit l'IP publique → blocage même si VPN actif
+- **Config Headscale** : `dns.extra_records` + `override_local_dns: true` dans config.yaml — déployé via rôle `vpn-dns`
+- **REX HTTP/3 QUIC/UDP** : Connexions Tailscale via HTTP/3 arrivent avec `client_ip=172.20.1.1` (gateway Docker bridge, DNAT UDP). Caddy ne voit jamais l'IP Tailscale directement → ajouter `caddy_docker_frontend_cidr: 172.20.1.0/24` au snippet `vpn_only`. Cette plage est inatteignable depuis Internet → sûr.
 - **VPN error page** : `error @blocked 403` + `handle_errors` (retourne HTTP 403, pas 200)
+
+### 6.2.1 Bug Caddyfile — heredoc respond 200
+
+- **Symptôme** : Caddy crash en boucle : `unrecognized directive: 200`
+- **Cause** : Dans un heredoc Caddyfile `respond <<MARKER ... MARKER`, le code HTTP doit être **sur la même ligne** que le marqueur de fin : `MARKER 200` (pas `MARKER\n 200`)
+- **Impact** : 1525 timeouts DNS `lookup n8n: i/o timeout` consécutifs (Caddy redémarrait avant que le DNS Docker soit initialisé)
+- **Fix** : `BOOTSTRAP 200` sur une ligne dans `Caddyfile.j2`
 
 ### 6.3 Architecture Sous-domaines (1 service = 1 sous-domaine)
 
@@ -360,6 +366,29 @@ AI scoring         →  model_scores (PostgreSQL) → Grafana
 - `litellm_spend_total` — cout total
 - `litellm_request_duration_seconds_bucket` — latences (histogram)
 
+### 10.4 Health Checks — Désactiver pour les modèles payants
+
+- **Par défaut** : LiteLLM exécute des health checks sur **tous** les modèles toutes les ~38 secondes
+- **Impact** : Perplexity Sonar Pro seul = **$11.64 en 16h** (1488 health checks × $0.01/appel)
+- **Fix** : `health_check_interval: 0` dans `router_settings` du fichier config LiteLLM
+- **Alternative** : `health_check_interval: 3600` pour un check horaire (acceptable sur modèles gratuits)
+- **Détection des pannes** : Utiliser les fallbacks + métriques Prometheus (plus fiable que les health checks)
+
+### 10.5 max_tokens OpenRouter — Réservation vs Consommation
+
+- **Problème** : Sans `max_tokens` explicite dans `litellm_params`, LiteLLM utilise la valeur par défaut du modèle (ex: 16000 pour minimax-m1)
+- **Impact OpenRouter** : OpenRouter facture sur la **réservation** au moment de la requête, pas sur la consommation réelle. Si les crédits disponibles < `max_tokens` → erreur 402 "not enough credits"
+- **Fix** : Ajouter `max_tokens: 4096` dans `litellm_params` pour tous les modèles OpenRouter
+- **Valeur recommandée** : 4096 tokens suffisent pour les workflows Telegram/résumé/traduction
+- **Modèles concernés** : minimax-m25, deepseek-v3, deepseek-r1, glm-5, kimi-k2, grok-search, perplexity-pro, qwen3-coder, seedream
+
+### 10.6 N8N_PROXY_HOPS — Express Rate Limit
+
+- **Erreur** : `ERR_ERL_UNEXPECTED_X_FORWARDED_FOR` dans les logs n8n
+- **Cause** : Caddy ajoute `X-Forwarded-For` mais Express (n8n) a `trust proxy = false` par défaut
+- **Fix** : `N8N_PROXY_HOPS=1` dans `n8n.env.j2` (1 hop = Caddy)
+- **Impact sans fix** : Rate limiting incorrect, warnings continus dans les logs
+
 ---
 
 ## 11. OpenClaw
@@ -472,7 +501,41 @@ AI scoring         →  model_scores (PostgreSQL) → Grafana
 | `monitoring` | 172.20.3.0/24 | Oui | cAdvisor, VictoriaMetrics, Loki, Alloy, Grafana |
 | `sandbox` | 172.20.5.0/24 | Oui | LiteLLM, OpenClaw sandbox containers |
 
-### 12.2 Smoke Tests
+### 12.2 Split DNS — Headscale extra_records
+
+- **Objectif** : Les clients Tailscale résolvent les domaines admin vers l'IP Tailscale du VPS (100.64.x.x), pas l'IP publique
+- **Config Headscale** (dans `config.yaml`) :
+  ```yaml
+  dns:
+    override_local_dns: true   # CRITIQUE — force le DNS Tailscale sur les clients
+    extra_records:
+      - {name: "domain.tld", type: "A", value: "100.64.0.14"}
+      - {name: "subdomain.domain.tld", type: "A", value: "100.64.0.14"}
+  ```
+- **`override_local_dns: false`** (défaut) : Tailscale ne force pas son DNS → Windows utilise le DNS de la box → résolution publique → ACL Caddy bloque
+- **Architecture Docker** : Headscale tourne dans Docker sur Seko-VPN. Chemin host : `/opt/services/headscale/config/config.yaml`
+- **Rôle Ansible** : `vpn-dns` — stratégie slurp/parse YAML/combine/write (pas de fichier JSON séparé)
+- **Handler** : `community.docker.docker_compose_v2` (restart Headscale Docker, pas systemd)
+- **Vérification client Windows** :
+  ```powershell
+  # Doit retourner 100.64.x.x (IP Tailscale), pas l'IP publique
+  Resolve-DnsName mayi.ewutelo.cloud
+  # Forcer via DNS Tailscale
+  Resolve-DnsName mayi.ewutelo.cloud -Server 100.100.100.100
+  ```
+- **Si résolution retourne encore l'IP publique** : Vérifier "Use Tailscale DNS" = ON dans les settings Tailscale Windows
+
+### 12.3 Headscale dans Docker — Chemins
+
+| Chemin | Description |
+|---|---|
+| `/opt/services/headscale/config/config.yaml` | Config Headscale (host) |
+| `/opt/services/headscale/` | Répertoire docker-compose |
+| `/etc/headscale/config.yaml` | Même fichier vu depuis le container |
+
+**Ne PAS** utiliser `/etc/headscale/` depuis l'hôte — c'est le chemin dans le container.
+
+### 12.4 Smoke Tests
 
 - **Non-bloquants par defaut** : `failed_when: false`, resultats en warning
 - **Mode strict** : `smoke_test_strict: true` pour bloquer le playbook sur echec
@@ -616,4 +679,4 @@ Le playbook `vpn-toggle.yml` inclut un dead man switch :
 > **Ne jamais activer** `hardening_vpn_only_mode=true` manuellement sans le playbook
 > `vpn-toggle.yml` — utiliser `make vpn-on` qui inclut les safety checks.
 
-*Dernière mise à jour : 2026-02-18 — Session 7 (VPN toggle + élimination Cloudflare)*
+*Dernière mise à jour : 2026-02-18 — Session 8 (Split DNS, Caddy ACL fix, LiteLLM health checks, max_tokens OpenRouter)*

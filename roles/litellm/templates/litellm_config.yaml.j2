@@ -304,6 +304,13 @@ litellm_settings:
       budget_limit: {{ litellm_google_budget_daily }}
       time_period: "1d"
 {% endif %}
+{% if byteplus_api_key | default('') | length > 0 %}
+    # BytePlus — Seedance vidéo uniquement (ponctuel, budget mensuel séparé)
+    # NON inclus dans le budget global journalier de $5
+    bytedance:
+      budget_limit: {{ litellm_byteplus_budget_monthly }}
+      time_period: "30d"
+{% endif %}
 
 # ================================================================
 # GENERAL SETTINGS — Auth, database, budget global

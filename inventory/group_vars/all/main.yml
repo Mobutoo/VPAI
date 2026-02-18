@@ -151,6 +151,10 @@ litellm_budget_alert_critical: 0.90  # 90% → bascule automatique mode éco
 # Contrôlé par Redis key "litellm:budget:mode" = normal | eco | blocked
 litellm_budget_eco_models: ["qwen3-coder", "glm-5", "deepseek-v3"]
 
+# BytePlus — Seedance vidéo (ponctuel, budget MENSUEL séparé du $5/jour)
+# Non comptabilisé dans le budget global journalier
+litellm_byteplus_budget_monthly: 5.00
+
 # --- WhatsApp (OpenClaw Tutor channel — child tablet) ---
 whatsapp_tutor_enabled: false
 # whatsapp_tutor_phone set in vault if needed

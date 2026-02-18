@@ -27,3 +27,6 @@ litellm_request_timeout: 120
 litellm_budget_global_daily: 5.00
 litellm_budget_alert_warning: 0.70
 litellm_budget_alert_critical: 0.90
+
+# BytePlus budget mensuel (vidéo Seedance — ponctuel, hors budget journalier)
+litellm_byteplus_budget_monthly: 5.00

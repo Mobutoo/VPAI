@@ -13,5 +13,7 @@ collections:
     version: ">=1.5.0"
   - name: community.postgresql
     version: ">=3.0.0"
+  - name: hetzner.hcloud
+    version: ">=4.0.0"
 
 roles: []

@@ -178,3 +178,27 @@ webhook_subdomain: "hook"
 webhook_relay_domain: "{{ webhook_subdomain }}.{{ domain_name }}"
 vpn_server_public_ip: "{{ vault_vpn_server_public_ip | default('') }}"
 vps_tailscale_ip: "{{ vault_vps_tailscale_ip | default('') }}"
+
+# --- Workstation Pi (RPi5 16GB) ---
+workstation_pi_hostname: "workstation-pi"
+workstation_pi_user: "pi"
+workstation_pi_ip: "{{ vault_workstation_pi_ip | default('127.0.0.1') }}"
+workstation_pi_ram_gb: 16
+workstation_pi_disk_gb: 256
+
+# Mission Control
+mc_subdomain: "mc"
+
+# OpenCode
+oc_subdomain: "oc"
+
+# --- Prod Apps (Hetzner CX22) ---
+app_prod_hostname: "app-prod-01"
+app_prod_location: "fsn1"
+app_prod_server_type: "cx22"
+app_prod_os_image: "ubuntu-24.04"
+app_prod_ip: "{{ vault_app_prod_ip | default('127.0.0.1') }}"
+
+# --- Cle SSH deploy (utilisee par provision-hetzner) ---
+deploy_ssh_key_name: "{{ project_name }}-deploy"
+deploy_ssh_key_pub_path: "~/.ssh/id_ed25519.pub"

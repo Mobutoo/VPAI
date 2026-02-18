@@ -32,3 +32,10 @@ diun_image: "crazymax/diun:4.31.0"
 # cloudflared: RETIRÉ — remplacé par webhook relay via Seko-VPN (role webhook-relay)
 # Les webhooks Meta passent maintenant par hook.<domain> (Seko-VPN) -> VPN mesh -> VPS
 # cloudflared_image: "cloudflare/cloudflared:2025.1.0"
+
+# --- Workstation Pi (natif — pas Docker) ---
+# Caddy utilise la meme image version que le prod pour reference
+# Le binaire est installe via apt (caddy-stable cloudsmith repo)
+workstation_caddy_image: "caddy:2.10.2-alpine"
+# mission_control_version: "main"   # A pinner apres premier test (tag Git)
+# opencode_version: "latest"        # A pinner apres premier test (npm tag)

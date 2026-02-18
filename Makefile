@@ -220,6 +220,39 @@ inventory: ## Afficher l'inventaire
 	ansible-inventory --list --yaml
 
 # ====================================================================
+# WORKSTATION
+# ====================================================================
+
+.PHONY: deploy-workstation
+deploy-workstation: ## Deployer la workstation Pi
+	@echo "$(GREEN)>>> Deploying Workstation Pi...$(NC)"
+	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --diff
+
+.PHONY: deploy-mc
+deploy-mc: ## Deployer Mission Control uniquement
+	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "mission-control" --diff
+
+.PHONY: deploy-opencode
+deploy-opencode: ## Deployer OpenCode uniquement
+	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "opencode" --diff
+
+# ====================================================================
+# PROD APPS (Hetzner)
+# ====================================================================
+
+.PHONY: provision-hetzner
+provision-hetzner: ## Provisionner un serveur Hetzner CX22
+	@echo "$(YELLOW)>>> Provisioning Hetzner CX22...$(NC)"
+	$(ANSIBLE_PLAYBOOK) playbooks/provision-hetzner.yml --diff
+
+.PHONY: deploy-app-prod
+deploy-app-prod: lint ## Deployer sur le serveur Prod Apps
+	@echo "$(RED)>>> PROD APPS DEPLOYMENT$(NC)"
+	$(ANSIBLE_PLAYBOOK) playbooks/app-prod.yml \
+		-e "target_env=app_prod" \
+		--diff
+
+# ====================================================================
 # CLEANUP
 # ====================================================================
 

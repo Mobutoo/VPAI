@@ -162,6 +162,37 @@ smoke-test: ## Lancer les smoke tests
 	bash scripts/smoke-test.sh "$(URL)"
 
 # ====================================================================
+# VPN TOGGLE
+# ====================================================================
+
+.PHONY: vpn-on
+vpn-on: ## Basculer en mode VPN-only (ports fermés, webhooks via relay)
+	@echo "$(RED)>>> VPN-ONLY MODE ACTIVATION$(NC)"
+	@echo "$(YELLOW)>>> This will restrict port 443 to VPN CIDR and close port 80.$(NC)"
+	@echo "$(YELLOW)>>> A dead man switch will auto-revert UFW in 15 min if toggle fails.$(NC)"
+	@echo "$(YELLOW)>>> Are you sure? Type 'yes' to continue:$(NC)"
+	@read CONFIRM && \
+	if [ "$$CONFIRM" = "yes" ]; then \
+		$(ANSIBLE_PLAYBOOK) playbooks/vpn-toggle.yml \
+			-e "vpn_mode=on" \
+			--diff; \
+	else \
+		echo "$(YELLOW)>>> Aborted$(NC)"; exit 1; \
+	fi
+
+.PHONY: vpn-off
+vpn-off: ## Retour en mode public (ports 80+443 ouverts)
+	@echo "$(YELLOW)>>> Switching to PUBLIC mode...$(NC)"
+	$(ANSIBLE_PLAYBOOK) playbooks/vpn-toggle.yml \
+		-e "vpn_mode=off" \
+		--diff
+
+.PHONY: vpn-status
+vpn-status: ## Afficher l'état VPN actuel (UFW, Caddy, relay)
+	@echo "$(GREEN)>>> Checking VPN status...$(NC)"
+	$(ANSIBLE_PLAYBOOK) playbooks/safety-check.yml -e "target_env=prod"
+
+# ====================================================================
 # OPERATIONS
 # ====================================================================
 

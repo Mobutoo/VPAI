@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: webhook_relay
+  author: VPAI
+  description: Webhook relay via Seko-VPN — reverse proxy Meta webhooks to VPS via Headscale mesh
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

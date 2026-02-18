@@ -1,0 +1,14 @@
+---
+# webhook-relay — handlers
+
+- name: Reload caddy relay
+  ansible.builtin.systemd:
+    name: caddy
+    state: reloaded
+  become: true
+
+- name: Restart caddy relay
+  ansible.builtin.systemd:
+    name: caddy
+    state: restarted
+  become: true

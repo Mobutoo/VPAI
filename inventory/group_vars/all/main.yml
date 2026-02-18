@@ -24,7 +24,7 @@ subdomain_preprod: "preprod"
 # --- VPN Access Control ---
 # Set to false to make admin UIs publicly accessible (for initial validation)
 # Set to true to enforce VPN-only access (production hardening)
-caddy_vpn_enforce: false
+caddy_vpn_enforce: true
 
 # --- VPS Production ---
 prod_provider: "ovh"
@@ -153,7 +153,11 @@ ovh_application_key: "{{ vault_ovh_application_key | default('') }}"
 ovh_application_secret: "{{ vault_ovh_application_secret | default('') }}"
 ovh_consumer_key: "{{ vault_ovh_consumer_key | default('') }}"
 
-# --- Cloudflare Tunnel (webhooks Meta — mode VPN-only uniquement) ---
-# Générer le token dans Cloudflare Dashboard > Zero Trust > Networks > Tunnels
-# Le tunnel route les webhooks IG vers Caddy (caddy_public_webhook_paths)
-cloudflare_tunnel_token: "{{ vault_cloudflare_tunnel_token | default('') }}"
+# --- Webhook Relay (Seko-VPN → VPS via Headscale mesh) ---
+# Remplace Cloudflare Tunnel : 100% auto-hébergé, zéro tiers.
+# Architecture : Meta → hook.<domain> (Seko-VPN IP publique) → Caddy apt → VPN mesh → VPS
+# Prérequis : DNS A record hook.<domain> → IP publique Seko-VPN
+webhook_subdomain: "hook"
+webhook_relay_domain: "{{ webhook_subdomain }}.{{ domain_name }}"
+vpn_server_public_ip: "{{ vault_vpn_server_public_ip | default('') }}"
+vps_tailscale_ip: "{{ vault_vps_tailscale_ip | default('') }}"

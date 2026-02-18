@@ -29,7 +29,6 @@ cadvisor_image: "ghcr.io/google/cadvisor:0.55.1"
 diun_image: "crazymax/diun:4.31.0"
 
 # --- Tunnel / VPN-only ---
-# cloudflared: mode VPN-only uniquement (caddy_vpn_only_mode=true)
-# REX: Expose les webhooks Meta via connexion sortante — aucun port entrant requis.
-# Tag 2025.1.0 = derniere version stable vérifiée (18 février 2026)
-cloudflared_image: "cloudflare/cloudflared:2025.1.0"
+# cloudflared: RETIRÉ — remplacé par webhook relay via Seko-VPN (role webhook-relay)
+# Les webhooks Meta passent maintenant par hook.<domain> (Seko-VPN) -> VPN mesh -> VPS
+# cloudflared_image: "cloudflare/cloudflared:2025.1.0"

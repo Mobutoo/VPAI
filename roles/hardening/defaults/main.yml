@@ -31,12 +31,12 @@ hardening_fail2ban_caddy_botsearch_bantime: 86400
 # Mode VPN-only (hardening_vpn_only_mode=true) :
 #   - port 80 fermé (ACME DNS-01 OVH, pas besoin du challenge HTTP)
 #   - port 443 restreint au CIDR VPN uniquement
-#   - cloudflared reçoit les webhooks via connexion sortante (aucun port entrant requis)
+#   - webhooks Meta relayés via Seko-VPN (role webhook-relay)
 # PRÉREQUIS avant activation :
-#   1. caddy_vpn_only_mode=true configuré et déployé
+#   1. caddy_vpn_only_mode=true (ou variables atomiques) configuré et déployé
 #   2. ACME DNS-01 OVH testé et certificats valides
 #   3. Split DNS Headscale configuré (extra_records → IP Tailscale du VPS)
-#   4. Cloudflare Tunnel opérationnel si webhooks Instagram requis
+#   4. Webhook relay déployé sur Seko-VPN (make deploy-role ROLE=webhook-relay ENV=vpn)
 # DEFAULT: false — ne pas activer avant validation complète
 hardening_vpn_only_mode: false
 

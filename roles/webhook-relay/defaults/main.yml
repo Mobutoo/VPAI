@@ -1,0 +1,30 @@
+---
+# webhook-relay — defaults
+# Relay webhooks Meta/Instagram via Seko-VPN vers le VPS via Headscale mesh.
+# Architecture : Meta → hook.<domain> (IP publique Seko-VPN) → Caddy apt → VPN mesh → VPS Caddy → n8n
+
+webhook_relay_enabled: "{{ caddy_webhook_relay | default(false) | bool }}"
+
+# Domaine du relay (DNS A → IP publique Seko-VPN)
+webhook_relay_domain: "{{ webhook_subdomain | default('hook') }}.{{ domain_name }}"
+
+# IP Tailscale du VPS (destination du reverse proxy via mesh WireGuard)
+webhook_relay_vps_tailscale_ip: "{{ vps_tailscale_ip }}"
+
+# Domaine principal du VPS (pour tls_server_name dans le reverse proxy)
+webhook_relay_vps_domain: "{{ domain_name }}"
+
+# Paths webhook à relayer (doivent matcher ceux de n8n)
+webhook_relay_paths:
+  - "/webhook/ig-comment"
+  - "/webhook/ig-dm"
+
+# Email pour ACME Let's Encrypt (HTTP-01 sur Seko-VPN)
+webhook_relay_acme_email: "{{ notification_email }}"
+
+# Caddy apt package
+webhook_relay_caddy_version: "2.10.2"
+
+# Config paths sur Seko-VPN
+webhook_relay_config_dir: "/etc/caddy"
+webhook_relay_log_dir: "/var/log/caddy"

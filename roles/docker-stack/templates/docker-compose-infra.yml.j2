@@ -116,8 +116,8 @@ services:
 
   # === REVERSE PROXY (no depends_on — starts independently) ===
   caddy:
-{% if caddy_vpn_only_mode | default(false) | bool %}
-    # VPN-only mode: image custom buildée localement avec plugin OVH DNS-01
+{% if caddy_acme_dns01 | default(false) | bool or caddy_vpn_only_mode | default(false) | bool %}
+    # DNS-01 mode: image custom buildée localement avec plugin OVH DNS-01
     image: caddy-ovh:{{ caddy_image | regex_replace('^caddy:([^-]+).*$', '\1') }}
 {% else %}
     image: {{ caddy_image }}
@@ -132,17 +132,16 @@ services:
       - NET_BIND_SERVICE
       - DAC_OVERRIDE
     ports:
-{% if not caddy_vpn_only_mode | default(false) | bool %}
+{% if not (caddy_no_port80 | default(false) | bool or caddy_vpn_only_mode | default(false) | bool) %}
       # Mode standard : port 80 pour ACME HTTP-01 et redirect HTTPS
       - "80:80"
 {% endif %}
       - "443:443"
       - "443:443/udp"
-{% if caddy_vpn_only_mode | default(false) | bool %}
+{% if caddy_acme_dns01 | default(false) | bool or caddy_vpn_only_mode | default(false) | bool %}
     environment:
       # OVH API credentials pour ACME DNS-01 (mode VPN-only — port 80 fermé)
       # REX: DNS-01 ne nécessite pas le port 80 ouvert publiquement.
-      # Créer les credentials sur https://eu.api.ovh.com/createToken/
       OVH_ENDPOINT: "{{ ovh_endpoint }}"
       OVH_APPLICATION_KEY: "{{ ovh_application_key }}"
       OVH_APPLICATION_SECRET: "{{ ovh_application_secret }}"
@@ -172,38 +171,8 @@ services:
       retries: 3
       start_period: 10s
 
-{% if caddy_vpn_only_mode | default(false) | bool %}
-  # === CLOUDFLARE TUNNEL (mode VPN-only uniquement) ===
-  # Expose les webhooks Meta (Instagram) vers Internet via connexion sortante.
-  # REX: cloudflared crée une connexion sortante vers Cloudflare — aucun port entrant.
-  # Le token est généré dans Cloudflare Dashboard > Zero Trust > Tunnels.
-  # Les paths exposés sont configurés dans Caddyfile.j2 (caddy_public_webhook_paths).
-  # PRÉREQUIS avant activation : Cloudflare Tunnel configuré et token généré.
-  cloudflared:
-    image: {{ cloudflared_image }}
-    container_name: {{ project_name }}_cloudflared
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    command: tunnel --no-autoupdate run --token {{ cloudflare_tunnel_token }}
-    networks:
-      - frontend
-    deploy:
-      resources:
-        limits:
-          memory: 64m
-          cpus: "0.1"
-        reservations:
-          memory: 32m
-    healthcheck:
-      test: ["CMD-SHELL", "cloudflared tunnel info 2>/dev/null | grep -q 'TunnelID' || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-{% endif %}
+  # NOTE: cloudflared a été retiré. Les webhooks Meta sont maintenant relayés via
+  # Seko-VPN (role webhook-relay) — 100% auto-hébergé, zéro dépendance tiers.
 
 networks:
   frontend:

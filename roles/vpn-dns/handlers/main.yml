@@ -1,8 +1,11 @@
 ---
 # vpn-dns — handlers
+# Headscale tourne dans Docker sur Seko-VPN, pas en systemd.
 
-- name: Restart headscale
-  ansible.builtin.systemd:
-    name: "{{ vpn_dns_headscale_service }}"
+- name: Restart headscale docker
+  community.docker.docker_compose_v2:
+    project_src: "{{ vpn_dns_headscale_compose_path }}"
     state: restarted
+    services:
+      - headscale
   become: true

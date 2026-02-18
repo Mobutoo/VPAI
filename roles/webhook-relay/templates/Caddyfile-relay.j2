@@ -1,0 +1,50 @@
+# {{ ansible_managed }}
+# Caddyfile — Webhook Relay (Seko-VPN)
+# Relaye les webhooks Meta/Instagram vers le VPS via le mesh Headscale (WireGuard).
+# TLS : HTTP-01 (Let's Encrypt) — Seko-VPN a les ports 80/443 ouverts publiquement.
+# Transport interne : tls_insecure_skip_verify acceptable car le hop est WireGuard (chiffré + authentifié).
+
+{
+    email {{ webhook_relay_acme_email }}
+    log {
+        output file {{ webhook_relay_log_dir }}/access.log {
+            roll_size 10MiB
+            roll_keep 3
+            roll_keep_for 168h
+        }
+        format json
+        level INFO
+    }
+}
+
+{{ webhook_relay_domain }} {
+    # Health endpoint pour les smoke tests et Uptime Kuma
+    handle /health {
+        respond "relay-ok" 200
+    }
+
+{% for path in webhook_relay_paths %}
+    handle {{ path }} {
+        reverse_proxy https://{{ webhook_relay_vps_tailscale_ip }}:443 {
+            transport http {
+                tls_server_name {{ webhook_relay_vps_domain }}
+                tls_insecure_skip_verify
+            }
+            header_up Host {{ webhook_relay_vps_domain }}
+            header_up X-Forwarded-Host {{ webhook_relay_domain }}
+            header_up X-Relay-Source "seko-vpn"
+        }
+    }
+
+{% endfor %}
+    # Catch-all : reject tout autre path
+    handle {
+        respond "Not Found" 404
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
+}

@@ -1,0 +1,417 @@
+---
+# playbooks/vpn-toggle.yml — Bascule VPN-Only en un clic
+#
+# Usage:
+#   ansible-playbook playbooks/vpn-toggle.yml -e "vpn_mode=on"   # Mode VPN-only
+#   ansible-playbook playbooks/vpn-toggle.yml -e "vpn_mode=off"  # Mode public
+#
+# Make shortcuts:
+#   make vpn-on    → bascule mode VPN-only
+#   make vpn-off   → retour mode public
+#   make vpn-status → affiche l'état actuel
+#
+# Architecture :
+#   Mode PUBLIC  : Internet -> ports 80+443 ouverts -> Caddy (HTTP-01) -> services
+#   Mode VPN-ONLY: Admin UIs -> VPN mesh -> Caddy (DNS-01 OVH) -> services
+#                  Webhooks  -> hook.<domain> (Seko-VPN) -> VPN mesh -> VPS -> n8n
+#
+# Sécurité (REX F3) : dead man switch via `at` — si le toggle échoue à mi-chemin,
+# UFW est automatiquement reverté en mode ouvert après 15 minutes.
+
+# ============================================================
+# PLAY 1 : Validation du paramètre vpn_mode
+# ============================================================
+- name: "VPN Toggle — Validate input"
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: "VALIDATE: Check vpn_mode parameter"
+      ansible.builtin.assert:
+        that:
+          - vpn_mode is defined
+          - vpn_mode in ['on', 'off']
+        fail_msg: |
+          Variable vpn_mode is required and must be 'on' or 'off'.
+          Usage: ansible-playbook playbooks/vpn-toggle.yml -e "vpn_mode=on"
+          Or:    make vpn-on / make vpn-off
+
+    - name: "VALIDATE: Display toggle direction"
+      ansible.builtin.debug:
+        msg: |
+          ==========================================
+          VPN TOGGLE — {{ 'VPN-ONLY' if vpn_mode == 'on' else 'PUBLIC' }} MODE
+          ------------------------------------------
+          Direction : {{ vpn_mode | upper }}
+          Target    : {{ 'VPN-restricted (CIDR ' + vpn_network_cidr + ')' if vpn_mode == 'on' else 'Public (ports 80+443 open)' }}
+          ACME      : {{ 'DNS-01 (OVH)' if vpn_mode == 'on' else 'HTTP-01' }}
+          Webhooks  : {{ 'Via relay (hook.' + domain_name + ')' if vpn_mode == 'on' else 'Direct' }}
+          /health   : {{ 'VPN-only' if vpn_mode == 'on' else 'Public' }}
+          ==========================================
+
+# ============================================================
+# PLAY 2 : Pre-flight safety checks (8 checks — REX F4)
+# ============================================================
+- name: "VPN Toggle — Pre-flight checks"
+  hosts: prod
+  gather_facts: true
+  tasks:
+    # Check 1 : SSH accessible
+    - name: "PRE-FLIGHT 1/8: Verify SSH connectivity"
+      ansible.builtin.ping:
+
+    # Check 2 : Tailscale BackendState == Running
+    - name: "PRE-FLIGHT 2/8: Check Tailscale status"
+      ansible.builtin.command:
+        cmd: tailscale status --json
+      become: true
+      changed_when: false
+      register: _ts_status
+
+    - name: "PRE-FLIGHT 2/8: Assert Tailscale is running"
+      ansible.builtin.assert:
+        that:
+          - (_ts_status.stdout | from_json).BackendState == 'Running'
+        fail_msg: |
+          ABORT: Tailscale VPN is not running (BackendState != Running).
+          Fix: sudo tailscale up --login-server {{ vpn_headscale_url }}
+
+    # Check 3 : VPN atteint le VPS (ping Tailscale IP)
+    - name: "PRE-FLIGHT 3/8: Verify VPN mesh connectivity"
+      ansible.builtin.command:
+        cmd: "ping -c 1 -W 3 {{ vps_tailscale_ip }}"
+      changed_when: false
+      failed_when: false
+      register: _vpn_ping
+
+    - name: "PRE-FLIGHT 3/8: Assert VPN mesh reachable"
+      ansible.builtin.assert:
+        that:
+          - _vpn_ping.rc == 0
+        fail_msg: |
+          ABORT: Cannot reach VPS via Tailscale IP ({{ vps_tailscale_ip }}).
+          Check: tailscale ping {{ vps_tailscale_ip }}
+
+    # Check 4 : sshd config valide
+    - name: "PRE-FLIGHT 4/8: Validate sshd config"
+      ansible.builtin.command:
+        cmd: sshd -t
+      become: true
+      changed_when: false
+
+    # Check 5 : UFW a le port SSH
+    - name: "PRE-FLIGHT 5/8: Verify SSH port in UFW"
+      ansible.builtin.command:
+        cmd: ufw status
+      become: true
+      changed_when: false
+      register: _ufw_status
+
+    - name: "PRE-FLIGHT 5/8: Assert SSH port allowed"
+      ansible.builtin.assert:
+        that:
+          - "_ufw_status.stdout is search(prod_ssh_port | string)"
+        fail_msg: |
+          ABORT: SSH port {{ prod_ssh_port }} not found in UFW rules!
+          {{ _ufw_status.stdout }}
+
+    # Check 6 : Containers critiques healthy
+    - name: "PRE-FLIGHT 6/8: Check critical containers"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          docker ps --filter "name={{ project_name }}_" --format '{{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}' | \
+            grep -E 'caddy|postgresql|redis' | grep -v 'unhealthy'
+      become: true
+      changed_when: false
+      register: _containers
+
+    - name: "PRE-FLIGHT 6/8: Display critical containers"
+      ansible.builtin.debug:
+        msg: "{{ _containers.stdout_lines }}"
+
+    # Check 7 : Certificat TLS valide
+    - name: "PRE-FLIGHT 7/8: Check TLS certificate"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          echo | openssl s_client -servername {{ domain_name }} -connect 127.0.0.1:443 2>/dev/null | \
+            openssl x509 -noout -checkend 604800
+      changed_when: false
+      failed_when: false
+      register: _tls_check
+
+    - name: "PRE-FLIGHT 7/8: Warn if TLS expiring soon"
+      ansible.builtin.debug:
+        msg: "WARNING: TLS certificate expires within 7 days"
+      when: _tls_check.rc != 0
+
+    # Check 8 : Si vpn_mode=on, vérifier le relay webhook
+    - name: "PRE-FLIGHT 8/8: Check webhook relay is operational"
+      ansible.builtin.uri:
+        url: "https://{{ webhook_subdomain }}.{{ domain_name }}/health"
+        method: GET
+        return_content: true
+        timeout: 10
+        validate_certs: true
+      register: _relay_health
+      failed_when: "'relay-ok' not in _relay_health.content"
+      when: vpn_mode == 'on'
+
+    - name: "PRE-FLIGHT: All checks passed"
+      ansible.builtin.debug:
+        msg: "All 8 pre-flight checks passed. Proceeding with toggle."
+
+# ============================================================
+# PLAY 3 : Apply toggle (dead man switch + UFW + Caddy)
+# ============================================================
+- name: "VPN Toggle — Apply changes"
+  hosts: prod
+  gather_facts: false
+  tasks:
+    # --- DEAD MAN SWITCH (REX F3) ---
+    # Programme un revert automatique UFW dans 15 minutes.
+    # Si le toggle réussit, on annule le job. Si lockout, UFW revient tout seul.
+    - name: "SAFETY: Set dead man switch (UFW revert in 15 min)"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          echo "ufw --force reset && \
+                ufw default deny incoming && \
+                ufw default allow outgoing && \
+                ufw allow {{ prod_ssh_port }}/tcp && \
+                ufw allow 80/tcp && \
+                ufw allow 443/tcp && \
+                ufw allow 41641/udp && \
+                ufw --force enable" | at now + 15 minutes 2>&1
+      become: true
+      register: _deadman_job
+      changed_when: true
+
+    - name: "SAFETY: Dead man switch armed"
+      ansible.builtin.debug:
+        msg: "Dead man switch armed: UFW will auto-revert in 15 minutes if not cancelled."
+
+    # --- UFW TOGGLE ---
+    - name: "UFW: Reset firewall"
+      community.general.ufw:
+        state: reset
+      become: true
+
+    - name: "UFW: Set default policies"
+      community.general.ufw:
+        default: "{{ item.policy }}"
+        direction: "{{ item.direction }}"
+      loop:
+        - { policy: deny, direction: incoming }
+        - { policy: allow, direction: outgoing }
+      become: true
+
+    - name: "UFW: Allow SSH"
+      community.general.ufw:
+        rule: allow
+        port: "{{ prod_ssh_port }}"
+        proto: tcp
+      become: true
+
+    - name: "UFW: Allow Tailscale UDP"
+      community.general.ufw:
+        rule: allow
+        port: "41641"
+        proto: udp
+      become: true
+
+    # Mode PUBLIC : ports 80+443 ouverts à tous
+    - name: "UFW PUBLIC: Allow HTTP and HTTPS"
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "80"
+        - "443"
+      become: true
+      when: vpn_mode == 'off'
+
+    # Mode VPN-ONLY : port 443 restreint au CIDR VPN
+    - name: "UFW VPN-ONLY: Allow HTTPS from VPN network only"
+      community.general.ufw:
+        rule: allow
+        port: "443"
+        proto: tcp
+        from_ip: "{{ vpn_network_cidr }}"
+      become: true
+      when: vpn_mode == 'on'
+
+    - name: "UFW: Enable firewall"
+      community.general.ufw:
+        state: enabled
+      become: true
+
+    # --- CADDY CONFIG TOGGLE ---
+    # Redéploie le Caddyfile avec les variables atomiques ajustées
+    - name: "CADDY: Set atomic variables for toggle"
+      ansible.builtin.set_fact:
+        _caddy_acme_dns01: "{{ vpn_mode == 'on' }}"
+        _caddy_no_port80: "{{ vpn_mode == 'on' }}"
+        _caddy_webhook_relay: "{{ vpn_mode == 'on' }}"
+        _caddy_vpn_only_mode: "{{ vpn_mode == 'on' }}"
+
+    - name: "CADDY: Redeploy Caddyfile"
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/caddy/templates/Caddyfile.j2"
+        dest: "/opt/{{ project_name }}/configs/caddy/Caddyfile"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+      vars:
+        caddy_acme_dns01: "{{ _caddy_acme_dns01 }}"
+        caddy_no_port80: "{{ _caddy_no_port80 }}"
+        caddy_webhook_relay: "{{ _caddy_webhook_relay }}"
+        caddy_vpn_only_mode: "{{ _caddy_vpn_only_mode }}"
+      register: _caddyfile_changed
+
+    - name: "CADDY: Redeploy docker-compose-infra"
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/docker-stack/templates/docker-compose-infra.yml.j2"
+        dest: "/opt/{{ project_name }}/docker-compose-infra.yml"
+        owner: root
+        group: root
+        mode: "0644"
+      become: true
+      vars:
+        caddy_acme_dns01: "{{ _caddy_acme_dns01 }}"
+        caddy_no_port80: "{{ _caddy_no_port80 }}"
+        caddy_webhook_relay: "{{ _caddy_webhook_relay }}"
+        caddy_vpn_only_mode: "{{ _caddy_vpn_only_mode }}"
+      register: _compose_changed
+
+    - name: "CADDY: Restart infra stack if config changed"
+      community.docker.docker_compose_v2:
+        project_src: "/opt/{{ project_name }}"
+        files:
+          - docker-compose-infra.yml
+        state: restarted
+      become: true
+      when: _caddyfile_changed.changed or _compose_changed.changed
+
+    - name: "CADDY: Wait for Caddy to be healthy"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          for i in $(seq 1 12); do
+            if docker exec {{ project_name }}_caddy caddy version > /dev/null 2>&1; then
+              echo "healthy"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "timeout"
+          exit 1
+      become: true
+      changed_when: false
+
+    # --- CANCEL DEAD MAN SWITCH ---
+    - name: "SAFETY: Cancel dead man switch (toggle successful)"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          atrm $(atq | awk '{print $1}') 2>/dev/null || true
+      become: true
+      changed_when: true
+
+    - name: "SAFETY: Dead man switch cancelled"
+      ansible.builtin.debug:
+        msg: "Toggle applied successfully. Dead man switch cancelled."
+
+# ============================================================
+# PLAY 4 : Post-flight checks (5 checks — REX F4)
+# ============================================================
+- name: "VPN Toggle — Post-flight checks"
+  hosts: prod
+  gather_facts: false
+  tasks:
+    # Check 1 : SSH toujours accessible
+    - name: "POST-FLIGHT 1/5: Verify SSH still accessible"
+      ansible.builtin.ping:
+
+    # Check 2 : UFW correctement configuré
+    - name: "POST-FLIGHT 2/5: Verify UFW config"
+      ansible.builtin.command:
+        cmd: ufw status verbose
+      become: true
+      changed_when: false
+      register: _ufw_post
+
+    - name: "POST-FLIGHT 2/5: Display UFW status"
+      ansible.builtin.debug:
+        msg: "{{ _ufw_post.stdout_lines }}"
+
+    # Check 3 : Containers Docker running
+    - name: "POST-FLIGHT 3/5: Check Docker containers"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          docker ps --filter "name={{ project_name }}_" --format '{{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}'
+      become: true
+      changed_when: false
+      register: _docker_post
+
+    - name: "POST-FLIGHT 3/5: Display container status"
+      ansible.builtin.debug:
+        msg: "{{ _docker_post.stdout_lines }}"
+
+    # Check 4 : /health répond via Tailscale IP
+    - name: "POST-FLIGHT 4/5: Check /health via VPN"
+      ansible.builtin.uri:
+        url: "https://{{ domain_name }}/health"
+        method: GET
+        return_content: true
+        timeout: 10
+        validate_certs: false
+      register: _health_post
+      failed_when: "'OK' not in _health_post.content"
+
+    # Check 5 : Si vpn_mode=on, webhook relay opérationnel
+    - name: "POST-FLIGHT 5/5: Verify webhook relay"
+      ansible.builtin.uri:
+        url: "https://{{ webhook_subdomain }}.{{ domain_name }}/health"
+        method: GET
+        return_content: true
+        timeout: 10
+        validate_certs: true
+      register: _relay_post
+      failed_when: "'relay-ok' not in _relay_post.content"
+      when: vpn_mode == 'on'
+
+    - name: "POST-FLIGHT: All checks passed"
+      ansible.builtin.debug:
+        msg: "All post-flight checks passed."
+
+# ============================================================
+# PLAY 5 : Summary
+# ============================================================
+- name: "VPN Toggle — Summary"
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: "SUMMARY: Toggle complete"
+      ansible.builtin.debug:
+        msg: |
+          ==========================================
+          VPN TOGGLE COMPLETE
+          ------------------------------------------
+          Mode      : {{ 'VPN-ONLY' if vpn_mode == 'on' else 'PUBLIC' }}
+          ACME      : {{ 'DNS-01 (OVH)' if vpn_mode == 'on' else 'HTTP-01' }}
+          Port 80   : {{ 'Closed' if vpn_mode == 'on' else 'Open' }}
+          Port 443  : {{ 'VPN CIDR only (' + vpn_network_cidr + ')' if vpn_mode == 'on' else 'Open to all' }}
+          /health   : {{ 'VPN-only' if vpn_mode == 'on' else 'Public' }}
+          Webhooks  : {{ 'Via relay (hook.' + domain_name + ')' if vpn_mode == 'on' else 'Direct (domain principal)' }}
+          Dead man  : Cancelled (toggle successful)
+          ==========================================

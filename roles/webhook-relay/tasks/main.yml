@@ -1,0 +1,115 @@
+---
+# webhook-relay — tasks
+# Installe Caddy (apt) sur Seko-VPN et configure le relay webhook vers le VPS.
+# Cible : host group "vpn" (vpn-server)
+
+- name: "webhook-relay | Install prerequisites"
+  ansible.builtin.apt:
+    name:
+      - debian-keyring
+      - debian-archive-keyring
+      - apt-transport-https
+      - curl
+    state: present
+    update_cache: true
+  become: true
+
+- name: "webhook-relay | Add Caddy GPG key"
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+        | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  args:
+    creates: /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  become: true
+  changed_when: false
+
+- name: "webhook-relay | Add Caddy apt repository"
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+        | tee /etc/apt/sources.list.d/caddy-stable.list
+  args:
+    creates: /etc/apt/sources.list.d/caddy-stable.list
+  become: true
+  changed_when: false
+
+- name: "webhook-relay | Install Caddy"
+  ansible.builtin.apt:
+    name: caddy
+    state: present
+    update_cache: true
+  become: true
+
+- name: "webhook-relay | Create log directory"
+  ansible.builtin.file:
+    path: "{{ webhook_relay_log_dir }}"
+    state: directory
+    owner: caddy
+    group: caddy
+    mode: "0750"
+  become: true
+
+- name: "webhook-relay | Deploy Caddyfile"
+  ansible.builtin.template:
+    src: Caddyfile-relay.j2
+    dest: "{{ webhook_relay_config_dir }}/Caddyfile"
+    owner: root
+    group: caddy
+    mode: "0640"
+    backup: true
+    validate: "caddy validate --config %s --adapter caddyfile"
+  become: true
+  notify: Reload caddy relay
+
+- name: "webhook-relay | Ensure Caddy service is enabled and started"
+  ansible.builtin.systemd:
+    name: caddy
+    enabled: true
+    state: started
+  become: true
+
+# --- UFW : ouvrir ports pour le relay ---
+# REX F5 : Seko-VPN a besoin des ports 80 (ACME HTTP-01) et 443 (webhook relay)
+- name: "webhook-relay | UFW — Allow HTTP for ACME"
+  community.general.ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+    comment: "Caddy ACME HTTP-01 (webhook relay)"
+  become: true
+
+- name: "webhook-relay | UFW — Allow HTTPS for webhook relay"
+  community.general.ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+    comment: "Caddy webhook relay (Meta/Instagram)"
+  become: true
+
+# --- Validation post-deploy ---
+- name: "webhook-relay | Wait for Caddy to be ready"
+  ansible.builtin.uri:
+    url: "http://localhost:80"
+    method: GET
+    status_code: [200, 301, 302, 308, 404]
+    timeout: 10
+  register: _relay_http_check
+  retries: 6
+  delay: 5
+  until: _relay_http_check is not failed
+  changed_when: false
+
+- name: "webhook-relay | Verify relay health endpoint"
+  ansible.builtin.uri:
+    url: "http://localhost:80/health"
+    method: GET
+    return_content: true
+    timeout: 10
+  register: _relay_health
+  failed_when: "'relay-ok' not in _relay_health.content"
+  changed_when: false

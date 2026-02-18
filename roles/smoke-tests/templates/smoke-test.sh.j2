@@ -131,6 +131,32 @@ fi
 
 echo ""
 
+{% if caddy_webhook_relay | default(false) | bool or caddy_vpn_only_mode | default(false) | bool %}
+# === WEBHOOK RELAY ===
+echo "--- Webhook Relay (Seko-VPN) ---"
+RELAY_URL="https://{{ webhook_subdomain | default('hook') }}.{{ domain_name }}"
+RELAY_STATUS=$(curl -sL -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" "${RELAY_URL}/health" 2>/dev/null) || RELAY_STATUS="000"
+if [ "$RELAY_STATUS" = "200" ]; then
+  echo "PASS  Webhook relay health (HTTP $RELAY_STATUS)"
+else
+  echo "FAIL  Webhook relay health (HTTP $RELAY_STATUS, expected 200)"
+  FAILURES=$((FAILURES + 1))
+fi
+
+# Test relay forwards to n8n (expect 404 from n8n = path exists but no active workflow)
+{% for path in caddy_public_webhook_paths | default([]) %}
+RELAY_WH_STATUS=$(curl -sL -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" "${RELAY_URL}{{ path }}" 2>/dev/null) || RELAY_WH_STATUS="000"
+if [ "$RELAY_WH_STATUS" != "000" ]; then
+  echo "PASS  Webhook relay {{ path }} reachable (HTTP $RELAY_WH_STATUS)"
+else
+  echo "FAIL  Webhook relay {{ path }} unreachable"
+  FAILURES=$((FAILURES + 1))
+fi
+{% endfor %}
+
+echo ""
+{% endif %}
+
 # === APPLICATION HEALTH ===
 echo "--- Application Endpoints ---"
 check_http "n8n healthz" "${N8N_URL}/healthz"

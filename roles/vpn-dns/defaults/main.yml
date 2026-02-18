@@ -1,12 +1,25 @@
 ---
 # vpn-dns — defaults
 # Headscale extra_records for Split DNS (admin domains -> VPS Tailscale IP)
+#
+# REX #33 (GOLDEN-PROMPT) : Sans Split DNS, le navigateur résout vers l'IP publique
+# du VPS → le trafic passe par Internet → Caddy voit l'IP publique du client
+# → blocage même si VPN actif. Le Split DNS force la résolution vers l'IP Tailscale
+# du VPS → le trafic passe par le tunnel WireGuard → Caddy voit l'IP VPN → OK.
+#
+# TOUS les domaines doivent être listés, pas seulement les admin UIs :
+# le domaine principal (ewutelo.cloud) sert /health et les webhooks.
+#
+# ARCHITECTURE Seko-VPN : Headscale tourne dans Docker.
+#   Config sur l'hôte : /opt/services/headscale/config/config.yaml
+#   Montée dans le container : /etc/headscale/config.yaml
+#   Le restart se fait via docker compose (pas systemd).
 
-# Path on the Headscale server where extra_records JSON is stored
-vpn_dns_extra_records_path: "/etc/headscale/extra-records.json"
+# Chemin du config.yaml Headscale SUR L'HÔTE (pas dans le container)
+vpn_dns_headscale_config_path: "/opt/services/headscale/config/config.yaml"
 
-# Headscale service name (for restart handler)
-vpn_dns_headscale_service: "headscale"
+# Chemin docker-compose Headscale (pour restart)
+vpn_dns_headscale_compose_path: "/opt/services/headscale"
 
 # Admin domains to register (built from inventory variables)
 # Each entry maps a domain to the Tailscale IP of the target VPS
@@ -14,16 +27,37 @@ vpn_dns_records: "{{ _vpn_dns_records_default }}"
 
 # Internal: build default records list from standard variables
 # Uses the tailscale_ip fact set by headscale-node role on prod-server
-_vpn_dns_admin_domain: "{{ admin_subdomain | default('admin') }}.{{ domain_name }}"
-_vpn_dns_n8n_domain: "{{ n8n_subdomain | default('') }}.{{ domain_name }}"
+_vpn_dns_vps_ts_ip: "{{ hostvars[groups['prod'][0]]['tailscale_ip'] }}"
 
 _vpn_dns_records_default: >-
   {{
-    [{"name": _vpn_dns_admin_domain, "type": "A",
-      "value": hostvars[groups['prod'][0]]['tailscale_ip']}]
+    [
+      {"name": domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}
+    ]
     +
-    ([{"name": _vpn_dns_n8n_domain, "type": "A",
-       "value": hostvars[groups['prod'][0]]['tailscale_ip']}]
+    ([{"name": admin_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (admin_subdomain | default('')) | length > 0
+     else [])
+    +
+    ([{"name": grafana_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (grafana_subdomain | default('')) | length > 0
+     else [])
+    +
+    ([{"name": n8n_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
      if (n8n_subdomain | default('')) | length > 0
+     else [])
+    +
+    ([{"name": litellm_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (litellm_subdomain | default('')) | length > 0
+     else [])
+    +
+    ([{"name": qdrant_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (qdrant_subdomain | default('')) | length > 0
      else [])
   }}

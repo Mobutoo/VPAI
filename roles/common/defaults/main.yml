@@ -15,6 +15,7 @@ common_packages:
   - lsb-release
   - net-tools
   - rsync
+  - at
 
 common_locale: "{{ locale }}"
 common_timezone: "{{ timezone }}"

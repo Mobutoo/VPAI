@@ -182,7 +182,7 @@
 
 # --- Mode VPN-only : port 80 fermé, port 443 restreint au CIDR VPN ---
 # ACME DNS-01 (OVH) ne nécessite pas le port 80.
-# Cloudflare Tunnel gère les webhooks publics via connexion sortante (pas de port entrant).
+# Les webhooks Meta sont relayés via Seko-VPN (role webhook-relay).
 - name: "UFW VPN-only: Allow HTTPS from VPN network only"
   community.general.ufw:
     rule: allow
@@ -198,7 +198,7 @@
       VPN-ONLY MODE ACTIF :
       Port 80 fermé (ACME DNS-01 OVH).
       Port 443 restreint à {{ hardening_ufw_vpn_network }}.
-      Webhooks Meta via Cloudflare Tunnel (connexion sortante).
+      Webhooks Meta via relay Seko-VPN (hook.<domain>).
   when: hardening_vpn_only_mode | default(false) | bool
 
 - name: UFW — Allow SSH from VPN only (locked down)

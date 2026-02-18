@@ -3,6 +3,29 @@
     email {{ caddy_notification_email }}
     servers {
         protocols h1 h2 h3
+        # === TRUSTED PROXIES ===
+        # CRITIQUE: Sans trusted_proxies, Caddy utilise remote_ip = IP TCP directe.
+        # En Docker bridge avec DNAT, remote_ip = IP reelle du client (DNAT preserve la source).
+        #
+        # Scenario 1 - Client VPN (Tailscale) + Split DNS :
+        #   Client Tailscale -> IP VPN 100.64.x.x -> port 443 VPS -> Docker DNAT -> Caddy
+        #   remote_ip = 100.64.x.x (DNAT ne change PAS la source)
+        #   client_ip = idem (pas de proxy intermediaire)
+        #
+        # Scenario 2 - Client VPN SANS Split DNS (BUG VECU) :
+        #   Client -> DNS public -> IP publique VPS -> Caddy
+        #   remote_ip = IP publique du client (PAS dans 100.64.0.0/10) -> bloque!
+        #   -> SPLIT DNS OBLIGATOIRE (voir headscale-node role)
+        #
+        # Scenario 3 - Webhook relay via Seko-VPN (mode VPN-only) :
+        #   Meta -> hook.<domain> (Seko-VPN) -> reverse proxy via mesh -> VPS Caddy
+        #   Les webhooks n'arrivent plus sur ce Caddy directement depuis Internet.
+        #   Ils sont relayés par Seko-VPN via Tailscale IP -> Docker DNAT -> Caddy.
+        #   remote_ip = IP Tailscale de Seko-VPN (dans 100.64.0.0/10)
+        #
+        # REX: trusted_proxies requis pour que client_ip fonctionne correctement.
+        # On trust private_ranges car Docker est en reseau local.
+        trusted_proxies static private_ranges
     }
     log {
         output file /var/log/caddy/access.log {
@@ -13,10 +36,10 @@
         format json
         level INFO
     }
-{% if caddy_vpn_only_mode | default(false) | bool %}
+{% if caddy_acme_dns01 | default(false) | bool or caddy_vpn_only_mode | default(false) | bool %}
     # DNS-01 ACME challenge via OVH — port 80 non requis
-    # REX: Utiliser DNS-01 quand le port 80 est fermé (mode VPN-only).
-    # Les credentials OVH sont injectés via variables d'environnement Docker
+    # REX: Utiliser DNS-01 quand le port 80 est ferme (mode VPN-only).
+    # Les credentials OVH sont injectes via variables d'environnement Docker
     # (OVH_APPLICATION_KEY, OVH_APPLICATION_SECRET, OVH_CONSUMER_KEY, OVH_ENDPOINT).
     acme_dns ovh {
         endpoint {$OVH_ENDPOINT}
@@ -29,7 +52,13 @@
 
 {% if caddy_vpn_enforce | default(true) | bool %}
 (vpn_only) {
-    @blocked not remote_ip {{ caddy_vpn_cidr }}
+    # REX: Caddy dans Docker (réseau frontend 172.20.1.0/24) reçoit les connexions
+    # Tailscale avec client_ip = 172.20.1.1 (gateway Docker bridge, DNAT via UDP/QUIC).
+    # Les deux CIDRs sont autorisés :
+    #   - {{ caddy_vpn_cidr }} : IP Tailscale directes (TCP/HTTP2)
+    #   - {{ caddy_docker_frontend_cidr }} : gateway Docker bridge (HTTP/3 QUIC via DNAT)
+    # Ces plages sont inatteignables depuis Internet → pas de risque d'usurpation.
+    @blocked not client_ip {{ caddy_vpn_cidr }} {{ caddy_docker_frontend_cidr }}
     error @blocked 403
 }
 
@@ -42,25 +71,31 @@
 }
 {% else %}
 # VPN enforcement DISABLED (caddy_vpn_enforce=false)
-# Admin UIs are publicly accessible — for initial validation only
+# Admin UIs are publicly accessible - for initial validation only
 (vpn_only) {
 }
 (vpn_error_page) {
 }
 {% endif %}
 
-# === PUBLIC DOMAIN — Admin Portal ===
+# === PUBLIC DOMAIN - Admin Portal ===
 {{ caddy_domain }} {
-    # /health is public (Uptime Kuma, smoke tests) — matched first by path specificity
+    # /health endpoint — VPN-only quand le mode est active (Uptime Kuma est sur le mesh)
+    # Mode public : accessible depuis Internet (smoke tests, monitoring externe)
+    # Mode VPN-only : accessible uniquement via Tailscale (Uptime Kuma via mesh)
     handle /health {
+{% if caddy_vpn_enforce | default(true) | bool and (caddy_vpn_only_mode | default(false) | bool) %}
+        @blocked_health not client_ip {{ caddy_vpn_cidr }}
+        error @blocked_health 403
+{% endif %}
         respond "OK" 200
     }
 
-{% if caddy_vpn_only_mode | default(false) | bool %}
-    # VPN-ONLY MODE : webhooks Meta exposés via Cloudflare Tunnel
-    # Ces paths doivent rester accessibles depuis Internet (Meta → cloudflared → n8n).
-    # REX: cloudflared crée une connexion sortante vers Cloudflare — pas de port entrant.
-    # Le trafic arrive sur Caddy depuis localhost (cloudflared → 127.0.0.1).
+{% if caddy_webhook_relay | default(false) | bool or caddy_vpn_only_mode | default(false) | bool %}
+    # VPN-ONLY MODE : webhooks Meta relayés via Seko-VPN (webhook relay)
+    # Architecture : Meta -> hook.<domain> (Seko-VPN) -> reverse proxy via mesh -> VPS Caddy -> n8n
+    # Ces paths recoivent le trafic depuis Seko-VPN (IP Tailscale dans 100.64.0.0/10).
+    # Le relay est auto-hébergé (100% infra propre, zero tiers).
 {% for path in caddy_public_webhook_paths | default([]) %}
     handle {{ path }} {
         reverse_proxy n8n:5678
@@ -68,10 +103,10 @@
 {% endfor %}
 {% endif %}
 
-    # Admin portal (catch-all) — VPN-protected
+    # Admin portal (catch-all) - VPN-protected
     handle {
 {% if caddy_vpn_enforce | default(true) | bool %}
-        @blocked_root not remote_ip {{ caddy_vpn_cidr }}
+        @blocked_root not client_ip {{ caddy_vpn_cidr }}
         error @blocked_root 403
 {% endif %}
         root * /srv
@@ -96,12 +131,12 @@
     }
 }
 
-# === OpenClaw — dedicated subdomain (javisi) ===
+# === OpenClaw - dedicated subdomain (javisi) ===
 # OpenClaw Gateway (Control UI + WebSocket on port 18789)
-# basePath=/ — Gateway serves UI at root of its own subdomain
+# basePath=/ - Gateway serves UI at root of its own subdomain
 #
 # REX: OpenClaw Control UI stores the gateway token in browser localStorage.
-# On first access, localStorage is empty → WebSocket rejected → "token missing" loop.
+# On first access, localStorage is empty -> WebSocket rejected -> "token missing" loop.
 # The /__bootstrap__ route injects the token into localStorage and redirects to /.
 # This route is VPN-protected like the rest. First-time setup:
 #   open https://{{ caddy_admin_domain }}/__bootstrap__
@@ -109,10 +144,12 @@
     import vpn_only
     import vpn_error_page
 
-    # Token bootstrap — first-time Control UI setup (sets localStorage token)
+    # Token bootstrap - first-time Control UI setup (sets localStorage token)
     handle /__bootstrap__ {
         header Content-Type "text/html; charset=utf-8"
-        respond `<!DOCTYPE html><html><head><meta charset="utf-8"><title>OpenClaw Setup</title></head><body style="background:#1a1a2e;color:#eee;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2>OpenClaw Gateway</h2><p id="msg">Configuring token...</p><script>try{let s=JSON.parse(localStorage.getItem('openclaw.control.settings.v1')||'{}');s.token='{{ openclaw_gateway_token }}';s.gatewayUrl='wss://{{ caddy_admin_domain }}';localStorage.setItem('openclaw.control.settings.v1',JSON.stringify(s));document.getElementById('msg').textContent='Token configured. Redirecting...';setTimeout(()=>window.location.href='/',500)}catch(e){document.getElementById('msg').textContent='Error: '+e.message}</script></div></body></html>` 200
+        respond <<BOOTSTRAP
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>OpenClaw Setup</title></head><body style="background:#1a1a2e;color:#eee;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2>OpenClaw Gateway</h2><p id="msg">Configuring token...</p><script>try{let s=JSON.parse(localStorage.getItem('openclaw.control.settings.v1')||'{}');s.token='{{ openclaw_gateway_token }}';s.gatewayUrl='wss://{{ caddy_admin_domain }}';localStorage.setItem('openclaw.control.settings.v1',JSON.stringify(s));document.getElementById('msg').textContent='Token configured. Redirecting...';setTimeout(()=>window.location.href='/',500)}catch(e){document.getElementById('msg').textContent='Error: '+e.message}</script></div></body></html>
+BOOTSTRAP 200
     }
 
     reverse_proxy openclaw:18789
@@ -125,8 +162,8 @@
     }
 }
 
-# === Grafana — dedicated subdomain (tala) ===
-# REX: Grafana on its own subdomain — no need for SERVE_FROM_SUB_PATH
+# === Grafana - dedicated subdomain (tala) ===
+# REX: Grafana on its own subdomain - no need for SERVE_FROM_SUB_PATH
 {% if grafana_subdomain | default('') | length > 0 %}
 {{ caddy_grafana_domain }} {
     import vpn_only
@@ -143,7 +180,7 @@
 }
 {% endif %}
 
-# === n8n — dedicated subdomain ===
+# === n8n - dedicated subdomain ===
 # REX: n8n does NOT support sub-path deployment (GitHub issue #19635)
 {% if n8n_subdomain | default('') | length > 0 %}
 {{ caddy_n8n_domain }} {
@@ -161,7 +198,7 @@
 }
 {% endif %}
 
-# === LiteLLM — dedicated subdomain ===
+# === LiteLLM - dedicated subdomain ===
 # REX: LiteLLM UI does NOT support sub-path (SERVER_ROOT_PATH buggy: issues #11451, #11865)
 {% if litellm_subdomain | default('') | length > 0 %}
 {{ caddy_litellm_domain }} {
@@ -179,7 +216,7 @@
 }
 {% endif %}
 
-# === Qdrant — dedicated subdomain ===
+# === Qdrant - dedicated subdomain ===
 # REX: Qdrant dashboard does NOT support sub-path (qdrant-web-ui issue #94, open since 2023)
 {% if qdrant_subdomain | default('') | length > 0 %}
 {{ caddy_qdrant_domain }} {

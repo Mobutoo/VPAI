@@ -537,57 +537,83 @@ docker exec javisi_postgresql psql -U n8n -d n8n -c \
 
 ---
 
-## 39. VPN-Only Mode — Variables Vault Requises
+## 39. VPN-Only Mode — Bascule en un clic
 
-### Nouvelles clés à ajouter dans `secrets.yml` (ansible-vault edit)
+### Architecture
+
+```
+Mode PUBLIC (make vpn-off) :
+  Internet → ports 80+443 ouverts → Caddy (HTTP-01 ACME) → services
+  /health public, webhooks directs sur le domaine principal
+
+Mode VPN-ONLY (make vpn-on) :
+  Admin UIs → VPN clients → Tailscale IP → port 443 (CIDR VPN) → Caddy (DNS-01 OVH)
+  Webhooks  → Meta → hook.<domain> (Seko-VPN) → reverse proxy via mesh → VPS → n8n
+  /health   → VPN-only (Uptime Kuma via mesh)
+  Port 80   → fermé (ACME DNS-01)
+  Port 443  → restreint au CIDR VPN par UFW
+  ZERO dépendance tiers (Cloudflare Tunnel retiré)
+```
+
+### Commandes
+
+```bash
+make vpn-on       # Bascule mode VPN-only (confirmation requise)
+make vpn-off      # Retour mode public
+make vpn-status   # Affiche l'état actuel (safety-check)
+```
+
+### Clés Vault requises dans `secrets.yml`
 
 ```yaml
 # === OVH API — ACME DNS-01 (mode VPN-only) ===
 # URL: https://eu.api.ovh.com/createToken/
-# Droits requis:
-#   GET    /domain/zone
-#   GET    /domain/zone/*
-#   POST   /domain/zone/*/record
-#   PUT    /domain/zone/*/record/*
-#   DELETE /domain/zone/*/record/*
-#   POST   /domain/zone/*/refresh
-#   GET    /auth/currentCredential
+# Droits requis: GET/POST/PUT/DELETE /domain/zone/*, GET /auth/currentCredential
 vault_ovh_endpoint: "ovh-eu"
 vault_ovh_application_key: "VOTRE_APP_KEY"
 vault_ovh_application_secret: "VOTRE_APP_SECRET"
 vault_ovh_consumer_key: "VOTRE_CONSUMER_KEY"
 
-# === Cloudflare Tunnel — Webhooks Meta (mode VPN-only) ===
-# URL: Cloudflare Dashboard > Zero Trust > Networks > Tunnels > Create tunnel
-# Type: Cloudflared | Nom: seko-webhooks
-# Public hostname: webhook.<domain> → Service: HTTP://localhost:443
-# Copier le token affiché lors de la création
-vault_cloudflare_tunnel_token: "VOTRE_TUNNEL_TOKEN"
+# === Webhook Relay (Seko-VPN) ===
+# IP publique de Seko-VPN (pour le DNS A record hook.<domain>)
+vault_vpn_server_public_ip: "X.X.X.X"
+# IP Tailscale du VPS (destination du relay via mesh)
+vault_vps_tailscale_ip: "100.64.X.X"
 ```
 
-### Ordre d'activation (PRÉREQUIS — ne pas brûler les étapes)
+### Ordre d'activation (PRÉREQUIS)
 
 ```
 1. Créer les credentials OVH sur https://eu.api.ovh.com/createToken/
-2. Ajouter les vault_ovh_* dans secrets.yml
-3. Tester: ansible-playbook ... --tags caddy --extra-vars "caddy_vpn_only_mode=true" --check
-4. Créer le Cloudflare Tunnel dans le dashboard (mode connecté)
-5. Ajouter vault_cloudflare_tunnel_token dans secrets.yml
-6. Activer: dans main.yml → caddy_vpn_only_mode: true, hardening_vpn_only_mode: true
-7. Déployer: make deploy-prod
-8. Vérifier: curl https://<domain>/health depuis l'extérieur → "OK" 200
-9. Vérifier: curl https://<domain>/webhook/ig-comment depuis l'extérieur → atteint n8n
-10. Vérifier SSH: connexion depuis Headscale uniquement (VPN requis)
+2. Ajouter les vault_ovh_* et vault_vpn_server_public_ip/vault_vps_tailscale_ip dans secrets.yml
+3. Créer le DNS A record : hook.<domain> → IP publique Seko-VPN
+4. Déployer le relay : make deploy-role ROLE=webhook-relay ENV=vpn
+5. Vérifier : curl https://hook.<domain>/health → "relay-ok" 200
+6. Basculer : make vpn-on
+7. Vérifier : curl https://hook.<domain>/webhook/ig-comment → atteint n8n
+8. Mettre à jour les URL webhook dans le dashboard Meta
 ```
 
-### Variables conditionnelles (off par défaut)
+### Variables atomiques (découplement de caddy_vpn_only_mode)
 
 | Variable | Défaut | Effet si true |
 |---|---|---|
-| `caddy_vpn_only_mode` | `false` | Image Caddy custom (OVH), acme_dns, no port 80, webhooks publics |
+| `caddy_acme_dns01` | `false` | Image Caddy custom (OVH), ACME DNS-01 |
+| `caddy_no_port80` | `false` | Port 80 non exposé dans Docker |
+| `caddy_webhook_relay` | `false` | Webhook paths acceptent trafic du relay |
+| `caddy_vpn_only_mode` | `false` | Raccourci : active les 3 ci-dessus |
 | `hardening_vpn_only_mode` | `false` | UFW: port 80 fermé, 443 restreint CIDR VPN |
 
-> **Ne jamais activer** `hardening_vpn_only_mode=true` avant que `caddy_vpn_only_mode=true`
-> soit déployé ET que les certificats DNS-01 soient valides — risque de lockout HTTP.
+### Sécurité — Dead Man Switch
 
-*Dernière mise à jour : 2026-02-18 — Session 6 (VPN-only préparation)*
+Le playbook `vpn-toggle.yml` inclut un dead man switch :
+- Avant le toggle : programme un revert UFW automatique dans 15 minutes via `at`
+- Après le toggle réussi : annule le job `at`
+- Si lockout : UFW revient en mode ouvert (ports 80+443) après 15 min
+
+> Le paquet `at` est installé par le rôle `common`.
+
+> **Ne jamais activer** `hardening_vpn_only_mode=true` manuellement sans le playbook
+> `vpn-toggle.yml` — utiliser `make vpn-on` qui inclut les safety checks.
+
+*Dernière mise à jour : 2026-02-18 — Session 7 (VPN toggle + élimination Cloudflare)*

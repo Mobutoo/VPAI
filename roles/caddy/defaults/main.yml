@@ -11,6 +11,10 @@ caddy_n8n_domain: "{{ n8n_subdomain | default('') }}.{{ domain_name }}"
 caddy_litellm_domain: "{{ litellm_subdomain | default('') }}.{{ domain_name }}"
 caddy_qdrant_domain: "{{ qdrant_subdomain | default('') }}.{{ domain_name }}"
 caddy_vpn_cidr: "{{ vpn_network_cidr }}"
+# REX: Docker bridge frontend (172.20.1.0/24) — gateway utilisé par DNAT pour HTTP/3 (QUIC/UDP).
+# Connexions Tailscale via HTTP/3 arrivent avec client_ip=172.20.1.1 (gateway Docker).
+# Inatteignable depuis Internet → sûr à autoriser avec le CIDR VPN Tailscale.
+caddy_docker_frontend_cidr: "{{ docker_network_frontend_subnet | default('172.20.1.0/24') }}"
 # Set to false to disable VPN restriction (public access to admin UIs)
 # Use for initial validation, then set to true to enforce VPN-only access
 caddy_vpn_enforce: true
@@ -18,24 +22,31 @@ caddy_notification_email: "{{ notification_email }}"
 caddy_rate_limit_events: 100
 caddy_rate_limit_window: "1m"
 
-# === VPN-ONLY MODE ===
-# Bascule complète de l'infrastructure en accès VPN uniquement.
-# Quand true :
-#   - Caddy utilise ACME DNS-01 (OVH) au lieu de HTTP-01 → port 80 inutile
-#   - UFW ferme le port 80 et restreint le 443 au CIDR VPN uniquement
-#   - Les webhooks Instagram sont routés via Cloudflare Tunnel (cloudflared)
-#   - L'image Caddy custom (plugin ovh) est buildée sur le serveur
+# === VPN-ONLY MODE (variables atomiques) ===
+# Chaque aspect du mode VPN-only est contrôlé indépendamment.
+# caddy_vpn_only_mode reste un raccourci qui active les 3 d'un coup.
+# REX F1 : L'ancienne variable unique couplait 4 fonctions → découplement atomique.
+
+# --- Variables atomiques ---
+# ACME DNS-01 via OVH au lieu de HTTP-01 (nécessite image Caddy custom + credentials OVH)
+caddy_acme_dns01: false
+# Ne pas exposer le port 80 (inutile si ACME DNS-01)
+caddy_no_port80: false
+# Activer le relay webhook via Seko-VPN (remplace Cloudflare Tunnel)
+caddy_webhook_relay: false
+
+# --- Raccourci : active les 3 variables atomiques ---
 # DEFAULT: false — ne pas activer avant validation VPN complète
 caddy_vpn_only_mode: false
 
-# Provider DNS pour challenge ACME DNS-01 (requis si caddy_vpn_only_mode=true)
-# Actuellement configuré : ovh
-# Credentials requis dans secrets.yml : ovh_application_key, ovh_application_secret,
-#   ovh_consumer_key, ovh_endpoint (ex: ovh-eu)
+# Provider DNS pour challenge ACME DNS-01 (requis si caddy_acme_dns01=true)
 caddy_dns_provider: "ovh"
 
-# Endpoints webhook publics exposés via Cloudflare Tunnel (caddy_vpn_only_mode=true)
-# Meta/Instagram doit pouvoir atteindre ces paths depuis Internet
+# Endpoints webhook relayés via Seko-VPN (caddy_webhook_relay=true)
+# Meta/Instagram doit pouvoir atteindre ces paths depuis Internet via hook.<domain>
 caddy_public_webhook_paths:
   - "/webhook/ig-comment"
   - "/webhook/ig-dm"
+
+# Domaine du webhook relay (pour les commentaires/docs, le reverse proxy est sur Seko-VPN)
+caddy_webhook_relay_domain: "{{ webhook_relay_domain | default('hook.' + domain_name) }}"

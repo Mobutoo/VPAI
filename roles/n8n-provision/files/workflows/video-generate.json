@@ -1,0 +1,158 @@
+{
+  "name": "Video Generate (Seedance)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "video-generate",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "vidgen01-0000-4000-8000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "f16ej07g-4ehh-7dc8-g01d-7f79h1i2e367"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate secret + extract video generation params\nconst data = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nif (!expectedSecret) {\n  throw new Error('N8N_WEBHOOK_HMAC_SECRET env var is not configured');\n}\n\nconst headers = data.headers || {};\nconst body    = data.body    || data || {};\nconst receivedSecret = headers['x-webhook-secret'] || body.secret || '';\n\nif (receivedSecret !== expectedSecret) {\n  throw new Error('Invalid webhook secret');\n}\n\nconst prompt       = body.prompt       || '';\nconst aspect_ratio = body.aspect_ratio || '9:16';\nconst resolution   = body.resolution   || '1080p';\nconst duration     = body.duration     || 6;\nconst image_url    = body.image_url    || null; // optional: image-to-video\n\nif (!prompt) {\n  throw new Error('Missing required field: prompt');\n}\n\nreturn [{ json: { prompt, aspect_ratio, resolution, duration, image_url, authenticated: true } }];"
+      },
+      "id": "vidgen01-0000-4000-8000-000000000002",
+      "name": "Validate & Extract",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://seedanceapi.org/v1/generate",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SEEDANCE_API_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"prompt\": {{ JSON.stringify($json.prompt) }},\n  \"aspect_ratio\": \"{{ $json.aspect_ratio }}\",\n  \"resolution\": \"{{ $json.resolution }}\",\n  \"duration\": {{ $json.duration }}{{ $json.image_url ? ',\\n  \"image_url\": \"' + $json.image_url + '\"' : '' }}\n}",
+        "options": { "timeout": 30000, "response": { "response": { "fullResponse": true } } }
+      },
+      "id": "vidgen01-0000-4000-8000-000000000003",
+      "name": "Submit to Seedance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst body = response.body || response;\nconst taskId = body.task_id || '';\n\nif (!taskId) {\n  throw new Error('Seedance did not return a task_id: ' + JSON.stringify(body));\n}\n\nreturn [{ json: { task_id: taskId, status: body.status || 'processing', attempts: 0 } }];"
+      },
+      "id": "vidgen01-0000-4000-8000-000000000004",
+      "name": "Extract Task ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "amount": 15,
+        "unit": "seconds"
+      },
+      "id": "vidgen01-0000-4000-8000-000000000005",
+      "name": "Wait 15s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://seedanceapi.org/v1/status?task_id={{ $json.task_id }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.SEEDANCE_API_KEY }}" }
+          ]
+        },
+        "options": { "timeout": 15000, "response": { "response": { "fullResponse": true } } }
+      },
+      "id": "vidgen01-0000-4000-8000-000000000006",
+      "name": "Poll Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst body = response.body || response;\nconst taskId  = $('Extract Task ID').first().json.task_id;\nconst attempts = ($('Extract Task ID').first().json.attempts || 0) + 1;\nconst status   = body.status || 'processing';\nconst videoUrl = body.video_url || body.url || null;\n\n// Max 20 attempts (~5 minutes)\nif (attempts >= 20 && status !== 'completed') {\n  throw new Error(`Seedance timeout after ${attempts} attempts. Last status: ${status}`);\n}\n\nreturn [{ json: {\n  task_id:   taskId,\n  status,\n  video_url: videoUrl,\n  attempts,\n  done: status === 'completed' && !!videoUrl\n}}];"
+      },
+      "id": "vidgen01-0000-4000-8000-000000000007",
+      "name": "Check Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1580, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "done-cond",
+              "leftValue": "={{ $json.done }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "vidgen01-0000-4000-8000-000000000008",
+      "name": "Done?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1800, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"video_url\": \"{{ $json.video_url }}\",\n  \"task_id\": \"{{ $json.task_id }}\",\n  \"attempts\": {{ $json.attempts }}\n}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "vidgen01-0000-4000-8000-000000000009",
+      "name": "Return Video URL",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2020, 200]
+    }
+  ],
+  "connections": {
+    "Webhook":          { "main": [[{ "node": "Validate & Extract", "type": "main", "index": 0 }]] },
+    "Validate & Extract": { "main": [[{ "node": "Submit to Seedance", "type": "main", "index": 0 }]] },
+    "Submit to Seedance": { "main": [[{ "node": "Extract Task ID",   "type": "main", "index": 0 }]] },
+    "Extract Task ID":  { "main": [[{ "node": "Wait 15s",           "type": "main", "index": 0 }]] },
+    "Wait 15s":         { "main": [[{ "node": "Poll Status",        "type": "main", "index": 0 }]] },
+    "Poll Status":      { "main": [[{ "node": "Check Status",       "type": "main", "index": 0 }]] },
+    "Check Status": {
+      "main": [
+        [{ "node": "Done?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Done?": {
+      "main": [
+        [{ "node": "Return Video URL", "type": "main", "index": 0 }],
+        [{ "node": "Wait 15s",         "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "active": false
+}

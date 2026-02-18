@@ -205,6 +205,61 @@
     },
     {
       "parameters": {
+        "jsCode": "// Check model degradation — alert via n8n webhook if score drops or error rate spikes\nconst { Client } = require('pg');\n\nconst client = new Client({\n  host: 'postgresql', port: 5432, database: 'n8n',\n  user: 'n8n', password: $env.DB_POSTGRESDB_PASSWORD\n});\n\ntry {\n  await client.connect();\n\n  // Compare last 6h vs previous 6h for each model\n  const result = await client.query(`\n    SELECT model, score, successful_calls, failed_calls, total_calls,\n           avg_cost_per_call, avg_latency_ms, last_updated\n    FROM model_scores\n    WHERE total_calls > 0\n    ORDER BY score ASC\n  `);\n\n  const alerts = [];\n  const SCORE_THRESHOLD = 40;     // score < 40 = degraded\n  const FAIL_RATE_THRESHOLD = 0.2; // >20% failures = alert\n  const LATENCY_THRESHOLD = 5000; // >5s avg latency = alert\n\n  for (const r of result.rows) {\n    const failRate = r.total_calls > 0 ? r.failed_calls / r.total_calls : 0;\n    const issues = [];\n\n    if (r.score < SCORE_THRESHOLD) {\n      issues.push(`score_low:${r.score}`);\n    }\n    if (failRate > FAIL_RATE_THRESHOLD) {\n      issues.push(`fail_rate:${Math.round(failRate * 100)}%`);\n    }\n    if (r.avg_latency_ms > LATENCY_THRESHOLD) {\n      issues.push(`latency:${r.avg_latency_ms}ms`);\n    }\n\n    if (issues.length > 0) {\n      alerts.push({\n        model: r.model,\n        score: r.score,\n        issues,\n        fail_rate: Math.round(failRate * 100) + '%',\n        avg_latency_ms: r.avg_latency_ms,\n        total_calls: r.total_calls\n      });\n    }\n  }\n\n  await client.end();\n\n  return [{ json: {\n    has_alerts: alerts.length > 0,\n    alert_count: alerts.length,\n    alerts,\n    checked_at: new Date().toISOString()\n  }}];\n} catch (err) {\n  try { await client.end(); } catch(e) {}\n  throw err;\n}"
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000040",
+      "name": "Check Degradation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-alert-001",
+              "leftValue": "={{ $json.has_alerts }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000041",
+      "name": "Has Alerts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1140, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.ALERT_WEBHOOK_URL || 'http://n8n:5678/webhook/dummy-alert' }}",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "x-webhook-secret", "value": "={{ $env.N8N_WEBHOOK_HMAC_SECRET }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"event\": \"model_degradation\",\n  \"severity\": \"warning\",\n  \"alert_count\": {{ $json.alert_count }},\n  \"alerts\": {{ JSON.stringify($json.alerts) }},\n  \"checked_at\": \"{{ $json.checked_at }}\"\n}",
+        "options": { "timeout": 10000, "response": { "response": { "fullResponse": false } } }
+      },
+      "id": "d4e5f6a7-4001-4000-8004-000000000042",
+      "name": "Send Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 60]
+    },
+    {
+      "parameters": {
         "jsCode": "// Discover new models from OpenRouter catalog\nconst fs = require('fs');\nconst { Client } = require('pg');\nconst response = $input.first().json;\nconst models = response.body?.data || response.data || [];\nconst SCORES_FILE = '/home/node/.n8n/model-scores.json';\nconst DISCOVERY_FILE = '/home/node/.n8n/model-discovery.json';\nconst TMP_FILE = DISCOVERY_FILE + '.tmp';\n\n// Load existing scores from PostgreSQL to know which models we track\nconst client = new Client({\n  host: 'postgresql', port: 5432, database: 'n8n',\n  user: 'n8n', password: $env.DB_POSTGRESDB_PASSWORD\n});\n\ntry {\n  await client.connect();\n  const existing = await client.query('SELECT model FROM model_scores');\n  const trackedModels = new Set(existing.rows.map(r => r.model));\n  await client.end();\n\n  // Load previous discovery to track history\n  let prevDiscovery = {};\n  try {\n    if (fs.existsSync(DISCOVERY_FILE)) {\n      prevDiscovery = JSON.parse(fs.readFileSync(DISCOVERY_FILE, 'utf8'));\n    }\n  } catch (e) {\n    prevDiscovery = {};\n  }\n\n  const now = new Date().toISOString();\n  const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;\n  const newModels = [];\n  const catalog = {};\n\n  for (const m of models) {\n    if (!m.id || !m.pricing) continue;\n    if (m.architecture?.modality !== 'text->text' && !m.id.includes('/')) continue;\n\n    const inputCost = parseFloat(m.pricing.prompt || '0') * 1000000;\n    const outputCost = parseFloat(m.pricing.completion || '0') * 1000000;\n    const ctx = m.context_length || 0;\n    const created = m.created ? m.created * 1000 : 0;\n\n    catalog[m.id] = {\n      name: m.name || m.id,\n      input_cost_per_m: Math.round(inputCost * 100) / 100,\n      output_cost_per_m: Math.round(outputCost * 100) / 100,\n      context_window: ctx,\n      created_at: created ? new Date(created).toISOString() : 'unknown',\n      top_provider: m.top_provider?.max_completion_tokens || 0\n    };\n\n    const isNew = !trackedModels.has(m.id) && !prevDiscovery[m.id];\n    const isRecent = created > oneWeekAgo;\n    const isCheap = inputCost <= 5;\n    const isBigCtx = ctx >= 32000;\n\n    if ((isNew || isRecent) && isCheap && isBigCtx) {\n      newModels.push({\n        id: m.id, name: m.name || m.id,\n        input_cost: Math.round(inputCost * 100) / 100,\n        output_cost: Math.round(outputCost * 100) / 100,\n        context: ctx, is_free: inputCost === 0 && outputCost === 0,\n        created: created ? new Date(created).toISOString() : 'unknown'\n      });\n    }\n  }\n\n  // Save discovery catalog (atomic write)\n  const discovery = { last_scan: now, total_models: Object.keys(catalog).length, catalog };\n  fs.writeFileSync(TMP_FILE, JSON.stringify(discovery, null, 2));\n  fs.renameSync(TMP_FILE, DISCOVERY_FILE);\n\n  newModels.sort((a, b) => {\n    if (a.is_free !== b.is_free) return a.is_free ? -1 : 1;\n    return a.input_cost - b.input_cost;\n  });\n\n  return [{ json: {\n    status: 'discovered',\n    total_catalog: Object.keys(catalog).length,\n    new_models_found: newModels.length,\n    new_models: newModels.slice(0, 20),\n    scan_date: now\n  }}];\n} catch (err) {\n  try { await client.end(); } catch(e) {}\n  throw err;\n}"
       },
       "id": "d4e5f6a7-4001-4000-8004-000000000032",
@@ -235,6 +290,40 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "Aggregate and Score": {
+      "main": [
+        [
+          {
+            "node": "Check Degradation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Degradation": {
+      "main": [
+        [
+          {
+            "node": "Has Alerts?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Alerts?": {
+      "main": [
+        [
+          {
+            "node": "Send Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     },
     "Feedback Webhook": {

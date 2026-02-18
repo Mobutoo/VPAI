@@ -1,0 +1,178 @@
+{
+  "name": "Instagram Comment Reply",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "ig-comment",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "igcmt001-0000-4000-8000-000000000001",
+      "name": "Meta Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "d94ch85e-2cff-5ba6-e89b-5d57f9g0c145"
+    },
+    {
+      "parameters": {
+        "path": "ig-comment",
+        "httpMethod": "GET",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "igcmt001-0000-4000-8000-000000000002",
+      "name": "Meta Webhook Verify",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 460],
+      "webhookId": "d94ch85e-2cff-5ba6-e89b-5d57f9g0c145"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Meta webhook verification challenge (hub.challenge)\nconst query = $input.first().json.query || {};\nconst challenge = query['hub.challenge'] || '';\nconst verifyToken = query['hub.verify_token'] || '';\n\nif (verifyToken !== $env.META_VERIFY_TOKEN) {\n  throw new Error('Invalid verify_token');\n}\n\nreturn [{ json: { challenge } }];"
+      },
+      "id": "igcmt001-0000-4000-8000-000000000003",
+      "name": "Handle Verification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 460]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.challenge }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "igcmt001-0000-4000-8000-000000000004",
+      "name": "Respond Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 460]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Meta webhook payload — extract comment data\nconst body = $input.first().json.body || $input.first().json;\n\n// Meta sends: { object: 'instagram', entry: [{ id, changes: [{ value, field }] }] }\nconst entry   = (body.entry || [])[0] || {};\nconst changes = (entry.changes || [])[0] || {};\nconst value   = changes.value || {};\n\n// Only process comment events (not likes, mentions, etc.)\nif (changes.field !== 'comments') {\n  return [{ json: { skip: true, reason: `field=${changes.field}` } }];\n}\n\n// Skip comments from the page owner (avoid reply loops)\nif (value.from && value.from.id === $env.META_PAGE_ID) {\n  return [{ json: { skip: true, reason: 'own_comment' } }];\n}\n\nreturn [{\n  json: {\n    skip: false,\n    comment_id:  value.id       || '',\n    comment_text: value.text   || '',\n    commenter_name: (value.from || {}).name || 'someone',\n    media_id:    value.media?.id || '',\n    timestamp:   value.timestamp || Date.now()\n  }\n}];"
+      },
+      "id": "igcmt001-0000-4000-8000-000000000005",
+      "name": "Parse Comment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "skip-cond-001",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "igcmt001-0000-4000-8000-000000000006",
+      "name": "Should Reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://litellm:4000/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.LITELLM_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Tu es le community manager d'un compte Instagram. Réponds au commentaire de manière chaleureuse, authentique et concise (max 2 phrases). Adapte le ton (emoji si pertinent). Ne mentionne jamais que tu es une IA. Réponds dans la même langue que le commentaire.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Commentaire de {{ $json.commenter_name }}: {{ $json.comment_text }}\"\n    }\n  ],\n  \"max_tokens\": 150,\n  \"temperature\": 0.7\n}",
+        "options": { "timeout": 30000, "response": { "response": { "fullResponse": true } } }
+      },
+      "id": "igcmt001-0000-4000-8000-000000000007",
+      "name": "Generate Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst body = response.body || response;\nconst reply = (body.choices?.[0]?.message?.content || '').trim();\nconst commentId = $('Parse Comment').first().json.comment_id;\nreturn [{ json: { reply, comment_id: commentId } }];"
+      },
+      "id": "igcmt001-0000-4000-8000-000000000008",
+      "name": "Extract Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/{{ $json.comment_id }}/replies",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": {{ JSON.stringify($json.reply) }},\n  \"access_token\": \"{{ $env.META_ACCESS_TOKEN }}\"\n}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "igcmt001-0000-4000-8000-000000000009",
+      "name": "Post Reply to IG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ok\" }",
+        "options": { "responseCode": 200 }
+      },
+      "id": "igcmt001-0000-4000-8000-000000000010",
+      "name": "Ack Meta",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 180]
+    }
+  ],
+  "connections": {
+    "Meta Webhook":        { "main": [[{ "node": "Parse Comment",   "type": "main", "index": 0 }]] },
+    "Meta Webhook Verify": { "main": [[{ "node": "Handle Verification", "type": "main", "index": 0 }]] },
+    "Handle Verification": { "main": [[{ "node": "Respond Challenge", "type": "main", "index": 0 }]] },
+    "Parse Comment": {
+      "main": [
+        [
+          { "node": "Ack Meta",      "type": "main", "index": 0 },
+          { "node": "Should Reply?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Should Reply?": {
+      "main": [
+        [{ "node": "Generate Reply", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Generate Reply": { "main": [[{ "node": "Extract Reply",    "type": "main", "index": 0 }]] },
+    "Extract Reply":  { "main": [[{ "node": "Post Reply to IG", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "active": false
+}

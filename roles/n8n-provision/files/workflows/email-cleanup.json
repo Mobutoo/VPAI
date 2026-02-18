@@ -1,0 +1,240 @@
+{
+  "name": "Email Cleanup & Classifier",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "emailcln-0000-4000-8000-000000000001",
+      "name": "Cron Daily 6h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 50,
+        "filters": {
+          "labelIds": ["INBOX"],
+          "q": "is:unread -is:starred"
+        },
+        "options": {
+          "format": "resolved"
+        }
+      },
+      "id": "emailcln-0000-4000-8000-000000000002",
+      "name": "Fetch Unread Emails",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [480, 300],
+      "credentials": {
+        "gmailOAuth2": { "id": "DUMMY_GMAIL_CRED_ID", "name": "Gmail OAuth2" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract relevant fields for LLM classification\nconst items = $input.all();\nreturn items.map(item => {\n  const mail = item.json;\n  return {\n    json: {\n      id:      mail.id || '',\n      from:    mail.from?.value?.[0]?.address || mail.from || '',\n      subject: mail.subject || '(no subject)',\n      snippet: mail.snippet || mail.text?.substring(0, 300) || '',\n      date:    mail.date || ''\n    }\n  };\n});"
+      },
+      "id": "emailcln-0000-4000-8000-000000000003",
+      "name": "Extract Email Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://litellm:4000/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.LITELLM_API_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Classify this email into exactly one category. Respond with JSON only: {\\\"category\\\": \\\"SPAM|PROMO|NEWSLETTER|NOTIFICATION|IMPORTANT|ACTION_NEEDED\\\", \\\"reason\\\": \\\"one sentence\\\"}\\n\\nRules:\\n- SPAM: unsolicited, suspicious, phishing\\n- PROMO: marketing, sales, discounts\\n- NEWSLETTER: regular newsletters, digests\\n- NOTIFICATION: automated system notifications, receipts\\n- IMPORTANT: from real person, needs reading\\n- ACTION_NEEDED: requires a response or action\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"From: {{ $json.from }}\\nSubject: {{ $json.subject }}\\nSnippet: {{ $json.snippet }}\"\n    }\n  ],\n  \"max_tokens\": 100,\n  \"temperature\": 0.1,\n  \"response_format\": { \"type\": \"json_object\" }\n}",
+        "options": { "timeout": 20000, "response": { "response": { "fullResponse": true } } }
+      },
+      "id": "emailcln-0000-4000-8000-000000000004",
+      "name": "Classify with LiteLLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse classification + merge with email id\nconst response = $input.first().json;\nconst body = response.body || response;\nconst content = body.choices?.[0]?.message?.content || '{}';\nlet parsed;\ntry { parsed = JSON.parse(content); } catch(e) { parsed = { category: 'IMPORTANT', reason: 'parse error' }; }\n\nconst emailId = $('Extract Email Fields').first().json.id;\nreturn [{ json: {\n  email_id: emailId,\n  category: parsed.category || 'IMPORTANT',\n  reason:   parsed.reason   || ''\n}}];"
+      },
+      "id": "emailcln-0000-4000-8000-000000000005",
+      "name": "Parse Classification",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "id": "cat-spam",
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "SPAM",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "spam"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "id": "cat-promo",
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "PROMO",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "promo"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "id": "cat-newsletter",
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "NEWSLETTER",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "newsletter"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "id": "cat-notif",
+                    "leftValue": "={{ $json.category }}",
+                    "rightValue": "NOTIFICATION",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "notification"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "emailcln-0000-4000-8000-000000000006",
+      "name": "Route by Category",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [1360, 300]
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.email_id }}",
+        "labelIds": ["TRASH"]
+      },
+      "id": "emailcln-0000-4000-8000-000000000007",
+      "name": "Move SPAM to Trash",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1580, 120],
+      "credentials": {
+        "gmailOAuth2": { "id": "DUMMY_GMAIL_CRED_ID", "name": "Gmail OAuth2" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.email_id }}",
+        "labelIds": ["Label_Promos"]
+      },
+      "id": "emailcln-0000-4000-8000-000000000008",
+      "name": "Label PROMO + Archive",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1580, 240],
+      "credentials": {
+        "gmailOAuth2": { "id": "DUMMY_GMAIL_CRED_ID", "name": "Gmail OAuth2" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.email_id }}",
+        "labelIds": ["Label_Newsletters"]
+      },
+      "id": "emailcln-0000-4000-8000-000000000009",
+      "name": "Label NEWSLETTER + Archive",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1580, 360],
+      "credentials": {
+        "gmailOAuth2": { "id": "DUMMY_GMAIL_CRED_ID", "name": "Gmail OAuth2" }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.email_id }}",
+        "labelIds": ["Label_Notifications"]
+      },
+      "id": "emailcln-0000-4000-8000-000000000010",
+      "name": "Label NOTIFICATION + Archive",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1580, 480],
+      "credentials": {
+        "gmailOAuth2": { "id": "DUMMY_GMAIL_CRED_ID", "name": "Gmail OAuth2" }
+      }
+    }
+  ],
+  "connections": {
+    "Cron Daily 6h":      { "main": [[{ "node": "Fetch Unread Emails",   "type": "main", "index": 0 }]] },
+    "Fetch Unread Emails": { "main": [[{ "node": "Extract Email Fields",  "type": "main", "index": 0 }]] },
+    "Extract Email Fields": { "main": [[{ "node": "Classify with LiteLLM","type": "main", "index": 0 }]] },
+    "Classify with LiteLLM": { "main": [[{ "node": "Parse Classification","type": "main", "index": 0 }]] },
+    "Parse Classification": { "main": [[{ "node": "Route by Category",    "type": "main", "index": 0 }]] },
+    "Route by Category": {
+      "main": [
+        [{ "node": "Move SPAM to Trash",           "type": "main", "index": 0 }],
+        [{ "node": "Label PROMO + Archive",         "type": "main", "index": 0 }],
+        [{ "node": "Label NEWSLETTER + Archive",    "type": "main", "index": 0 }],
+        [{ "node": "Label NOTIFICATION + Archive",  "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "active": false
+}

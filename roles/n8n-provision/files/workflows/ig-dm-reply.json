@@ -1,0 +1,178 @@
+{
+  "name": "Instagram DM Reply",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "ig-dm",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "igdm0001-0000-4000-8000-000000000001",
+      "name": "Meta DM Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "e05di96f-3dgg-6cb7-f90c-6e68g0h1d256"
+    },
+    {
+      "parameters": {
+        "path": "ig-dm",
+        "httpMethod": "GET",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "igdm0001-0000-4000-8000-000000000002",
+      "name": "Meta DM Verify",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 480],
+      "webhookId": "e05di96f-3dgg-6cb7-f90c-6e68g0h1d256"
+    },
+    {
+      "parameters": {
+        "jsCode": "const query = $input.first().json.query || {};\nconst challenge = query['hub.challenge'] || '';\nif (query['hub.verify_token'] !== $env.META_VERIFY_TOKEN) {\n  throw new Error('Invalid verify_token');\n}\nreturn [{ json: { challenge } }];"
+      },
+      "id": "igdm0001-0000-4000-8000-000000000003",
+      "name": "Handle DM Verify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 480]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.challenge }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "igdm0001-0000-4000-8000-000000000004",
+      "name": "Respond DM Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Messenger API for Instagram DM payload\nconst body = $input.first().json.body || $input.first().json;\n\n// Meta sends: { object: 'instagram', entry: [{ messaging: [{ sender, recipient, message }] }] }\nconst entry     = (body.entry || [])[0] || {};\nconst messaging = (entry.messaging || [])[0] || {};\n\nconst senderId   = (messaging.sender   || {}).id || '';\nconst recipientId = (messaging.recipient || {}).id || '';\nconst message    = messaging.message || {};\nconst text       = message.text || '';\nconst mid        = message.mid  || '';\n\n// Skip echoes (messages sent by the page itself)\nif (message.is_echo || senderId === $env.META_PAGE_ID) {\n  return [{ json: { skip: true, reason: 'echo_or_own' } }];\n}\n\n// Skip empty messages (stickers, attachments without text)\nif (!text) {\n  return [{ json: { skip: true, reason: 'no_text' } }];\n}\n\nreturn [{\n  json: {\n    skip:       false,\n    sender_id:  senderId,\n    message_id: mid,\n    text,\n    timestamp:  messaging.timestamp || Date.now()\n  }\n}];"
+      },
+      "id": "igdm0001-0000-4000-8000-000000000005",
+      "name": "Parse DM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "dm-skip-cond",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "igdm0001-0000-4000-8000-000000000006",
+      "name": "Should Reply DM?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://litellm:4000/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.LITELLM_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-haiku\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Tu es le community manager d'un compte Instagram. Réponds aux DMs de manière chaleureuse et professionnelle. Sois concis (max 3 phrases). Pour les demandes commerciales, oriente vers les informations de contact. Ne mentionne jamais que tu es une IA. Réponds dans la même langue que le message.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($json.text) }}\n    }\n  ],\n  \"max_tokens\": 200,\n  \"temperature\": 0.7\n}",
+        "options": { "timeout": 30000, "response": { "response": { "fullResponse": true } } }
+      },
+      "id": "igdm0001-0000-4000-8000-000000000007",
+      "name": "Generate DM Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst body = response.body || response;\nconst reply = (body.choices?.[0]?.message?.content || '').trim();\nconst senderId = $('Parse DM').first().json.sender_id;\nreturn [{ json: { reply, sender_id: senderId } }];"
+      },
+      "id": "igdm0001-0000-4000-8000-000000000008",
+      "name": "Extract DM Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://graph.facebook.com/v21.0/me/messages",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"recipient\": { \"id\": \"{{ $json.sender_id }}\" },\n  \"message\": { \"text\": {{ JSON.stringify($json.reply) }} },\n  \"access_token\": \"{{ $env.META_ACCESS_TOKEN }}\"\n}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "igdm0001-0000-4000-8000-000000000009",
+      "name": "Send DM via API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ok\" }",
+        "options": { "responseCode": 200 }
+      },
+      "id": "igdm0001-0000-4000-8000-000000000010",
+      "name": "Ack Meta DM",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 180]
+    }
+  ],
+  "connections": {
+    "Meta DM Webhook": { "main": [[{ "node": "Parse DM", "type": "main", "index": 0 }]] },
+    "Meta DM Verify":  { "main": [[{ "node": "Handle DM Verify", "type": "main", "index": 0 }]] },
+    "Handle DM Verify": { "main": [[{ "node": "Respond DM Challenge", "type": "main", "index": 0 }]] },
+    "Parse DM": {
+      "main": [
+        [
+          { "node": "Ack Meta DM",      "type": "main", "index": 0 },
+          { "node": "Should Reply DM?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Should Reply DM?": {
+      "main": [
+        [{ "node": "Generate DM Reply", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Generate DM Reply": { "main": [[{ "node": "Extract DM Reply", "type": "main", "index": 0 }]] },
+    "Extract DM Reply":  { "main": [[{ "node": "Send DM via API",  "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "active": false
+}

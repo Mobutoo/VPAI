@@ -1,0 +1,94 @@
+{
+  "name": "Content Generate",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "content-generate",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "contgen1-0000-4000-8000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "g27fk18h-5fii-8ed9-h12e-8g80i2j3f478"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate secret + extract content generation params\nconst data = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nif (!expectedSecret) throw new Error('N8N_WEBHOOK_HMAC_SECRET not configured');\n\nconst headers = data.headers || {};\nconst body    = data.body    || data || {};\nconst receivedSecret = headers['x-webhook-secret'] || body.secret || '';\n\nif (receivedSecret !== expectedSecret) throw new Error('Invalid webhook secret');\n\nconst type      = body.type      || 'post';       // post | article | caption | thread\nconst topic     = body.topic     || '';\nconst tone      = body.tone      || 'professionnel et engageant';\nconst lang      = body.lang      || 'fr';\nconst context   = body.context   || '';           // optional background info\nconst max_words = body.max_words || 300;\n\nif (!topic) throw new Error('Missing required field: topic');\n\nreturn [{ json: { type, topic, tone, lang, context, max_words, authenticated: true } }];"
+      },
+      "id": "contgen1-0000-4000-8000-000000000002",
+      "name": "Validate & Extract",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build system prompt based on content type\nconst { type, tone, lang, max_words } = $input.first().json;\n\nconst prompts = {\n  post: `Tu es un expert en création de contenu pour les réseaux sociaux. Rédige un post Instagram/Facebook en ${lang}. Ton: ${tone}. Max ${max_words} mots. Inclure 3-5 hashtags pertinents à la fin. Structure: accroche forte + corps + call-to-action.`,\n  article: `Tu es un rédacteur expert. Rédige un article de blog structuré en ${lang}. Ton: ${tone}. Max ${max_words} mots. Structure: titre accrocheur + introduction + 3-4 sections avec sous-titres + conclusion + CTA.`,\n  caption: `Tu es un expert en social media. Rédige une légende Instagram courte et percutante en ${lang}. Ton: ${tone}. Max 150 mots. Inclure 5-8 hashtags.`,\n  thread: `Tu es un expert en contenu Twitter/X. Rédige un thread de 5-7 tweets en ${lang}. Ton: ${tone}. Chaque tweet max 280 caractères. Numéroter: 1/ 2/ etc. Premier tweet = accroche forte.`\n};\n\nconst system = prompts[type] || prompts.post;\nreturn [{ json: { ...($input.first().json), system_prompt: system } }];"
+      },
+      "id": "contgen1-0000-4000-8000-000000000003",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://litellm:4000/v1/chat/completions",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.LITELLM_API_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": {{ JSON.stringify($json.system_prompt) }}\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Sujet: {{ $json.topic }}{{ $json.context ? '\\\\nContexte: ' + $json.context : '' }}\"\n    }\n  ],\n  \"max_tokens\": 1500,\n  \"temperature\": 0.8\n}",
+        "options": { "timeout": 60000, "response": { "response": { "fullResponse": true } } }
+      },
+      "id": "contgen1-0000-4000-8000-000000000004",
+      "name": "Generate with LiteLLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst body = response.body || response;\nconst content = (body.choices?.[0]?.message?.content || '').trim();\nconst usage   = body.usage || {};\nconst input   = $('Validate & Extract').first().json;\n\nreturn [{ json: {\n  status:      'success',\n  type:        input.type,\n  topic:       input.topic,\n  lang:        input.lang,\n  content,\n  model_used:  body.model || 'claude-sonnet',\n  tokens_used: usage.total_tokens || 0\n}}];"
+      },
+      "id": "contgen1-0000-4000-8000-000000000005",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "contgen1-0000-4000-8000-000000000006",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1360, 300]
+    }
+  ],
+  "connections": {
+    "Webhook":             { "main": [[{ "node": "Validate & Extract",    "type": "main", "index": 0 }]] },
+    "Validate & Extract":  { "main": [[{ "node": "Build Prompt",          "type": "main", "index": 0 }]] },
+    "Build Prompt":        { "main": [[{ "node": "Generate with LiteLLM", "type": "main", "index": 0 }]] },
+    "Generate with LiteLLM": { "main": [[{ "node": "Format Response",    "type": "main", "index": 0 }]] },
+    "Format Response":     { "main": [[{ "node": "Respond",              "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "active": false
+}

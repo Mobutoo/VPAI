@@ -1,0 +1,298 @@
+{
+  "name": "OpenClaw Delegate",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "openclaw-delegate",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ocdeleg1-0000-4000-8000-000000000001",
+      "name": "Delegate Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "c83bg74d-1bee-4a95-d78a-0c46e8f9b034"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate webhook secret + extract task payload from OpenClaw skill delegate-n8n\nconst data = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nif (!expectedSecret) {\n  throw new Error('N8N_WEBHOOK_HMAC_SECRET env var is not configured');\n}\n\nconst headers = data.headers || {};\nconst body    = data.body    || data || {};\nconst receivedSecret = headers['x-webhook-secret'] || body.secret || '';\n\nif (receivedSecret !== expectedSecret) {\n  throw new Error('Invalid webhook secret');\n}\n\nconst task    = body.task    || '';\nconst payload = body.payload || {};\nconst agent   = body.agent   || 'unknown';\n\nif (!task) {\n  throw new Error('Missing required field: task');\n}\n\nreturn [{ json: { task, payload, agent, authenticated: true } }];"
+      },
+      "id": "ocdeleg1-0000-4000-8000-000000000002",
+      "name": "Validate & Extract",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "route-translate",
+                    "leftValue": "={{ $json.task }}",
+                    "rightValue": "translate",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "translate"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "route-summarize",
+                    "leftValue": "={{ $json.task }}",
+                    "rightValue": "summarize",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "summarize"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "route-format",
+                    "leftValue": "={{ $json.task }}",
+                    "rightValue": "format",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "format"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "route-generate-content",
+                    "leftValue": "={{ $json.task }}",
+                    "rightValue": "generate-content",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "generate-content"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": false },
+                "conditions": [
+                  {
+                    "id": "route-generate-video",
+                    "leftValue": "={{ $json.task }}",
+                    "rightValue": "generate-video",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "generate-video"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "ocdeleg1-0000-4000-8000-000000000003",
+      "name": "Route Task",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n:5678/webhook/ai-translate",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-webhook-secret", "value": "={{ $env.N8N_WEBHOOK_HMAC_SECRET }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": { "timeout": 30000, "response": { "response": { "fullResponse": true } } }
+      },
+      "id": "ocdeleg1-0000-4000-8000-000000000010",
+      "name": "Call Translate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n:5678/webhook/ai-summarize",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-webhook-secret", "value": "={{ $env.N8N_WEBHOOK_HMAC_SECRET }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": { "timeout": 30000, "response": { "response": { "fullResponse": true } } }
+      },
+      "id": "ocdeleg1-0000-4000-8000-000000000011",
+      "name": "Call Summarize",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n:5678/webhook/ai-format",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-webhook-secret", "value": "={{ $env.N8N_WEBHOOK_HMAC_SECRET }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": { "timeout": 30000, "response": { "response": { "fullResponse": true } } }
+      },
+      "id": "ocdeleg1-0000-4000-8000-000000000012",
+      "name": "Call Format",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n:5678/webhook/content-generate",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-webhook-secret", "value": "={{ $env.N8N_WEBHOOK_HMAC_SECRET }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": { "timeout": 60000, "response": { "response": { "fullResponse": true } } }
+      },
+      "id": "ocdeleg1-0000-4000-8000-000000000013",
+      "name": "Call Generate Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 460]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://n8n:5678/webhook/video-generate",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-webhook-secret", "value": "={{ $env.N8N_WEBHOOK_HMAC_SECRET }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": { "timeout": 180000, "response": { "response": { "fullResponse": true } } }
+      },
+      "id": "ocdeleg1-0000-4000-8000-000000000014",
+      "name": "Call Generate Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 580]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Unknown task — return error payload\nconst task = $input.first().json.task || 'unknown';\nreturn [{ json: { status: 'error', message: `Unknown task: ${task}`, task } }];"
+      },
+      "id": "ocdeleg1-0000-4000-8000-000000000015",
+      "name": "Unknown Task",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [940, 700]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge all branch results and normalize response\nconst item = $input.first().json;\nconst body = item.body || item;\nreturn [{ json: { status: 'success', result: body } }];"
+      },
+      "id": "ocdeleg1-0000-4000-8000-000000000020",
+      "name": "Normalize Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1160, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "ocdeleg1-0000-4000-8000-000000000021",
+      "name": "Respond to OpenClaw",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1380, 400]
+    }
+  ],
+  "connections": {
+    "Delegate Webhook": {
+      "main": [[{ "node": "Validate & Extract", "type": "main", "index": 0 }]]
+    },
+    "Validate & Extract": {
+      "main": [[{ "node": "Route Task", "type": "main", "index": 0 }]]
+    },
+    "Route Task": {
+      "main": [
+        [{ "node": "Call Translate",        "type": "main", "index": 0 }],
+        [{ "node": "Call Summarize",        "type": "main", "index": 0 }],
+        [{ "node": "Call Format",           "type": "main", "index": 0 }],
+        [{ "node": "Call Generate Content", "type": "main", "index": 0 }],
+        [{ "node": "Call Generate Video",   "type": "main", "index": 0 }],
+        [{ "node": "Unknown Task",          "type": "main", "index": 0 }]
+      ]
+    },
+    "Call Translate":        { "main": [[{ "node": "Normalize Response", "type": "main", "index": 0 }]] },
+    "Call Summarize":        { "main": [[{ "node": "Normalize Response", "type": "main", "index": 0 }]] },
+    "Call Format":           { "main": [[{ "node": "Normalize Response", "type": "main", "index": 0 }]] },
+    "Call Generate Content": { "main": [[{ "node": "Normalize Response", "type": "main", "index": 0 }]] },
+    "Call Generate Video":   { "main": [[{ "node": "Normalize Response", "type": "main", "index": 0 }]] },
+    "Unknown Task":          { "main": [[{ "node": "Normalize Response", "type": "main", "index": 0 }]] },
+    "Normalize Response":    { "main": [[{ "node": "Respond to OpenClaw", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "active": false
+}

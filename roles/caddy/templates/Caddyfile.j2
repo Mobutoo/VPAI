@@ -104,9 +104,11 @@
 {% endif %}
 
     # Admin portal (catch-all) - VPN-protected
+    # REX: Utiliser les deux CIDRs comme dans le snippet vpn_only :
+    # caddy_vpn_cidr (Tailscale TCP) + caddy_docker_frontend_cidr (HTTP/3 QUIC via DNAT Docker)
     handle {
 {% if caddy_vpn_enforce | default(true) | bool %}
-        @blocked_root not client_ip {{ caddy_vpn_cidr }}
+        @blocked_root not client_ip {{ caddy_vpn_cidr }} {{ caddy_docker_frontend_cidr }}
         error @blocked_root 403
 {% endif %}
         root * /srv

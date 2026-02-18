@@ -31,6 +31,43 @@
     mode: "0755"
   become: true
 
+# === VPN-ONLY MODE : build image Caddy custom avec plugin OVH DNS ===
+# Requis uniquement si caddy_vpn_only_mode=true (challenge DNS-01, port 80 fermé).
+# En mode standard (false), l'image officielle caddy:alpine est utilisée.
+
+- name: "VPN-only: Copy Caddy Dockerfile (OVH DNS plugin) to server"
+  ansible.builtin.copy:
+    src: Dockerfile
+    dest: "/opt/{{ project_name }}/configs/caddy/Dockerfile"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  when: caddy_vpn_only_mode | default(false) | bool
+
+- name: "VPN-only: Build Caddy image with OVH DNS plugin"
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      CADDY_VERSION="{{ caddy_image | regex_replace('^caddy:([0-9.]+)-.*$', '\\1') }}"
+      docker build \
+        --build-arg CADDY_VERSION="${CADDY_VERSION}" \
+        --tag caddy-ovh:${CADDY_VERSION} \
+        /opt/{{ project_name }}/configs/caddy/
+      echo "BUILT:caddy-ovh:${CADDY_VERSION}"
+  register: caddy_build_result
+  changed_when: "'BUILT:' in caddy_build_result.stdout"
+  failed_when: caddy_build_result.rc != 0
+  become: true
+  when: caddy_vpn_only_mode | default(false) | bool
+
+- name: "VPN-only: Display Caddy build result"
+  ansible.builtin.debug:
+    msg: "{{ caddy_build_result.stdout | default('skipped (vpn_only_mode=false)') }}"
+  when: caddy_vpn_only_mode | default(false) | bool
+
+# === CADDYFILE ===
 - name: Deploy Caddyfile
   ansible.builtin.template:
     src: Caddyfile.j2

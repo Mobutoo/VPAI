@@ -13,6 +13,18 @@
         format json
         level INFO
     }
+{% if caddy_vpn_only_mode | default(false) | bool %}
+    # DNS-01 ACME challenge via OVH — port 80 non requis
+    # REX: Utiliser DNS-01 quand le port 80 est fermé (mode VPN-only).
+    # Les credentials OVH sont injectés via variables d'environnement Docker
+    # (OVH_APPLICATION_KEY, OVH_APPLICATION_SECRET, OVH_CONSUMER_KEY, OVH_ENDPOINT).
+    acme_dns ovh {
+        endpoint {$OVH_ENDPOINT}
+        application_key {$OVH_APPLICATION_KEY}
+        application_secret {$OVH_APPLICATION_SECRET}
+        consumer_key {$OVH_CONSUMER_KEY}
+    }
+{% endif %}
 }
 
 {% if caddy_vpn_enforce | default(true) | bool %}
@@ -43,6 +55,18 @@
     handle /health {
         respond "OK" 200
     }
+
+{% if caddy_vpn_only_mode | default(false) | bool %}
+    # VPN-ONLY MODE : webhooks Meta exposés via Cloudflare Tunnel
+    # Ces paths doivent rester accessibles depuis Internet (Meta → cloudflared → n8n).
+    # REX: cloudflared crée une connexion sortante vers Cloudflare — pas de port entrant.
+    # Le trafic arrive sur Caddy depuis localhost (cloudflared → 127.0.0.1).
+{% for path in caddy_public_webhook_paths | default([]) %}
+    handle {{ path }} {
+        reverse_proxy n8n:5678
+    }
+{% endfor %}
+{% endif %}
 
     # Admin portal (catch-all) — VPN-protected
     handle {

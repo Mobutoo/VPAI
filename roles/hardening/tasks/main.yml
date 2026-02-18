@@ -170,13 +170,36 @@
     direction: outgoing
   become: true
 
-- name: UFW — Allow HTTP and HTTPS
+# --- Mode standard : ports 80 et 443 ouverts à tous ---
+- name: UFW — Allow HTTP and HTTPS (standard mode)
   community.general.ufw:
     rule: allow
     port: "{{ item }}"
     proto: tcp
   loop: "{{ hardening_ufw_allowed_tcp_ports }}"
   become: true
+  when: not (hardening_vpn_only_mode | default(false) | bool)
+
+# --- Mode VPN-only : port 80 fermé, port 443 restreint au CIDR VPN ---
+# ACME DNS-01 (OVH) ne nécessite pas le port 80.
+# Cloudflare Tunnel gère les webhooks publics via connexion sortante (pas de port entrant).
+- name: "UFW VPN-only: Allow HTTPS from VPN network only"
+  community.general.ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+    from_ip: "{{ hardening_ufw_vpn_network }}"
+  become: true
+  when: hardening_vpn_only_mode | default(false) | bool
+
+- name: "UFW VPN-only: Display lockdown status"
+  ansible.builtin.debug:
+    msg: >-
+      VPN-ONLY MODE ACTIF :
+      Port 80 fermé (ACME DNS-01 OVH).
+      Port 443 restreint à {{ hardening_ufw_vpn_network }}.
+      Webhooks Meta via Cloudflare Tunnel (connexion sortante).
+  when: hardening_vpn_only_mode | default(false) | bool
 
 - name: UFW — Allow SSH from VPN only (locked down)
   community.general.ufw:

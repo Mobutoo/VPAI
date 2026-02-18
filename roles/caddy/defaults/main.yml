@@ -17,3 +17,25 @@ caddy_vpn_enforce: true
 caddy_notification_email: "{{ notification_email }}"
 caddy_rate_limit_events: 100
 caddy_rate_limit_window: "1m"
+
+# === VPN-ONLY MODE ===
+# Bascule complète de l'infrastructure en accès VPN uniquement.
+# Quand true :
+#   - Caddy utilise ACME DNS-01 (OVH) au lieu de HTTP-01 → port 80 inutile
+#   - UFW ferme le port 80 et restreint le 443 au CIDR VPN uniquement
+#   - Les webhooks Instagram sont routés via Cloudflare Tunnel (cloudflared)
+#   - L'image Caddy custom (plugin ovh) est buildée sur le serveur
+# DEFAULT: false — ne pas activer avant validation VPN complète
+caddy_vpn_only_mode: false
+
+# Provider DNS pour challenge ACME DNS-01 (requis si caddy_vpn_only_mode=true)
+# Actuellement configuré : ovh
+# Credentials requis dans secrets.yml : ovh_application_key, ovh_application_secret,
+#   ovh_consumer_key, ovh_endpoint (ex: ovh-eu)
+caddy_dns_provider: "ovh"
+
+# Endpoints webhook publics exposés via Cloudflare Tunnel (caddy_vpn_only_mode=true)
+# Meta/Instagram doit pouvoir atteindre ces paths depuis Internet
+caddy_public_webhook_paths:
+  - "/webhook/ig-comment"
+  - "/webhook/ig-dm"

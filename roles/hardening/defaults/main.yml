@@ -27,6 +27,19 @@ hardening_fail2ban_caddy_botsearch_maxretry: 5
 hardening_fail2ban_caddy_botsearch_bantime: 86400
 
 # --- UFW ---
+# Mode standard : ports 80 (ACME HTTP-01) et 443 (HTTPS public) ouverts à tous.
+# Mode VPN-only (hardening_vpn_only_mode=true) :
+#   - port 80 fermé (ACME DNS-01 OVH, pas besoin du challenge HTTP)
+#   - port 443 restreint au CIDR VPN uniquement
+#   - cloudflared reçoit les webhooks via connexion sortante (aucun port entrant requis)
+# PRÉREQUIS avant activation :
+#   1. caddy_vpn_only_mode=true configuré et déployé
+#   2. ACME DNS-01 OVH testé et certificats valides
+#   3. Split DNS Headscale configuré (extra_records → IP Tailscale du VPS)
+#   4. Cloudflare Tunnel opérationnel si webhooks Instagram requis
+# DEFAULT: false — ne pas activer avant validation complète
+hardening_vpn_only_mode: false
+
 hardening_ufw_allowed_tcp_ports:
   - "80"
   - "443"

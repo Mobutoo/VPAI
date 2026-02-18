@@ -144,3 +144,16 @@ whatsapp_tutor_enabled: false
 
 # Backup heartbeat (uptime monitoring)
 backup_heartbeat_url: "{{ vault_backup_heartbeat_url | default('') }}"
+
+# --- OVH API (ACME DNS-01 — mode VPN-only uniquement) ---
+# Créer les credentials sur https://eu.api.ovh.com/createToken/
+# Droits requis : GET/POST/PUT /domain/zone/* + GET /auth/currentCredential
+ovh_endpoint: "{{ vault_ovh_endpoint | default('ovh-eu') }}"
+ovh_application_key: "{{ vault_ovh_application_key | default('') }}"
+ovh_application_secret: "{{ vault_ovh_application_secret | default('') }}"
+ovh_consumer_key: "{{ vault_ovh_consumer_key | default('') }}"
+
+# --- Cloudflare Tunnel (webhooks Meta — mode VPN-only uniquement) ---
+# Générer le token dans Cloudflare Dashboard > Zero Trust > Networks > Tunnels
+# Le tunnel route les webhooks IG vers Caddy (caddy_public_webhook_paths)
+cloudflare_tunnel_token: "{{ vault_cloudflare_tunnel_token | default('') }}"

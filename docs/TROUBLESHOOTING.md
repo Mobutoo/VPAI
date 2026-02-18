@@ -534,4 +534,60 @@ docker exec javisi_postgresql psql -U n8n -d n8n -c \
 
 ---
 
-*Derniere mise a jour : 2026-02-17 — Session 5 (restructuration documentation)*
+
+---
+
+## 39. VPN-Only Mode — Variables Vault Requises
+
+### Nouvelles clés à ajouter dans `secrets.yml` (ansible-vault edit)
+
+```yaml
+# === OVH API — ACME DNS-01 (mode VPN-only) ===
+# URL: https://eu.api.ovh.com/createToken/
+# Droits requis:
+#   GET    /domain/zone
+#   GET    /domain/zone/*
+#   POST   /domain/zone/*/record
+#   PUT    /domain/zone/*/record/*
+#   DELETE /domain/zone/*/record/*
+#   POST   /domain/zone/*/refresh
+#   GET    /auth/currentCredential
+vault_ovh_endpoint: "ovh-eu"
+vault_ovh_application_key: "VOTRE_APP_KEY"
+vault_ovh_application_secret: "VOTRE_APP_SECRET"
+vault_ovh_consumer_key: "VOTRE_CONSUMER_KEY"
+
+# === Cloudflare Tunnel — Webhooks Meta (mode VPN-only) ===
+# URL: Cloudflare Dashboard > Zero Trust > Networks > Tunnels > Create tunnel
+# Type: Cloudflared | Nom: seko-webhooks
+# Public hostname: webhook.<domain> → Service: HTTP://localhost:443
+# Copier le token affiché lors de la création
+vault_cloudflare_tunnel_token: "VOTRE_TUNNEL_TOKEN"
+```
+
+### Ordre d'activation (PRÉREQUIS — ne pas brûler les étapes)
+
+```
+1. Créer les credentials OVH sur https://eu.api.ovh.com/createToken/
+2. Ajouter les vault_ovh_* dans secrets.yml
+3. Tester: ansible-playbook ... --tags caddy --extra-vars "caddy_vpn_only_mode=true" --check
+4. Créer le Cloudflare Tunnel dans le dashboard (mode connecté)
+5. Ajouter vault_cloudflare_tunnel_token dans secrets.yml
+6. Activer: dans main.yml → caddy_vpn_only_mode: true, hardening_vpn_only_mode: true
+7. Déployer: make deploy-prod
+8. Vérifier: curl https://<domain>/health depuis l'extérieur → "OK" 200
+9. Vérifier: curl https://<domain>/webhook/ig-comment depuis l'extérieur → atteint n8n
+10. Vérifier SSH: connexion depuis Headscale uniquement (VPN requis)
+```
+
+### Variables conditionnelles (off par défaut)
+
+| Variable | Défaut | Effet si true |
+|---|---|---|
+| `caddy_vpn_only_mode` | `false` | Image Caddy custom (OVH), acme_dns, no port 80, webhooks publics |
+| `hardening_vpn_only_mode` | `false` | UFW: port 80 fermé, 443 restreint CIDR VPN |
+
+> **Ne jamais activer** `hardening_vpn_only_mode=true` avant que `caddy_vpn_only_mode=true`
+> soit déployé ET que les certificats DNS-01 soient valides — risque de lockout HTTP.
+
+*Dernière mise à jour : 2026-02-18 — Session 6 (VPN-only préparation)*

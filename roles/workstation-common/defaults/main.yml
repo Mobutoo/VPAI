@@ -1,0 +1,62 @@
+---
+# workstation-common — defaults
+
+# Paquets de base pour le workstation Pi (Ubuntu Server 24.04 ARM64)
+workstation_packages:
+  - curl
+  - wget
+  - jq
+  - gnupg
+  - ca-certificates
+  - python3-pip
+  - unzip
+  - htop
+  - ncdu
+  - tmux
+  - lsb-release
+  - net-tools
+  - rsync
+  - git
+  - build-essential
+  - apt-transport-https
+
+workstation_hostname: "{{ workstation_pi_hostname | default('workstation-pi') }}"
+workstation_user: "{{ workstation_pi_user | default('pi') }}"
+workstation_locale: "{{ locale }}"
+workstation_timezone: "{{ timezone }}"
+
+# Docker config Pi (ARM64 — pas de swap limit kernel flag)
+workstation_docker_log_max_size: "10m"
+workstation_docker_log_max_file: "3"
+
+# Node.js version (NodeSource LTS)
+workstation_nodejs_major: "22"
+
+# Repertoire projets (SSD 256 Go)
+workstation_projects_dir: "/home/{{ workstation_pi_user | default('pi') }}/projects"
+workstation_base_dir: "/opt/workstation"
+
+# Sous-repertoires de /opt/workstation
+workstation_base_dirs:
+  - configs
+  - configs/caddy
+  - data
+  - data/caddy
+  - data/mission-control
+  - logs
+
+# sysctl adapte Pi (pas de swappiness agressif, ARM64)
+workstation_sysctl_settings:
+  vm.swappiness: 10
+  fs.file-max: 100000
+
+# NTP
+workstation_ntp_servers:
+  - "0.pool.ntp.org"
+  - "1.pool.ntp.org"
+
+# UFW — autoriser Tailscale CIDR + LAN seulement
+workstation_ufw_allow_cidrs:
+  - "{{ vpn_network_cidr }}"    # Tailscale mesh (100.64.0.0/10)
+  - "192.168.0.0/16"            # LAN local
+  - "10.0.0.0/8"                # LAN alternatif (sous-reseaux prives)

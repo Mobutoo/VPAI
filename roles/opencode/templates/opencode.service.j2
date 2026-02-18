@@ -1,0 +1,18 @@
+[Unit]
+Description=OpenCode Server — AI Coding Agent (headless HTTP API)
+After=network.target
+
+[Service]
+Type=simple
+User={{ workstation_pi_user | default('pi') }}
+WorkingDirectory={{ opencode_workspace_dir }}
+Environment="OPENCODE_CONFIG_DIR={{ opencode_config_dir }}"
+ExecStart={{ opencode_npm_prefix }}/bin/opencode serve --port {{ opencode_port }}
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=opencode
+
+[Install]
+WantedBy=multi-user.target

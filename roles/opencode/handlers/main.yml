@@ -1,0 +1,15 @@
+---
+# opencode — handlers
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
+# I2 fix : utilise opencode_service_name au lieu du nom hardcode
+- name: Restart opencode
+  ansible.builtin.systemd:
+    name: "{{ opencode_service_name }}"
+    state: restarted
+  become: true
+  listen: "Restart {{ opencode_service_name }}"

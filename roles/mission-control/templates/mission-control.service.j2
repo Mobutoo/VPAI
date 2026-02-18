@@ -1,0 +1,18 @@
+[Unit]
+Description=Mission Control — OpenClaw Web UI
+After=network.target
+
+[Service]
+Type=simple
+User={{ workstation_pi_user | default('pi') }}
+WorkingDirectory={{ mc_install_dir }}
+EnvironmentFile={{ mc_install_dir }}/.env
+ExecStart=/usr/bin/node {{ mc_install_dir }}/.next/standalone/server.js
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mission-control
+
+[Install]
+WantedBy=multi-user.target

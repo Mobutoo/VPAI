@@ -1,0 +1,27 @@
+---
+# workstation-caddy — handlers
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
+# Valider la config Caddyfile avant reload — bloque le reload si invalide (S2 fix)
+- name: Validate Caddyfile
+  ansible.builtin.command:
+    cmd: caddy validate --config {{ workstation_caddy_config_dir }}/Caddyfile --adapter caddyfile
+  changed_when: false
+  become: true
+  listen: Validate Caddyfile
+
+- name: Reload caddy-workstation
+  ansible.builtin.systemd:
+    name: caddy-workstation
+    state: reloaded
+  become: true
+
+- name: Restart caddy-workstation
+  ansible.builtin.systemd:
+    name: caddy-workstation
+    state: restarted
+  become: true

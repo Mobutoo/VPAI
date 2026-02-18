@@ -1,0 +1,24 @@
+---
+# workstation-common — handlers
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+  become: true
+
+- name: Restart systemd-timesyncd
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    state: restarted
+  become: true
+
+- name: Reload ufw
+  community.general.ufw:
+    state: reloaded
+  become: true
+
+- name: Restart Docker
+  ansible.builtin.systemd:
+    name: docker
+    state: restarted
+  become: true

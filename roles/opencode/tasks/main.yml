@@ -1,0 +1,104 @@
+---
+# opencode — tasks
+# OpenCode server (AI coding agent, headless HTTP API)
+
+# --- Directories ---
+- name: Create OpenCode config directory
+  ansible.builtin.file:
+    path: "{{ opencode_config_dir }}"
+    state: directory
+    owner: "{{ opencode_user }}"
+    group: "{{ opencode_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create workspace directory
+  ansible.builtin.file:
+    path: "{{ opencode_workspace_dir }}"
+    state: directory
+    owner: "{{ opencode_user }}"
+    group: "{{ opencode_user }}"
+    mode: "0755"
+  become: true
+
+# --- Install OpenCode via npm global ---
+# C6 fix : version pinnee via opencode_npm_version (pinner apres premier test)
+- name: Install OpenCode via npm global
+  community.general.npm:
+    name: opencode-ai
+    version: "{{ opencode_npm_version }}"
+    global: true
+    state: present
+  become: true
+
+- name: Verify OpenCode installation
+  ansible.builtin.command:
+    cmd: "{{ opencode_npm_prefix }}/bin/opencode --version"
+  changed_when: false
+  register: opencode_version
+
+- name: Display OpenCode version
+  ansible.builtin.debug:
+    msg: "OpenCode: {{ opencode_version.stdout }}"
+
+# --- Configuration ---
+- name: Deploy OpenCode config (opencode.json)
+  ansible.builtin.template:
+    src: opencode.json.j2
+    dest: "{{ opencode_config_dir }}/opencode.json"
+    owner: "{{ opencode_user }}"
+    group: "{{ opencode_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart {{ opencode_service_name }}
+
+# --- Systemd service ---
+- name: Deploy systemd service
+  ansible.builtin.template:
+    src: opencode.service.j2
+    dest: "/etc/systemd/system/{{ opencode_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart {{ opencode_service_name }}
+
+- name: Enable and start OpenCode service
+  ansible.builtin.systemd:
+    name: "{{ opencode_service_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+
+# --- Healthcheck ---
+# C5 fix : wait_for port d'abord — opencode-ai n'expose pas forcement /api/health
+- name: Wait for OpenCode port to be open
+  ansible.builtin.wait_for:
+    host: localhost
+    port: "{{ opencode_port }}"
+    timeout: 60
+    state: started
+  changed_when: false
+
+- name: Check OpenCode HTTP response
+  ansible.builtin.uri:
+    url: "http://localhost:{{ opencode_port }}/"
+    method: GET
+    status_code: [200, 204, 301, 302, 404]
+  retries: 6
+  delay: 5
+  register: opencode_health
+  until: opencode_health.status in [200, 204, 301, 302, 404]
+  changed_when: false
+
+# Diagnostic journalctl si le service ne repond pas
+- name: Show OpenCode logs if healthcheck failed
+  ansible.builtin.command:
+    cmd: journalctl -u {{ opencode_service_name }} --no-pager -n 30
+  changed_when: false
+  when: opencode_health is failed
+  become: true
+  failed_when: false

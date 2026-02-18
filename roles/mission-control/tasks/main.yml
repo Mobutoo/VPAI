@@ -1,0 +1,127 @@
+---
+# mission-control — tasks
+# Mission Control (Next.js 14 + SQLite) — OpenClaw Web UI
+
+# --- Directories ---
+- name: Create Mission Control install directory
+  ansible.builtin.file:
+    path: "{{ mc_install_dir }}"
+    state: directory
+    owner: "{{ mc_user }}"
+    group: "{{ mc_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create Mission Control data directory
+  ansible.builtin.file:
+    path: "{{ mc_data_dir }}"
+    state: directory
+    owner: "{{ mc_user }}"
+    group: "{{ mc_user }}"
+    mode: "0755"
+  become: true
+
+# --- Clone repository ---
+- name: Clone Mission Control repository
+  ansible.builtin.git:
+    repo: "{{ mc_repo_url }}"
+    dest: "{{ mc_install_dir }}"
+    version: "{{ mc_repo_version }}"
+    force: false
+  become: true
+  become_user: "{{ mc_user }}"
+  register: mc_git_clone
+
+# --- Build ---
+# C4 fix : verifier si l'artefact de build existe independamment du git clone
+# Cas : build rate au 1er run → git.changed = false au 2eme → build ne reparte pas
+- name: Check if Next.js build artifact exists
+  ansible.builtin.stat:
+    path: "{{ mc_build_artifact }}"
+  register: mc_build_artifact_stat
+
+- name: Install npm dependencies (production only)
+  ansible.builtin.command:
+    cmd: npm ci --omit=dev
+    chdir: "{{ mc_install_dir }}"
+  become: true
+  become_user: "{{ mc_user }}"
+  # Rebuilder si git a change OU si l'artefact de build est absent
+  changed_when: mc_git_clone.changed or not mc_build_artifact_stat.stat.exists
+  when: mc_git_clone.changed or not mc_build_artifact_stat.stat.exists
+  environment:
+    NODE_ENV: "{{ mc_node_env }}"
+
+- name: Build Mission Control (Next.js standalone)
+  ansible.builtin.command:
+    cmd: npm run build
+    chdir: "{{ mc_install_dir }}"
+  become: true
+  become_user: "{{ mc_user }}"
+  changed_when: mc_git_clone.changed or not mc_build_artifact_stat.stat.exists
+  when: mc_git_clone.changed or not mc_build_artifact_stat.stat.exists
+  environment:
+    NODE_ENV: "{{ mc_node_env }}"
+  notify: Restart {{ mc_service_name }}
+
+# --- Configuration ---
+- name: Deploy .env file
+  ansible.builtin.template:
+    src: mission-control.env.j2
+    dest: "{{ mc_install_dir }}/.env"
+    owner: "{{ mc_user }}"
+    group: "{{ mc_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart {{ mc_service_name }}
+
+# --- Systemd service ---
+- name: Deploy systemd service
+  ansible.builtin.template:
+    src: mission-control.service.j2
+    dest: "/etc/systemd/system/{{ mc_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart {{ mc_service_name }}
+
+- name: Enable and start Mission Control service
+  ansible.builtin.systemd:
+    name: "{{ mc_service_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+
+# --- Healthcheck ---
+# Attendre d'abord que le port soit ouvert, puis verifier la reponse HTTP
+- name: Wait for Mission Control port to be open
+  ansible.builtin.wait_for:
+    host: localhost
+    port: "{{ mc_port }}"
+    timeout: 60
+    state: started
+  changed_when: false
+
+- name: Check Mission Control health endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ mc_port }}/api/health"
+    method: GET
+    status_code: [200, 204]
+  retries: 6
+  delay: 5
+  register: mc_health
+  until: mc_health.status in [200, 204]
+  changed_when: false
+
+# Diagnostic journalctl si le service ne repond pas (S5 fix)
+- name: Show Mission Control logs if healthcheck failed
+  ansible.builtin.command:
+    cmd: journalctl -u {{ mc_service_name }} --no-pager -n 30
+  changed_when: false
+  when: mc_health is failed
+  become: true
+  failed_when: false

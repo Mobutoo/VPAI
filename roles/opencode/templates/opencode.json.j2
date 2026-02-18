@@ -1,0 +1,19 @@
+{
+  "providers": {
+    "openai": {
+      "name": "LiteLLM Proxy",
+      "base": "{{ opencode_litellm_base_url }}",
+      "api": "{{ opencode_litellm_api_key }}",
+      "models": [
+        {
+          "id": "{{ opencode_default_model }}",
+          "name": "Claude Sonnet (via LiteLLM)",
+          "contextLength": 200000,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  },
+  "model": "openai/{{ opencode_default_model }}",
+  "workspace": "{{ opencode_workspace_dir }}"
+}

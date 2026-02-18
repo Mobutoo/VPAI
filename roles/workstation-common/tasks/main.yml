@@ -1,0 +1,233 @@
+---
+# workstation-common — tasks
+# Ubuntu Server 24.04 LTS ARM64 (Raspberry Pi 5)
+
+# --- Hostname ---
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ workstation_hostname }}"
+  become: true
+
+# --- Locale + Timezone ---
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Install common packages
+  ansible.builtin.apt:
+    name: "{{ workstation_packages }}"
+    state: present
+  become: true
+
+- name: Configure locale
+  community.general.locale_gen:
+    name: "{{ workstation_locale }}"
+    state: present
+  become: true
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ workstation_timezone }}"
+  become: true
+  notify: Restart systemd-timesyncd
+
+- name: Enable and start systemd-timesyncd
+  ansible.builtin.systemd:
+    name: systemd-timesyncd
+    state: started
+    enabled: true
+  become: true
+
+# --- Node.js via NodeSource ---
+# creates: rend la tache idempotente — changed_when:false car creates gere l'etat (C1+C2 fix)
+- name: Download and run NodeSource setup script
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      curl -fsSL "https://deb.nodesource.com/setup_{{ workstation_nodejs_major }}.x" | bash -
+  args:
+    creates: /etc/apt/keyrings/nodesource.gpg
+  changed_when: false
+  become: true
+
+- name: Install Node.js
+  ansible.builtin.apt:
+    name: nodejs
+    state: present
+    update_cache: true
+  become: true
+
+- name: Verify Node.js installation
+  ansible.builtin.command:
+    cmd: node --version
+  changed_when: false
+  register: workstation_node_version
+
+- name: Display Node.js version
+  ansible.builtin.debug:
+    msg: "Node.js: {{ workstation_node_version.stdout }}"
+
+# --- Docker CE ARM64 ---
+- name: Create apt keyrings directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+# creates: idempotence — pipe curl|gpg sans fichier temporaire (C1 fix)
+- name: Download and dearmor Docker GPG key
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg         | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+      chmod a+r /etc/apt/keyrings/docker.gpg
+  args:
+    creates: /etc/apt/keyrings/docker.gpg
+  changed_when: false
+  become: true
+
+# ansible_facts['distribution_release'] remplace lsb_release (C2 fix)
+- name: Add Docker apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.gpg]
+      https://download.docker.com/linux/ubuntu
+      {{ ansible_facts['distribution_release'] }} stable
+    state: present
+    filename: docker
+    update_cache: true
+  become: true
+
+- name: Install Docker CE packages
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+  become: true
+
+- name: Configure Docker daemon
+  ansible.builtin.template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart Docker
+
+- name: Add workstation user to docker group
+  ansible.builtin.user:
+    name: "{{ workstation_user }}"
+    groups: docker
+    append: true
+  become: true
+
+- name: Enable and start Docker
+  ansible.builtin.systemd:
+    name: docker
+    state: started
+    enabled: true
+  become: true
+
+# --- Arborescence /opt/workstation ---
+- name: Create /opt/workstation base directory
+  ansible.builtin.file:
+    path: "{{ workstation_base_dir }}"
+    state: directory
+    owner: "{{ workstation_user }}"
+    group: "{{ workstation_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create /opt/workstation subdirectories
+  ansible.builtin.file:
+    path: "{{ workstation_base_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ workstation_user }}"
+    group: "{{ workstation_user }}"
+    mode: "0755"
+  loop: "{{ workstation_base_dirs }}"
+  become: true
+
+- name: Create projects directory
+  ansible.builtin.file:
+    path: "{{ workstation_projects_dir }}"
+    state: directory
+    owner: "{{ workstation_user }}"
+    group: "{{ workstation_user }}"
+    mode: "0755"
+  become: true
+
+# --- sysctl ---
+- name: Configure sysctl parameters
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    state: present
+    reload: true
+  loop: "{{ workstation_sysctl_settings | dict2items }}"
+  become: true
+
+# --- UFW ---
+- name: Install UFW
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+  become: true
+
+- name: Set UFW default deny incoming
+  community.general.ufw:
+    default: deny
+    direction: incoming
+  become: true
+
+- name: Set UFW default allow outgoing
+  community.general.ufw:
+    default: allow
+    direction: outgoing
+  become: true
+
+# Appliquer toutes les regles SSH avant activation UFW — anti-lockout (I4 fix)
+- name: Allow SSH from allowed CIDRs
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    src: "{{ item }}"
+  loop: "{{ workstation_ufw_allow_cidrs }}"
+  become: true
+  register: workstation_ufw_ssh_rules
+
+- name: Assert all SSH rules applied before enabling UFW
+  ansible.builtin.assert:
+    that:
+      - workstation_ufw_ssh_rules.results | length == workstation_ufw_allow_cidrs | length
+    fail_msg: >-
+      UFW SSH rules not fully applied ({{ workstation_ufw_ssh_rules.results | length }}
+      of {{ workstation_ufw_allow_cidrs | length }}). Refusing to enable UFW to avoid lockout.
+
+- name: Allow HTTP/HTTPS from allowed CIDRs
+  community.general.ufw:
+    rule: allow
+    port: "{{ item[1] }}"
+    proto: tcp
+    src: "{{ item[0] }}"
+  loop: "{{ workstation_ufw_allow_cidrs | product(['80', '443']) | list }}"
+  become: true
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+  become: true

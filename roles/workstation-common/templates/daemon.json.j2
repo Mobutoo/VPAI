@@ -1,0 +1,8 @@
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "{{ workstation_docker_log_max_size }}",
+    "max-file": "{{ workstation_docker_log_max_file }}"
+  },
+  "storage-driver": "overlay2"
+}

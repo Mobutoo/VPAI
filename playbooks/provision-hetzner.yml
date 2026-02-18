@@ -1,0 +1,78 @@
+---
+# playbooks/provision-hetzner.yml — Provisioning automatique CX22
+# Cree un serveur Hetzner Cloud via l'API hcloud
+#
+# Prerequis :
+#   pip install hcloud
+#   ansible-galaxy collection install hetzner.hcloud
+#   vault: vault_hetzner_api_token
+#
+# Usage:
+#   ansible-playbook playbooks/provision-hetzner.yml
+#   ansible-playbook playbooks/provision-hetzner.yml -e "server_name=app-prod-02"
+
+- name: Provision Hetzner CX22
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    hetzner_api_token: "{{ vault_hetzner_api_token }}"
+    server_name: "{{ app_prod_hostname | default('app-prod-01') }}"
+    server_type: "{{ app_prod_server_type | default('cx22') }}"
+    server_location: "{{ app_prod_location | default('fsn1') }}"
+    # S3 fix : image OS referencee via variable (versions.yml)
+    server_image: "{{ app_prod_os_image | default('ubuntu-24.04') }}"
+    ssh_key_name: "{{ deploy_ssh_key_name | default('vpai-deploy') }}"
+    ssh_key_pub_path: "{{ deploy_ssh_key_pub_path | default('~/.ssh/id_ed25519.pub') }}"
+
+  tasks:
+    - name: Ensure SSH key is registered in Hetzner
+      hetzner.hcloud.ssh_key:
+        api_token: "{{ hetzner_api_token }}"
+        name: "{{ ssh_key_name }}"
+        public_key: "{{ lookup('file', ssh_key_pub_path) }}"
+        state: present
+
+    - name: Create CX22 server
+      hetzner.hcloud.server:
+        api_token: "{{ hetzner_api_token }}"
+        name: "{{ server_name }}"
+        server_type: "{{ server_type }}"
+        location: "{{ server_location }}"
+        image: "{{ server_image }}"
+        ssh_keys:
+          - "{{ ssh_key_name }}"
+        state: present
+      register: hetzner_server
+
+    - name: Display server info
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Server: {{ server_name }}
+          IP: {{ hetzner_server.hcloud_server.ipv4_address }}
+          Status: {{ hetzner_server.hcloud_server.status }}
+          ========================================
+          Next steps:
+          1. Add app_prod_ip to vault: {{ hetzner_server.hcloud_server.ipv4_address }}
+          2. Register Tailscale on new server
+          3. Run: ansible-playbook playbooks/app-prod.yml
+          ========================================
+
+    # S4 fix : verifier que le serveur est dans un etat valide avant d'attendre SSH
+    - name: Assert server is starting or running
+      ansible.builtin.assert:
+        that:
+          - hetzner_server.hcloud_server.status in ['starting', 'running']
+        fail_msg: >-
+          Server {{ server_name }} is in unexpected state:
+          {{ hetzner_server.hcloud_server.status }}. Expected 'starting' or 'running'.
+
+    - name: Wait for SSH to be available
+      ansible.builtin.wait_for:
+        host: "{{ hetzner_server.hcloud_server.ipv4_address }}"
+        port: 22
+        delay: 10
+        timeout: 300
+        state: started

@@ -1,0 +1,28 @@
+[Unit]
+Description=Caddy Workstation — Reverse Proxy TLS pour Pi
+After=network.target
+
+[Service]
+Type=notify
+User=root
+Group=root
+ExecStart=/usr/bin/caddy run --config {{ workstation_caddy_config_dir }}/Caddyfile --adapter caddyfile
+ExecReload=/usr/bin/caddy reload --config {{ workstation_caddy_config_dir }}/Caddyfile --adapter caddyfile
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+LimitNPROC=512
+PrivateTmp=true
+ProtectSystem=full
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+Environment="OVH_APPLICATION_KEY={{ ovh_application_key }}"
+Environment="OVH_APPLICATION_SECRET={{ ovh_application_secret }}"
+Environment="OVH_CONSUMER_KEY={{ ovh_consumer_key }}"
+Environment="XDG_DATA_HOME={{ workstation_caddy_data_dir }}"
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=caddy-workstation
+
+[Install]
+WantedBy=multi-user.target

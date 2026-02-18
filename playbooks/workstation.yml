@@ -1,0 +1,60 @@
+---
+# playbooks/workstation.yml — Deploiement Workstation Pi
+#
+# Usage:
+#   ansible-playbook playbooks/workstation.yml
+#   ansible-playbook playbooks/workstation.yml --tags "mission-control"
+#   ansible-playbook playbooks/workstation.yml --tags "opencode"
+#   ansible-playbook playbooks/workstation.yml --tags "workstation-caddy"
+#
+# Prerequis :
+#   - Pi boothe sous Ubuntu Server 24.04 LTS ARM64
+#   - Tailscale installe + enregistre sur Headscale (headscale-node deploy)
+#   - SSH accessible (via Tailscale ou LAN)
+#   - workstation_pi_ip defini dans vault (vault_workstation_pi_ip)
+
+- name: Deploy Workstation Pi
+  hosts: workstation
+  gather_facts: true
+
+  pre_tasks:
+    - name: Display deployment info
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Workstation: {{ inventory_hostname }}
+          Date: {{ ansible_facts['date_time']['iso8601'] }}
+          ========================================
+      tags: [always]
+
+    - name: Verify ARM64 architecture
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['architecture'] == 'aarch64'
+        fail_msg: >-
+          This playbook is for ARM64 (Raspberry Pi).
+          Current: {{ ansible_facts['architecture'] }}
+      tags: [always]
+
+    - name: Verify Ubuntu 24.04
+      ansible.builtin.assert:
+        that:
+          - ansible_facts['distribution'] == 'Ubuntu'
+          - ansible_facts['distribution_major_version'] | int >= 24
+        fail_msg: >-
+          This playbook requires Ubuntu 24.04+.
+          Current: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }}
+      tags: [always]
+
+  roles:
+    - role: workstation-common
+      tags: [workstation-common]
+
+    - role: mission-control
+      tags: [mission-control]
+
+    - role: opencode
+      tags: [opencode]
+
+    - role: workstation-caddy
+      tags: [workstation-caddy]

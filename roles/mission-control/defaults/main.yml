@@ -1,0 +1,30 @@
+---
+# mission-control — defaults
+
+mc_port: 4000
+mc_install_dir: "/opt/workstation/mission-control"
+mc_data_dir: "/opt/workstation/data/mission-control"
+
+# Utilisateur systeme (I1 fix — evite les inline | default('pi') repetes)
+mc_user: "{{ workstation_pi_user | default('pi') }}"
+
+# OpenClaw Gateway connection (via Tailscale mesh)
+mc_openclaw_gateway_url: "wss://{{ admin_subdomain }}.{{ domain_name }}"
+mc_openclaw_gateway_token: "{{ openclaw_gateway_token }}"
+
+# SQLite DB path
+mc_database_path: "{{ mc_data_dir }}/mission-control.db"
+
+# Node.js environment
+mc_node_env: "production"
+
+# Repo source (C6 fix — pinner apres premier test, "main" = ref flottante)
+# IMPORTANT: remplacer "main" par un tag git apres validation : v1.x.x
+mc_repo_url: "https://github.com/crshdn/mission-control"
+mc_repo_version: "main"
+
+# Systemd service
+mc_service_name: "mission-control"
+
+# Artefact de build Next.js — sert a detecter si le build est absent (C4 fix)
+mc_build_artifact: "{{ mc_install_dir }}/.next/standalone/server.js"

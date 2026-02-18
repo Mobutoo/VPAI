@@ -1,0 +1,37 @@
+{
+    admin localhost:{{ workstation_caddy_admin_port }}
+
+    # ACME DNS-01 via OVH (TLS pour les subdomains du Pi)
+    acme_dns ovh {
+        endpoint {{ ovh_endpoint }}
+        application_key {env.OVH_APPLICATION_KEY}
+        application_secret {env.OVH_APPLICATION_SECRET}
+        consumer_key {env.OVH_CONSUMER_KEY}
+    }
+
+    servers {
+        trusted_proxies static private_ranges
+    }
+}
+
+# Mission Control
+{{ workstation_mc_domain }} {
+    reverse_proxy localhost:{{ mc_port | default(4000) }}
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
+}
+
+# OpenCode Server
+{{ workstation_oc_domain }} {
+    reverse_proxy localhost:{{ opencode_port | default(3456) }}
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
+}

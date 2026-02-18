@@ -1,0 +1,121 @@
+---
+# workstation-caddy — tasks
+# Caddy natif sur le Pi (pas Docker) — reverse proxy TLS pour MC + OpenCode
+# TLS via ACME DNS-01 (OVH API) — memes credentials que le prod
+
+# --- Install Caddy (binaire officiel via cloudsmith) ---
+# creates: rend la tache idempotente — changed_when:false car creates gere l etat (C1 fix)
+- name: Download and dearmor Caddy GPG key
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
+        | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+      chmod a+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  args:
+    creates: /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  changed_when: false
+  become: true
+
+- name: Add Caddy apt repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg]
+      https://dl.cloudsmith.io/public/caddy/stable/deb/ubuntu
+      {{ ansible_facts['distribution_release'] }} main
+    state: present
+    filename: caddy-stable
+    update_cache: true
+  become: true
+
+- name: Install Caddy (version pinnee)
+  ansible.builtin.apt:
+    name: "caddy={{ workstation_caddy_apt_version }}"
+    state: present
+    allow_downgrade: true
+  become: true
+
+# Verifier module DNS OVH disponible — bloquer si absent (C3 fix)
+- name: Check Caddy OVH DNS module availability
+  ansible.builtin.command:
+    cmd: caddy list-modules
+  changed_when: false
+  register: workstation_caddy_modules
+  failed_when: workstation_caddy_modules.rc != 0
+
+- name: Assert Caddy OVH DNS module is present
+  ansible.builtin.assert:
+    that:
+      - "'dns.providers.ovh' in workstation_caddy_modules.stdout"
+    fail_msg: >-
+      Caddy OVH DNS module (dns.providers.ovh) NOT available.
+      Rebuild with xcaddy: xcaddy build --with github.com/caddy-dns/ovh
+
+# --- Directories ---
+- name: Create Caddy config directory
+  ansible.builtin.file:
+    path: "{{ workstation_caddy_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Create Caddy data directory
+  ansible.builtin.file:
+    path: "{{ workstation_caddy_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+# --- Configuration ---
+- name: Deploy Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile-workstation.j2
+    dest: "{{ workstation_caddy_config_dir }}/Caddyfile"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Validate Caddyfile
+    - Reload caddy-workstation
+
+# --- Systemd service ---
+- name: Deploy caddy-workstation systemd service
+  ansible.builtin.template:
+    src: caddy-workstation.service.j2
+    dest: /etc/systemd/system/caddy-workstation.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart caddy-workstation
+
+# Desactiver le service caddy par defaut seulement s il existe (I5 fix)
+- name: Check if default caddy service exists
+  ansible.builtin.stat:
+    path: /lib/systemd/system/caddy.service
+  register: workstation_default_caddy_service
+
+- name: Disable default Caddy service (if present)
+  ansible.builtin.systemd:
+    name: caddy
+    state: stopped
+    enabled: false
+    daemon_reload: true
+  become: true
+  when: workstation_default_caddy_service.stat.exists
+
+- name: Enable and start caddy-workstation service
+  ansible.builtin.systemd:
+    name: caddy-workstation
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true

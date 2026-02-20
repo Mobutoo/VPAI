@@ -4,6 +4,8 @@
 headscale_login_server: "{{ vpn_headscale_url }}"
 headscale_auth_key_value: "{{ headscale_auth_key }}"
 headscale_vpn_ip: "{{ vpn_headscale_ip }}"
-headscale_hostname: "{{ prod_hostname }}"
+# hostname : prod_hostname pour le VPS, workstation_pi_hostname pour le Pi
+# override via -e headscale_hostname=xxx ou dans le playbook via role vars
+headscale_hostname: "{{ workstation_pi_hostname | default(prod_hostname) }}"
 headscale_advertise_routes: []
 headscale_accept_routes: true

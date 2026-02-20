@@ -13,7 +13,8 @@
     executable: /bin/bash
     cmd: |
       set -o pipefail
-      TAILSCALE_GPG="https://pkgs.tailscale.com/stable/debian"
+      DISTRO="{{ ansible_facts['distribution'] | lower }}"
+      TAILSCALE_GPG="https://pkgs.tailscale.com/stable/${DISTRO}"
       curl -fsSL "${TAILSCALE_GPG}/{{ ansible_facts['distribution_release'] }}.noarmor.gpg" \
         | gpg --dearmor --yes -o /etc/apt/keyrings/tailscale-archive-keyring.gpg
       chmod a+r /etc/apt/keyrings/tailscale-archive-keyring.gpg
@@ -26,7 +27,7 @@
   ansible.builtin.apt_repository:
     repo: >-
       deb [signed-by=/etc/apt/keyrings/tailscale-archive-keyring.gpg]
-      https://pkgs.tailscale.com/stable/debian
+      https://pkgs.tailscale.com/stable/{{ ansible_facts['distribution'] | lower }}
       {{ ansible_facts['distribution_release'] }} main
     state: present
     filename: tailscale

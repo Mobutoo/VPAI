@@ -9,9 +9,9 @@
 #
 # Prerequis :
 #   - Pi boothe sous Ubuntu Server 24.04 LTS ARM64
-#   - Tailscale installe + enregistre sur Headscale (headscale-node deploy)
-#   - SSH accessible (via Tailscale ou LAN)
+#   - SSH accessible via LAN (192.168.1.8)
 #   - workstation_pi_ip defini dans vault (vault_workstation_pi_ip)
+#   - headscale_auth_key valide dans vault (cle preauth Headscale)
 
 - name: Deploy Workstation Pi
   hosts: workstation
@@ -49,6 +49,11 @@
   roles:
     - role: workstation-common
       tags: [workstation-common]
+
+    - role: headscale-node
+      tags: [headscale-node]
+      vars:
+        headscale_hostname: "{{ workstation_pi_hostname }}"
 
     - role: mission-control
       tags: [mission-control]

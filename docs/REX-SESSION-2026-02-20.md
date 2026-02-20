@@ -14,8 +14,8 @@ Continuation de la session 2026-02-18 (voir `REX-SESSION-2026-02-18.md`).
 | Serveur | IP | Rôle | État |
 |---|---|---|---|
 | **Sese-AI** (OVH VPS) | 137.74.114.167 | Cerveau IA | ✅ Opérationnel |
-| **Seko-VPN** (Ionos) | 87.106.30.160 | Headscale hub VPN | ⚠️ Down (déploiement raté autre session) |
-| **Workstation Pi** (RPi5) | 192.168.1.8 (LAN) | Mission Control | ✅ Partiellement opérationnel |
+| **Seko-VPN** (Ionos) | 87.106.30.160 | Headscale hub VPN | ✅ Opérationnel (Headscale Docker, Up 8j) |
+| **Workstation Pi** (RPi5) | 192.168.1.8 (LAN) / 100.64.0.1 (VPN) | Mission Control | ✅ Pleinement opérationnel |
 
 ### Services sur Sese-AI (VPS OVH — 137.74.114.167, port SSH 804)
 
@@ -42,10 +42,14 @@ Tous les containers Docker **healthy** :
 | Service | Version | Port | État |
 |---|---|---|---|
 | Mission Control | v1.1.0 | 4000 | ✅ active (running) |
-| OpenCode | 1.2.8 | 3456 | ✅ active (running) |
-| Caddy (xcaddy+OVH) | v2.10.2 | 80/443 | ❌ caddy.service not found |
+| OpenCode | 1.2.8 | 3456 | ✅ active (running) → LiteLLM |
+| Caddy (xcaddy+OVH) | v2.10.2 | 80/443 | ✅ active (caddy-workstation.service) |
 | Claude Code CLI | 2.1.49 | — | ✅ installé, OAuth Max Plan ✅ |
-| Tailscale | installé | — | ❌ Logged out (Headscale down) |
+| Tailscale | — | — | ✅ online — IP 100.64.0.1 |
+
+**DNS Split Headscale (actif) :**
+- `mc.ewutelo.cloud` → `100.64.0.1` (Pi) — HTTP 200 ✅
+- `oc.ewutelo.cloud` → `100.64.0.1` (Pi) — HTTP 200 ✅
 
 ---
 
@@ -112,7 +116,28 @@ Tous les containers Docker **healthy** :
 
 ## Ce qui reste à faire
 
-### 🔴 Priorité 1 — Remettre Seko-VPN en ligne
+### ✅ ~~Priorité 1 — Remettre Seko-VPN en ligne~~ FAIT
+
+Headscale Docker sur Seko-VPN était simplement `inactive` (service systemd non configuré).
+Docker Compose Up suffit. Pi connecté, DNS records mc/oc ajoutés manuellement dans
+`/opt/services/headscale/config/config.yaml` et Headscale redémarré.
+
+> ⚠️ **TODO Ansible** : intégrer la gestion du `config.yaml` Headscale dans un rôle pour que
+> mc/oc soient versionnés. Pour l'instant c'est fait manuellement sur Seko-VPN.
+
+### ✅ ~~Priorité 2 — Caddy non démarré sur le Pi~~ FAIT
+
+Service `caddy-workstation.service` actif, TLS OVH DNS-01 fonctionnel.
+
+### ✅ ~~Priorité 3 — OpenClaw ↔ Mission Control~~ FAIT
+
+- Mission Control `.env` : `OPENCLAW_GATEWAY_URL=wss://javisi.ewutelo.cloud` ✅
+- OpenClaw accessible depuis le Pi : HTTP 200 ✅
+- mc/oc accessibles depuis le VPS via Tailscale : HTTP 200 ✅
+
+---
+
+### 🟡 Priorité restante — Versionner config Headscale
 
 Le serveur Headscale (Ionos 87.106.30.160) est indisponible suite à un déploiement raté depuis une autre session Claude.
 

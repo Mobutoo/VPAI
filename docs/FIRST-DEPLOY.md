@@ -23,6 +23,9 @@
 12. [Configurer les services externes](#12-configurer-les-services-externes)
 13. [Checklist finale](#13-checklist-finale)
 14. [Depannage](#14-depannage)
+15. [Smoke Tests](#15-smoke-tests)
+16. [CI/CD GitHub Actions](#16-cicd-github-actions)
+17. [Deploiement Workstation Pi (Mission Control)](#17-deploiement-workstation-pi-mission-control)
 
 ---
 
@@ -1113,6 +1116,215 @@ open https://github.com/<ton-user>/VPAI/actions
 # 3. Taper "deploy-prod" pour confirmer
 # 4. Lancer
 ```
+
+---
+
+## 17. Deploiement Workstation Pi (Mission Control)
+
+> **Public** : Technicien avec accès SSH au Pi
+> **Durée estimée** : 30-45 min (première fois), 5 min (redéploiement)
+> **Prérequis** : VPS prod déployé et fonctionnel, Pi sous Ubuntu Server 24.04 LTS ARM64
+
+### 17.0 Vue d'ensemble
+
+Le Workstation Pi est une machine locale (Raspberry Pi 5) qui héberge :
+
+| Service | Rôle | Port | URL |
+|---|---|---|---|
+| **Mission Control** | Interface web OpenClaw | 4000 | `https://mc.<domaine>` |
+| **OpenCode** | Agent IA headless (IDE) | 3456 | `https://oc.<domaine>` |
+| **Caddy** | Reverse proxy TLS (OVH DNS-01) | 80/443 | — |
+| **Claude Code CLI** | Dev CLI (OAuth Max Plan) | — | SSH/tmux |
+| **Tailscale** | Client VPN Headscale | — | IP `100.64.0.x` |
+
+### 17.1 Prérequis matériels
+
+| Élément | Minimum | Recommandé |
+|---|---|---|
+| Raspberry Pi | Pi 4 4GB | **Pi 5 16GB** |
+| Stockage | 64 Go microSD | **SSD NVMe 256 Go via PCIe** |
+| OS | Ubuntu Server 24.04 LTS ARM64 | idem |
+| Réseau | WiFi ou Ethernet | **Ethernet** |
+| Accès | SSH depuis ta machine | idem |
+
+### 17.2 Préparation du Vault
+
+Ajouter dans `secrets.yml` (via `ansible-vault edit`) :
+
+```yaml
+vault_workstation_pi_ip: "192.168.1.8"        # IP LAN du Pi
+vault_workstation_become_pass: "mot_de_passe"  # Mot de passe sudo mobuone
+```
+
+Vérifier dans `main.yml` :
+
+```yaml
+workstation_pi_hostname: "workstation-pi"
+workstation_pi_user: "mobuone"                 # PAS "pi" — user réel
+workstation_pi_ip: "{{ vault_workstation_pi_ip }}"
+workstation_pi_become_pass: "{{ vault_workstation_become_pass }}"
+```
+
+### 17.3 Installer la clé SSH sur le Pi
+
+```bash
+# Depuis ta machine Windows (Git Bash) ou WSL
+ssh-copy-id -i ~/.ssh/seko-vpn-deploy.pub mobuone@192.168.1.8
+# Entrer le mot de passe sudo
+
+# Tester
+ssh -i ~/.ssh/seko-vpn-deploy mobuone@192.168.1.8 'echo OK'
+```
+
+### 17.4 Déploiement complet
+
+```bash
+# Activer le venv (OBLIGATOIRE)
+source .venv/bin/activate
+
+# Déploiement complet (35-45 min — xcaddy build ~15 min)
+ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass
+
+# Ou par rôle (redéploiement ciblé)
+ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags workstation-common
+ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags headscale-node
+ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags mission-control
+ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags opencode
+ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags workstation-caddy
+```
+
+> **Note** : Le rôle `workstation-caddy` est long (~15 min) car il compile Caddy depuis les sources
+> avec xcaddy. C'est normal — Ubuntu 24.04 ne fournit pas le module dns.providers.ovh en paquet.
+
+### 17.5 Ajouter le Pi au réseau VPN Headscale
+
+Le rôle `headscale-node` s'en charge automatiquement via la clé preauth dans le vault.
+
+**Si la clé preauth est expirée** (usage unique, 24h) :
+
+```bash
+# Sur Seko-VPN (SSH)
+cd /opt/services/headscale
+sudo docker compose exec headscale headscale preauthkeys create --user mobuone --expiration 24h
+# → Copier la clé affichée
+
+# Mettre à jour dans le vault
+ansible-vault edit inventory/group_vars/all/secrets.yml
+# Modifier la ligne : headscale_auth_key: "nouvelle_cle"
+
+# Redéployer le rôle
+ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags headscale-node
+```
+
+**Vérifier la connexion VPN** :
+
+```bash
+ssh -i ~/.ssh/seko-vpn-deploy mobuone@192.168.1.8 \
+  'echo Mot_de_passe_sudo | sudo -S tailscale status'
+# Doit afficher : 100.64.0.1  workstation-pi  ... online
+```
+
+### 17.6 Ajouter les DNS records dans Headscale
+
+Les domaines `mc.<domaine>` et `oc.<domaine>` doivent résoudre vers l'IP Tailscale du Pi.
+
+Sur Seko-VPN, éditer `/opt/services/headscale/config/config.yaml` :
+
+```yaml
+dns:
+  extra_records:
+    # ... records existants ...
+    - name: "mc.ewutelo.cloud"       # Adapter à ton domaine
+      type: A
+      value: "100.64.0.1"            # IP Tailscale du Pi
+    - name: "oc.ewutelo.cloud"
+      type: A
+      value: "100.64.0.1"
+```
+
+Redémarrer Headscale :
+
+```bash
+cd /opt/services/headscale && sudo docker compose restart headscale
+```
+
+Vérifier depuis un client VPN :
+```bash
+curl -s https://mc.ewutelo.cloud/ -o /dev/null -w "%{http_code}"  # → 200
+curl -s https://oc.ewutelo.cloud/ -o /dev/null -w "%{http_code}"  # → 200
+```
+
+### 17.7 Authentifier Claude Code CLI (OAuth Max Plan)
+
+Cette étape est **manuelle et unique** — les tokens sont persistants.
+
+```bash
+# 1. Se connecter au Pi en SSH (depuis PowerShell ou terminal)
+ssh -i ~/.ssh/seko-vpn-deploy mobuone@192.168.1.8
+
+# 2. Ouvrir une session tmux (pour ne pas perdre la connexion)
+tmux new -s auth
+
+# 3. Lancer Claude Code CLI
+claude
+
+# 4. Une URL apparaît dans le terminal, du type :
+#    https://claude.ai/oauth/authorize?client_id=...
+# → Copier cette URL et l'ouvrir dans ton navigateur
+# → Se connecter avec le compte Claude Max Plan
+# → L'auth est confirmée dans le terminal
+
+# 5. Vérifier
+claude --version   # → 2.1.49 (Claude Code)
+```
+
+> ⚠️ **Ne pas définir** `ANTHROPIC_API_KEY` dans l'environnement shell ou les services
+> sur le Pi — cela court-circuiterait OAuth et activerait la facturation par token.
+
+### 17.8 Vérification post-déploiement
+
+```bash
+# SSH sur le Pi
+ssh -i ~/.ssh/seko-vpn-deploy mobuone@192.168.1.8
+
+# État des services
+systemctl status caddy-workstation mission-control opencode --no-pager
+
+# Tailscale connecté
+echo MOT_DE_PASSE | sudo -S tailscale status
+
+# OpenClaw accessible depuis le Pi
+curl -s https://javisi.ewutelo.cloud -o /dev/null -w "%{http_code}"  # → 200
+
+# Depuis un client VPN externe
+curl -s https://mc.ewutelo.cloud/ -o /dev/null -w "%{http_code}"     # → 200
+curl -s https://oc.ewutelo.cloud/ -o /dev/null -w "%{http_code}"     # → 200
+```
+
+### 17.9 Chemins importants sur le Pi
+
+| Chemin | Contenu |
+|---|---|
+| `/opt/workstation/configs/caddy/Caddyfile` | Config Caddy |
+| `/opt/workstation/configs/opencode/opencode.json` | Config OpenCode (provider LiteLLM) |
+| `/opt/workstation/mission-control/.env` | Config Mission Control (URL OpenClaw) |
+| `/opt/workstation/data/mission-control/mission-control.db` | Base SQLite Mission Control |
+| `/home/mobuone/.claude/` | Tokens OAuth Claude Code (ne pas supprimer) |
+| `/usr/bin/caddy` | Caddy buildé avec module OVH |
+| `/usr/local/go/` | Go 1.24.2 (requis pour xcaddy) |
+
+### 17.10 Pièges fréquents
+
+| Symptôme | Cause | Fix |
+|---|---|---|
+| `opencode: not found` | npm prefix NodeSource = `/usr` | Binary dans `/usr/bin/opencode` |
+| `tailscale up` bloque | Headscale down | Vérifier Docker Compose sur Seko-VPN |
+| `caddy: Go version too old` | Ubuntu 24.04 fournit Go 1.22 | Go 1.24.2 installé dans `/usr/local/go/` |
+| MC ne joind pas OpenClaw | URL WSS incorrecte | Vérifier `OPENCLAW_GATEWAY_URL` dans `.env` |
+| `mc.ewutelo.cloud` → 404 | DNS Headscale manquant | Ajouter `extra_records` + restart headscale |
+| Claude Code facturation API | `ANTHROPIC_API_KEY` défini | Supprimer la variable, refaire `claude auth` |
+
+> Voir aussi `docs/TROUBLESHOOTING.md` section 0 pour les pièges détaillés.
 
 ---
 

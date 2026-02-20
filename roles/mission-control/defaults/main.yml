@@ -18,13 +18,13 @@ mc_database_path: "{{ mc_data_dir }}/mission-control.db"
 # Node.js environment
 mc_node_env: "production"
 
-# Repo source (C6 fix — pinner apres premier test, "main" = ref flottante)
-# IMPORTANT: remplacer "main" par un tag git apres validation : v1.x.x
+# Repo source — pinne apres premier deploy valide (2026-02-20)
 mc_repo_url: "https://github.com/crshdn/mission-control"
-mc_repo_version: "main"
+mc_repo_version: "v1.1.0"
 
 # Systemd service
 mc_service_name: "mission-control"
 
 # Artefact de build Next.js — sert a detecter si le build est absent (C4 fix)
-mc_build_artifact: "{{ mc_install_dir }}/.next/standalone/server.js"
+# .next/BUILD_ID est genere par tout `next build` (standard ou standalone)
+mc_build_artifact: "{{ mc_install_dir }}/.next/BUILD_ID"

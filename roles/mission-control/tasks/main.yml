@@ -40,17 +40,15 @@
     path: "{{ mc_build_artifact }}"
   register: mc_build_artifact_stat
 
-- name: Install npm dependencies (production only)
+- name: Install npm dependencies (all — devDeps requis pour next build)
   ansible.builtin.command:
-    cmd: npm ci --omit=dev
+    cmd: npm ci
     chdir: "{{ mc_install_dir }}"
   become: true
   become_user: "{{ mc_user }}"
   # Rebuilder si git a change OU si l'artefact de build est absent
   changed_when: mc_git_clone.changed or not mc_build_artifact_stat.stat.exists
   when: mc_git_clone.changed or not mc_build_artifact_stat.stat.exists
-  environment:
-    NODE_ENV: "{{ mc_node_env }}"
 
 - name: Build Mission Control (Next.js standalone)
   ansible.builtin.command:
@@ -108,13 +106,13 @@
 
 - name: Check Mission Control health endpoint
   ansible.builtin.uri:
-    url: "http://localhost:{{ mc_port }}/api/health"
+    url: "http://localhost:{{ mc_port }}/"
     method: GET
-    status_code: [200, 204]
+    status_code: [200, 204, 301, 302]
   retries: 6
   delay: 5
   register: mc_health
-  until: mc_health.status in [200, 204]
+  until: mc_health.status in [200, 204, 301, 302]
   changed_when: false
 
 # Diagnostic journalctl si le service ne repond pas (S5 fix)

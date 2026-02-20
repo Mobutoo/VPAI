@@ -4,10 +4,11 @@ After=network.target
 
 [Service]
 Type=simple
-User={{ workstation_pi_user | default('pi') }}
+User={{ opencode_user }}
 WorkingDirectory={{ opencode_workspace_dir }}
 Environment="OPENCODE_CONFIG_DIR={{ opencode_config_dir }}"
-ExecStart={{ opencode_npm_prefix }}/bin/opencode serve --port {{ opencode_port }}
+Environment="ANTHROPIC_API_KEY={{ anthropic_api_key }}"
+ExecStart={{ opencode_npm_prefix }}/bin/opencode serve --port {{ opencode_port }} --hostname 0.0.0.0
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

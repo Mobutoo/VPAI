@@ -14,12 +14,11 @@ opencode_litellm_base_url: "https://{{ litellm_subdomain }}.{{ domain_name }}/v1
 opencode_litellm_api_key: "{{ litellm_master_key }}"
 opencode_default_model: "claude-sonnet"
 
-# Version npm pinnee (C6 fix — pinner apres premier test)
-# IMPORTANT: remplacer "latest" par la version reelle apres premier deploy
-opencode_npm_version: "latest"
+# Version npm pinnee (C6 fix — validee 2026-02-20)
+opencode_npm_version: "1.2.8"
 
 # Systemd service
 opencode_service_name: "opencode"
 
-# npm global install prefix
-opencode_npm_prefix: "/usr/local"
+# npm global install prefix — NodeSource installe dans /usr sur Ubuntu 24.04
+opencode_npm_prefix: "/usr"

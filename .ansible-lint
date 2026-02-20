@@ -16,7 +16,7 @@ skip_list:
 
 warn_list:
   - experimental
-  - role-name[path]        # Noms de rôles avec tirets
+  - role-name              # Noms de rôles avec tirets (convention projet)
 
 # Exclude
 exclude_paths:

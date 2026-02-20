@@ -2,55 +2,88 @@
 # workstation-caddy — tasks
 # Caddy natif sur le Pi (pas Docker) — reverse proxy TLS pour MC + OpenCode
 # TLS via ACME DNS-01 (OVH API) — memes credentials que le prod
+# Caddy custom build via xcaddy (module dns.providers.ovh requis)
 
-# --- Install Caddy (binaire officiel via cloudsmith) ---
-# creates: rend la tache idempotente — changed_when:false car creates gere l etat (C1 fix)
-- name: Download and dearmor Caddy GPG key
+# --- Install Go >= 1.24 (requis pour caddy-dns/ovh v1.1.0 et xcaddy) ---
+# Ubuntu 24.04 fournit Go 1.22 — insuffisant pour Caddy v2.10.x + plugin OVH
+# On installe Go officiel depuis go.dev/dl (ARM64) dans /usr/local/go
+- name: Check current Go version
+  ansible.builtin.command:
+    cmd: /usr/local/go/bin/go version
+  register: workstation_go_version
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Download and install Go {{ workstation_go_official_version }} ARM64
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
       set -euo pipefail
-      curl -fsSL https://dl.cloudsmith.io/public/caddy/stable/gpg.key \
-        | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-      chmod a+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+      curl -fsSL "https://dl.google.com/go/go{{ workstation_go_official_version }}.linux-arm64.tar.gz" \
+        -o /tmp/go{{ workstation_go_official_version }}.linux-arm64.tar.gz
+      rm -rf /usr/local/go
+      tar -C /usr/local -xzf /tmp/go{{ workstation_go_official_version }}.linux-arm64.tar.gz
+      rm /tmp/go{{ workstation_go_official_version }}.linux-arm64.tar.gz
+      echo "INSTALLED:$(/usr/local/go/bin/go version)"
   args:
-    creates: /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-  changed_when: false
+    creates: /usr/local/go/bin/go
+  register: workstation_go_install
+  changed_when: "'INSTALLED:' in workstation_go_install.stdout"
   become: true
+  when: workstation_go_version.rc != 0 or workstation_go_official_version not in workstation_go_version.stdout
 
-- name: Add Caddy apt repository
-  ansible.builtin.apt_repository:
-    repo: >-
-      deb [signed-by=/usr/share/keyrings/caddy-stable-archive-keyring.gpg]
-      https://dl.cloudsmith.io/public/caddy/stable/deb/ubuntu
-      {{ ansible_facts['distribution_release'] }} main
-    state: present
-    filename: caddy-stable
-    update_cache: true
-  become: true
-
-- name: Install Caddy (version pinnee)
-  ansible.builtin.apt:
-    name: "caddy={{ workstation_caddy_apt_version }}"
-    state: present
-    allow_downgrade: true
-  become: true
-
-# Verifier module DNS OVH disponible — bloquer si absent (C3 fix)
-- name: Check Caddy OVH DNS module availability
+# --- Install xcaddy ---
+# creates: idempotent — ne re-installe pas si binaire present
+- name: Install xcaddy via Go install
   ansible.builtin.command:
-    cmd: caddy list-modules
+    cmd: /usr/local/go/bin/go install github.com/caddyserver/xcaddy/cmd/xcaddy@{{ workstation_xcaddy_version }}
+  args:
+    creates: "{{ workstation_xcaddy_gobin }}/xcaddy"
+  environment:
+    GOPATH: "{{ workstation_xcaddy_gopath }}"
+    GOBIN: "{{ workstation_xcaddy_gobin }}"
+    HOME: /root
+    PATH: /usr/local/go/bin:/usr/bin:/bin
   changed_when: false
-  register: workstation_caddy_modules
-  failed_when: workstation_caddy_modules.rc != 0
+  become: true
 
-- name: Assert Caddy OVH DNS module is present
-  ansible.builtin.assert:
-    that:
-      - "'dns.providers.ovh' in workstation_caddy_modules.stdout"
-    fail_msg: >-
-      Caddy OVH DNS module (dns.providers.ovh) NOT available.
-      Rebuild with xcaddy: xcaddy build --with github.com/caddy-dns/ovh
+# --- Build Caddy avec module OVH DNS ---
+# Construit /usr/local/bin/caddy-ovh si absent ou version differente
+- name: Check if Caddy OVH binary exists with correct version
+  ansible.builtin.command:
+    cmd: /usr/bin/caddy version
+  register: workstation_caddy_current_version
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Build Caddy with OVH DNS module via xcaddy
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      {{ workstation_xcaddy_gobin }}/xcaddy build {{ workstation_caddy_version }} \
+        --with github.com/caddy-dns/ovh \
+        --output /usr/bin/caddy
+      chmod 755 /usr/bin/caddy
+      echo "BUILT:$(caddy version)"
+  register: workstation_caddy_build
+  changed_when: "'BUILT:' in workstation_caddy_build.stdout"
+  failed_when: workstation_caddy_build.rc != 0
+  environment:
+    GOPATH: "{{ workstation_xcaddy_gopath }}"
+    GOBIN: "{{ workstation_xcaddy_gobin }}"
+    HOME: /root
+    PATH: /usr/local/go/bin:/usr/bin:/bin
+  become: true
+  when: >-
+    workstation_caddy_current_version.rc != 0
+    or workstation_caddy_version not in workstation_caddy_current_version.stdout
+
+- name: Display Caddy build result
+  ansible.builtin.debug:
+    msg: "{{ workstation_caddy_build.stdout | default('skipped (already up to date)') }}"
 
 # --- Directories ---
 - name: Create Caddy config directory

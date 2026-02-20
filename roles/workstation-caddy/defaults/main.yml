@@ -4,9 +4,20 @@
 workstation_caddy_config_dir: "/opt/workstation/configs/caddy"
 workstation_caddy_data_dir: "/opt/workstation/data/caddy"
 
-# Version Caddy apt pinnee (I6 fix — meme version que prod)
-# Format apt: "2.10.2*" (wildcard pour le suffixe de distrib)
-workstation_caddy_apt_version: "2.10.2*"
+# Version Caddy pinnee — format xcaddy (tag git)
+# Voir https://github.com/caddyserver/caddy/releases
+workstation_caddy_version: "v2.10.2"
+
+# Go officiel (requis car Ubuntu 24.04 fournit Go 1.22 — insuffisant)
+# caddy-dns/ovh v1.1.0 + Caddy v2.10.x = Go >= 1.24
+# Voir https://go.dev/dl/
+workstation_go_official_version: "1.24.2"
+
+# xcaddy — outil de build Caddy custom (module dns.providers.ovh requis)
+# Pinne apres premier deploy valide (2026-02-20)
+workstation_xcaddy_version: "v0.4.5"
+workstation_xcaddy_gopath: "/root/go"
+workstation_xcaddy_gobin: "/root/go/bin"
 
 # Subdomains pour le Pi (resolus via Split DNS Tailscale)
 workstation_mc_domain: "{{ mc_subdomain | default('mc') }}.{{ domain_name }}"

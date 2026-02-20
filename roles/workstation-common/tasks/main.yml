@@ -231,3 +231,32 @@
   community.general.ufw:
     state: enabled
   become: true
+
+# --- Claude Code CLI ---
+# Installation globale via npm (NodeSource — meme prefix qu'OpenCode)
+# Auth OAuth Max Plan : manuelle une seule fois via `claude` sur le Pi
+- name: Check Claude Code CLI version
+  ansible.builtin.command:
+    cmd: /usr/bin/claude --version
+  register: workstation_claude_version
+  changed_when: false
+  failed_when: false
+
+- name: Install Claude Code CLI via npm
+  ansible.builtin.command:
+    cmd: npm install -g @anthropic-ai/claude-code@{{ workstation_claude_code_version }}
+  changed_when: true
+  become: true
+  when: >-
+    workstation_claude_version.rc != 0
+    or workstation_claude_code_version not in workstation_claude_version.stdout
+
+- name: Verify Claude Code CLI installation
+  ansible.builtin.command:
+    cmd: /usr/bin/claude --version
+  changed_when: false
+  register: workstation_claude_version_verify
+
+- name: Display Claude Code CLI version
+  ansible.builtin.debug:
+    msg: "Claude Code CLI: {{ workstation_claude_version_verify.stdout }}"

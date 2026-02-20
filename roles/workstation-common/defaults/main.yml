@@ -32,6 +32,10 @@ workstation_docker_log_max_file: "3"
 # Node.js version (NodeSource LTS)
 workstation_nodejs_major: "22"
 
+# Claude Code CLI — pinne apres premier deploy valide (2026-02-20)
+# Auth OAuth Max Plan : manuelle une seule fois (claude auth sur le Pi)
+workstation_claude_code_version: "2.1.49"
+
 # Repertoire projets (SSD 256 Go)
 workstation_projects_dir: "/home/{{ workstation_pi_user | default('pi') }}/projects"
 workstation_base_dir: "/opt/workstation"

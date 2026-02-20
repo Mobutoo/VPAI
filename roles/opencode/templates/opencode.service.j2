@@ -7,7 +7,7 @@ Type=simple
 User={{ opencode_user }}
 WorkingDirectory={{ opencode_workspace_dir }}
 Environment="OPENCODE_CONFIG_DIR={{ opencode_config_dir }}"
-Environment="ANTHROPIC_API_KEY={{ anthropic_api_key }}"
+Environment="LITELLM_API_KEY={{ opencode_litellm_api_key }}"
 ExecStart={{ opencode_npm_prefix }}/bin/opencode serve --port {{ opencode_port }} --hostname 0.0.0.0
 Restart=on-failure
 RestartSec=5

@@ -183,6 +183,7 @@ vps_tailscale_ip: "{{ vault_vps_tailscale_ip | default('') }}"
 workstation_pi_hostname: "workstation-pi"
 workstation_pi_user: "mobuone"
 workstation_pi_ip: "{{ vault_workstation_pi_ip | default('127.0.0.1') }}"
+workstation_pi_become_pass: "{{ vault_workstation_become_pass }}"
 workstation_pi_ram_gb: 16
 workstation_pi_disk_gb: 256
 

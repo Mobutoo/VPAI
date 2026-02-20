@@ -1,3 +1,27 @@
 {
-  "username": "{{ workstation_pi_user | default('mobuone') }}"
+  "$schema": "https://opencode.ai/config.json",
+  "username": "{{ workstation_pi_user | default('mobuone') }}",
+  "model": "litellm/claude-sonnet",
+  "provider": {
+    "litellm": {
+      "name": "LiteLLM",
+      "npm": "@ai-sdk/openai",
+      "api": "{{ opencode_litellm_base_url }}",
+      "env": ["LITELLM_API_KEY"],
+      "models": {
+        "claude-sonnet": {
+          "name": "Claude Sonnet (via LiteLLM)",
+          "id": "anthropic/claude-sonnet-4-5",
+          "tool_call": true,
+          "attachment": true
+        },
+        "claude-haiku": {
+          "name": "Claude Haiku (via LiteLLM)",
+          "id": "anthropic/claude-haiku-4-5",
+          "tool_call": true,
+          "attachment": false
+        }
+      }
+    }
+  }
 }

@@ -154,7 +154,13 @@
 BOOTSTRAP 200
     }
 
-    reverse_proxy openclaw:18789
+    # HTTP/1.1 requis pour WebSocket upgrade (RFC 6455)
+    # HTTP/2 ignore le header "Upgrade: websocket" -> connexion WS impossible
+    reverse_proxy openclaw:18789 {
+        transport http {
+            versions 1.1
+        }
+    }
 
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"

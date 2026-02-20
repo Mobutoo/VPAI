@@ -553,6 +553,32 @@ AI scoring         →  model_scores (PostgreSQL) → Grafana
 - **Volume** : Monter `/home/node/.openclaw` en RW — OpenClaw ecrit canvas/, cron/, sessions/, plugins/
 - **Image** : `ghcr.io/openclaw/openclaw:YYYY.M.DD` (tags date, pas de prefixe v)
 
+### 11.2b Caddy + HTTP/2 = WebSocket Upgrade cassé
+
+**Symptôme** : Mission Control affiche "offline" — connexion `wss://javisi.ewutelo.cloud` échoue.
+
+**Cause** : HTTP/2 ignore le header `Upgrade: websocket` (RFC 6455). Caddy en H2 répond `200` au lieu de `101 Switching Protocols`.
+
+**Diagnostic** : tester depuis le Pi avec HTTP/1.1 explicite (Python, pas curl) :
+```bash
+# 101 = OK, 200 = H2 problem
+python3 -c "
+import http.client, ssl
+conn = http.client.HTTPSConnection('javisi.ewutelo.cloud', context=ssl.create_default_context())
+conn.request('GET', '/', headers={'Connection':'Upgrade','Upgrade':'websocket','Sec-WebSocket-Key':'dGhlIHNhbXBsZSBub25jZQ==','Sec-WebSocket-Version':'13'})
+print(conn.getresponse().status)
+"
+```
+
+**Fix** : forcer HTTP/1.1 dans le `reverse_proxy` Caddy pour OpenClaw :
+```caddyfile
+reverse_proxy openclaw:18789 {
+    transport http {
+        versions 1.1
+    }
+}
+```
+
 ### 11.3 openclaw.json — Pieges de Config
 
 - **`agents.defaults.model`** : Doit etre un objet `{"primary": "provider/model"}`, PAS une string

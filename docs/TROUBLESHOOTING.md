@@ -8,6 +8,7 @@
 
 ## Table des Matieres
 
+0. [Workstation Pi — Pièges Spécifiques](#0-workstation-pi--pièges-spécifiques)
 1. [Ansible & Linting](#1-ansible--linting)
 2. [Docker & Healthchecks](#2-docker--healthchecks)
 3. [PostgreSQL 18+](#3-postgresql-18)
@@ -21,6 +22,145 @@
 11. [OpenClaw](#11-openclaw)
 12. [Reseau & VPN](#12-reseau--vpn)
 13. [Systeme & Debian 13](#13-systeme--debian-13)
+
+---
+
+## 0. Workstation Pi — Pièges Spécifiques
+
+### 0.1 npm prefix NodeSource v22
+
+NodeSource v22 installe les packages globaux dans `/usr/bin`, **pas** `/usr/local/bin`.
+
+```yaml
+# FAUX — binary introuvable
+opencode_npm_prefix: "/usr/local"
+
+# CORRECT
+opencode_npm_prefix: "/usr"  # → /usr/bin/opencode, /usr/bin/claude
+```
+
+### 0.2 Mission Control — next.config.mjs sans standalone
+
+`crshdn/mission-control` n'a pas `output: 'standalone'` → pas de `.next/standalone/server.js`.
+
+```ini
+# FAUX — fichier inexistant
+ExecStart=/usr/bin/node {{ mc_install_dir }}/.next/standalone/server.js
+
+# CORRECT — utiliser next start directement
+ExecStart=/usr/bin/node {{ mc_install_dir }}/node_modules/.bin/next start -p {{ mc_port }}
+```
+
+- Artefact idempotence : `.next/BUILD_ID` (pas `.next/standalone/server.js`)
+- Healthcheck : URL `/` avec status 200/301/302 (pas `/api/health` — 404 en v1.1.0)
+- Build : `npm ci` obligatoire (pas `--omit=dev`) — tailwindcss est devDep requis pour `next build`
+
+### 0.3 OpenCode v1.2.8 — config schema changé
+
+Les clés `providers` et `workspace` ne sont plus valides au niveau root du JSON.
+
+```json
+// FAUX — crash ConfigInvalidError
+{ "providers": {...}, "workspace": {...} }
+
+// CORRECT — config minimale valide v1.2.8
+{ "$schema": "https://opencode.ai/config.json", "username": "mobuone" }
+```
+
+Provider LiteLLM custom (OpenAI-compatible) :
+```json
+{
+  "provider": {
+    "litellm": {
+      "npm": "@ai-sdk/openai",
+      "api": "https://llm.domain.com/v1",
+      "env": ["LITELLM_API_KEY"],
+      "models": { "claude-sonnet": { "id": "anthropic/claude-sonnet-4-5", "tool_call": true } }
+    }
+  }
+}
+```
+
+### 0.4 xcaddy ARM64 — Go version insuffisante
+
+Ubuntu 24.04 ARM64 fournit Go 1.22. `caddy-dns/ovh v1.1.0` requiert Go >= 1.24.
+
+```yaml
+# Installer Go 1.24.2 depuis go.dev AVANT xcaddy
+- name: Download and install Go ARM64
+  ansible.builtin.shell:
+    cmd: |
+      curl -fsSL "https://dl.google.com/go/go1.24.2.linux-arm64.tar.gz" -o /tmp/go.tar.gz
+      rm -rf /usr/local/go
+      tar -C /usr/local -xzf /tmp/go.tar.gz
+  args:
+    creates: /usr/local/go/bin/go
+```
+
+Build complet : `xcaddy build v2.10.2 --with github.com/caddy-dns/ovh`
+
+### 0.5 Claude Code OAuth Max Plan — ne pas mélanger avec API key
+
+Si `ANTHROPIC_API_KEY` est défini dans l'environnement → Claude Code CLI utilise l'API (billing par token).
+Pour forcer OAuth Max Plan : **ne pas injecter** `ANTHROPIC_API_KEY` dans l'env du service ou du shell.
+
+Auth manuelle (une seule fois) :
+```bash
+# En SSH sur le Pi (ou dans tmux)
+claude
+# → affiche une URL dans le terminal
+# → copier l'URL dans le navigateur Windows
+# → se connecter avec le compte Max Plan
+# → tokens sauvegardés dans ~/.claude/ (persistants, auto-renouvelés)
+```
+
+### 0.6 tailscale up bloque si Headscale down
+
+`tailscale up --login-server=...` attend indéfiniment si le serveur Headscale est inaccessible.
+→ Vérifier `https://singa.ewutelo.cloud` avant de lancer le rôle `headscale-node`.
+→ Sur Seko-VPN, Headscale tourne via Docker Compose : `cd /opt/services/headscale && sudo docker compose up -d`
+
+### 0.7 Headscale preauth key — usage unique
+
+La clé `headscale_auth_key` dans le vault est à **usage unique ET expirante**.
+Après utilisation ou expiration, en générer une nouvelle :
+
+```bash
+# Sur Seko-VPN (via Docker Compose exec)
+cd /opt/services/headscale
+sudo docker compose exec headscale headscale preauthkeys create --user mobuone --expiration 24h
+# Mettre à jour dans le vault
+ansible-vault edit inventory/group_vars/all/secrets.yml
+```
+
+### 0.8 headscale-node — repo Tailscale Debian vs Ubuntu
+
+Le rôle `headscale-node` était hardcodé sur le repo Debian. Utiliser `ansible_facts['distribution'] | lower` :
+
+```yaml
+# CORRECT — générique Debian/Ubuntu
+DISTRO="{{ ansible_facts['distribution'] | lower }}"
+url: "https://pkgs.tailscale.com/stable/${DISTRO}/..."
+```
+
+### 0.9 ansible_become_pass pour le Pi
+
+Le Pi nécessite un mot de passe sudo. Configurer dans `hosts.yml` via vault :
+```yaml
+# inventory/hosts.yml
+ansible_become_pass: "{{ workstation_pi_become_pass | default('') }}"
+
+# inventory/group_vars/all/main.yml
+workstation_pi_become_pass: "{{ vault_workstation_become_pass }}"
+```
+
+### 0.10 SSH key — chemins selon environnement
+
+| Environnement | Chemin clé SSH |
+|---|---|
+| WSL Ubuntu (Ansible) | `~/.ssh/seko-vpn-deploy` = `/home/asus/.ssh/seko-vpn-deploy` |
+| Git Bash / PowerShell | `/c/Users/mmomb/.ssh/seko-vpn-deploy` |
+| SSH depuis Git Bash | `ssh -i /c/Users/mmomb/.ssh/seko-vpn-deploy mobuone@192.168.1.8` |
 
 ---
 

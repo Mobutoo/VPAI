@@ -4,6 +4,49 @@
 
 ---
 
+## 0. Infrastructure Réelle — État Opérationnel (2026-02-20)
+
+### Serveurs
+
+| Serveur | Provider | IP LAN / VPN | SSH | Rôle |
+|---|---|---|---|---|
+| **Sese-AI** | OVH VPS 8GB | 137.74.114.167 / 100.64.0.14 | port 804, user `mobuone` | Cerveau IA (Docker stack) |
+| **Seko-VPN** | Ionos VPS | 87.106.30.160 | port 22, user `mobuone` | Hub VPN Headscale + monitoring externe |
+| **Workstation Pi** | RPi5 16GB local | 192.168.1.8 / 100.64.0.1 | port 22, user `mobuone` | Mission Control + Dev |
+
+**SSH Key** : `~/.ssh/seko-vpn-deploy` (Linux/WSL) ou `/c/Users/mmomb/.ssh/seko-vpn-deploy` (Git Bash Windows)
+
+### DNS (domaine : `ewutelo.cloud`)
+
+| Subdomain | IP | Cible | Accès |
+|---|---|---|---|
+| `javisi.ewutelo.cloud` | 100.64.0.14 | VPS Sese-AI (Tailscale) | VPN uniquement |
+| `tala.ewutelo.cloud` | 100.64.0.14 | VPS Sese-AI (Tailscale) | VPN uniquement |
+| `mayi.ewutelo.cloud` | 100.64.0.14 | VPS Sese-AI (Tailscale) | VPN uniquement |
+| `llm.ewutelo.cloud` | 100.64.0.14 | VPS Sese-AI (Tailscale) | VPN uniquement |
+| `qd.ewutelo.cloud` | 100.64.0.14 | VPS Sese-AI (Tailscale) | VPN uniquement |
+| `mc.ewutelo.cloud` | 100.64.0.1 | Workstation Pi (Tailscale) | VPN uniquement |
+| `oc.ewutelo.cloud` | 100.64.0.1 | Workstation Pi (Tailscale) | VPN uniquement |
+| `singa.ewutelo.cloud` | 87.106.30.160 | Seko-VPN | Public (Headscale control plane) |
+
+> Tous les records ci-dessus sont définis dans `extra_records` de la config Headscale sur Seko-VPN :
+> `/opt/services/headscale/config/config.yaml`
+
+### Headscale — Mesh VPN
+
+```
+Seko-VPN (87.106.30.160)
+  └─ headscale/headscale:0.26.0 (Docker Compose)
+       URL : https://singa.ewutelo.cloud
+       Config : /opt/services/headscale/config/config.yaml
+       Nodes :
+         100.64.0.1  workstation-pi  (RPi5 Ubuntu)
+         100.64.0.2  ewutelo         (PC Windows)
+         100.64.0.14 sese            (VPS OVH Debian)
+```
+
+---
+
 ## 1. High-Level Architecture
 
 ```mermaid
@@ -83,6 +126,96 @@ graph TB
     SharedBucket -->|"seed data"| PreprodStack
     UptimeKuma -->|"monitor via VPN"| VPS
 ```
+
+## 1.5. Workstation Pi — Architecture Locale
+
+```
+Raspberry Pi 5 (16GB RAM, SSD 256Go, Ubuntu Server 24.04 LTS ARM64)
+IP LAN : 192.168.1.8  |  IP Tailscale : 100.64.0.1
+
+┌─────────────────────────────────────────────────────────────────┐
+│                    Workstation Pi                               │
+│                                                                 │
+│  ┌──────────────────┐     ┌──────────────────┐                 │
+│  │  Mission Control │     │    OpenCode       │                 │
+│  │  (Next.js 14)    │     │  (v1.2.8 headless)│                 │
+│  │  Port 4000       │     │  Port 3456        │                 │
+│  │  v1.1.0          │     │  → LiteLLM API   │                 │
+│  └────────┬─────────┘     └──────────────────┘                 │
+│           │ WSS                                                 │
+│           ▼                                                     │
+│  ┌──────────────────┐     ┌──────────────────┐                 │
+│  │     Caddy        │     │  Claude Code CLI │                 │
+│  │  v2.10.2+OVH    │     │  v2.1.49         │                 │
+│  │  :80 :443        │     │  OAuth Max Plan  │                 │
+│  │  DNS-01 TLS      │     │  ~/.claude/      │                 │
+│  └──────────────────┘     └──────────────────┘                 │
+│                                                                 │
+│  ┌──────────────────┐                                           │
+│  │   Tailscale      │  ←──── Headscale (singa.ewutelo.cloud)   │
+│  │  100.64.0.1      │                                           │
+│  └──────────────────┘                                           │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Chemins importants sur le Pi
+
+| Chemin | Contenu |
+|---|---|
+| `/opt/workstation/configs/caddy/Caddyfile` | Config Caddy (mc + oc reverse proxy) |
+| `/opt/workstation/configs/opencode/opencode.json` | Config OpenCode (provider LiteLLM) |
+| `/opt/workstation/mission-control/.env` | Config MC (OPENCLAW_GATEWAY_URL, etc.) |
+| `/opt/workstation/data/mission-control/mission-control.db` | SQLite Mission Control |
+| `/home/mobuone/.claude/` | Tokens OAuth Claude Code CLI |
+| `/usr/bin/caddy` | Caddy buildé via xcaddy (avec OVH DNS module) |
+| `/usr/bin/opencode` | OpenCode CLI (npm global NodeSource) |
+| `/usr/bin/claude` | Claude Code CLI (npm global NodeSource) |
+| `/usr/local/go/` | Go 1.24.2 (installé manuellement — Ubuntu 24.04 fournit 1.22) |
+| `/root/go/bin/xcaddy` | xcaddy v0.4.5 |
+
+### Services systemd sur le Pi
+
+```bash
+systemctl status caddy-workstation    # Caddy :80/:443 TLS OVH DNS-01
+systemctl status mission-control       # Next.js :4000
+systemctl status opencode              # OpenCode :3456 → LiteLLM
+tailscale status                       # VPN mesh (sudo requis)
+```
+
+### Flux Mission Control ↔ OpenClaw
+
+```
+Browser (VPN) ──HTTPS──► mc.ewutelo.cloud ──► Caddy Pi :443
+                                                    │
+                                              reverse_proxy :4000
+                                                    │
+                                          Mission Control (Next.js)
+                                                    │
+                                    WSS wss://javisi.ewutelo.cloud
+                                                    │
+                          ◄──────── Tailscale mesh ─────────►
+                                                    │
+                                            OpenClaw (VPS)
+                                                    │
+                                              LiteLLM :4000
+                                                    │
+                                          Anthropic / OpenRouter
+```
+
+### Auth et Billing IA
+
+| Outil | Auth | Billing |
+|---|---|---|
+| **Claude Code CLI** (`claude`) | OAuth Max Plan (`~/.claude/`) | Quota abonnement — gratuit |
+| **OpenCode** | `LITELLM_API_KEY` env var | Via LiteLLM → budget $5/jour |
+| **OpenClaw** | `openclaw_api_key` | Via LiteLLM → budget $5/jour |
+| **n8n** | `litellm_master_key` | Via LiteLLM → budget $5/jour |
+
+> **Claude Code OAuth** : auth manuelle une seule fois via `claude` en SSH (lien URL affiché dans le terminal,
+> à ouvrir dans le navigateur). Tokens dans `~/.claude/`, auto-renouvelés. Ne PAS mettre `ANTHROPIC_API_KEY`
+> dans l'environnement — ça court-circuiterait OAuth.
+
+---
 
 ## 2. Network Segmentation
 

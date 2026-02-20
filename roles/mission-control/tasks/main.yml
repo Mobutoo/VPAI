@@ -21,6 +21,44 @@
     mode: "0755"
   become: true
 
+- name: Create workspace base directory
+  ansible.builtin.file:
+    path: "{{ mc_workspace_base_path }}"
+    state: directory
+    owner: "{{ mc_user }}"
+    group: "{{ mc_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create projects directory
+  ansible.builtin.file:
+    path: "{{ mc_projects_path }}"
+    state: directory
+    owner: "{{ mc_user }}"
+    group: "{{ mc_user }}"
+    mode: "0755"
+  become: true
+
+# --- DB migration (si DB creee au mauvais emplacement — avant fix DATABASE_PATH) ---
+- name: Check if DB exists at wrong location (install_dir)
+  ansible.builtin.stat:
+    path: "{{ mc_install_dir }}/mission-control.db"
+  register: mc_db_wrong_location
+
+- name: Check if DB already exists at correct location (data_dir)
+  ansible.builtin.stat:
+    path: "{{ mc_database_path }}"
+  register: mc_db_correct_location
+
+- name: Migrate DB from wrong location to correct location
+  ansible.builtin.command:
+    cmd: mv "{{ mc_install_dir }}/mission-control.db" "{{ mc_database_path }}"
+  become: true
+  when:
+    - mc_db_wrong_location.stat.exists
+    - not mc_db_correct_location.stat.exists
+  changed_when: true
+
 # --- Clone repository ---
 - name: Clone Mission Control repository
   ansible.builtin.git:

@@ -15,6 +15,10 @@ mc_openclaw_gateway_token: "{{ openclaw_gateway_token }}"
 # SQLite DB path
 mc_database_path: "{{ mc_data_dir }}/mission-control.db"
 
+# Workspace paths (dossiers de travail des agents)
+mc_workspace_base_path: "/home/{{ mc_user }}/projects"
+mc_projects_path: "/home/{{ mc_user }}/projects"
+
 # Node.js environment
 mc_node_env: "production"
 

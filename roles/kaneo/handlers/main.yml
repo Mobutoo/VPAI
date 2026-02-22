@@ -1,0 +1,14 @@
+---
+# kaneo — handlers
+
+- name: Restart kaneo stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - kaneo-api
+      - kaneo-web
+    state: restarted
+  become: true
+  failed_when: false  # Ne pas echouer si docker-compose.yml n'existe pas encore

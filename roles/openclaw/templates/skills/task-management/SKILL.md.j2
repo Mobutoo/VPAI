@@ -1,0 +1,103 @@
+---
+name: task-management
+description: Create, update, and sync tasks in Kaneo. Used by Maintainer for agent/ops tracking.
+metadata: { "openclaw": { "emoji": "📋", "always": false } }
+---
+
+# Skill: Gestion des Taches Kaneo
+
+Cree, met a jour et synchronise les taches dans Kaneo ({{ kaneo_subdomain | default('hq') }}.{{ domain_name }}).
+
+## Quand utiliser ce skill
+
+- Sync agents OpenClaw → Kaneo
+- Creer une tache de suivi apres incident
+- Mettre a jour le statut d'une operation en cours
+
+## API Kaneo
+
+Base URL : `http://kaneo-api:{{ kaneo_api_port | default(1337) }}`
+
+### Creer une tache
+```
+POST /api/tasks
+Headers:
+  Content-Type: application/json
+  Authorization: Bearer ${KANEO_API_KEY}
+Body:
+{
+  "title": "<titre>",
+  "description": "<description>",
+  "status": "todo|in-progress|done",
+  "priority": "low|medium|high",
+  "tags": ["<tag1>", "<tag2>"],
+  "metadata": {}
+}
+```
+
+### Lister les taches
+```
+GET /api/tasks?status=<status>&tag=<tag>
+Headers: Authorization: Bearer ${KANEO_API_KEY}
+```
+
+### Mettre a jour une tache
+```
+PATCH /api/tasks/<id>
+Headers: Authorization: Bearer ${KANEO_API_KEY}
+Body: { "status": "done", "metadata": { ... } }
+```
+
+## Sync agents OpenClaw → Kaneo
+
+Procedure pour `/kaneo sync` :
+
+1. Pour chaque agent dans la liste OpenClaw :
+```
+[{% for agent in openclaw_agents_list %}
+  { "id": "{{ agent.id }}", "name": "{{ agent.name }}", "type": "{{ agent.type }}", "model": "{{ agent.model }}" }{% if not loop.last %},{% endif %}
+
+{% endfor %}]
+```
+
+2. Pour chaque agent, creer ou mettre a jour la tache :
+```json
+{
+  "title": "Agent {{ "{{" }} agent.name {{ "}}" }} ({{ "{{" }} agent.id {{ "}}" }})",
+  "status": "in-progress",
+  "tags": ["agent", "ai", "{{ "{{" }} agent.type {{ "}}" }}"],
+  "metadata": {
+    "agent_id": "{{ "{{" }} agent.id {{ "}}" }}",
+    "model": "{{ "{{" }} agent.model {{ "}}" }}",
+    "synced_at": "{{ "{{" }} timestamp {{ "}}" }}"
+  }
+}
+```
+
+3. Retourner rapport :
+```json
+{
+  "synced": <nb>,
+  "created": <nb>,
+  "updated": <nb>,
+  "errors": []
+}
+```
+
+## Format tache incident
+
+Apres chaque incident resolu, creer une tache de suivi :
+```json
+{
+  "title": "INCIDENT — <service> <date>",
+  "description": "<description>\n\n**Resolution**: <resolution>",
+  "status": "done",
+  "tags": ["incident", "ops", "<service>"],
+  "priority": "high",
+  "metadata": {
+    "duration_minutes": <N>,
+    "root_cause": "<cause>",
+    "resolved_by": "maintainer"
+  }
+}
+```

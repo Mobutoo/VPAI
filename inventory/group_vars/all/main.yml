@@ -187,8 +187,8 @@ workstation_pi_become_pass: "{{ vault_workstation_become_pass }}"
 workstation_pi_ram_gb: 16
 workstation_pi_disk_gb: 256
 
-# Mission Control
-mc_subdomain: "mc"
+# Kaneo (PM tool — replaces Mission Control)
+kaneo_subdomain_override: "hq"
 
 # OpenCode
 oc_subdomain: "oc"

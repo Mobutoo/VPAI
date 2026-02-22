@@ -20,3 +20,7 @@ postgresql_databases:
     user: litellm
     extensions:
       - uuid-ossp
+  - name: kaneo
+    user: kaneo
+    extensions:
+      - uuid-ossp

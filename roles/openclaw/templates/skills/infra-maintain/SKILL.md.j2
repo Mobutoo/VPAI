@@ -1,0 +1,68 @@
+---
+name: infra-maintain
+description: Check service health, detect version updates for Docker images, and report stack status.
+metadata: { "openclaw": { "emoji": "🔧", "always": false } }
+---
+
+# Skill: Maintenance Infrastructure
+
+Surveille la sante des services et detecte les mises a jour disponibles.
+
+## Quand utiliser ce skill
+
+- Cron n8n sante (toutes les 15 min)
+- Commande `/stack status`
+- Commande `/update check`
+
+## Health checks — endpoints
+
+```
+GET http://litellm:4000/health         → {"status": "healthy"}
+GET http://n8n:5678/healthz            → {"status": "ok"}
+GET http://openclaw:18789/health       → {"status": "ok"}
+GET http://grafana:3000/api/health     → {"database": "ok"}
+GET http://qdrant:6333/readyz          → {"result": "ok"}
+GET http://kaneo-api:1337/api/health   → {"status": "ok"}
+GET http://comfyui:8188/system_stats   → {"system": {...}}
+GET http://remotion:3200/health        → {"status": "ok"}
+```
+
+Timeout par requete : 5 secondes.
+Si pas de reponse dans 5s → status = DOWN.
+
+## Detection versions — DIUN integration
+
+DIUN (Docker Image Update Notifier) publie les alertes dans Loki.
+Requeter Grafana Loki pour les alertes DIUN recentes :
+
+```
+GET http://loki:3100/loki/api/v1/query_range
+Params:
+  query={job="diun"}&start=<-24h>&end=<now>
+```
+
+## Format sortie health check
+
+```json
+{
+  "timestamp": "2026-01-15T10:00:00Z",
+  "overall": "ok",
+  "services": [
+    {"name": "litellm", "status": "ok", "latency_ms": 45, "url": "http://litellm:4000/health"},
+    {"name": "n8n", "status": "ok", "latency_ms": 120},
+    {"name": "comfyui", "status": "ok", "latency_ms": 180}
+  ],
+  "alerts": [],
+  "updates_available": []
+}
+```
+
+## Actions disponibles (via n8n webhooks uniquement)
+
+| Action | Webhook | Confirmation requise |
+|---|---|---|
+| Restart service | `{{ n8n_webhook_base_url }}/webhook/stack-restart` | Oui (Mobutoo) |
+| Apply update | `{{ n8n_webhook_base_url }}/webhook/stack-update` | Oui (Mobutoo) |
+| Fetch logs | `{{ n8n_webhook_base_url }}/webhook/stack-logs` | Non |
+
+**Jamais d'action directe SSH ou Docker.** Toujours via n8n.

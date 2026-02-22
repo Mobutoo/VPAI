@@ -204,6 +204,8 @@
     - "{{ openclaw_agent_artist_name }}"
     - "{{ openclaw_agent_tutor_name }}"
     - "{{ openclaw_agent_explorer_name }}"
+    - "{{ openclaw_agent_cfo_name }}"
+    - "{{ openclaw_agent_maintainer_name }}"
   when: openclaw_volume_isolation | default(false)
 
 # Deploy agent IDENTITY.md files (only with volume isolation)
@@ -222,6 +224,8 @@
     - "{{ openclaw_agent_artist_name }}"
     - "{{ openclaw_agent_tutor_name }}"
     - "{{ openclaw_agent_explorer_name }}"
+    - "{{ openclaw_agent_cfo_name }}"
+    - "{{ openclaw_agent_maintainer_name }}"
   when: openclaw_volume_isolation | default(false)
   notify: Restart openclaw stack
 
@@ -253,6 +257,13 @@
     - search-content
     - generate-visual
     - rate-response
+    - budget-monitor
+    - cost-analysis
+    - infra-maintain
+    - deploy-check
+    - task-management
+    - image-generation
+    - video-composition
   when:
     - openclaw_volume_isolation | default(false)
     - openclaw_n8n_integration | default(false)
@@ -270,6 +281,13 @@
     - search-content
     - generate-visual
     - rate-response
+    - budget-monitor
+    - cost-analysis
+    - infra-maintain
+    - deploy-check
+    - task-management
+    - image-generation
+    - video-composition
   when:
     - openclaw_volume_isolation | default(false)
     - openclaw_n8n_integration | default(false)
@@ -285,6 +303,13 @@
     - search-content
     - generate-visual
     - rate-response
+    - budget-monitor
+    - cost-analysis
+    - infra-maintain
+    - deploy-check
+    - task-management
+    - image-generation
+    - video-composition
   when:
     - openclaw_volume_isolation | default(false)
     - openclaw_n8n_integration | default(false)

@@ -41,6 +41,8 @@ openclaw_workspace_subdirs:
   - books
   - prospection
   - output
+  - finance
+  - ops
 
 # State subdirectories (runtime data — sessions, canvas, cron, memory)
 openclaw_state_subdirs:
@@ -58,6 +60,48 @@ openclaw_agent_artist_name: "artist"
 openclaw_agent_tutor_name: "tutor"
 openclaw_agent_explorer_name: "explorer"
 openclaw_agent_marketer_name: "marketer"
+openclaw_agent_cfo_name: "cfo"
+openclaw_agent_maintainer_name: "maintainer"
+
+# Structured agents list for auto-sync to Kaneo (n8n agents-kaneo-sync workflow)
+# Adding an agent here = it appears automatically in Kaneo UI after next deploy
+openclaw_agents_list:
+  - id: "{{ openclaw_agent_concierge_name }}"
+    name: "Mobutoo"
+    type: "orchestrator"
+    model: "{{ openclaw_concierge_model }}"
+  - id: "{{ openclaw_agent_builder_name }}"
+    name: "Imhotep"
+    type: "builder"
+    model: "{{ openclaw_builder_model }}"
+  - id: "{{ openclaw_agent_writer_name }}"
+    name: "Thot"
+    type: "writer"
+    model: "{{ openclaw_writer_model }}"
+  - id: "{{ openclaw_agent_artist_name }}"
+    name: "Basquiat"
+    type: "artist"
+    model: "{{ openclaw_artist_model }}"
+  - id: "{{ openclaw_agent_tutor_name }}"
+    name: "Piccolo"
+    type: "tutor"
+    model: "{{ openclaw_tutor_model }}"
+  - id: "{{ openclaw_agent_explorer_name }}"
+    name: "R2D2"
+    type: "explorer"
+    model: "{{ openclaw_explorer_model }}"
+  - id: "{{ openclaw_agent_marketer_name }}"
+    name: "Marketer"
+    type: "marketer"
+    model: "{{ openclaw_marketer_model }}"
+  - id: "{{ openclaw_agent_cfo_name }}"
+    name: "CFO"
+    type: "finance"
+    model: "{{ openclaw_cfo_model }}"
+  - id: "{{ openclaw_agent_maintainer_name }}"
+    name: "Maintainer"
+    type: "devops"
+    model: "{{ openclaw_maintainer_model }}"
 
 # Model assignments per agent/task (routed through LiteLLM)
 # Strategy: open-source first, Anthropic/OpenAI only when precision demands it
@@ -71,6 +115,8 @@ openclaw_artist_model: "custom-litellm/minimax-m25"
 openclaw_tutor_model: "custom-litellm/minimax-m25"
 openclaw_explorer_model: "custom-litellm/grok-search"
 openclaw_marketer_model: "custom-litellm/minimax-m25"
+openclaw_cfo_model: "custom-litellm/minimax-m25"
+openclaw_maintainer_model: "custom-litellm/qwen3-coder"
 openclaw_code_model: "custom-litellm/qwen3-coder"
 openclaw_quick_model: "custom-litellm/deepseek-v3"
 openclaw_cheap_model: "custom-litellm/qwen3-coder"

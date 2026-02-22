@@ -46,7 +46,6 @@ workstation_base_dirs:
   - configs/caddy
   - data
   - data/caddy
-  - data/mission-control
   - logs
 
 # sysctl adapte Pi (pas de swappiness agressif, ARM64)

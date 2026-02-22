@@ -1,0 +1,77 @@
+# {{ ansible_managed }}
+# docker-compose-creative.yml — Creative Studio (RPi 5)
+# ComfyUI (image gen) + Remotion (video render)
+# Shared assets volume for cross-service file exchange
+
+services:
+  comfyui:
+    image: comfyui-local:{{ comfyui_version }}
+    container_name: workstation_comfyui
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    volumes:
+      - {{ comfyui_data_dir }}/models:/app/models
+      - {{ comfyui_data_dir }}/output:/app/output
+      - {{ comfyui_data_dir }}/input:/app/input
+      - {{ comfyui_data_dir }}/custom_nodes:/app/custom_nodes
+      - {{ creative_assets_dir }}:/app/creative-assets
+    ports:
+      - "127.0.0.1:{{ comfyui_port }}:8188"
+    deploy:
+      resources:
+        limits:
+          memory: {{ comfyui_memory_limit }}
+          cpus: "{{ comfyui_cpu_limit }}"
+        reservations:
+          memory: {{ comfyui_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8188/system_stats')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+{% if remotion_port is defined %}
+  remotion:
+    image: remotion-local:{{ remotion_version | default('latest') }}
+    container_name: workstation_remotion
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - SYS_ADMIN
+    environment:
+      PORT: "{{ remotion_port }}"
+      REMOTION_API_TOKEN: "{{ vault_remotion_api_token | default('') }}"
+      NODE_ENV: "production"
+    volumes:
+      - {{ remotion_data_dir | default('/opt/workstation/data/remotion') }}/output:/app/output
+      - {{ creative_assets_dir }}:/app/creative-assets:ro
+    ports:
+      - "127.0.0.1:{{ remotion_port }}:{{ remotion_port }}"
+    deploy:
+      resources:
+        limits:
+          memory: {{ remotion_memory_limit | default('512M') }}
+          cpus: "{{ remotion_cpu_limit | default('2.0') }}"
+        reservations:
+          memory: {{ remotion_memory_reservation | default('256M') }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:{{ remotion_port }}/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+{% endif %}

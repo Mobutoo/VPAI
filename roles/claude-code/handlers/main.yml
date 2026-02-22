@@ -1,0 +1,9 @@
+---
+# claude-code — handlers
+# Claude Code is a CLI tool (not a daemon), no service to restart.
+# Handlers are here as placeholders for future extensions.
+
+- name: Reload claude-code config
+  ansible.builtin.debug:
+    msg: "Claude Code config updated — no restart needed (stateless CLI)."
+  changed_when: false

@@ -1,0 +1,50 @@
+---
+# claude-code — defaults
+# Claude Code CLI + MCP servers on Workstation Pi (ARM64)
+# Installed as npm global package, runs in interactive or server mode
+
+# User who runs claude-code (same as opencode)
+claude_code_user: "{{ workstation_pi_user | default('pi') }}"
+
+# Config directory (stores CLAUDE.md, mcp.json, settings.json)
+claude_code_config_dir: "/home/{{ claude_code_user }}/.claude"
+
+# npm global prefix (NodeSource on Ubuntu 24.04 ARM64 → /usr)
+claude_code_npm_prefix: "/usr"
+
+# Pinned version — update after first validated deploy
+# Check: https://www.npmjs.com/package/@anthropic-ai/claude-code
+claude_code_npm_version: "1.2.3"
+
+# Claude API key (from vault)
+# vault_claude_api_key defined in inventory/group_vars/all/secrets.yml
+
+# Default model for Claude Code on RPi (balanced cost/quality)
+claude_code_default_model: "claude-sonnet-4-5"
+
+# --- MCP Servers ---
+# Each MCP server is installed as npm package + registered in mcp.json
+
+# Context7 — live documentation lookup (npm MCP server)
+claude_code_mcp_context7_enabled: true
+claude_code_mcp_context7_version: "latest"
+
+# Filesystem MCP — structured file operations in workspace
+claude_code_mcp_filesystem_enabled: true
+claude_code_mcp_filesystem_workspace: "/home/{{ claude_code_user }}/projects"
+
+# Kaneo MCP — task management bridge (custom, via HTTP)
+# Reads/writes tasks in Kaneo API for OpenClaw sync
+claude_code_mcp_kaneo_enabled: true
+claude_code_mcp_kaneo_api_url: "http://{{ vps_ts_ip | default('100.64.0.1') }}:{{ kaneo_api_port | default(1337) }}"
+
+# n8n MCP — trigger workflows from Claude Code
+claude_code_mcp_n8n_enabled: true
+claude_code_mcp_n8n_url: "http://{{ vps_ts_ip | default('100.64.0.1') }}:5678"
+
+# Workspace directories created for Claude Code
+claude_code_workspace_dirs:
+  - projects
+  - projects/ops
+  - projects/saas
+  - projects/writing

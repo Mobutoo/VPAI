@@ -241,3 +241,29 @@ BOOTSTRAP 200
     }
 }
 {% endif %}
+
+# === Kaneo - dedicated subdomain (hq) ===
+# PM tool (fork of usekaneo/kaneo) — replaces Mission Control
+{% if kaneo_subdomain_override | default('') | length > 0 %}
+{{ caddy_kaneo_domain }} {
+    import vpn_only
+    import vpn_error_page
+
+    # Kaneo API backend (more specific path first)
+    handle /api/* {
+        reverse_proxy kaneo-api:1337
+    }
+
+    # Kaneo Web frontend (catch-all)
+    handle {
+        reverse_proxy kaneo-web:3000
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+{% endif %}

@@ -14,17 +14,6 @@
     }
 }
 
-# Mission Control
-{{ workstation_mc_domain }} {
-    reverse_proxy localhost:{{ mc_port | default(4000) }}
-
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        -Server
-    }
-}
-
 # OpenCode Server
 {{ workstation_oc_domain }} {
     reverse_proxy localhost:{{ opencode_port | default(3456) }}
@@ -35,3 +24,29 @@
         -Server
     }
 }
+
+# ComfyUI — AI image generation (CPU-only, Docker)
+{% if comfyui_subdomain | default('') | length > 0 %}
+{{ comfyui_subdomain }}.{{ domain_name }} {
+    reverse_proxy localhost:{{ comfyui_port | default(8188) }}
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
+}
+{% endif %}
+
+# Remotion — Video rendering server (Docker)
+{% if remotion_subdomain | default('') | length > 0 %}
+{{ remotion_subdomain }}.{{ domain_name }} {
+    reverse_proxy localhost:{{ remotion_port | default(3200) }}
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        -Server
+    }
+}
+{% endif %}

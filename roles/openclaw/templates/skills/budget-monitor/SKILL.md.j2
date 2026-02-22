@@ -1,0 +1,72 @@
+---
+name: budget-monitor
+description: Monitor AI spending in real-time via LiteLLM API. Returns spend by provider, percent used, and alert level.
+metadata: { "openclaw": { "emoji": "💰", "always": false } }
+---
+
+# Skill: Monitoring Budget IA
+
+Interroge LiteLLM pour connaitre les depenses IA en temps reel.
+
+## Quand utiliser ce skill
+
+- Commande `/budget` recue
+- Cron n8n (toutes les heures)
+- Alerte depassement suspectee
+
+## Budget de reference
+
+| Provider | Limite/jour |
+|---|---|
+| Global | ${{ ai_daily_budget | default('5') }}/j |
+| OpenRouter | ${{ (ai_daily_budget | default(5) | float * 0.65) | round(2) }}/j (65%) |
+| Anthropic | ${{ (ai_daily_budget | default(5) | float * 0.15) | round(2) }}/j (15%) |
+| OpenAI | ${{ (ai_daily_budget | default(5) | float * 0.10) | round(2) }}/j (10%) |
+| BytePlus video | ${{ byteplus_monthly_budget | default('5') }}/mois (separe) |
+
+## Appel API LiteLLM
+
+```
+GET http://litellm:4000/spend/logs?start_date=<today>&end_date=<today>
+Headers:
+  Authorization: Bearer ${LITELLM_API_KEY}
+  Content-Type: application/json
+```
+
+Reponse attendue :
+```json
+{
+  "spend": 1.23,
+  "max_budget": {{ ai_daily_budget | default('5') }},
+  "budget_duration": "1d",
+  "providers": {
+    "openrouter": {"spend": 0.80},
+    "anthropic": {"spend": 0.30},
+    "openai": {"spend": 0.13}
+  }
+}
+```
+
+## Calcul du niveau d'alerte
+
+```
+percent = (spend / max_budget) * 100
+
+if percent >= 100 → alert: "blocked"   → eco mode FORCE
+if percent >= 90  → alert: "critical"  → recommander eco mode
+if percent >= 70  → alert: "warning"   → signaler a Mobutoo
+else              → alert: "ok"
+```
+
+## Sortie standard
+
+```json
+{
+  "spend": 1.23,
+  "max_budget": {{ ai_daily_budget | default('5') }},
+  "percent": 24.6,
+  "alert": "ok",
+  "providers": { ... },
+  "eco_mode_active": false
+}
+```

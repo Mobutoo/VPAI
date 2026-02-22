@@ -1,0 +1,83 @@
+---
+name: deploy-check
+description: Verify Ansible deployment status, check last deploy result, and validate service versions post-deploy.
+metadata: { "openclaw": { "emoji": "🚀", "always": false } }
+---
+
+# Skill: Verification Deploiement
+
+Verifie le statut des deploiements Ansible et valide les versions apres deploy.
+
+## Quand utiliser ce skill
+
+- Apres un deploiement Ansible signale par n8n
+- Commande `/deploy status`
+- Verification post-mise-a-jour
+
+## Sources d'information
+
+### GitHub Actions (CI/CD)
+Le pipeline CI/CD publie les resultats dans n8n via webhook.
+Le Maintainer peut interroger le dernier resultat :
+
+```
+GET {{ n8n_webhook_base_url }}/webhook/deploy-status
+Headers: X-Webhook-Secret: ${N8N_WEBHOOK_SECRET}
+```
+
+Reponse :
+```json
+{
+  "last_deploy": {
+    "timestamp": "...",
+    "branch": "main",
+    "status": "success|failed",
+    "services_updated": ["litellm", "n8n"],
+    "duration_seconds": 142
+  }
+}
+```
+
+### Validation post-deploy
+
+Apres chaque deploiement, verifier :
+1. **Versions images** : que les containers utilisent bien le bon tag
+2. **Health checks** : tous les services repondent dans les 60s apres restart
+3. **Smoke tests** : executer via `{{ n8n_webhook_base_url }}/webhook/smoke-tests`
+
+## Procedure verification manuelle
+
+```
+1. Interroger deploy-status → statut dernier deploy
+2. Si success → lancer health checks via skill infra-maintain
+3. Si failed → recuperer les logs via stack-logs webhook
+4. Rapport a Mobutoo avec statut final
+```
+
+## Format rapport deploy
+
+```
+## Deploy Check — {{ "{{" }} timestamp {{ "}}" }}
+
+### Dernier deploiement
+- Date : {{ "{{" }} last_deploy.timestamp {{ "}}" }}
+- Branche : {{ "{{" }} last_deploy.branch {{ "}}" }}
+- Statut : ✅ SUCCESS / ❌ FAILED
+- Duree : {{ "{{" }} last_deploy.duration_seconds {{ "}}" }}s
+- Services mis a jour : {{ "{{" }} last_deploy.services_updated | join(', ') {{ "}}" }}
+
+### Health checks post-deploy
+| Service | Statut | Latence |
+|---|---|---|
+| ... | ... | ... |
+
+### Conclusion
+- Stack OK → aucune action requise
+- Erreur detectee → [description + recommandation]
+```
+
+## Regles
+
+- Jamais re-declencher un deploy sans confirmation Mobutoo
+- Conserver les logs de chaque verification dans /workspace/ops/DEPLOYS.md
+- En cas d'echec : toujours proposer rollback avant debug

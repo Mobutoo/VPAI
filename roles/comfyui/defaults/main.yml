@@ -1,0 +1,32 @@
+---
+# comfyui — defaults
+# ComfyUI deployed as Docker container on RPi 5 (ARM64, CPU-only)
+
+comfyui_install_dir: "/opt/workstation/comfyui"
+comfyui_data_dir: "/opt/workstation/data/comfyui"
+
+# ComfyUI version (git tag from https://github.com/comfyanonymous/ComfyUI)
+comfyui_version: "v0.3.27"
+
+# Ports
+comfyui_port: 8188
+
+# Docker resource limits (RPi 5 16GB — ~4GB for models in memory)
+comfyui_memory_limit: "4096M"
+comfyui_memory_reservation: "1024M"
+comfyui_cpu_limit: "3.0"
+
+# Subdomain (VPN-only via workstation Caddy)
+comfyui_subdomain: "studio"
+
+# Models to download (lightweight for CPU)
+# Each model: name, url, checksum (sha256), subdir under models/
+comfyui_models: []
+# Example:
+#   - name: "sd_xl_turbo_1.0_fp16.safetensors"
+#     url: "https://huggingface.co/stabilityai/sdxl-turbo/resolve/main/sd_xl_turbo_1.0_fp16.safetensors"
+#     checksum: ""
+#     subdir: "checkpoints"
+
+# Shared creative assets volume (shared with Remotion)
+creative_assets_dir: "/opt/workstation/data/creative-assets"

@@ -14,7 +14,7 @@
       "allowInsecureAuth": true,
       "allowedOrigins": [
         "https://{{ admin_subdomain }}.{{ domain_name }}",
-        "https://{{ mc_subdomain | default('mc') }}.{{ domain_name }}"
+        "https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}"
       ]
     }
   },
@@ -65,7 +65,9 @@
             "{{ openclaw_agent_artist_name }}",
             "{{ openclaw_agent_tutor_name }}",
             "{{ openclaw_agent_explorer_name }}",
-            "{{ openclaw_agent_marketer_name }}"
+            "{{ openclaw_agent_marketer_name }}",
+            "{{ openclaw_agent_cfo_name }}",
+            "{{ openclaw_agent_maintainer_name }}"
           ]
         },
         "tools": {
@@ -146,6 +148,35 @@
         "workspace": "/home/node/.openclaw/workspace",
         "tools": {
           "fs": { "workspaceOnly": true },
+          "elevated": { "enabled": false }
+        }
+      },
+      {
+        "id": "{{ openclaw_agent_cfo_name }}",
+        "model": {
+          "primary": "{{ openclaw_cfo_model }}"
+        },
+        "workspace": "/home/node/.openclaw/workspace/finance",
+        "tools": {
+          "fs": { "workspaceOnly": true },
+          "web": {
+            "fetch": { "enabled": true }
+          },
+          "elevated": { "enabled": false }
+        }
+      },
+      {
+        "id": "{{ openclaw_agent_maintainer_name }}",
+        "model": {
+          "primary": "{{ openclaw_maintainer_model }}"
+        },
+        "workspace": "/home/node/.openclaw/workspace",
+        "tools": {
+          "fs": { "workspaceOnly": true },
+          "exec": {
+            "applyPatch": { "workspaceOnly": true },
+            "timeoutSec": 300
+          },
           "elevated": { "enabled": false }
         }
       }

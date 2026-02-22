@@ -1,0 +1,78 @@
+---
+name: image-generation
+description: Generate images via ComfyUI (local ARM64) or LiteLLM proxy (Seedream/DALL-E). Prefer ComfyUI for batch/quality work.
+metadata: { "openclaw": { "emoji": "🖼️", "always": false } }
+---
+
+# Skill: Generation d'Images
+
+Genere des images via ComfyUI (local, haute qualite) ou LiteLLM (API cloud).
+
+## Sources disponibles
+
+### 1. ComfyUI local (RPi5 — ARM64, CPU)
+- URL : `http://comfyui:8188`
+- Avantage : gratuit, pas de limite budget
+- Inconvenient : lent (~2-5 min par image), CPU uniquement
+- Ideal pour : illustrations, concepts, esquisses, non-urgent
+
+### 2. Seedream 4.5 via LiteLLM (OpenRouter)
+- URL : `http://litellm:4000/v1/images/generations`
+- Cout : ~$0.04/image
+- Avantage : rapide (<30s), haute qualite
+- Ideal pour : images urgentes, marketing, UI
+
+### 3. DALL-E 3 via OpenAI (fallback)
+- Cout : ~$0.08/image
+- Utiliser seulement si Seedream indisponible
+
+## Appel ComfyUI
+
+```
+POST http://comfyui:8188/prompt
+Headers: Content-Type: application/json
+Body:
+{
+  "prompt": {
+    "3": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": <random>,
+        "steps": 20,
+        "cfg": 7.0,
+        "sampler_name": "euler",
+        "scheduler": "normal",
+        "denoise": 1.0,
+        "model": ["4", 0],
+        "positive": ["6", 0],
+        "negative": ["7", 0],
+        "latent_image": ["5", 0]
+      }
+    }
+  }
+}
+```
+
+## Appel LiteLLM (Seedream)
+
+```
+POST http://litellm:4000/v1/images/generations
+Headers:
+  Content-Type: application/json
+  Authorization: Bearer ${LITELLM_API_KEY}
+Body:
+{
+  "model": "seedream",
+  "prompt": "<description detaillee>",
+  "n": 1,
+  "size": "1024x1024"
+}
+```
+
+## Regles de generation
+
+- Toujours inclure le prompt dans le nom de fichier : `YYYY-MM-DD_<slug>.png`
+- Sauvegarder dans `/workspace/output/images/`
+- Budget : ComfyUI (gratuit) > Seedream ($0.04) > DALL-E ($0.08)
+- Pas de contenu inapproprie ou protege
+- Pour plus de 3 images : utiliser ComfyUI ou batch via n8n

@@ -37,7 +37,7 @@ _vpn_dns_vps_ts_ip: >-
   }}
 
 # Tailscale IP du Pi (connue apres enregistrement Tailscale — vide sinon)
-# Les records mc/oc sont ajoutes seulement si l'IP est disponible
+# Les records workstation sont ajoutes seulement si l'IP est disponible
 _vpn_dns_workstation_ts_ip: >-
   {{
     hostvars[groups['workstation'][0]]['tailscale_ip']
@@ -78,15 +78,26 @@ _vpn_dns_records_default: >-
      if (qdrant_subdomain | default('')) | length > 0
      else [])
     +
-    ([{"name": mc_subdomain ~ "." ~ domain_name, "type": "A",
-       "value": _vpn_dns_workstation_ts_ip}]
-     if (mc_subdomain | default('')) | length > 0
-        and _vpn_dns_workstation_ts_ip | length > 0
+    ([{"name": kaneo_subdomain_override ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (kaneo_subdomain_override | default('')) | length > 0
      else [])
     +
     ([{"name": oc_subdomain ~ "." ~ domain_name, "type": "A",
        "value": _vpn_dns_workstation_ts_ip}]
      if (oc_subdomain | default('')) | length > 0
+        and _vpn_dns_workstation_ts_ip | length > 0
+     else [])
+    +
+    ([{"name": comfyui_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_workstation_ts_ip}]
+     if (comfyui_subdomain | default('')) | length > 0
+        and _vpn_dns_workstation_ts_ip | length > 0
+     else [])
+    +
+    ([{"name": remotion_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_workstation_ts_ip}]
+     if (remotion_subdomain | default('')) | length > 0
         and _vpn_dns_workstation_ts_ip | length > 0
      else [])
   }}

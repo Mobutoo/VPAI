@@ -1,0 +1,24 @@
+---
+# remotion — defaults
+# Remotion server deployed as Docker container on RPi 5 (ARM64)
+# Renders video compositions via HTTP API
+
+remotion_install_dir: "/opt/workstation/remotion"
+remotion_data_dir: "/opt/workstation/data/remotion"
+
+# Remotion version (npm package version)
+remotion_version: "4.0.259"
+
+# Ports
+remotion_port: 3200
+
+# Docker resource limits (RPi 5 16GB — Chrome headless for rendering)
+remotion_memory_limit: "512M"
+remotion_memory_reservation: "256M"
+remotion_cpu_limit: "2.0"
+
+# Subdomain (VPN-only via workstation Caddy)
+remotion_subdomain: "cut"
+
+# Shared creative assets volume (shared with ComfyUI)
+creative_assets_dir: "/opt/workstation/data/creative-assets"

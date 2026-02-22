@@ -1,0 +1,20 @@
+---
+# kaneo — defaults
+# Kaneo is a project management tool replacing Mission Control.
+# Runs as Docker container on Sese-AI, shares PostgreSQL.
+
+kaneo_config_dir: "/opt/{{ project_name }}/configs/kaneo"
+kaneo_data_dir: "/opt/{{ project_name }}/data/kaneo"
+
+# Kaneo API port (internal — not exposed publicly)
+kaneo_api_port: 1337
+
+# Kaneo Web port (internal — not exposed publicly)
+kaneo_web_port: 3000
+
+# PostgreSQL connection (shared instance)
+kaneo_db_name: "kaneo"
+kaneo_db_user: "kaneo"
+
+# Subdomain (VPN-only, served by Caddy)
+kaneo_subdomain: "{{ kaneo_subdomain_override | default('hq') }}"

@@ -1,0 +1,97 @@
+---
+name: video-composition
+description: Render videos via Remotion (local RPi5) or Seedance/Veo (cloud). Prefer Remotion for programmatic compositions.
+metadata: { "openclaw": { "emoji": "🎬", "always": false } }
+---
+
+# Skill: Composition Video
+
+Cree des videos via Remotion (local, programmation React) ou les APIs cloud (Seedance/Veo).
+
+## Sources disponibles
+
+### 1. Remotion local (RPi5 — ARM64)
+- URL : `http://remotion:3200`
+- Avantage : gratuit, compositions programmables (React), logo/texte/branding
+- Ideal pour : videos produit, demos, presentations, contenu brande
+- Temps de rendu : ~1-3 min pour 30s de video
+
+### 2. Seedance 2.0 via BytePlus
+{% if byteplus_api_key | default('') | length > 0 %}
+- Budget separe : ${{ byteplus_monthly_budget | default('5') }}/mois
+- Ideal pour : videos IA generatives, scenes cinematiques
+{% else %}
+- Non configure (cle BytePlus manquante)
+{% endif %}
+
+### 3. Veo 3 Fast via Google Gemini (fallback)
+{% if google_gemini_api_key | default('') | length > 0 %}
+- Cout : ~$0.15/sec
+- Ideal pour : scenes realistes, fallback Seedance
+{% else %}
+- Non configure
+{% endif %}
+
+## Appel Remotion API
+
+### Lancer un rendu
+```
+POST http://remotion:3200/render
+Headers:
+  Content-Type: application/json
+  Authorization: Bearer ${REMOTION_API_KEY}
+Body:
+{
+  "composition": "ProductDemo",
+  "inputProps": {
+    "title": "<titre>",
+    "subtitle": "<sous-titre>",
+    "duration": 30,
+    "fps": 30,
+    "resolution": "1080p"
+  },
+  "outputFormat": "mp4"
+}
+```
+
+Reponse :
+```json
+{
+  "renderId": "uuid",
+  "status": "queued"
+}
+```
+
+### Verifier statut
+```
+GET http://remotion:3200/status/<renderId>
+```
+
+### Recuperer le fichier
+```
+GET http://remotion:3200/output/<renderId>
+```
+
+## Appel Seedance (BytePlus)
+
+```
+POST https://api.byteplus.com/v1/video/generate
+Headers:
+  Authorization: Bearer ${BYTEPLUS_API_KEY}
+Body:
+{
+  "prompt": "<description cinematique detaillee>",
+  "duration": 5,
+  "resolution": "720p",
+  "style": "cinematic"
+}
+```
+
+## Regles de production
+
+- Format nommage : `YYYY-MM-DD_<slug>.<ext>`
+- Sauvegarder dans `/workspace/output/videos/`
+- Budget : Remotion (gratuit) > Seedance (budget mensuel) > Veo (payant)
+- Toujours sauvegarder le prompt/inputProps avec le fichier video
+- Pour series de videos : utiliser pipeline n8n via `delegate-n8n`
+- Max 5 min de video Remotion par render (limitation CPU RPi)

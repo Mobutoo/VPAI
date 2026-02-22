@@ -228,13 +228,25 @@ deploy-workstation: ## Deployer la workstation Pi
 	@echo "$(GREEN)>>> Deploying Workstation Pi...$(NC)"
 	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --diff
 
-.PHONY: deploy-mc
-deploy-mc: ## Deployer Mission Control uniquement
-	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "mission-control" --diff
-
 .PHONY: deploy-opencode
 deploy-opencode: ## Deployer OpenCode uniquement
 	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "opencode" --diff
+
+.PHONY: deploy-claude-code
+deploy-claude-code: ## Deployer Claude Code CLI + MCP servers sur RPi
+	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "claude-code" --diff
+
+.PHONY: deploy-kaneo
+deploy-kaneo: ## Deployer Kaneo (PM tool) uniquement
+	$(ANSIBLE_PLAYBOOK) playbooks/site.yml --tags "kaneo" --diff
+
+.PHONY: deploy-comfyui
+deploy-comfyui: ## Deployer ComfyUI (image gen) sur RPi
+	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "comfyui" --diff
+
+.PHONY: deploy-remotion
+deploy-remotion: ## Deployer Remotion (video render) sur RPi
+	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "remotion" --diff
 
 # ====================================================================
 # PROD APPS (Hetzner)

@@ -20,7 +20,6 @@ workstation_xcaddy_gopath: "/root/go"
 workstation_xcaddy_gobin: "/root/go/bin"
 
 # Subdomains pour le Pi (resolus via Split DNS Tailscale)
-workstation_mc_domain: "{{ mc_subdomain | default('mc') }}.{{ domain_name }}"
 workstation_oc_domain: "{{ oc_subdomain | default('oc') }}.{{ domain_name }}"
 
 # OVH API pour ACME DNS-01 (partage les credentials du prod)

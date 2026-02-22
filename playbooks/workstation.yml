@@ -3,8 +3,10 @@
 #
 # Usage:
 #   ansible-playbook playbooks/workstation.yml
-#   ansible-playbook playbooks/workstation.yml --tags "mission-control"
 #   ansible-playbook playbooks/workstation.yml --tags "opencode"
+#   ansible-playbook playbooks/workstation.yml --tags "claude-code"
+#   ansible-playbook playbooks/workstation.yml --tags "comfyui"
+#   ansible-playbook playbooks/workstation.yml --tags "remotion"
 #   ansible-playbook playbooks/workstation.yml --tags "workstation-caddy"
 #
 # Prerequis :
@@ -55,11 +57,17 @@
       vars:
         headscale_hostname: "{{ workstation_pi_hostname }}"
 
-    - role: mission-control
-      tags: [mission-control]
-
     - role: opencode
       tags: [opencode]
+
+    - role: claude-code
+      tags: [claude-code]
+
+    - role: comfyui
+      tags: [comfyui]
+
+    - role: remotion
+      tags: [remotion]
 
     - role: workstation-caddy
       tags: [workstation-caddy]

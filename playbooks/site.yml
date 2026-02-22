@@ -74,6 +74,8 @@
       tags: [litellm, phase3]
     - role: openclaw
       tags: [openclaw, phase3]
+    - role: kaneo
+      tags: [kaneo, phase3]
 
     # Phase 4 — Observabilité
     - role: monitoring

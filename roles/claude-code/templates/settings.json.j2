@@ -1,0 +1,29 @@
+{
+  "env": {
+    "ANTHROPIC_API_KEY": "${CLAUDE_API_KEY}",
+    "ANTHROPIC_MODEL": "{{ claude_code_default_model }}",
+    "KANEO_API_KEY": "${KANEO_API_KEY}",
+    "N8N_API_KEY": "${N8N_API_KEY}"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(npm:*)",
+      "Bash(python3:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(ansible-lint:*)",
+      "Bash(yamllint:*)",
+      "Read(**)",
+      "Write(/home/{{ claude_code_user }}/projects/**)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(sudo rm:*)",
+      "Bash(dd:*)",
+      "Bash(mkfs:*)"
+    ]
+  },
+  "preferredNotifChannel": "terminal_bell",
+  "theme": "dark",
+  "verbose": false
+}

@@ -1,0 +1,60 @@
+# Claude Code — Workstation Pi ({{ workstation_pi_hostname | default('rpi5') }})
+
+## Contexte
+
+Tu operes sur la **Workstation Pi** (RPi5 16GB, ARM64) de la stack {{ project_name }}.
+Acces VPN uniquement via Tailscale mesh (Headscale).
+
+## Stack disponible localement
+
+| Service | URL | Acces |
+|---|---|---|
+| OpenCode | http://localhost:{{ opencode_port | default(3456) }} | Local |
+| ComfyUI | http://localhost:{{ comfyui_port | default(8188) }} | Local |
+| Remotion | http://localhost:{{ remotion_port | default(3200) }} | Local |
+
+## Stack disponible via VPN (Tailscale)
+
+| Service | URL VPN | Role |
+|---|---|---|
+| LiteLLM | https://{{ litellm_subdomain }}.{{ domain_name }}/v1 | Modeles IA |
+| n8n | https://{{ n8n_subdomain }}.{{ domain_name }} | Workflows |
+| Kaneo | https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }} | PM/Tasks |
+| Grafana | https://{{ grafana_subdomain }}.{{ domain_name }} | Monitoring |
+
+## MCP Servers actifs
+
+{% if claude_code_mcp_context7_enabled | default(false) %}
+- **context7** : Documentation live (npm packages, frameworks)
+{% endif %}
+{% if claude_code_mcp_filesystem_enabled | default(false) %}
+- **filesystem** : Operations fichiers dans `{{ claude_code_mcp_filesystem_workspace }}`
+{% endif %}
+{% if claude_code_mcp_kaneo_enabled | default(false) %}
+- **kaneo** : Gestion taches via API Kaneo
+{% endif %}
+{% if claude_code_mcp_n8n_enabled | default(false) %}
+- **n8n** : Declenchement workflows n8n
+{% endif %}
+
+## Regles de travail
+
+1. **Idempotence** : toujours verifier si une action a deja ete faite avant de la faire
+2. **Git** : toujours commiter sur `{{ git_branch | default('main') }}` via `git@github-seko`
+3. **Secrets** : jamais en clair — utiliser les variables d'environnement ou Ansible Vault
+4. **SSH vers Sese-AI** : `ssh -i ~/.ssh/seko-vpn-deploy -p {{ prod_ssh_port | default(804) }} {{ prod_user | default('deploy') }}@{{ prod_vps_ip | default('VPS_IP') }}`
+5. **Ansible** : activer le venv : `source /home/{{ claude_code_user }}/seko/VPAI/.venv/bin/activate`
+
+## Conventions de code
+
+- FQCN Ansible obligatoire (`ansible.builtin.file`, pas `file`)
+- `changed_when` / `failed_when` explicites sur `command` et `shell`
+- `set -euo pipefail` sur tous les blocs `shell`
+- Images Docker : jamais `:latest` — pinned dans `inventory/group_vars/all/versions.yml`
+
+## Workspace
+
+Tes fichiers de travail : `/home/{{ claude_code_user }}/projects/`
+- `ops/` — procedures, runbooks, incident reports
+- `saas/` — projets SaaS en cours
+- `writing/` — contenu creatif

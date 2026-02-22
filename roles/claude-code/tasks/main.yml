@@ -1,0 +1,100 @@
+---
+# claude-code — tasks
+# Installs Claude Code CLI globally via npm and configures MCP servers
+# Pattern: same as opencode (npm global, community.general.npm)
+
+# --- Config directory ---
+- name: Create Claude Code config directory
+  ansible.builtin.file:
+    path: "{{ claude_code_config_dir }}"
+    state: directory
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0700"
+  become: true
+
+# --- Workspace directories ---
+- name: Create Claude Code workspace directories
+  ansible.builtin.file:
+    path: "/home/{{ claude_code_user }}/{{ item }}"
+    state: directory
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0755"
+  become: true
+  loop: "{{ claude_code_workspace_dirs }}"
+
+# --- Install Claude Code CLI via npm global ---
+- name: Install Claude Code CLI via npm global
+  community.general.npm:
+    name: "@anthropic-ai/claude-code"
+    version: "{{ claude_code_npm_version }}"
+    global: true
+    state: present
+  become: true
+
+- name: Verify Claude Code installation
+  ansible.builtin.command:
+    cmd: "{{ claude_code_npm_prefix }}/bin/claude --version"
+  changed_when: false
+  register: claude_code_version
+  failed_when: claude_code_version.rc != 0
+
+- name: Display Claude Code version
+  ansible.builtin.debug:
+    msg: "Claude Code: {{ claude_code_version.stdout }}"
+
+# --- Deploy CLAUDE.md project memory ---
+- name: Deploy CLAUDE.md for workstation context
+  ansible.builtin.template:
+    src: CLAUDE.md.j2
+    dest: "{{ claude_code_config_dir }}/CLAUDE.md"
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0644"
+  become: true
+
+# --- Deploy MCP configuration ---
+- name: Deploy MCP servers configuration (mcp.json)
+  ansible.builtin.template:
+    src: mcp.json.j2
+    dest: "{{ claude_code_config_dir }}/mcp.json"
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0600"
+  become: true
+
+# --- Deploy Claude Code settings ---
+- name: Deploy Claude Code settings (settings.json)
+  ansible.builtin.template:
+    src: settings.json.j2
+    dest: "{{ claude_code_config_dir }}/settings.json"
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0600"
+  become: true
+
+# --- Install MCP server packages ---
+- name: Install Context7 MCP server via npm global
+  community.general.npm:
+    name: "@upstash/context7-mcp"
+    global: true
+    state: present
+  become: true
+  when: claude_code_mcp_context7_enabled | default(false)
+
+- name: Install Filesystem MCP server via npm global
+  community.general.npm:
+    name: "@modelcontextprotocol/server-filesystem"
+    global: true
+    state: present
+  become: true
+  when: claude_code_mcp_filesystem_enabled | default(false)
+
+# --- Healthcheck ---
+- name: Check Claude Code binary is accessible
+  ansible.builtin.stat:
+    path: "{{ claude_code_npm_prefix }}/bin/claude"
+  register: claude_code_bin
+  failed_when: not claude_code_bin.stat.exists
+  changed_when: false

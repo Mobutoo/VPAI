@@ -1,0 +1,98 @@
+---
+# remotion — tasks
+# Remotion video render server on RPi 5 (ARM64)
+# Docker already installed by workstation-common role
+# Docker Compose shared with ComfyUI (docker-compose-creative.yml)
+
+- name: Create Remotion install directory
+  ansible.builtin.file:
+    path: "{{ remotion_install_dir }}"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create Remotion data directories
+  ansible.builtin.file:
+    path: "{{ remotion_data_dir }}/{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  loop:
+    - output
+
+- name: Copy Remotion source files
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ remotion_install_dir }}/{{ item.dest }}"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+  loop:
+    - { src: "Dockerfile", dest: "Dockerfile" }
+    - { src: "package.json", dest: "package.json" }
+    - { src: "remotion.config.ts", dest: "remotion.config.ts" }
+  register: remotion_files
+
+- name: Create Remotion source directories
+  ansible.builtin.file:
+    path: "{{ remotion_install_dir }}/src/compositions"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  become: true
+
+- name: Copy Remotion source code
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ remotion_install_dir }}/{{ item.dest }}"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+  loop:
+    - { src: "src/server.js", dest: "src/server.js" }
+    - { src: "src/compositions/index.js", dest: "src/compositions/index.js" }
+  register: remotion_src
+
+- name: Build Remotion Docker image (ARM64)
+  community.docker.docker_image:
+    name: "remotion-local"
+    tag: "{{ remotion_version }}"
+    source: build
+    build:
+      path: "{{ remotion_install_dir }}"
+      platform: "linux/arm64"
+    force_source: "{{ remotion_files.changed or remotion_src.changed }}"
+  become: true
+  notify: Restart creative stack
+
+- name: Wait for Remotion port to be open
+  ansible.builtin.wait_for:
+    host: localhost
+    port: "{{ remotion_port }}"
+    timeout: 60
+    state: started
+  changed_when: false
+  failed_when: false
+
+- name: Check Remotion health endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ remotion_port }}/health"
+    method: GET
+    status_code: [200]
+  retries: 6
+  delay: 5
+  register: remotion_health
+  until: remotion_health.status == 200
+  changed_when: false
+  failed_when: false
+
+- name: Display Remotion health status
+  ansible.builtin.debug:
+    msg: "Remotion: {{ 'healthy' if remotion_health.status == 200 else 'unhealthy (status: ' ~ remotion_health.status | default('unknown') ~ ')' }}"

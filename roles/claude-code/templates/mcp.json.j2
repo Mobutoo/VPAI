@@ -1,0 +1,38 @@
+{
+  "mcpServers": {
+{% if claude_code_mcp_context7_enabled | default(false) %}
+    "context7": {
+      "type": "stdio",
+      "command": "{{ claude_code_npm_prefix }}/bin/context7-mcp",
+      "args": [],
+      "env": {}
+    }{{ ',' if claude_code_mcp_filesystem_enabled | default(false) or claude_code_mcp_kaneo_enabled | default(false) or claude_code_mcp_n8n_enabled | default(false) else '' }}
+{% endif %}
+{% if claude_code_mcp_filesystem_enabled | default(false) %}
+    "filesystem": {
+      "type": "stdio",
+      "command": "{{ claude_code_npm_prefix }}/bin/mcp-server-filesystem",
+      "args": ["{{ claude_code_mcp_filesystem_workspace }}"],
+      "env": {}
+    }{{ ',' if claude_code_mcp_kaneo_enabled | default(false) or claude_code_mcp_n8n_enabled | default(false) else '' }}
+{% endif %}
+{% if claude_code_mcp_kaneo_enabled | default(false) %}
+    "kaneo": {
+      "type": "sse",
+      "url": "{{ claude_code_mcp_kaneo_api_url }}/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer ${KANEO_API_KEY}"
+      }
+    }{{ ',' if claude_code_mcp_n8n_enabled | default(false) else '' }}
+{% endif %}
+{% if claude_code_mcp_n8n_enabled | default(false) %}
+    "n8n": {
+      "type": "sse",
+      "url": "{{ claude_code_mcp_n8n_url }}/mcp/sse",
+      "headers": {
+        "Authorization": "Bearer ${N8N_API_KEY}"
+      }
+    }
+{% endif %}
+  }
+}

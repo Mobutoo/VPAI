@@ -1,0 +1,12 @@
+---
+# remotion — handlers
+# Shares the creative stack compose with ComfyUI
+
+- name: Restart creative stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/workstation"
+    files:
+      - docker-compose-creative.yml
+    state: restarted
+  become: true
+  failed_when: false

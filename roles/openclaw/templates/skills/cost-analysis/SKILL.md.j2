@@ -1,0 +1,68 @@
+---
+name: cost-analysis
+description: Analyze AI cost trends, identify expensive models/agents, and recommend optimizations.
+metadata: { "openclaw": { "emoji": "📊", "always": false } }
+---
+
+# Skill: Analyse des Couts IA
+
+Analyse les tendances de depense IA et recommande des optimisations.
+
+## Quand utiliser ce skill
+
+- Rapport hebdomadaire demande
+- Provider proche du plafond
+- Demande d'optimisation budget
+
+## Methode d'analyse
+
+### 1. Collecte historique (7 derniers jours)
+```
+GET http://litellm:4000/spend/logs?start_date=<-7d>&end_date=<today>
+Headers: Authorization: Bearer ${LITELLM_API_KEY}
+```
+
+### 2. Analyse par modele
+Identifier les modeles les plus couteux :
+- Cout moyen par requete
+- Nombre de requetes par modele
+- Cout total par agent OpenClaw
+
+### 3. Recommandations d'optimisation
+
+| Situation | Recommandation |
+|---|---|
+| claude-opus > 20% du budget | Basculer sur claude-sonnet pour taches non-critiques |
+| gpt-4o > 15% du budget | Remplacer par minimax-m25 pour review/bulk |
+| Provider > 90% limite | Activer eco mode partiel pour ce provider |
+| Video BytePlus > $3/mois | Alerte depassement projete |
+
+## Modeles eco disponibles (toujours actifs)
+
+| Modele | Provider | Cout | Usage recommande |
+|---|---|---|---|
+| qwen3-coder | OpenRouter | $0/M tokens | Code, bash, generation |
+| deepseek-v3 | OpenRouter | $0.14/M | Analyse, resume, generaliste |
+| minimax-m25 | OpenRouter | $0.10/M | Review, bulk, function calling |
+
+## Format rapport
+
+```
+## Analyse Couts IA — 7 derniers jours
+
+### Depense totale : $XX.XX
+
+### Top modeles (par cout)
+1. claude-sonnet : $X.XX (XX% du total)
+2. gpt-4o : $X.XX (XX%)
+3. minimax-m25 : $X.XX (XX%)
+
+### Anomalies detectees
+- [Description si anomalie]
+
+### Recommandations
+1. [Action concrete avec economie estimee]
+2. [Action concrete avec economie estimee]
+
+### Projection mois : $XX.XX / ${{ (ai_daily_budget | default(5) | float * 30) | round(0) | int }}
+```

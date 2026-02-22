@@ -1,0 +1,104 @@
+---
+# comfyui — tasks
+# ComfyUI Docker container on RPi 5 (ARM64, CPU-only)
+# Docker already installed by workstation-common role
+
+- name: Create ComfyUI install directory
+  ansible.builtin.file:
+    path: "{{ comfyui_install_dir }}"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create ComfyUI data directories
+  ansible.builtin.file:
+    path: "{{ comfyui_data_dir }}/{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  loop:
+    - models
+    - models/checkpoints
+    - models/loras
+    - models/vae
+    - output
+    - input
+    - custom_nodes
+
+- name: Create shared creative assets directory
+  ansible.builtin.file:
+    path: "{{ creative_assets_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+
+- name: Copy ComfyUI Dockerfile
+  ansible.builtin.copy:
+    src: Dockerfile
+    dest: "{{ comfyui_install_dir }}/Dockerfile"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+  register: comfyui_dockerfile
+
+- name: Build ComfyUI Docker image (ARM64 CPU-only)
+  community.docker.docker_image:
+    name: "comfyui-local"
+    tag: "{{ comfyui_version }}"
+    source: build
+    build:
+      path: "{{ comfyui_install_dir }}"
+      args:
+        COMFYUI_VERSION: "{{ comfyui_version }}"
+      platform: "linux/arm64"
+    force_source: "{{ comfyui_dockerfile.changed }}"
+  become: true
+
+- name: Deploy creative studio Docker Compose
+  ansible.builtin.template:
+    src: docker-compose-creative.yml.j2
+    dest: "/opt/workstation/docker-compose-creative.yml"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart creative stack
+
+- name: Start creative studio stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/workstation"
+    files:
+      - docker-compose-creative.yml
+    state: present
+  become: true
+
+- name: Wait for ComfyUI port to be open
+  ansible.builtin.wait_for:
+    host: localhost
+    port: "{{ comfyui_port }}"
+    timeout: 120
+    state: started
+  changed_when: false
+
+- name: Check ComfyUI system stats endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ comfyui_port }}/system_stats"
+    method: GET
+    status_code: [200]
+  retries: 6
+  delay: 10
+  register: comfyui_health
+  until: comfyui_health.status == 200
+  changed_when: false
+  failed_when: false
+
+- name: Display ComfyUI health status
+  ansible.builtin.debug:
+    msg: "ComfyUI: {{ 'healthy' if comfyui_health.status == 200 else 'unhealthy (status: ' ~ comfyui_health.status ~ ')' }}"

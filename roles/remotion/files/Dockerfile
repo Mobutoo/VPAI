@@ -27,10 +27,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy package files first (Docker layer cache)
-COPY package.json package-lock.json* ./
+# REX: npm ci requires package-lock.json — use npm install instead (no lock file in source)
+COPY package.json ./
 
-RUN npm ci --production && \
-    npx remotion browser ensure
+# REX: npx remotion browser ensure fails at build time on ARM64 (Playwright CDN 400).
+# Browser is downloaded lazily at first render request instead.
+# Alternatively, set PUPPETEER_SKIP_DOWNLOAD=true and use system Chromium.
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+ENV REMOTION_SKIP_LAMBDA=true
+
+RUN npm install --production --no-audit --no-fund
 
 # Copy application source
 COPY src/ ./src/

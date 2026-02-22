@@ -122,6 +122,9 @@
     - content-generate
     - budget-monitor
     - budget-control
+    - kaneo-agents-sync
+    - stack-health
+    - creative-pipeline
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Check workflow update status (checksum comparison)
@@ -159,6 +162,9 @@
     - {file: "content-generate", name: "Content Generate"}
     - {file: "budget-monitor", name: "Budget Monitor"}
     - {file: "budget-control", name: "Budget Control"}
+    - {file: "kaneo-agents-sync", name: "Kaneo Agents Sync"}
+    - {file: "stack-health", name: "Stack Health Check"}
+    - {file: "creative-pipeline", name: "Creative Pipeline"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -329,6 +335,9 @@
     - {file: "content-generate", name: "Content Generate"}
     - {file: "budget-monitor", name: "Budget Monitor"}
     - {file: "budget-control", name: "Budget Control"}
+    - {file: "kaneo-agents-sync", name: "Kaneo Agents Sync"}
+    - {file: "stack-health", name: "Stack Health Check"}
+    - {file: "creative-pipeline", name: "Creative Pipeline"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -362,6 +371,9 @@
     - content-generate
     - budget-monitor
     - budget-control
+    - kaneo-agents-sync
+    - stack-health
+    - creative-pipeline
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Display n8n workflow update results

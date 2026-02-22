@@ -1,0 +1,265 @@
+{
+  "name": "Creative Pipeline (Image + Video)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "creative-pipeline",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cp-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate and parse the creative request\nconst body = $input.first().json.body || $input.first().json;\n\n// Required: type (image|video), prompt\nconst type = body.type || 'image';\nconst prompt = body.prompt || '';\nconst agent_id = body.agent_id || 'artist';\nconst callback_agent = body.callback_agent || agent_id;\nconst output_name = body.output_name || `${type}-${Date.now()}`;\n\n// Optional overrides\nconst model = body.model || (type === 'image' ? 'seedream' : 'remotion');\nconst size = body.size || '1024x1024';\nconst duration = body.duration || 5;\nconst composition = body.composition || 'ProductDemo';\nconst input_props = body.input_props || {};\n\nif (!prompt && type !== 'video-composition') {\n  throw new Error('Missing required field: prompt');\n}\n\nreturn [{ json: { type, prompt, model, agent_id, callback_agent, output_name, size, duration, composition, input_props } }];"
+      },
+      "id": "cp-0001-0000-0000-0000-000000000002",
+      "name": "Parse request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 380]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "cond-type",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "image",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cp-0001-0000-0000-0000-000000000003",
+      "name": "Image or Video?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 380]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "cond-model",
+              "leftValue": "={{ $json.model }}",
+              "rightValue": "comfyui",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cp-0001-0000-0000-0000-000000000004",
+      "name": "ComfyUI or Cloud?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [920, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://comfyui:8188/prompt",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "prompt",
+              "value": "={{ JSON.stringify({\n  \"3\": { \"class_type\": \"KSampler\", \"inputs\": { \"seed\": Math.floor(Math.random()*999999), \"steps\": 20, \"cfg\": 7.0, \"sampler_name\": \"euler\", \"scheduler\": \"normal\", \"denoise\": 1.0, \"model\": [\"4\", 0], \"positive\": [\"6\", 0], \"negative\": [\"7\", 0], \"latent_image\": [\"5\", 0] } },\n  \"6\": { \"class_type\": \"CLIPTextEncode\", \"inputs\": { \"text\": $json.prompt, \"clip\": [\"4\", 1] } },\n  \"7\": { \"class_type\": \"CLIPTextEncode\", \"inputs\": { \"text\": \"blurry, low quality, watermark\", \"clip\": [\"4\", 1] } }\n}) }}"
+            }
+          ]
+        },
+        "options": { "timeout": 300000 }
+      },
+      "id": "cp-0001-0000-0000-0000-000000000005",
+      "name": "ComfyUI Generate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 160]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://litellm:4000/v1/images/generations",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.LITELLM_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "={{ $json.model === 'comfyui' ? 'seedream' : $json.model }}" },
+            { "name": "prompt", "value": "={{ $json.prompt }}" },
+            { "name": "n", "value": "=1" },
+            { "name": "size", "value": "={{ $json.size }}" }
+          ]
+        },
+        "options": { "timeout": 60000 }
+      },
+      "id": "cp-0001-0000-0000-0000-000000000006",
+      "name": "Cloud Image Generate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 360]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true },
+          "conditions": [
+            {
+              "id": "cond-video-type",
+              "leftValue": "={{ $json.type }}",
+              "rightValue": "video-composition",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cp-0001-0000-0000-0000-000000000007",
+      "name": "Remotion or Cloud video?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [920, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://remotion:3200/render",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.REMOTION_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "composition", "value": "={{ $json.composition }}" },
+            { "name": "inputProps", "value": "={{ JSON.stringify({ ...$json.input_props, prompt: $json.prompt, duration: $json.duration }) }}" },
+            { "name": "outputFormat", "value": "mp4" }
+          ]
+        },
+        "options": { "timeout": 300000 }
+      },
+      "id": "cp-0001-0000-0000-0000-000000000008",
+      "name": "Remotion Render",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 460]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.byteplus.com/v1/video/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.BYTEPLUS_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "prompt", "value": "={{ $json.prompt }}" },
+            { "name": "duration", "value": "={{ $json.duration }}" },
+            { "name": "resolution", "value": "720p" },
+            { "name": "style", "value": "cinematic" }
+          ]
+        },
+        "options": { "timeout": 120000 }
+      },
+      "id": "cp-0001-0000-0000-0000-000000000009",
+      "name": "Seedance Generate",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 620]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize output from all generation paths\nconst input = $input.first().json;\nconst upstream_node = $input.first().pairedItem?.node || 'unknown';\n\nlet result_url = null;\nlet render_id = null;\nlet provider = 'unknown';\n\n// ComfyUI response: { prompt_id: '...' }\nif (input.prompt_id) {\n  render_id = input.prompt_id;\n  provider = 'comfyui';\n  result_url = `http://comfyui:8188/view?filename=${input.prompt_id}.png`;\n}\n// LiteLLM/Seedream response: { data: [{ url: '...' }] }\nelse if (input.data && input.data[0]) {\n  result_url = input.data[0].url || input.data[0].b64_json;\n  provider = 'litellm-cloud';\n}\n// Remotion response: { renderId: '...' }\nelse if (input.renderId) {\n  render_id = input.renderId;\n  provider = 'remotion';\n  result_url = `http://remotion:3200/output/${input.renderId}`;\n}\n// BytePlus/Seedance response: { task_id: '...' }\nelse if (input.task_id) {\n  render_id = input.task_id;\n  provider = 'seedance';\n  result_url = null; // async — needs polling\n}\n\nreturn [{ json: { result_url, render_id, provider, status: 'completed', output_name: $('Parse request').first().json.output_name, callback_agent: $('Parse request').first().json.callback_agent } }];"
+      },
+      "id": "cp-0001-0000-0000-0000-000000000010",
+      "name": "Normalize output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ok', provider: $json.provider, result_url: $json.result_url, render_id: $json.render_id, output_name: $json.output_name } }}"
+      },
+      "id": "cp-0001-0000-0000-0000-000000000011",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1580, 380]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Parse request", "type": "main", "index": 0 }]] },
+    "Parse request": { "main": [[{ "node": "Image or Video?", "type": "main", "index": 0 }]] },
+    "Image or Video?": {
+      "main": [
+        [{ "node": "ComfyUI or Cloud?", "type": "main", "index": 0 }],
+        [{ "node": "Remotion or Cloud video?", "type": "main", "index": 0 }]
+      ]
+    },
+    "ComfyUI or Cloud?": {
+      "main": [
+        [{ "node": "ComfyUI Generate", "type": "main", "index": 0 }],
+        [{ "node": "Cloud Image Generate", "type": "main", "index": 0 }]
+      ]
+    },
+    "Remotion or Cloud video?": {
+      "main": [
+        [{ "node": "Remotion Render", "type": "main", "index": 0 }],
+        [{ "node": "Seedance Generate", "type": "main", "index": 0 }]
+      ]
+    },
+    "ComfyUI Generate": { "main": [[{ "node": "Normalize output", "type": "main", "index": 0 }]] },
+    "Cloud Image Generate": { "main": [[{ "node": "Normalize output", "type": "main", "index": 0 }]] },
+    "Remotion Render": { "main": [[{ "node": "Normalize output", "type": "main", "index": 0 }]] },
+    "Seedance Generate": { "main": [[{ "node": "Normalize output", "type": "main", "index": 0 }]] },
+    "Normalize output": { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "creative" }, { "name": "image" }, { "name": "video" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-02-22T00:00:00.000Z",
+  "versionId": "1"
+}

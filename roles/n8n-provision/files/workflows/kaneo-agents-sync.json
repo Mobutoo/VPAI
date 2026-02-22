@@ -1,0 +1,261 @@
+{
+  "name": "Kaneo — Agents Sync (OpenClaw → Kaneo)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "kas-0001-0000-0000-0000-000000000001",
+      "name": "Cron Daily 6h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "kaneo-agents-sync",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "kas-0001-0000-0000-0000-000000000002",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Agents OpenClaw list (mirrored from openclaw_agents_list in Ansible defaults)\n// Update this list when adding new agents to roles/openclaw/defaults/main.yml\nconst OPENCLAW_AGENTS = [\n  { id: 'concierge', name: 'Mobutoo', type: 'orchestrator', model: 'minimax-m25', emoji: '🎖️' },\n  { id: 'builder',   name: 'Imhotep', type: 'builder',      model: 'qwen3-coder', emoji: '⚙️' },\n  { id: 'writer',    name: 'Thot',    type: 'writer',       model: 'glm-5',       emoji: '✍️' },\n  { id: 'artist',    name: 'Basquiat',type: 'artist',       model: 'minimax-m25', emoji: '🎨' },\n  { id: 'tutor',     name: 'Piccolo', type: 'tutor',        model: 'minimax-m25', emoji: '📚' },\n  { id: 'explorer',  name: 'R2D2',    type: 'explorer',     model: 'grok-search', emoji: '🔍' },\n  { id: 'marketer',  name: 'Marketer',type: 'marketer',     model: 'minimax-m25', emoji: '📣' },\n  { id: 'cfo',       name: 'CFO',     type: 'finance',      model: 'minimax-m25', emoji: '💰' },\n  { id: 'maintainer',name: 'Maintainer', type: 'devops',   model: 'qwen3-coder', emoji: '🔧' }\n];\n\nreturn OPENCLAW_AGENTS.map(agent => ({ json: agent }));"
+      },
+      "id": "kas-0001-0000-0000-0000-000000000003",
+      "name": "Build agents list",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 380]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://kaneo-api:1337/api/tasks",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "tag", "value": "agent" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.KANEO_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "kas-0001-0000-0000-0000-000000000004",
+      "name": "Fetch existing Kaneo tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 560]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge agents list with existing Kaneo tasks to decide: create vs update\nconst agents = $('Build agents list').all().map(i => i.json);\nconst existingRaw = $('Fetch existing Kaneo tasks').first().json;\nconst existing = Array.isArray(existingRaw) ? existingRaw\n  : (existingRaw.tasks || existingRaw.data || []);\n\n// Build lookup by agent_id in metadata\nconst byAgentId = {};\nfor (const task of existing) {\n  const meta = task.metadata || {};\n  if (meta.agent_id) byAgentId[meta.agent_id] = task;\n}\n\nconst toCreate = [];\nconst toUpdate = [];\n\nfor (const agent of agents) {\n  const existing_task = byAgentId[agent.id];\n  if (!existing_task) {\n    toCreate.push(agent);\n  } else {\n    // Check if model changed\n    const currentModel = (existing_task.metadata || {}).model;\n    if (currentModel !== agent.model) {\n      toUpdate.push({ ...agent, task_id: existing_task.id });\n    }\n  }\n}\n\nreturn [{ json: { toCreate, toUpdate, total: agents.length, skipped: agents.length - toCreate.length - toUpdate.length } }];"
+      },
+      "id": "kas-0001-0000-0000-0000-000000000005",
+      "name": "Diff agents vs tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 460]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { toCreate } = $input.first().json;\nif (toCreate.length === 0) return [{ json: { skipped: true } }];\nreturn toCreate.map(agent => ({ json: agent }));"
+      },
+      "id": "kas-0001-0000-0000-0000-000000000006",
+      "name": "Agents to create",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://kaneo-api:1337/api/tasks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.KANEO_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "title", "value": "=🤖 Agent {{ $json.emoji }} {{ $json.name }} ({{ $json.id }})" },
+            { "name": "description", "value": "=Agent OpenClaw de type {{ $json.type }}. Modèle : {{ $json.model }}" },
+            { "name": "status", "value": "in-progress" },
+            { "name": "priority", "value": "medium" },
+            { "name": "tags", "value": "=[\"agent\", \"ai\", \"{{ $json.type }}\"]" },
+            { "name": "metadata", "value": "={ \"agent_id\": \"{{ $json.id }}\", \"model\": \"{{ $json.model }}\", \"type\": \"{{ $json.type }}\", \"synced_at\": \"{{ $now }}\" }" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "kas-0001-0000-0000-0000-000000000007",
+      "name": "Create agent tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 260]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { toUpdate } = $('Diff agents vs tasks').first().json;\nif (toUpdate.length === 0) return [{ json: { skipped: true } }];\nreturn toUpdate.map(agent => ({ json: agent }));"
+      },
+      "id": "kas-0001-0000-0000-0000-000000000008",
+      "name": "Agents to update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 540]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://kaneo-api:1337/api/tasks/{{ $json.task_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.KANEO_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "metadata", "value": "={ \"agent_id\": \"{{ $json.id }}\", \"model\": \"{{ $json.model }}\", \"type\": \"{{ $json.type }}\", \"synced_at\": \"{{ $now }}\" }" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "kas-0001-0000-0000-0000-000000000009",
+      "name": "Update agent tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 540]
+    },
+    {
+      "parameters": {
+        "jsCode": "const diff = $('Diff agents vs tasks').first().json;\nconst created = diff.toCreate.length;\nconst updated = diff.toUpdate.length;\nconst skipped = diff.skipped;\nconst total = diff.total;\n\nconst msg = [\n  `✅ Kaneo Agents Sync terminé`,\n  ``,\n  `📊 Total agents : ${total}`,\n  `➕ Créés : ${created}`,\n  `📝 Mis à jour : ${updated}`,\n  `⏭ Inchangés : ${skipped}`\n].join('\\n');\n\nreturn [{ json: { message: msg, created, updated, skipped, total } }];"
+      },
+      "id": "kas-0001-0000-0000-0000-000000000010",
+      "name": "Build rapport",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-notify",
+              "leftValue": "={{ $json.created + $json.updated }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "kas-0001-0000-0000-0000-000000000011",
+      "name": "Changements?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text", "value": "={{ $json.message }}" },
+            { "name": "parse_mode", "value": "HTML" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "kas-0001-0000-0000-0000-000000000012",
+      "name": "Telegram notify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ok', created: $('Build rapport').first().json.created, updated: $('Build rapport').first().json.updated } }}"
+      },
+      "id": "kas-0001-0000-0000-0000-000000000013",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1760, 500]
+    }
+  ],
+  "connections": {
+    "Cron Daily 6h": { "main": [[{ "node": "Build agents list", "type": "main", "index": 0 }]] },
+    "Webhook Trigger": { "main": [[{ "node": "Build agents list", "type": "main", "index": 0 }]] },
+    "Build agents list": {
+      "main": [[
+        { "node": "Fetch existing Kaneo tasks", "type": "main", "index": 0 }
+      ]]
+    },
+    "Fetch existing Kaneo tasks": {
+      "main": [[{ "node": "Diff agents vs tasks", "type": "main", "index": 0 }]]
+    },
+    "Diff agents vs tasks": {
+      "main": [[
+        { "node": "Agents to create", "type": "main", "index": 0 },
+        { "node": "Agents to update", "type": "main", "index": 0 }
+      ]]
+    },
+    "Agents to create": { "main": [[{ "node": "Create agent tasks", "type": "main", "index": 0 }]] },
+    "Agents to update": { "main": [[{ "node": "Update agent tasks", "type": "main", "index": 0 }]] },
+    "Create agent tasks": { "main": [[{ "node": "Build rapport", "type": "main", "index": 0 }]] },
+    "Update agent tasks": { "main": [[{ "node": "Build rapport", "type": "main", "index": 0 }]] },
+    "Build rapport": { "main": [[{ "node": "Changements?", "type": "main", "index": 0 }]] },
+    "Changements?": {
+      "main": [
+        [{ "node": "Telegram notify", "type": "main", "index": 0 }],
+        [{ "node": "Webhook Response", "type": "main", "index": 0 }]
+      ]
+    },
+    "Telegram notify": { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "kaneo" }, { "name": "sync" }, { "name": "agents" }],
+  "triggerCount": 2,
+  "updatedAt": "2026-02-22T00:00:00.000Z",
+  "versionId": "1"
+}

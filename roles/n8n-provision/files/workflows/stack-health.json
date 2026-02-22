@@ -1,0 +1,150 @@
+{
+  "name": "Stack Health Check (15min)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "sh-0001-0000-0000-0000-000000000001",
+      "name": "Cron 15min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Services à surveiller (internes au réseau Docker backend)\nconst SERVICES = [\n  { name: 'LiteLLM',    url: 'http://litellm:4000/health',       timeout: 5000 },\n  { name: 'n8n',        url: 'http://n8n:5678/healthz',           timeout: 5000 },\n  { name: 'OpenClaw',   url: 'http://openclaw:18789/health',      timeout: 5000 },\n  { name: 'Grafana',    url: 'http://grafana:3000/api/health',    timeout: 5000 },\n  { name: 'Qdrant',     url: 'http://qdrant:6333/readyz',         timeout: 5000 },\n  { name: 'Kaneo API',  url: 'http://kaneo-api:1337/api/health',  timeout: 5000 }\n];\n\n// Retourner la liste pour le batch HTTP node\nreturn SERVICES.map(s => ({ json: s }));"
+      },
+      "id": "sh-0001-0000-0000-0000-000000000002",
+      "name": "Services list",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 5000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "sh-0001-0000-0000-0000-000000000003",
+      "name": "HTTP Health Check",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Agrège les résultats de tous les health checks\nconst results = $input.all();\nconst checks = [];\nlet hasDown = false;\nlet hasDegraded = false;\n\nfor (const item of results) {\n  const { name, url } = item.json;\n  const statusCode = item.json.statusCode || 0;\n  const latency = item.json.headers ? (parseInt(item.json.headers['x-response-time'] || '0')) : 0;\n\n  let status;\n  if (statusCode >= 200 && statusCode < 400) {\n    status = 'ok';\n  } else if (statusCode === 0 || statusCode >= 500) {\n    status = 'down';\n    hasDown = true;\n  } else {\n    status = 'degraded';\n    hasDegraded = true;\n  }\n\n  checks.push({ name, url, status, statusCode, latency });\n}\n\nconst overall = hasDown ? 'down' : hasDegraded ? 'degraded' : 'ok';\n\nreturn [{ json: { overall, checks, timestamp: new Date().toISOString(), hasAlert: overall !== 'ok' } }];"
+      },
+      "id": "sh-0001-0000-0000-0000-000000000004",
+      "name": "Aggregate results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-alert",
+              "leftValue": "={{ $json.hasAlert }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equal" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "sh-0001-0000-0000-0000-000000000005",
+      "name": "Alert needed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { overall, checks, timestamp } = $input.first().json;\n\nconst emoji = { ok: '✅', degraded: '⚠️', down: '❌' };\nconst ts = new Date(timestamp).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris' });\n\nconst lines = [\n  `${emoji[overall]} Stack ${overall.toUpperCase()} — ${ts}`,\n  ''\n];\n\nfor (const svc of checks) {\n  const e = emoji[svc.status];\n  const latency = svc.latency > 0 ? ` (${svc.latency}ms)` : '';\n  lines.push(`${e} ${svc.name} : ${svc.status.toUpperCase()}${latency}`);\n}\n\nif (overall === 'down') {\n  lines.push('');\n  lines.push('🚨 Action requise : vérifier les containers via /stack status');\n}\n\nreturn [{ json: { message: lines.join('\\n'), overall, checks } }];"
+      },
+      "id": "sh-0001-0000-0000-0000-000000000006",
+      "name": "Format alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text", "value": "={{ $json.message }}" },
+            { "name": "parse_mode", "value": "HTML" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sh-0001-0000-0000-0000-000000000007",
+      "name": "Telegram alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1580, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Tout va bien — log silencieux\nreturn [{ json: { status: 'ok', message: 'All services healthy' } }];"
+      },
+      "id": "sh-0001-0000-0000-0000-000000000008",
+      "name": "All healthy (no-op)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 420]
+    }
+  ],
+  "connections": {
+    "Cron 15min": { "main": [[{ "node": "Services list", "type": "main", "index": 0 }]] },
+    "Services list": { "main": [[{ "node": "HTTP Health Check", "type": "main", "index": 0 }]] },
+    "HTTP Health Check": { "main": [[{ "node": "Aggregate results", "type": "main", "index": 0 }]] },
+    "Aggregate results": { "main": [[{ "node": "Alert needed?", "type": "main", "index": 0 }]] },
+    "Alert needed?": {
+      "main": [
+        [{ "node": "Format alert", "type": "main", "index": 0 }],
+        [{ "node": "All healthy (no-op)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format alert": { "main": [[{ "node": "Telegram alert", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "monitoring" }, { "name": "health" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-02-22T00:00:00.000Z",
+  "versionId": "1"
+}

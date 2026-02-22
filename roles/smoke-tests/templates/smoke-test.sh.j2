@@ -53,6 +53,9 @@ if [ -n "${TAILSCALE_IP}" ]; then
 {% if kaneo_subdomain_override | default('') | length > 0 %}
   CURL_VPN_OPTS="${CURL_VPN_OPTS} --resolve {{ kaneo_subdomain_override }}.{{ domain_name }}:443:${TAILSCALE_IP}"
 {% endif %}
+{% if sure_subdomain | default('') | length > 0 %}
+  CURL_VPN_OPTS="${CURL_VPN_OPTS} --resolve {{ sure_subdomain }}.{{ domain_name }}:443:${TAILSCALE_IP}"
+{% endif %}
   echo "INFO  Using Tailscale IP ${TAILSCALE_IP} for VPN-protected endpoints"
 else
   echo "WARN  Tailscale not available — VPN-protected endpoint tests may fail"
@@ -169,6 +172,11 @@ check_http "Grafana health" "${GRAFANA_URL}/api/health"
 KANEO_URL="https://{{ kaneo_subdomain_override }}.{{ domain_name }}"
 check_http "Kaneo API health" "${KANEO_URL}/api/health"
 {% endif %}
+{% if sure_subdomain | default('') | length > 0 %}
+# shellcheck disable=SC2086
+SURE_URL="https://{{ sure_subdomain }}.{{ domain_name }}"
+check_http "Sure health" "${SURE_URL}/" "200"
+{% endif %}
 # LiteLLM /health requires auth (master_key in general_settings)
 # shellcheck disable=SC2086
 LITELLM_STATUS=$(curl -sL -o /dev/null -w "%{http_code}" --max-time "${TIMEOUT}" \
@@ -199,6 +207,10 @@ check_container "Grafana" "grafana"
 check_container "DIUN" "diun"
 check_container "Kaneo API" "kaneo_api"
 check_container "Kaneo Web" "kaneo_web"
+{% if sure_subdomain | default('') | length > 0 %}
+check_container "Sure Web" "sure_web"
+check_container "Sure Worker" "sure_worker"
+{% endif %}
 
 echo ""
 
@@ -214,6 +226,9 @@ check_container_health "VictoriaMetrics" "victoriametrics"
 check_container_health "Loki" "loki"
 check_container_health "Grafana" "grafana"
 check_container_health "Kaneo API" "kaneo_api"
+{% if sure_subdomain | default('') | length > 0 %}
+check_container_health "Sure Web" "sure_web"
+{% endif %}
 
 echo ""
 

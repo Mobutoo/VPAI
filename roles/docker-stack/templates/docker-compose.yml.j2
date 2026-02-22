@@ -183,11 +183,79 @@ services:
         reservations:
           memory: {{ kaneo_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/ || exit 1"]
+      # REX: usekaneo/web image uses nginx on port 5173 (not 3000)
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
+
+  # === PERSONAL FINANCE ===
+  sure-web:
+    image: {{ sure_image }}
+    container_name: {{ project_name }}_sure_web
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - /opt/{{ project_name }}/configs/sure/sure.env
+    volumes:
+      - /opt/{{ project_name }}/data/sure:/rails/storage
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: {{ sure_web_memory_limit }}
+          cpus: "{{ sure_web_cpu_limit }}"
+        reservations:
+          memory: {{ sure_web_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  sure-worker:
+    image: {{ sure_image }}
+    container_name: {{ project_name }}_sure_worker
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    command: bundle exec sidekiq
+    env_file:
+      - /opt/{{ project_name }}/configs/sure/sure.env
+    volumes:
+      - /opt/{{ project_name }}/data/sure:/rails/storage
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ sure_worker_memory_limit }}
+          cpus: "{{ sure_worker_cpu_limit }}"
+        reservations:
+          memory: {{ sure_worker_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
 
   # === MONITORING LAYER ===
   cadvisor:

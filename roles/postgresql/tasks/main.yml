@@ -83,17 +83,24 @@
         exit 0
       fi
 
-      docker exec {{ project_name }}_postgresql \
-        psql -U {{ postgresql_user }} -d {{ postgresql_db }} \
-        -f /var/lib/postgresql/configs/migrations/{{ item }} 2>&1
+      # REX: passer le SQL via stdin (docker exec -i) — pas besoin de monter
+      # le dossier migrations dans le container. Le fichier reste sur l'hôte.
+      docker exec -i {{ project_name }}_postgresql \
+        psql -U postgres -d postgres \
+        < "$FILE" 2>&1
 
       echo "$NEW_MD5" > "$MD5_FILE"
       echo "APPLIED: {{ item }}"
   become: true
-  register: pg_migration_result
-  changed_when: "'APPLIED:' in pg_migration_result.stdout"
+  register: postgresql_migration_result
+  changed_when: "'APPLIED:' in postgresql_migration_result.stdout"
   failed_when:
-    - pg_migration_result.rc != 0
-    - "'already exists' not in pg_migration_result.stderr | default('')"
+    - postgresql_migration_result.rc != 0
+    - >-
+      'already exists' not in (postgresql_migration_result.stderr | default(''))
+      and 'already exists' not in (postgresql_migration_result.stdout | default(''))
+    - >-
+      'No such container' not in (postgresql_migration_result.stderr | default(''))
+      and 'No such container' not in (postgresql_migration_result.stdout | default(''))
   loop:
     - 001_asset_provenance.sql

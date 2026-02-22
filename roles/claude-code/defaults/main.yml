@@ -14,7 +14,7 @@ claude_code_npm_prefix: "/usr"
 
 # Pinned version — update after first validated deploy
 # Check: https://www.npmjs.com/package/@anthropic-ai/claude-code
-claude_code_npm_version: "1.2.3"
+claude_code_npm_version: "2.1.50"
 
 # Claude API key (from vault)
 # vault_claude_api_key defined in inventory/group_vars/all/secrets.yml
@@ -36,11 +36,19 @@ claude_code_mcp_filesystem_workspace: "/home/{{ claude_code_user }}/projects"
 # Kaneo MCP — task management bridge (custom, via HTTP)
 # Reads/writes tasks in Kaneo API for OpenClaw sync
 claude_code_mcp_kaneo_enabled: true
-claude_code_mcp_kaneo_api_url: "http://{{ vps_ts_ip | default('100.64.0.1') }}:{{ kaneo_api_port | default(1337) }}"
+claude_code_mcp_kaneo_api_url: "http://{{ vps_tailscale_ip | default('100.64.0.1') }}:{{ kaneo_api_port | default(1337) }}"
 
 # n8n MCP — trigger workflows from Claude Code
 claude_code_mcp_n8n_enabled: true
-claude_code_mcp_n8n_url: "http://{{ vps_ts_ip | default('100.64.0.1') }}:5678"
+claude_code_mcp_n8n_url: "http://{{ vps_tailscale_ip | default('100.64.0.1') }}:5678"
+
+# Sure MCP — personal finance (24 tools: accounts, transactions, categories)
+claude_code_mcp_sure_enabled: true
+claude_code_mcp_sure_api_url: "https://{{ sure_subdomain | default('nzimbu') }}.{{ domain_name }}"
+
+# Auto-fix pipeline
+claude_code_auto_fix_enabled: true
+claude_code_auto_fix_workspace: "{{ autofix_workspace | default('/home/' + claude_code_user + '/projects/autofix') }}"
 
 # Workspace directories created for Claude Code
 claude_code_workspace_dirs:

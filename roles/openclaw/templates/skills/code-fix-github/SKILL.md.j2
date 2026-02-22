@@ -1,0 +1,71 @@
+---
+name: code-fix-github
+description: Automated GitHub issue resolution via Claude Code pipeline. Used by Builder and Maintainer for auto-fix.
+metadata: { "openclaw": { "emoji": "🔧", "always": false } }
+---
+
+# Skill: Auto-Fix GitHub Issues
+
+Resout automatiquement les issues GitHub labellees "{{ autofix_label | default('auto-fix') }}" via Claude Code sur le RPi.
+
+## Quand utiliser ce skill
+
+- Issue GitHub avec label `auto-fix` recue via n8n
+- Erreur de prod detectee par monitoring necessitant un fix code
+- Demande de correction de bug simple (lint, typo, config)
+
+## Pipeline
+
+Le pipeline est orchestre par n8n (workflow `github-autofix`).
+Ce skill documente le processus pour les agents qui participent.
+
+## Repos supportes
+
+{% for repo in autofix_repos | default([]) %}
+- `{{ repo.name }}` ({{ repo.url }}) — agent par defaut : {{ repo.default_agent }}
+{% endfor %}
+
+## Flux
+
+```
+GitHub Issue (label "{{ autofix_label | default('auto-fix') }}")
+  → Webhook n8n (/webhook/github-autofix)
+    → Validation HMAC (X-Hub-Signature-256)
+    → Parse issue + route agent
+    → Kaneo task "in-progress"
+    → SSH vers RPi → claude-autofix <repo_url> <issue_id> <title> <body>
+      → git clone/pull
+      → branch fix/GH-{id}
+      → Claude Code --dangerously-skip-permissions
+      → git push + gh pr create
+    → Kaneo task "done" + pr_url
+    → Telegram notification
+```
+
+## Resultat attendu
+
+- Branche : `fix/GH-{issue_id}`
+- PR creee avec reference `Fixes #{issue_id}`
+- Commit co-author: `Claude Opus 4.6 <noreply@anthropic.com>`
+- CI doit passer (lint + tests)
+- Review humaine obligatoire avant merge
+
+## Kaneo tracking
+
+```
+POST http://kaneo-api:{{ kaneo_api_port | default(1337) }}/api/tasks
+{
+  "title": "🔧 Auto-fix GH-{id}: {title}",
+  "status": "in-progress",
+  "priority": "high",
+  "tags": ["auto-fix", "github", "{agent}"],
+  "metadata": { "issue_id": N, "repo": "...", "pr_url": null }
+}
+```
+
+## Limitations
+
+- Ne PAS traiter les issues de securite critique (tag `security`)
+- Ne PAS modifier les secrets ou fichiers vault
+- Max 1 issue traitee simultanement par repo
+- Timeout SSH : 10 minutes (issues complexes)

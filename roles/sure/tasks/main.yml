@@ -1,0 +1,31 @@
+---
+# sure — tasks
+# Sure personal finance app (Maybe Finance fork — web + worker in Docker)
+
+- name: Create Sure config directory
+  ansible.builtin.file:
+    path: "{{ sure_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create Sure data directory
+  ansible.builtin.file:
+    path: "{{ sure_data_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+
+- name: Deploy Sure environment file
+  ansible.builtin.template:
+    src: sure.env.j2
+    dest: "{{ sure_config_dir }}/sure.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart sure stack

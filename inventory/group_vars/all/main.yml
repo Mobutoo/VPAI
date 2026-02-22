@@ -122,6 +122,14 @@ grafana_admin_password: "{{ vault_grafana_admin_password }}"
 # Qdrant
 qdrant_api_key: "{{ vault_qdrant_api_key }}"
 
+# Sure (personal finance)
+sure_secret_key_base: "{{ vault_sure_secret_key_base }}"
+sure_db_password: "{{ vault_sure_db_password | default(postgresql_password) }}"
+sure_api_key: "{{ vault_sure_api_key | default('') }}"
+
+# GitHub webhook (auto-fix pipeline)
+github_webhook_secret: "{{ vault_github_webhook_secret | default('') }}"
+
 # --- n8n <-> OpenClaw integration ---
 n8n_webhook_secret: "{{ vault_n8n_webhook_secret | default('') }}"
 n8n_webhook_base_url: "http://n8n:5678"
@@ -183,12 +191,29 @@ vps_tailscale_ip: "{{ vault_vps_tailscale_ip | default('') }}"
 workstation_pi_hostname: "workstation-pi"
 workstation_pi_user: "mobuone"
 workstation_pi_ip: "{{ vault_workstation_pi_ip | default('127.0.0.1') }}"
+# Tailscale IP — used by n8n (on VPS) to reach RPi via mesh VPN for SSH autofix
+workstation_pi_tailscale_ip: "{{ vault_workstation_pi_tailscale_ip | default('') }}"
 workstation_pi_become_pass: "{{ vault_workstation_become_pass }}"
 workstation_pi_ram_gb: 16
 workstation_pi_disk_gb: 256
 
 # Kaneo (PM tool — replaces Mission Control)
 kaneo_subdomain_override: "hq"
+
+# Sure (personal finance)
+sure_subdomain: "nzimbu"
+
+# Auto-Fix Pipeline (GitHub Issues -> Claude Code -> PR)
+autofix_enabled: true
+autofix_label: "auto-fix"
+autofix_repos:
+  - name: "VPAI"
+    url: "git@github-seko:Mobutoo/VPAI.git"
+    default_agent: "builder"
+  - name: "kaneo-vpai"
+    url: "git@github-seko:Mobutoo/kaneo-vpai.git"
+    default_agent: "builder"
+autofix_workspace: "/home/{{ workstation_pi_user }}/projects/autofix"
 
 # OpenCode
 oc_subdomain: "oc"

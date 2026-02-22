@@ -121,6 +121,23 @@ openclaw_code_model: "custom-litellm/qwen3-coder"
 openclaw_quick_model: "custom-litellm/deepseek-v3"
 openclaw_cheap_model: "custom-litellm/qwen3-coder"
 
+# --- Skills ---
+# Centralized list of all OpenClaw skills (used in 3 task loops: dirs, deploy, cleanup)
+openclaw_skills:
+  - delegate-n8n
+  - search-content
+  - generate-visual
+  - rate-response
+  - budget-monitor
+  - cost-analysis
+  - infra-maintain
+  - deploy-check
+  - task-management
+  - image-generation
+  - video-composition
+  - code-fix-github
+  - finance-personal
+
 # --- n8n Integration ---
 openclaw_n8n_integration: true
 openclaw_n8n_workflows:

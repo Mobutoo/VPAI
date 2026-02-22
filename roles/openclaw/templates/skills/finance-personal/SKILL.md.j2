@@ -1,0 +1,88 @@
+---
+name: finance-personal
+description: Query personal finance data from Sure (accounts, transactions, categories, net worth). Used by CFO for personal budget and spending analysis.
+metadata: { "openclaw": { "emoji": "💳", "always": false } }
+---
+
+# Skill: Finance Personnelle (Sure)
+
+Interroge l'application Sure pour les donnees de finances personnelles.
+Sure est accessible sur le reseau Docker interne a `http://sure-web:{{ sure_web_port | default(3000) }}`.
+
+## Quand utiliser ce skill
+
+- Commande `/finance` ou `/depenses` recue
+- Analyse des depenses par categorie (alimentaire, courses, loisirs, transport)
+- Rapport patrimoine net (net worth, comptes epargne, investissements)
+- Budget mensuel vs depenses reelles
+- Suivi objectifs epargne
+
+## API Sure
+
+Base URL : `http://sure-web:{{ sure_web_port | default(3000) }}`
+
+### Lister les comptes
+```
+GET /api/v1/accounts
+Headers: Content-Type: application/json
+```
+
+### Patrimoine net
+```
+GET /api/v1/accounts/summary
+```
+
+### Transactions recentes
+```
+GET /api/v1/transactions?page=1&per_page=50
+GET /api/v1/transactions?category=<category>&start_date=<YYYY-MM-DD>&end_date=<YYYY-MM-DD>
+```
+
+### Categories
+```
+GET /api/v1/categories
+```
+
+### Creer une transaction manuelle
+```
+POST /api/v1/transactions
+Body: { "date": "YYYY-MM-DD", "amount": -12.50, "name": "<description>", "category_id": "<id>", "account_id": "<id>" }
+```
+
+## Commandes reconnues
+
+| Commande | Action |
+|---|---|
+| `/finance` | Rapport patrimoine net + depenses du mois |
+| `/depenses` | Top 5 categories de depenses ce mois |
+| `/depenses <cat>` | Detail depenses pour une categorie |
+| `/comptes` | Liste tous les comptes avec soldes |
+| `/epargne` | Progression objectifs epargne |
+
+## Format rapport
+
+```
+## Finances Personnelles — {{ "{{" }} date {{ "}}" }}
+
+### Patrimoine Net
+- Total : XX XXX EUR
+- Comptes courants : XX XXX EUR
+- Epargne : XX XXX EUR
+
+### Depenses du mois
+| Categorie | Montant | % du total |
+|---|---|---|
+| Alimentation | XXX EUR | XX% |
+| Transport | XXX EUR | XX% |
+
+### Budget vs Reel
+- Budget mensuel : X XXX EUR
+- Depense a date : X XXX EUR (XX%)
+```
+
+## Regles
+
+1. Ne jamais exposer les numeros de compte complets
+2. Montants en EUR avec 2 decimales
+3. Comparer au mois precedent quand pertinent
+4. Signaler proactivement tout depassement de budget categorie

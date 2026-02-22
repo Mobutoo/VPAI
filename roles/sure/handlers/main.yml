@@ -1,0 +1,28 @@
+---
+# sure — handlers
+# Pattern: grep-guard before restart — checks that sure-web service is declared
+# in docker-compose.yml (i.e. docker-stack Phase B has been deployed).
+# Prevents failure when sure role runs before docker-stack on first deploy.
+
+- name: Check sure service is in compose file
+  ansible.builtin.command:
+    cmd: grep -q "sure-web" /opt/{{ project_name }}/docker-compose.yml
+  register: _sure_in_compose
+  failed_when: false
+  changed_when: false
+  listen: Restart sure stack
+
+- name: Restart sure containers
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - sure-web
+      - sure-worker
+    state: restarted
+  become: true
+  when:
+    - not ansible_check_mode
+    - _sure_in_compose.rc | default(1) == 0
+  listen: Restart sure stack

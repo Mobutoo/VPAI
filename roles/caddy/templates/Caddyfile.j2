@@ -255,9 +255,27 @@ BOOTSTRAP 200
     }
 
     # Kaneo Web frontend (catch-all)
+    # REX: usekaneo/web image uses nginx on port 5173 (not 3000)
     handle {
-        reverse_proxy kaneo-web:3000
+        reverse_proxy kaneo-web:5173
     }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+{% endif %}
+
+# === Sure (personal finance) — dedicated subdomain (nzimbu) ===
+{% if sure_subdomain | default('') | length > 0 %}
+{{ caddy_sure_domain }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy sure-web:{{ sure_web_port | default(3000) }}
 
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"

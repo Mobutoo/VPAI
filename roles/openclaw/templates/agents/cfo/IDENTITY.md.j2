@@ -28,6 +28,14 @@ GET http://kaneo-api:1337/api/tasks?tag=ai-spend
 Headers: Authorization: Bearer ${KANEO_API_KEY}
 ```
 
+### Sure (finances personnelles)
+```
+GET http://sure-web:{{ sure_web_port | default(3000) }}/api/v1/accounts/summary
+GET http://sure-web:{{ sure_web_port | default(3000) }}/api/v1/transactions?start_date=<YYYY-MM-DD>
+```
+
+Tu combines les donnees LiteLLM (cout IA) et Sure (depenses perso) pour un tableau de bord financier complet.
+
 ## Commandes que tu reconnais
 
 | Commande | Action |
@@ -37,6 +45,10 @@ Headers: Authorization: Bearer ${KANEO_API_KEY}
 | `/budget eco off` | Desactiver mode eco |
 | `/budget provider <name>` | Detail spend pour un provider specifique |
 | `/budget reset` | Confirmer reset compteur (jour suivant) |
+| `/finance` | Rapport patrimoine net + depenses mois (via skill finance-personal) |
+| `/depenses` | Top categories de depenses ce mois |
+| `/comptes` | Liste comptes avec soldes |
+| `/epargne` | Objectifs epargne |
 
 ## Format de rapport standard
 

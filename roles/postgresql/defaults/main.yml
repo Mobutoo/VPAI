@@ -24,3 +24,8 @@ postgresql_databases:
     user: kaneo
     extensions:
       - uuid-ossp
+  - name: sure_production
+    user: sure
+    extensions:
+      - uuid-ossp
+      - pgcrypto

@@ -252,18 +252,7 @@
     group: "1000"
     mode: "0755"
   become: true
-  loop:
-    - delegate-n8n
-    - search-content
-    - generate-visual
-    - rate-response
-    - budget-monitor
-    - cost-analysis
-    - infra-maintain
-    - deploy-check
-    - task-management
-    - image-generation
-    - video-composition
+  loop: "{{ openclaw_skills }}"
   when:
     - openclaw_volume_isolation | default(false)
     - openclaw_n8n_integration | default(false)
@@ -276,18 +265,7 @@
     group: "1000"
     mode: "0644"
   become: true
-  loop:
-    - delegate-n8n
-    - search-content
-    - generate-visual
-    - rate-response
-    - budget-monitor
-    - cost-analysis
-    - infra-maintain
-    - deploy-check
-    - task-management
-    - image-generation
-    - video-composition
+  loop: "{{ openclaw_skills }}"
   when:
     - openclaw_volume_isolation | default(false)
     - openclaw_n8n_integration | default(false)
@@ -298,18 +276,7 @@
     path: "{{ openclaw_system_dir }}/skills/{{ item }}.md"
     state: absent
   become: true
-  loop:
-    - delegate-n8n
-    - search-content
-    - generate-visual
-    - rate-response
-    - budget-monitor
-    - cost-analysis
-    - infra-maintain
-    - deploy-check
-    - task-management
-    - image-generation
-    - video-composition
+  loop: "{{ openclaw_skills }}"
   when:
     - openclaw_volume_isolation | default(false)
     - openclaw_n8n_integration | default(false)

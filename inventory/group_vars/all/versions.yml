@@ -33,11 +33,16 @@ diun_image: "crazymax/diun:4.31.0"
 # Les webhooks Meta passent maintenant par hook.<domain> (Seko-VPN) -> VPN mesh -> VPS
 # cloudflared_image: "cloudflare/cloudflared:2025.1.0"
 
-# --- Kaneo (PM tool fork) ---
-# Built from Mobutoo/kaneo-vpai via GitHub Actions -> GHCR
-# TODO: Replace placeholder with real GHCR images after fork + CI setup (Phase 7.1 + 8.7)
-kaneo_api_image: "ghcr.io/mobutoo/kaneo-vpai-api:latest"
-kaneo_web_image: "ghcr.io/mobutoo/kaneo-vpai-web:latest"
+# --- Kaneo (PM tool) ---
+# Upstream official images (usekaneo/kaneo) — en attendant fork Mobutoo/kaneo-vpai
+# TODO: Basculer sur ghcr.io/mobutoo/kaneo-vpai-api:<sha> après fork + CI setup
+kaneo_api_image: "ghcr.io/usekaneo/api:2.2.1"
+kaneo_web_image: "ghcr.io/usekaneo/web:2.2.1"
+
+# --- Sure (personal finance — Maybe Finance fork) ---
+# Multi-arch: amd64 + arm64 confirmé sur GHCR
+# TODO: Pinner sur SHA digest après premier deploy validé
+sure_image: "ghcr.io/we-promise/sure:nightly"
 
 # --- Workstation Pi (natif — pas Docker) ---
 # Caddy : binaire custom build via xcaddy (module dns.providers.ovh)
@@ -49,4 +54,4 @@ opencode_npm_version_pinned: "1.2.8"  # version installee — a jour 2026-02-20
 
 # Claude Code CLI : pinne apres premier deploy valide
 # claude_code_npm_version dans roles/claude-code/defaults/main.yml
-claude_code_npm_version_pinned: "1.2.3"  # a valider apres premier deploy
+claude_code_npm_version_pinned: "2.1.50"  # pinned 2026-02-22

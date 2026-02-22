@@ -1,4 +1,4 @@
-{
+{% raw %}{
   "name": "Creative Pipeline (Image + Video)",
   "nodes": [
     {
@@ -71,7 +71,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://{{ comfyui_subdomain }}.{{ domain_name }}/prompt",
+        "url": "https://{% endraw %}{{ comfyui_subdomain | default('comfyui') }}{% raw %}.{% endraw %}{{ domain_name }}{% raw %}/prompt",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -148,7 +148,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://{{ remotion_subdomain }}.{{ domain_name }}/render",
+        "url": "https://{% endraw %}{{ remotion_subdomain | default('remotion') }}{% raw %}.{% endraw %}{{ domain_name }}{% raw %}/render",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -202,7 +202,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Normalize output from all generation paths\nconst input = $input.first().json;\nconst upstream_node = $input.first().pairedItem?.node || 'unknown';\n\nlet result_url = null;\nlet render_id = null;\nlet provider = 'unknown';\n\n// ComfyUI response: { prompt_id: '...' }\nif (input.prompt_id) {\n  render_id = input.prompt_id;\n  provider = 'comfyui';\n  result_url = `https://{{ comfyui_subdomain }}.{{ domain_name }}/view?filename=${input.prompt_id}.png`;\n}\n// LiteLLM/Seedream response: { data: [{ url: '...' }] }\nelse if (input.data && input.data[0]) {\n  result_url = input.data[0].url || input.data[0].b64_json;\n  provider = 'litellm-cloud';\n}\n// Remotion response: { renderId: '...' }\nelse if (input.renderId) {\n  render_id = input.renderId;\n  provider = 'remotion';\n  result_url = `https://{{ remotion_subdomain }}.{{ domain_name }}/output/${input.renderId}`;\n}\n// BytePlus/Seedance response: { task_id: '...' }\nelse if (input.task_id) {\n  render_id = input.task_id;\n  provider = 'seedance';\n  result_url = null; // async — needs polling\n}\n\nreturn [{ json: { result_url, render_id, provider, status: 'completed', output_name: $('Parse request').first().json.output_name, callback_agent: $('Parse request').first().json.callback_agent } }];"
+        "jsCode": "// Normalize output from all generation paths\nconst input = $input.first().json;\nconst upstream_node = $input.first().pairedItem?.node || 'unknown';\n\nlet result_url = null;\nlet render_id = null;\nlet provider = 'unknown';\n\n// ComfyUI response: { prompt_id: '...' }\nif (input.prompt_id) {\n  render_id = input.prompt_id;\n  provider = 'comfyui';\n  result_url = `https://{% endraw %}{{ comfyui_subdomain | default('comfyui') }}{% raw %}.{% endraw %}{{ domain_name }}{% raw %}/view?filename=${input.prompt_id}.png`;\n}\n// LiteLLM/Seedream response: { data: [{ url: '...' }] }\nelse if (input.data && input.data[0]) {\n  result_url = input.data[0].url || input.data[0].b64_json;\n  provider = 'litellm-cloud';\n}\n// Remotion response: { renderId: '...' }\nelse if (input.renderId) {\n  render_id = input.renderId;\n  provider = 'remotion';\n  result_url = `https://{% endraw %}{{ remotion_subdomain | default('remotion') }}{% raw %}.{% endraw %}{{ domain_name }}{% raw %}/output/${input.renderId}`;\n}\n// BytePlus/Seedance response: { task_id: '...' }\nelse if (input.task_id) {\n  render_id = input.task_id;\n  provider = 'seedance';\n  result_url = null; // async — needs polling\n}\n\nreturn [{ json: { result_url, render_id, provider, status: 'completed', output_name: $('Parse request').first().json.output_name, callback_agent: $('Parse request').first().json.callback_agent } }];"
       },
       "id": "cp-0001-0000-0000-0000-000000000010",
       "name": "Normalize output",
@@ -263,3 +263,4 @@
   "updatedAt": "2026-02-22T00:00:00.000Z",
   "versionId": "1"
 }
+{% endraw %}

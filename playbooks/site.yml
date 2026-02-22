@@ -76,6 +76,8 @@
       tags: [openclaw, phase3]
     - role: kaneo
       tags: [kaneo, phase3]
+    - role: sure
+      tags: [sure, phase3]
 
     # Phase 4 — Observabilité
     - role: monitoring

@@ -1,7 +1,17 @@
 ---
 # kaneo — handlers
+# Pattern: grep-guard before restart — checks that kaneo-api service is declared
+# in docker-compose.yml (i.e. docker-stack Phase B has been deployed).
 
-- name: Restart kaneo stack
+- name: Check kaneo service is in compose file
+  ansible.builtin.command:
+    cmd: grep -q "kaneo-api" /opt/{{ project_name }}/docker-compose.yml
+  register: _kaneo_in_compose
+  failed_when: false
+  changed_when: false
+  listen: Restart kaneo stack
+
+- name: Restart kaneo containers
   community.docker.docker_compose_v2:
     project_src: "/opt/{{ project_name }}"
     files:
@@ -11,4 +21,7 @@
       - kaneo-web
     state: restarted
   become: true
-  failed_when: false  # Ne pas echouer si docker-compose.yml n'existe pas encore
+  when:
+    - not ansible_check_mode
+    - _kaneo_in_compose.rc | default(1) == 0
+  listen: Restart kaneo stack

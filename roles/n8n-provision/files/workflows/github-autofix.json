@@ -1,0 +1,270 @@
+{
+  "name": "GitHub — Auto-Fix Issues (Claude Code Pipeline)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "github-autofix",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "gha-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate GitHub HMAC signature (X-Hub-Signature-256)\nconst crypto = require('crypto');\nconst secret = process.env.GITHUB_WEBHOOK_SECRET || '';\n\n// SECURITY: Never bypass HMAC validation — fail hard if secret is missing\nif (!secret) {\n  throw new Error('GITHUB_WEBHOOK_SECRET is not configured. HMAC validation cannot be bypassed. Set the secret in n8n.env.');\n}\n\nconst body = JSON.stringify($input.first().json);\nconst sig256 = $input.first().headers['x-hub-signature-256'] || '';\n\nif (!sig256) {\n  throw new Error('Missing X-Hub-Signature-256 header. Request rejected.');\n}\n\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret).update(body).digest('hex');\n\n// Use constant-time comparison to prevent timing attacks\nconst expectedBuf = Buffer.from(expected, 'utf8');\nconst receivedBuf = Buffer.from(sig256, 'utf8');\n\nif (expectedBuf.length !== receivedBuf.length || !crypto.timingSafeEqual(expectedBuf, receivedBuf)) {\n  throw new Error('HMAC signature validation failed. Request rejected.');\n}\n\nreturn $input.all();"
+      },
+      "id": "gha-0001-0000-0000-0000-000000000002",
+      "name": "Validate HMAC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-action",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "labeled",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "cond-label",
+              "leftValue": "={{ ($json.label || {}).name }}",
+              "rightValue": "auto-fix",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "gha-0001-0000-0000-0000-000000000003",
+      "name": "Filter auto-fix label",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json;\n\n// Repo-to-agent routing (mirrors autofix_repos Ansible variable)\nconst REPO_ROUTING = [\n  { name: 'VPAI',       repo_pattern: 'Mobutoo/VPAI',       url: 'git@github-seko:Mobutoo/VPAI.git',       agent: 'builder' },\n  { name: 'kaneo-vpai', repo_pattern: 'Mobutoo/kaneo-vpai', url: 'git@github-seko:Mobutoo/kaneo-vpai.git', agent: 'builder' }\n];\n\nconst repoFull = payload.repository?.full_name || '';\nconst issueId  = payload.issue?.number || 0;\nconst title    = payload.issue?.title   || '';\nconst body     = (payload.issue?.body   || '').slice(0, 2000);\nconst labels   = (payload.issue?.labels || []).map(l => l.name);\n\n// SECURITY: Reject issues with security label\nif (labels.includes('security')) {\n  throw new Error('Security-tagged issues cannot be auto-fixed. Manual intervention required.');\n}\n\nconst route = REPO_ROUTING.find(r => repoFull.includes(r.repo_pattern)) || {\n  name: repoFull,\n  url: `git@github-seko:${repoFull}.git`,\n  agent: 'builder'\n};\n\nreturn [{ json: {\n  repo: repoFull,\n  repo_url: route.url,\n  issue_id: issueId,\n  issue_title: title,\n  issue_body: body,\n  labels,\n  agent: route.agent\n}}];"
+      },
+      "id": "gha-0001-0000-0000-0000-000000000004",
+      "name": "Parse issue + route agent",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://kaneo-api:1337/api/tasks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.KANEO_API_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "title",       "value": "=🔧 Auto-fix GH-{{ $json.issue_id }}: {{ $json.issue_title }}" },
+            { "name": "description", "value": "=Automated fix triggered for GitHub issue #{{ $json.issue_id }} in {{ $json.repo }}" },
+            { "name": "status",      "value": "in-progress" },
+            { "name": "priority",    "value": "high" },
+            { "name": "tags",        "value": "=[\"auto-fix\", \"github\", \"{{ $json.agent }}\"]" },
+            { "name": "metadata",    "value": "={ \"issue_id\": {{ $json.issue_id }}, \"repo\": \"{{ $json.repo }}\", \"agent\": \"{{ $json.agent }}\", \"pr_url\": null, \"started_at\": \"{{ $now }}\" }" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "gha-0001-0000-0000-0000-000000000005",
+      "name": "Create Kaneo task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Store Kaneo task ID + issue data for downstream nodes\nconst kaneoBefore = $('Create Kaneo task').first().json;\nconst issue = $('Parse issue + route agent').first().json;\n\nconst taskId = kaneoBefore.id || kaneoBefore.data?.id || null;\n\nif (!taskId) {\n  console.warn('Kaneo task creation returned no ID — task tracking will be skipped');\n}\n\nreturn [{ json: {\n  ...issue,\n  kaneo_task_id: taskId\n}}];"
+      },
+      "id": "gha-0001-0000-0000-0000-000000000006",
+      "name": "Merge context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// SECURITY: Base64-encode issue data to prevent shell injection\n// Issue title and body may contain shell metacharacters (quotes, backticks, $())\nconst ctx = $input.first().json;\n\nconst issueData = JSON.stringify({\n  repo_url: ctx.repo_url,\n  issue_id: ctx.issue_id,\n  issue_title: ctx.issue_title,\n  issue_body: (ctx.issue_body || '').slice(0, 500)\n});\n\nconst b64 = Buffer.from(issueData).toString('base64');\n\nreturn [{ json: { ...ctx, issue_data_b64: b64 } }];"
+      },
+      "id": "gha-0001-0000-0000-0000-000000000014",
+      "name": "Encode issue data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1480, 200]
+    },
+    {
+      "parameters": {
+        "command": "=ssh -i {{ $env.WORKSTATION_SSH_KEY_PATH || '/home/mobuone/.ssh/seko-vpn-deploy' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 {{ $env.WORKSTATION_PI_USER || 'mobuone' }}@{{ $env.WORKSTATION_PI_IP }} 'echo {{ $json.issue_data_b64 }} | base64 -d | claude-autofix --stdin'",
+        "options": {}
+      },
+      "id": "gha-0001-0000-0000-0000-000000000007",
+      "name": "Execute Claude Code via SSH",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1620, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract PR URL from SSH command output\nconst raw = $input.first().json.stdout || '';\nconst exitCode = $input.first().json.exitCode ?? 0;\n\n// PR URL pattern: https://github.com/...\nconst match = raw.match(/https:\\/\\/github\\.com\\/[^\\s]+\\/pull\\/\\d+/);\nconst prUrl = match ? match[0] : null;\nconst success = exitCode === 0 && prUrl !== null;\n\nreturn [{ json: {\n  success,\n  pr_url: prUrl,\n  raw_output: raw.slice(0, 500),\n  exit_code: exitCode,\n  kaneo_task_id: $('Merge context').first().json.kaneo_task_id,\n  issue_id: $('Merge context').first().json.issue_id,\n  issue_title: $('Merge context').first().json.issue_title,\n  repo: $('Merge context').first().json.repo\n}}];"
+      },
+      "id": "gha-0001-0000-0000-0000-000000000008",
+      "name": "Parse SSH result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1840, 200]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://kaneo-api:1337/api/tasks/{{ $json.kaneo_task_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.KANEO_API_KEY }}" },
+            { "name": "Content-Type",  "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "status",   "value": "={{ $json.success ? 'done' : 'failed' }}" },
+            { "name": "metadata", "value": "={ \"pr_url\": \"{{ $json.pr_url }}\", \"success\": {{ $json.success }}, \"completed_at\": \"{{ $now }}\" }" }
+          ]
+        },
+        "options": {},
+        "continueOnFail": true
+      },
+      "id": "gha-0001-0000-0000-0000-000000000009",
+      "name": "Update Kaneo task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2060, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $('Parse SSH result').first().json;\n\n// Escape HTML entities to prevent Telegram API rejection\nfunction escapeHtml(text) {\n  if (!text) return '';\n  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\n\nlet msg;\nif (result.success) {\n  msg = [\n    `✅ Auto-fix terminé`,\n    ``,\n    `📋 Issue : #${result.issue_id} — ${escapeHtml(result.issue_title)}`,\n    `🏠 Repo : ${escapeHtml(result.repo)}`,\n    `🔗 PR : ${result.pr_url}`,\n    ``,\n    `⏳ Review &amp; merge manuel requis`\n  ].join('\\n');\n} else {\n  msg = [\n    `❌ Auto-fix échoué`,\n    ``,\n    `📋 Issue : #${result.issue_id} — ${escapeHtml(result.issue_title)}`,\n    `🏠 Repo : ${escapeHtml(result.repo)}`,\n    `📄 Sortie : ${escapeHtml(result.raw_output.slice(0, 300))}`,\n    ``,\n    `🔧 Intervention manuelle requise`\n  ].join('\\n');\n}\n\nreturn [{ json: { message: msg, ...result } }];"
+      },
+      "id": "gha-0001-0000-0000-0000-000000000010",
+      "name": "Build rapport",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2280, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id",    "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text",       "value": "={{ $json.message }}" },
+            { "name": "parse_mode", "value": "HTML" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "gha-0001-0000-0000-0000-000000000011",
+      "name": "Telegram notify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2500, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"accepted\", \"issue\": {{ $json.issue_id }}, \"repo\": \"{{ $json.repo }}\" }"
+      },
+      "id": "gha-0001-0000-0000-0000-000000000012",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1140, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ignored\", \"reason\": \"Not an auto-fix label event\" }"
+      },
+      "id": "gha-0001-0000-0000-0000-000000000013",
+      "name": "Ignore non-autofix",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [920, 420]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[{ "node": "Validate HMAC", "type": "main", "index": 0 }]]
+    },
+    "Validate HMAC": {
+      "main": [[{ "node": "Filter auto-fix label", "type": "main", "index": 0 }]]
+    },
+    "Filter auto-fix label": {
+      "main": [
+        [{ "node": "Parse issue + route agent", "type": "main", "index": 0 }],
+        [{ "node": "Ignore non-autofix",        "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse issue + route agent": {
+      "main": [[
+        { "node": "Create Kaneo task",  "type": "main", "index": 0 },
+        { "node": "Webhook Response",   "type": "main", "index": 0 }
+      ]]
+    },
+    "Create Kaneo task": {
+      "main": [[{ "node": "Merge context", "type": "main", "index": 0 }]]
+    },
+    "Merge context": {
+      "main": [[{ "node": "Encode issue data", "type": "main", "index": 0 }]]
+    },
+    "Encode issue data": {
+      "main": [[{ "node": "Execute Claude Code via SSH", "type": "main", "index": 0 }]]
+    },
+    "Execute Claude Code via SSH": {
+      "main": [[{ "node": "Parse SSH result", "type": "main", "index": 0 }]]
+    },
+    "Parse SSH result": {
+      "main": [[{ "node": "Update Kaneo task", "type": "main", "index": 0 }]]
+    },
+    "Update Kaneo task": {
+      "main": [[{ "node": "Build rapport", "type": "main", "index": 0 }]]
+    },
+    "Build rapport": {
+      "main": [[{ "node": "Telegram notify", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "github" }, { "name": "auto-fix" }, { "name": "claude-code" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-02-22T00:00:00.000Z",
+  "versionId": "2"
+}

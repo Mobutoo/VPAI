@@ -1,0 +1,24 @@
+---
+# sure — defaults
+# Sure is a personal finance app (Maybe Finance fork).
+# Runs as Docker containers (web + worker) on Sese-AI, shares PostgreSQL and Redis.
+
+sure_config_dir: "/opt/{{ project_name }}/configs/sure"
+sure_data_dir: "/opt/{{ project_name }}/data/sure"
+
+# Rails port (internal — not exposed publicly)
+sure_web_port: 3000
+
+# PostgreSQL connection (shared instance)
+sure_db_name: "sure_production"
+sure_db_user: "sure"
+
+# Redis DB number (shared Redis — db1 to avoid collision with db0)
+sure_redis_db: 1
+
+# AI Chat via LiteLLM proxy
+sure_ai_enabled: true
+
+# Subdomain (VPN-only, served by Caddy)
+# Overridden by sure_subdomain in inventory/group_vars/all/main.yml
+sure_subdomain: "nzimbu"

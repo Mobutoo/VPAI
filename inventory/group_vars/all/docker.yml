@@ -86,3 +86,11 @@ kaneo_cpu_limit: "0.5"
 diun_memory_limit: "128M"
 diun_memory_reservation: "32M"
 diun_cpu_limit: "0.25"
+
+# Sure (web Rails + worker Sidekiq — personal finance)
+sure_web_memory_limit: "{{ '768M' if target_env == 'prod' else '384M' }}"
+sure_web_memory_reservation: "192M"
+sure_web_cpu_limit: "1.0"
+sure_worker_memory_limit: "{{ '384M' if target_env == 'prod' else '256M' }}"
+sure_worker_memory_reservation: "128M"
+sure_worker_cpu_limit: "0.5"

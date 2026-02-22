@@ -91,6 +91,43 @@
   become: true
   when: claude_code_mcp_filesystem_enabled | default(false)
 
+# --- Sure MCP server (Python, via uvx) ---
+- name: Ensure pipx/uvx is available for Python MCP servers
+  ansible.builtin.apt:
+    name: pipx
+    state: present
+  become: true
+  when: claude_code_mcp_sure_enabled | default(false)
+
+- name: Ensure uvx is accessible via pipx ensurepath
+  ansible.builtin.command:
+    cmd: pipx ensurepath
+  become: true
+  become_user: "{{ claude_code_user }}"
+  changed_when: false
+  when: claude_code_mcp_sure_enabled | default(false)
+
+# --- Auto-fix pipeline ---
+- name: Create autofix workspace directory
+  ansible.builtin.file:
+    path: "{{ claude_code_auto_fix_workspace }}"
+    state: directory
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0755"
+  become: true
+  when: claude_code_auto_fix_enabled | default(false)
+
+- name: Deploy autofix script
+  ansible.builtin.template:
+    src: autofix.sh.j2
+    dest: "/usr/local/bin/claude-autofix"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: claude_code_auto_fix_enabled | default(false)
+
 # --- Healthcheck ---
 - name: Check Claude Code binary is accessible
   ansible.builtin.stat:

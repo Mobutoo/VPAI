@@ -308,6 +308,31 @@ https://<admin_subdomain>.<domain>/__bootstrap__
 | `n8n_encryption_key` | n8n | **JAMAIS** (casse les donnees chiffrees) |
 | `qdrant_api_key` | qdrant, openclaw | Trimestriel |
 | `openclaw_gateway_token` | openclaw, caddy (route bootstrap) | Trimestriel |
+| `sure_secret_key_base` | sure-web, sure-worker | **JAMAIS** (casse les sessions Rails) |
+| `sure_db_password` | sure-web, sure-worker, postgresql | Trimestriel |
+| `sure_api_key` | sure-web, claude-code MCP | Trimestriel |
+| `github_webhook_secret` | n8n (github-autofix workflow) | Annuel |
+
+### Generer les nouveaux secrets (Sure + autofix pipeline)
+
+```bash
+# Secret key base Rails (64 octets hex) — NE PAS CHANGER apres premier deploy
+openssl rand -hex 64
+
+# Mot de passe DB Sure
+openssl rand -hex 32
+
+# GitHub webhook secret
+openssl rand -hex 32
+
+# Ajouter dans le vault :
+ansible-vault edit inventory/group_vars/all/secrets.yml
+# Ajouter les cles suivantes :
+# vault_sure_secret_key_base: "<resultat openssl rand -hex 64>"
+# vault_sure_db_password: "<resultat openssl rand -hex 32>"
+# vault_sure_api_key: ""  # Remplir apres premier boot Sure (Settings > API)
+# vault_github_webhook_secret: "<resultat openssl rand -hex 32>"
+```
 
 ### Procedure
 

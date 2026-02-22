@@ -1,0 +1,145 @@
+---
+# workstation-monitoring — tasks
+# Phase 14.1-14.2 : node_exporter natif + collecteur métriques custom (ComfyUI/Remotion)
+
+# ============================================================
+# node_exporter (ARM64 natif)
+# ============================================================
+
+- name: Create node_exporter system user
+  ansible.builtin.user:
+    name: "{{ node_exporter_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: /nonexistent
+    create_home: false
+  become: true
+
+- name: Create textfile collector directory
+  ansible.builtin.file:
+    path: "{{ node_exporter_textfile_dir }}"
+    state: directory
+    owner: "{{ node_exporter_user }}"
+    group: "{{ node_exporter_user }}"
+    mode: "0755"
+  become: true
+
+- name: Check node_exporter installed version
+  ansible.builtin.command:
+    cmd: "{{ node_exporter_binary_dir }}/node_exporter --version"
+  register: node_exporter_current_version
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Download node_exporter ARM64 binary
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-arm64.tar.gz"
+    dest: "/tmp/node_exporter-{{ node_exporter_version }}.linux-arm64.tar.gz"
+    mode: "0644"
+  become: true
+  when: >-
+    node_exporter_current_version.rc != 0 or
+    node_exporter_version not in (node_exporter_current_version.stdout | default(''))
+
+- name: Extract node_exporter binary
+  ansible.builtin.unarchive:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-arm64.tar.gz"
+    dest: "/tmp/"
+    remote_src: true
+  become: true
+  when: >-
+    node_exporter_current_version.rc != 0 or
+    node_exporter_version not in (node_exporter_current_version.stdout | default(''))
+
+- name: Install node_exporter binary
+  ansible.builtin.copy:
+    src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-arm64/node_exporter"
+    dest: "{{ node_exporter_binary_dir }}/node_exporter"
+    owner: root
+    group: root
+    mode: "0755"
+    remote_src: true
+  become: true
+  notify: Restart node_exporter
+  when: >-
+    node_exporter_current_version.rc != 0 or
+    node_exporter_version not in (node_exporter_current_version.stdout | default(''))
+
+- name: Deploy node_exporter systemd service
+  ansible.builtin.template:
+    src: node_exporter.service.j2
+    dest: /etc/systemd/system/node_exporter.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart node_exporter
+
+- name: Enable and start node_exporter
+  ansible.builtin.systemd:
+    name: node_exporter
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+
+# ============================================================
+# Custom metrics collector : ComfyUI + Remotion (textfile collector)
+# ============================================================
+
+- name: Install python3-requests for metrics collector
+  ansible.builtin.apt:
+    name: python3-requests
+    state: present
+    update_cache: false
+  become: true
+
+- name: Deploy custom metrics collector script
+  ansible.builtin.template:
+    src: comfyui-metrics.py.j2
+    dest: "/usr/local/bin/workstation-metrics-collector.py"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  notify: Restart workstation-metrics
+
+- name: Deploy systemd service for custom metrics collector
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/workstation-metrics.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Workstation custom metrics collector (ComfyUI + Remotion)
+      After=network.target
+
+      [Service]
+      Type=simple
+      User={{ node_exporter_user }}
+      ExecStart=/usr/bin/python3 /usr/local/bin/workstation-metrics-collector.py
+      Restart=always
+      RestartSec=10
+
+      [Install]
+      WantedBy=multi-user.target
+  become: true
+  notify:
+    - Reload systemd
+    - Restart workstation-metrics
+
+- name: Enable and start workstation-metrics collector
+  ansible.builtin.systemd:
+    name: workstation-metrics
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+
+- name: Clean up downloaded archives
+  ansible.builtin.file:
+    path: "/tmp/node_exporter-{{ node_exporter_version }}.linux-arm64.tar.gz"
+    state: absent
+  become: true

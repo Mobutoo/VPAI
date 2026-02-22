@@ -47,3 +47,53 @@
     mode: "0644"
   become: true
   notify: Restart postgresql stack
+
+# --- Migrations (idempotent via IF NOT EXISTS) ---
+- name: Create migrations directory on server
+  ansible.builtin.file:
+    path: "{{ postgresql_config_dir }}/migrations"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Copy SQL migration files to server
+  ansible.builtin.copy:
+    src: "migrations/{{ item }}"
+    dest: "{{ postgresql_config_dir }}/migrations/{{ item }}"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  loop:
+    - 001_asset_provenance.sql
+
+- name: Apply SQL migrations (idempotent)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      FILE="{{ postgresql_config_dir }}/migrations/{{ item }}"
+      MD5_FILE="{{ postgresql_config_dir }}/migrations/{{ item }}.applied"
+      NEW_MD5=$(md5sum "$FILE" | cut -d' ' -f1)
+
+      if [ -f "$MD5_FILE" ] && [ "$(cat "$MD5_FILE")" = "$NEW_MD5" ]; then
+        echo "UNCHANGED: {{ item }}"
+        exit 0
+      fi
+
+      docker exec {{ project_name }}_postgresql \
+        psql -U {{ postgresql_user }} -d {{ postgresql_db }} \
+        -f /var/lib/postgresql/configs/migrations/{{ item }} 2>&1
+
+      echo "$NEW_MD5" > "$MD5_FILE"
+      echo "APPLIED: {{ item }}"
+  become: true
+  register: pg_migration_result
+  changed_when: "'APPLIED:' in pg_migration_result.stdout"
+  failed_when:
+    - pg_migration_result.rc != 0
+    - "'already exists' not in pg_migration_result.stderr | default('')"
+  loop:
+    - 001_asset_provenance.sql

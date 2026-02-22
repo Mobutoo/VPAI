@@ -107,6 +107,45 @@ prometheus.remote_write "victoriametrics" {
 }
 
 // ============================================================
+// METRICS: RPi 5 Workstation — node_exporter (via VPN mesh)
+// Task 14.6 — scrape node_exporter on RPi via Headscale IP
+// ============================================================
+
+{% if groups['workstation'] is defined and groups['workstation'] | length > 0 %}
+{% set ws_tailscale_ip = hostvars[groups['workstation'][0]].get('tailscale_ip', '') %}
+{% if ws_tailscale_ip %}
+prometheus.scrape "workstation_node" {
+  targets = [{
+    __address__ = "{{ ws_tailscale_ip }}:9100",
+  }]
+  forward_to      = [prometheus.remote_write.victoriametrics.receiver]
+  scrape_interval = "30s"
+  job_name        = "node"
+
+  extra_labels = {
+    instance = "workstation-pi",
+    job      = "rpi-node",
+  }
+}
+
+prometheus.scrape "workstation_creative" {
+  targets = [{
+    __address__ = "{{ ws_tailscale_ip }}:9100",
+  }]
+  forward_to      = [prometheus.remote_write.victoriametrics.receiver]
+  scrape_interval = "30s"
+  job_name        = "rpi-creative"
+  metrics_path    = "/metrics"
+
+  extra_labels = {
+    instance = "workstation-pi",
+    job      = "rpi-creative",
+  }
+}
+{% endif %}
+{% endif %}
+
+// ============================================================
 // LOGS: Relabel Docker targets for log collection
 // ============================================================
 

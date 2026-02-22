@@ -1,0 +1,28 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Prometheus node_exporter (Workstation Pi ARM64)
+After=network.target
+
+[Service]
+Type=simple
+User={{ node_exporter_user }}
+ExecStart={{ node_exporter_binary_dir }}/node_exporter \
+  --web.listen-address=0.0.0.0:{{ node_exporter_port }} \
+  --collector.textfile.directory={{ node_exporter_textfile_dir }} \
+  --collector.cpu \
+  --collector.diskstats \
+  --collector.filesystem \
+  --collector.loadavg \
+  --collector.meminfo \
+  --collector.netdev \
+  --collector.thermal_zone \
+  --collector.uname
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths={{ node_exporter_textfile_dir }}
+
+[Install]
+WantedBy=multi-user.target

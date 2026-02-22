@@ -1,0 +1,15 @@
+---
+# workstation-monitoring — defaults
+# Installe node_exporter + collecteur métriques custom (ComfyUI, Remotion)
+# pour exposition vers VictoriaMetrics via VPN mesh (Headscale)
+
+# node_exporter
+node_exporter_version: "1.9.1"
+node_exporter_port: 9100
+node_exporter_user: "node_exporter"
+node_exporter_binary_dir: "/usr/local/bin"
+node_exporter_textfile_dir: "/var/lib/node_exporter/textfile_collector"
+
+# Custom metrics collector
+workstation_metrics_port: 9101
+workstation_metrics_interval: 30

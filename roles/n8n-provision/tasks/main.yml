@@ -125,6 +125,7 @@
     - kaneo-agents-sync
     - stack-health
     - creative-pipeline
+    - asset-register
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Check workflow update status (checksum comparison)
@@ -165,6 +166,7 @@
     - {file: "kaneo-agents-sync", name: "Kaneo Agents Sync"}
     - {file: "stack-health", name: "Stack Health Check"}
     - {file: "creative-pipeline", name: "Creative Pipeline"}
+    - {file: "asset-register", name: "Asset Register"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -338,6 +340,7 @@
     - {file: "kaneo-agents-sync", name: "Kaneo Agents Sync"}
     - {file: "stack-health", name: "Stack Health Check"}
     - {file: "creative-pipeline", name: "Creative Pipeline"}
+    - {file: "asset-register", name: "Asset Register"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -374,6 +377,7 @@
     - kaneo-agents-sync
     - stack-health
     - creative-pipeline
+    - asset-register
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Display n8n workflow update results

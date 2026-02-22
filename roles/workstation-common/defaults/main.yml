@@ -48,6 +48,21 @@ workstation_base_dirs:
   - data/caddy
   - logs
 
+# --- Asset Storage (Phase 13) ---
+# Structure locale S3-like pour les assets générés (images, vidéos, audio)
+workstation_assets_base: "/opt/workstation/data/assets"
+workstation_assets_dirs:
+  - images
+  - images/comfyui
+  - images/seedream
+  - images/dalle
+  - videos
+  - videos/remotion
+  - videos/seedance
+  - videos/veo
+  - audio
+  - metadata
+
 # sysctl adapte Pi (pas de swappiness agressif, ARM64)
 workstation_sysctl_settings:
   vm.swappiness: 10

@@ -71,3 +71,6 @@
 
     - role: workstation-caddy
       tags: [workstation-caddy]
+
+    - role: workstation-monitoring
+      tags: [workstation-monitoring]

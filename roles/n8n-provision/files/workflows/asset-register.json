@@ -1,0 +1,127 @@
+{
+  "name": "Asset Register & Provenance",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "asset-register",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ar-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and validate the asset registration request\nconst body = $input.first().json.body || $input.first().json;\n\n// Required fields\nconst type = body.type || 'image'; // image | video | audio\nconst provider = body.provider || 'unknown'; // comfyui | seedream | dalle | remotion | seedance | veo\nconst prompt = body.prompt || '';\nconst output_name = body.output_name || `${type}-${Date.now()}`;\nconst result_url = body.result_url || null;\nconst render_id = body.render_id || null;\n\n// Optional fields\nconst agent_id = body.agent_id || 'artist';\nconst model = body.model || provider;\nconst cost_usd = parseFloat(body.cost_usd || 0);\nconst duration_seconds = body.duration_seconds || null;\nconst width = body.width || null;\nconst height = body.height || null;\nconst tags = body.tags || [type, provider];\n\n// Generate asset ID\nconst asset_id = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;\nconst timestamp = new Date().toISOString();\n\n// Build storage path\nconst date_prefix = timestamp.slice(0, 10).replace(/-/g, '/');\nconst storage_path = `/opt/workstation/data/assets/${type}s/${provider}/${date_prefix}/${output_name}`;\n\nreturn [{ json: {\n  asset_id, type, provider, model, prompt, output_name, result_url, render_id,\n  agent_id, cost_usd, duration_seconds, width, height, tags, timestamp, storage_path\n} }];"
+      },
+      "id": "ar-0001-0000-0000-0000-000000000002",
+      "name": "Parse & enrich",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Kaneo task payload for asset tracking\nconst asset = $input.first().json;\n\nconst emoji = { image: '🖼️', video: '🎬', audio: '🎵' }[asset.type] || '📁';\nconst cost_str = asset.cost_usd > 0 ? ` | $${asset.cost_usd.toFixed(4)}` : ' | gratuit';\n\nconst kaneo_task = {\n  title: `${emoji} ${asset.output_name} [${asset.provider}]`,\n  description: `**Prompt**: ${asset.prompt || '(composition)'}\\n\\n**Storage**: \\`${asset.storage_path}\\`\\n\\n**URL**: ${asset.result_url || asset.render_id || '(async)'}`,\n  status: 'done',\n  priority: 'low',\n  tags: [...asset.tags, 'asset', 'generated'],\n  metadata: {\n    asset_id: asset.asset_id,\n    type: asset.type,\n    provider: asset.provider,\n    model: asset.model,\n    agent_id: asset.agent_id,\n    cost_usd: asset.cost_usd,\n    prompt_hash: btoa(asset.prompt || '').slice(0, 16),\n    storage_path: asset.storage_path,\n    result_url: asset.result_url,\n    render_id: asset.render_id,\n    generated_at: asset.timestamp,\n    width: asset.width,\n    height: asset.height,\n    duration_seconds: asset.duration_seconds\n  }\n};\n\nreturn [{ json: { kaneo_task, asset } }];"
+      },
+      "id": "ar-0001-0000-0000-0000-000000000003",
+      "name": "Build Kaneo payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://kaneo-api:1337/api/tasks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.KANEO_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.kaneo_task) }}",
+        "options": {}
+      },
+      "id": "ar-0001-0000-0000-0000-000000000004",
+      "name": "Register in Kaneo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO asset_provenance (asset_id, type, provider, model, prompt, output_name, result_url, render_id, agent_id, cost_usd, storage_path, generated_at, metadata) VALUES ('{{ $('Parse & enrich').first().json.asset_id }}', '{{ $('Parse & enrich').first().json.type }}', '{{ $('Parse & enrich').first().json.provider }}', '{{ $('Parse & enrich').first().json.model }}', $1, '{{ $('Parse & enrich').first().json.output_name }}', $2, $3, '{{ $('Parse & enrich').first().json.agent_id }}', {{ $('Parse & enrich').first().json.cost_usd }}, $4, '{{ $('Parse & enrich').first().json.timestamp }}', $5::jsonb) ON CONFLICT (asset_id) DO UPDATE SET metadata = EXCLUDED.metadata, result_url = EXCLUDED.result_url RETURNING asset_id",
+        "additionalFields": {
+          "queryParams": "={{ [\n  $('Parse & enrich').first().json.prompt,\n  $('Parse & enrich').first().json.result_url,\n  $('Parse & enrich').first().json.render_id,\n  $('Parse & enrich').first().json.storage_path,\n  JSON.stringify($('Parse & enrich').first().json)\n] }}"
+        }
+      },
+      "id": "ar-0001-0000-0000-0000-000000000005",
+      "name": "Store in PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [920, 480],
+      "credentials": {
+        "postgres": {
+          "id": "pg-main",
+          "name": "PostgreSQL Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const asset = $('Parse & enrich').first().json;\nconst kaneo_result = $('Register in Kaneo').first().json;\n\nreturn [{ json: {\n  status: 'registered',\n  asset_id: asset.asset_id,\n  kaneo_task_id: kaneo_result.id || null,\n  storage_path: asset.storage_path,\n  cost_usd: asset.cost_usd,\n  timestamp: asset.timestamp\n} }];"
+      },
+      "id": "ar-0001-0000-0000-0000-000000000006",
+      "name": "Build response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'registered', asset_id: $json.asset_id, kaneo_task_id: $json.kaneo_task_id, storage_path: $json.storage_path } }}"
+      },
+      "id": "ar-0001-0000-0000-0000-000000000007",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1360, 380]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Parse & enrich", "type": "main", "index": 0 }]] },
+    "Parse & enrich": { "main": [[{ "node": "Build Kaneo payload", "type": "main", "index": 0 }]] },
+    "Build Kaneo payload": {
+      "main": [[
+        { "node": "Register in Kaneo", "type": "main", "index": 0 },
+        { "node": "Store in PostgreSQL", "type": "main", "index": 0 }
+      ]]
+    },
+    "Register in Kaneo": { "main": [[{ "node": "Build response", "type": "main", "index": 0 }]] },
+    "Store in PostgreSQL": { "main": [[{ "node": "Build response", "type": "main", "index": 0 }]] },
+    "Build response": { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "assets" }, { "name": "provenance" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-02-22T00:00:00.000Z",
+  "versionId": "1"
+}

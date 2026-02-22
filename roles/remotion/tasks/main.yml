@@ -1,8 +1,9 @@
 ---
 # remotion — tasks
-# Remotion video render server on RPi 5 (ARM64)
-# Docker already installed by workstation-common role
-# Docker Compose shared with ComfyUI (docker-compose-creative.yml)
+# Remotion render server on RPi 5 (ARM64)
+# Based on official template: remotion-dev/template-render-server
+# Uses TypeScript + tsx + system Chromium (ARM64 native)
+# REX: Playwright CDN blocks ARM64 browser download → use apt chromium instead
 
 - name: Create Remotion install directory
   ansible.builtin.file:
@@ -23,8 +24,22 @@
   become: true
   loop:
     - output
+    - renders
 
-- name: Copy Remotion source files
+- name: Create Remotion source subdirectories
+  ansible.builtin.file:
+    path: "{{ remotion_install_dir }}/{{ item }}"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  become: true
+  loop:
+    - server
+    - remotion
+    - remotion/HelloWorld
+
+- name: Copy Remotion root files
   ansible.builtin.copy:
     src: "{{ item.src }}"
     dest: "{{ remotion_install_dir }}/{{ item.dest }}"
@@ -36,18 +51,10 @@
     - { src: "Dockerfile", dest: "Dockerfile" }
     - { src: "package.json", dest: "package.json" }
     - { src: "remotion.config.ts", dest: "remotion.config.ts" }
-  register: remotion_files
+    - { src: "tsconfig.json", dest: "tsconfig.json" }
+  register: remotion_root_files
 
-- name: Create Remotion source directories
-  ansible.builtin.file:
-    path: "{{ remotion_install_dir }}/src/compositions"
-    state: directory
-    owner: "{{ workstation_pi_user }}"
-    group: "{{ workstation_pi_user }}"
-    mode: "0755"
-  become: true
-
-- name: Copy Remotion source code
+- name: Copy Remotion server source (TypeScript)
   ansible.builtin.copy:
     src: "{{ item.src }}"
     dest: "{{ remotion_install_dir }}/{{ item.dest }}"
@@ -56,11 +63,25 @@
     mode: "0644"
   become: true
   loop:
-    - { src: "src/server.js", dest: "src/server.js" }
-    - { src: "src/compositions/index.js", dest: "src/compositions/index.js" }
-  register: remotion_src
+    - { src: "server/index.ts", dest: "server/index.ts" }
+    - { src: "server/render-queue.ts", dest: "server/render-queue.ts" }
+  register: remotion_server_files
 
-- name: Build Remotion Docker image (ARM64)
+- name: Copy Remotion compositions (TypeScript/React)
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ remotion_install_dir }}/{{ item.dest }}"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+  loop:
+    - { src: "remotion/index.ts", dest: "remotion/index.ts" }
+    - { src: "remotion/Root.tsx", dest: "remotion/Root.tsx" }
+    - { src: "remotion/HelloWorld/HelloWorld.tsx", dest: "remotion/HelloWorld/HelloWorld.tsx" }
+  register: remotion_composition_files
+
+- name: Build Remotion Docker image (ARM64 — system Chromium)
   community.docker.docker_image:
     name: "remotion-local"
     tag: "{{ remotion_version }}"
@@ -68,7 +89,10 @@
     build:
       path: "{{ remotion_install_dir }}"
       platform: "linux/arm64"
-    force_source: "{{ remotion_files.changed or remotion_src.changed }}"
+    force_source: >-
+      {{ remotion_root_files.changed
+         or remotion_server_files.changed
+         or remotion_composition_files.changed }}
   become: true
   notify: Restart creative stack
 
@@ -76,7 +100,7 @@
   ansible.builtin.wait_for:
     host: localhost
     port: "{{ remotion_port }}"
-    timeout: 60
+    timeout: 120
     state: started
   changed_when: false
   failed_when: false
@@ -87,7 +111,7 @@
     method: GET
     status_code: [200]
   retries: 6
-  delay: 5
+  delay: 10
   register: remotion_health
   until: remotion_health.status == 200
   changed_when: false

@@ -12,7 +12,7 @@
 |---|---|---|---|---|
 | **Sese-AI** | OVH VPS 8GB | 137.74.114.167 / 100.64.0.14 | port 804, user `mobuone` | Cerveau IA (Docker stack) |
 | **Seko-VPN** | Ionos VPS | 87.106.30.160 | port 22, user `mobuone` | Hub VPN Headscale + monitoring externe |
-| **Workstation Pi** | RPi5 16GB local | 192.168.1.8 / 100.64.0.1 | port 22, user `mobuone` | Mission Control + Dev |
+| **Workstation Pi** | RPi5 16GB local | 192.168.1.8 / 100.64.0.1 | port 22, user `mobuone` | AI Creative Studio (ComfyUI, Remotion) + Dev |
 
 **SSH Key** : `~/.ssh/seko-vpn-deploy` (Linux/WSL) ou `/c/Users/mmomb/.ssh/seko-vpn-deploy` (Git Bash Windows)
 
@@ -25,8 +25,10 @@
 | `mayi.ewutelo.cloud` | 100.64.0.14 | VPS Sese-AI (Tailscale) | VPN uniquement |
 | `llm.ewutelo.cloud` | 100.64.0.14 | VPS Sese-AI (Tailscale) | VPN uniquement |
 | `qd.ewutelo.cloud` | 100.64.0.14 | VPS Sese-AI (Tailscale) | VPN uniquement |
-| `mc.ewutelo.cloud` | 100.64.0.1 | Workstation Pi (Tailscale) | VPN uniquement |
-| `oc.ewutelo.cloud` | 100.64.0.1 | Workstation Pi (Tailscale) | VPN uniquement |
+| `studio.ewutelo.cloud` | 100.64.0.1 | Workstation Pi (Tailscale) → ComfyUI :8188 | VPN uniquement |
+| `cut.ewutelo.cloud` | 100.64.0.1 | Workstation Pi (Tailscale) → Remotion :3200 | VPN uniquement |
+| `oc.ewutelo.cloud` | 100.64.0.1 | Workstation Pi (Tailscale) → OpenCode :3456 | VPN uniquement |
+| `hq.ewutelo.cloud` | 100.64.0.14 | VPS Sese-AI (Tailscale) → Kaneo :3000 | VPN uniquement |
 | `singa.ewutelo.cloud` | 87.106.30.160 | Seko-VPN | Public (Headscale control plane) |
 
 > Tous les records ci-dessus sont définis dans `extra_records` de la config Headscale sur Seko-VPN :
@@ -133,39 +135,90 @@ graph TB
 Raspberry Pi 5 (16GB RAM, SSD 256Go, Ubuntu Server 24.04 LTS ARM64)
 IP LAN : 192.168.1.8  |  IP Tailscale : 100.64.0.1
 
-┌─────────────────────────────────────────────────────────────────┐
-│                    Workstation Pi                               │
-│                                                                 │
-│  ┌──────────────────┐     ┌──────────────────┐                 │
-│  │  Mission Control │     │    OpenCode       │                 │
-│  │  (Next.js 14)    │     │  (v1.2.8 headless)│                 │
-│  │  Port 4000       │     │  Port 3456        │                 │
-│  │  v1.1.0          │     │  → LiteLLM API   │                 │
-│  └────────┬─────────┘     └──────────────────┘                 │
-│           │ WSS                                                 │
-│           ▼                                                     │
-│  ┌──────────────────┐     ┌──────────────────┐                 │
-│  │     Caddy        │     │  Claude Code CLI │                 │
-│  │  v2.10.2+OVH    │     │  v2.1.49         │                 │
-│  │  :80 :443        │     │  OAuth Max Plan  │                 │
-│  │  DNS-01 TLS      │     │  ~/.claude/      │                 │
-│  └──────────────────┘     └──────────────────┘                 │
-│                                                                 │
-│  ┌──────────────────┐                                           │
-│  │   Tailscale      │  ←──── Headscale (singa.ewutelo.cloud)   │
-│  │  100.64.0.1      │                                           │
-│  └──────────────────┘                                           │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                         Workstation Pi                               │
+│                                                                      │
+│  ┌──────────────────────┐     ┌──────────────────────┐              │
+│  │  ComfyUI v0.3.27     │     │  Remotion v4.0.259   │              │
+│  │  (Docker, ARM64 CPU) │     │  (Docker + Chrome)   │              │
+│  │  Port 8188           │     │  Port 3200           │              │
+│  │  Image gen (stable   │     │  Video rendering     │              │
+│  │  diffusion, etc.)    │     │  (MP4 via HTTP API)  │              │
+│  └──────────────────────┘     └──────────────────────┘              │
+│           │  studio.ewutelo.cloud    │  cut.ewutelo.cloud            │
+│           └──────────┬──────────────┘                               │
+│                      ▼                                               │
+│  ┌──────────────────────┐     ┌──────────────────────┐              │
+│  │        Caddy         │     │   Claude Code CLI    │              │
+│  │  v2.10.2 + OVH DNS   │     │   OAuth Max Plan     │              │
+│  │  :80 :443            │     │   ~/.claude/         │              │
+│  │  DNS-01 TLS auto     │     │                      │              │
+│  └──────────────────────┘     └──────────────────────┘              │
+│                                                                      │
+│  ┌──────────────────────┐     ┌──────────────────────┐              │
+│  │   OpenCode CLI       │     │     Tailscale        │              │
+│  │  Port 3456           │     │  100.64.0.1          │              │
+│  │  → LiteLLM API (VPS) │     │  ← Headscale VPN     │              │
+│  └──────────────────────┘     └──────────────────────┘              │
+│                                                                      │
+│  Réseau Docker : workstation_creative (bridge)                       │
+│  Volumes partagés : /opt/workstation/data/creative-assets            │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+### Flux Creative Studio — Image Generation
+
+```
+Browser (VPN) ──HTTPS──► studio.ewutelo.cloud ──► Caddy Pi :443
+                                                        │
+                                                  reverse_proxy :8188
+                                                        │
+                                             ComfyUI (Docker ARM64)
+                                                        │
+                                         /opt/workstation/data/comfyui/
+                                              models/ output/ input/
+
+n8n (VPS) ──HTTPS──► studio.ewutelo.cloud ──► ComfyUI /prompt
+                          (via creative-pipeline workflow)
+```
+
+### Flux Creative Studio — Video Rendering
+
+```
+Browser (VPN) ──HTTPS──► cut.ewutelo.cloud ──► Caddy Pi :443
+                                                     │
+                                               reverse_proxy :3200
+                                                     │
+                                          Remotion (Docker + Chrome)
+                                                     │
+                                      /opt/workstation/data/remotion/output/
+
+n8n (VPS) ──HTTPS──► cut.ewutelo.cloud ──► Remotion /render
+                         (via creative-pipeline workflow)
+```
+
+### Flux n8n Creative Pipeline (cross-host VPS → Pi)
+
+```
+n8n (VPS, backend network) ──HTTPS (Tailscale mesh)──►
+    studio.ewutelo.cloud → ComfyUI (image)
+    cut.ewutelo.cloud    → Remotion (video)
+         │
+         ▼
+    asset-register workflow → PostgreSQL (provenance)
+    → Kaneo (hq.ewutelo.cloud) — task tracking
 ```
 
 ### Chemins importants sur le Pi
 
 | Chemin | Contenu |
 |---|---|
-| `/opt/workstation/configs/caddy/Caddyfile` | Config Caddy (mc + oc reverse proxy) |
+| `/opt/workstation/configs/caddy/Caddyfile` | Config Caddy (studio + cut + oc reverse proxies) |
 | `/opt/workstation/configs/opencode/opencode.json` | Config OpenCode (provider LiteLLM) |
-| `/opt/workstation/mission-control/.env` | Config MC (OPENCLAW_GATEWAY_URL, etc.) |
-| `/opt/workstation/data/mission-control/mission-control.db` | SQLite Mission Control |
+| `/opt/workstation/comfyui/docker-compose-creative.yml` | Docker Compose ComfyUI + Remotion |
+| `/opt/workstation/data/comfyui/` | Models, output, input, custom_nodes |
+| `/opt/workstation/data/remotion/output/` | Vidéos rendues |
+| `/opt/workstation/data/creative-assets/` | Assets partagés ComfyUI ↔ Remotion |
 | `/home/mobuone/.claude/` | Tokens OAuth Claude Code CLI |
 | `/usr/bin/caddy` | Caddy buildé via xcaddy (avec OVH DNS module) |
 | `/usr/bin/opencode` | OpenCode CLI (npm global NodeSource) |
@@ -173,33 +226,17 @@ IP LAN : 192.168.1.8  |  IP Tailscale : 100.64.0.1
 | `/usr/local/go/` | Go 1.24.2 (installé manuellement — Ubuntu 24.04 fournit 1.22) |
 | `/root/go/bin/xcaddy` | xcaddy v0.4.5 |
 
-### Services systemd sur le Pi
+### Services sur le Pi
 
 ```bash
 systemctl status caddy-workstation    # Caddy :80/:443 TLS OVH DNS-01
-systemctl status mission-control       # Next.js :4000
-systemctl status opencode              # OpenCode :3456 → LiteLLM
-tailscale status                       # VPN mesh (sudo requis)
-```
+systemctl status tailscaled           # VPN Tailscale (auto-start au boot)
+tailscale status                      # État VPN mesh (sudo requis)
 
-### Flux Mission Control ↔ OpenClaw
-
-```
-Browser (VPN) ──HTTPS──► mc.ewutelo.cloud ──► Caddy Pi :443
-                                                    │
-                                              reverse_proxy :4000
-                                                    │
-                                          Mission Control (Next.js)
-                                                    │
-                                    WSS wss://javisi.ewutelo.cloud
-                                                    │
-                          ◄──────── Tailscale mesh ─────────►
-                                                    │
-                                            OpenClaw (VPS)
-                                                    │
-                                              LiteLLM :4000
-                                                    │
-                                          Anthropic / OpenRouter
+# AI Creative Studio (Docker)
+docker ps --filter name=workstation_  # comfyui + remotion containers
+docker logs workstation_comfyui       # Logs ComfyUI
+docker logs workstation_remotion      # Logs Remotion
 ```
 
 ### Auth et Billing IA
@@ -210,6 +247,8 @@ Browser (VPN) ──HTTPS──► mc.ewutelo.cloud ──► Caddy Pi :443
 | **OpenCode** | `LITELLM_API_KEY` env var | Via LiteLLM → budget $5/jour |
 | **OpenClaw** | `openclaw_api_key` | Via LiteLLM → budget $5/jour |
 | **n8n** | `litellm_master_key` | Via LiteLLM → budget $5/jour |
+| **ComfyUI** | Aucune (VPN-only) | CPU local — gratuit |
+| **Remotion** | `REMOTION_API_TOKEN` (optionnel) | CPU local — gratuit |
 
 > **Claude Code OAuth** : auth manuelle une seule fois via `claude` en SSH (lien URL affiché dans le terminal,
 > à ouvrir dans le navigateur). Tokens dans `~/.claude/`, auto-renouvelés. Ne PAS mettre `ANTHROPIC_API_KEY`
@@ -280,6 +319,8 @@ Client → DNS public → 137.74.114.167 (IP publique VPS)
 
 ## 3. Service Matrix
 
+### VPS Sese-AI (OVH)
+
 | Service | Frontend | Backend | Monitoring | Egress | Ports | Subdomain |
 |---------|:--------:|:-------:|:----------:|:------:|-------|-----------|
 | Caddy | X | X | | | 80, 443 | `domain` (root) |
@@ -289,11 +330,23 @@ Client → DNS public → 137.74.114.167 (IP publique VPS)
 | n8n | | X | | X | 5678 | `n8n_subdomain` |
 | LiteLLM | | X | | X | 4000 | `litellm_subdomain` |
 | OpenClaw | | X | | X | 18789 | `admin_subdomain` |
+| Kaneo | | X | | | 1337 (API), 3000 (web) | `kaneo_subdomain` (hq) |
 | VictoriaMetrics | | | X | | 8428 | — (internal) |
 | Loki | | | X | | 3100 | — (internal) |
 | Alloy | | X | X | | 12345 | — (internal) |
 | Grafana | X | | X | | 3000 | `grafana_subdomain` |
 | DIUN | | | | | — | — |
+
+### Workstation Pi (RPi5)
+
+| Service | Réseau | Ports | Subdomain | Notes |
+|---------|--------|-------|-----------|-------|
+| Caddy workstation | host | 80, 443 | — | TLS DNS-01 OVH, reverse proxy |
+| ComfyUI | workstation_creative | 8188 | `comfyui_subdomain` (studio) | ARM64 CPU-only, Docker |
+| Remotion | workstation_creative | 3200 | `remotion_subdomain` (cut) | Chrome headless, Docker |
+| OpenCode CLI | — | 3456 | `oc_subdomain` (oc) | npm global |
+| Claude Code CLI | — | — | — | OAuth Max Plan |
+| Tailscale | — | — | — | VPN mesh, systemd auto-start |
 
 ## 4. Data Flow
 

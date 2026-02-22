@@ -1119,23 +1119,27 @@ open https://github.com/<ton-user>/VPAI/actions
 
 ---
 
-## 17. Deploiement Workstation Pi (Mission Control)
+## 17. Déploiement Workstation Pi (AI Creative Studio)
 
 > **Public** : Technicien avec accès SSH au Pi
-> **Durée estimée** : 30-45 min (première fois), 5 min (redéploiement)
+> **Durée estimée** : 45-60 min (première fois), 5-10 min (redéploiement)
 > **Prérequis** : VPS prod déployé et fonctionnel, Pi sous Ubuntu Server 24.04 LTS ARM64
 
 ### 17.0 Vue d'ensemble
 
-Le Workstation Pi est une machine locale (Raspberry Pi 5) qui héberge :
+Le Workstation Pi est une machine locale (Raspberry Pi 5) qui héberge l'**AI Creative Studio** :
 
 | Service | Rôle | Port | URL |
 |---|---|---|---|
-| **Mission Control** | Interface web OpenClaw | 4000 | `https://mc.<domaine>` |
+| **ComfyUI** | Génération d'images (stable diffusion, etc.) | 8188 | `https://studio.<domaine>` |
+| **Remotion** | Rendu vidéo MP4 (Chrome headless) | 3200 | `https://cut.<domaine>` |
 | **OpenCode** | Agent IA headless (IDE) | 3456 | `https://oc.<domaine>` |
 | **Caddy** | Reverse proxy TLS (OVH DNS-01) | 80/443 | — |
 | **Claude Code CLI** | Dev CLI (OAuth Max Plan) | — | SSH/tmux |
 | **Tailscale** | Client VPN Headscale | — | IP `100.64.0.x` |
+
+> Kaneo (PM tool, remplace Mission Control) tourne sur le **VPS** (pas sur le Pi).
+> URL : `https://hq.<domaine>`
 
 ### 17.1 Prérequis matériels
 
@@ -1147,6 +1151,9 @@ Le Workstation Pi est une machine locale (Raspberry Pi 5) qui héberge :
 | Réseau | WiFi ou Ethernet | **Ethernet** |
 | Accès | SSH depuis ta machine | idem |
 
+> **RAM** : ComfyUI (4 GB) + Remotion (512 MB) + OS (~500 MB) = ~5 GB minimum.
+> Le Pi 5 16 GB laisse ~10 GB libres pour les modèles en mémoire.
+
 ### 17.2 Préparation du Vault
 
 Ajouter dans `secrets.yml` (via `ansible-vault edit`) :
@@ -1154,6 +1161,7 @@ Ajouter dans `secrets.yml` (via `ansible-vault edit`) :
 ```yaml
 vault_workstation_pi_ip: "192.168.1.8"        # IP LAN du Pi
 vault_workstation_become_pass: "mot_de_passe"  # Mot de passe sudo mobuone
+vault_remotion_api_token: ""                   # Optionnel — laisser vide si pas de quota cloud
 ```
 
 Vérifier dans `main.yml` :
@@ -1163,6 +1171,10 @@ workstation_pi_hostname: "workstation-pi"
 workstation_pi_user: "mobuone"                 # PAS "pi" — user réel
 workstation_pi_ip: "{{ vault_workstation_pi_ip }}"
 workstation_pi_become_pass: "{{ vault_workstation_become_pass }}"
+
+# Creative Studio subdomains (workstation Caddy)
+comfyui_subdomain: "studio"
+remotion_subdomain: "cut"
 ```
 
 ### 17.3 Installer la clé SSH sur le Pi
@@ -1182,19 +1194,23 @@ ssh -i ~/.ssh/seko-vpn-deploy mobuone@192.168.1.8 'echo OK'
 # Activer le venv (OBLIGATOIRE)
 source .venv/bin/activate
 
-# Déploiement complet (35-45 min — xcaddy build ~15 min)
+# Déploiement complet (45-60 min — xcaddy build ~15 min + Docker image build ~20 min)
 ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass
 
 # Ou par rôle (redéploiement ciblé)
 ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags workstation-common
 ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags headscale-node
-ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags mission-control
+ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags comfyui
+ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags remotion
 ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags opencode
 ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags workstation-caddy
 ```
 
 > **Note** : Le rôle `workstation-caddy` est long (~15 min) car il compile Caddy depuis les sources
 > avec xcaddy. C'est normal — Ubuntu 24.04 ne fournit pas le module dns.providers.ovh en paquet.
+>
+> Les rôles `comfyui` et `remotion` buildent des images Docker ARM64 localement (~20 min au total
+> pour le premier build — les suivants sont mis en cache).
 
 ### 17.5 Ajouter le Pi au réseau VPN Headscale
 
@@ -1224,22 +1240,31 @@ ssh -i ~/.ssh/seko-vpn-deploy mobuone@192.168.1.8 \
 # Doit afficher : 100.64.0.1  workstation-pi  ... online
 ```
 
+> Tailscale démarre automatiquement au boot via systemd (`tailscaled` enabled).
+> Voir `docs/TROUBLESHOOTING.md` section 0.11 pour plus de détails.
+
 ### 17.6 Ajouter les DNS records dans Headscale
 
-Les domaines `mc.<domaine>` et `oc.<domaine>` doivent résoudre vers l'IP Tailscale du Pi.
+Les domaines `studio.<domaine>`, `cut.<domaine>` et `oc.<domaine>` doivent résoudre vers l'IP Tailscale du Pi.
 
 Sur Seko-VPN, éditer `/opt/services/headscale/config/config.yaml` :
 
 ```yaml
 dns:
   extra_records:
-    # ... records existants ...
-    - name: "mc.ewutelo.cloud"       # Adapter à ton domaine
+    # ... records existants VPS ...
+    - name: "studio.ewutelo.cloud"   # ComfyUI — adapter à ton domaine
       type: A
       value: "100.64.0.1"            # IP Tailscale du Pi
-    - name: "oc.ewutelo.cloud"
+    - name: "cut.ewutelo.cloud"      # Remotion
       type: A
       value: "100.64.0.1"
+    - name: "oc.ewutelo.cloud"       # OpenCode
+      type: A
+      value: "100.64.0.1"
+    - name: "hq.ewutelo.cloud"       # Kaneo (VPS)
+      type: A
+      value: "100.64.0.14"           # IP Tailscale du VPS
 ```
 
 Redémarrer Headscale :
@@ -1250,8 +1275,9 @@ cd /opt/services/headscale && sudo docker compose restart headscale
 
 Vérifier depuis un client VPN :
 ```bash
-curl -s https://mc.ewutelo.cloud/ -o /dev/null -w "%{http_code}"  # → 200
-curl -s https://oc.ewutelo.cloud/ -o /dev/null -w "%{http_code}"  # → 200
+curl -s https://studio.ewutelo.cloud/system_stats -o /dev/null -w "%{http_code}"  # → 200
+curl -s https://cut.ewutelo.cloud/health -o /dev/null -w "%{http_code}"           # → 200
+curl -s https://hq.ewutelo.cloud/ -o /dev/null -w "%{http_code}"                  # → 200
 ```
 
 ### 17.7 Authentifier Claude Code CLI (OAuth Max Plan)
@@ -1287,28 +1313,38 @@ claude --version   # → 2.1.49 (Claude Code)
 # SSH sur le Pi
 ssh -i ~/.ssh/seko-vpn-deploy mobuone@192.168.1.8
 
-# État des services
-systemctl status caddy-workstation mission-control opencode --no-pager
+# Services système
+systemctl status caddy-workstation tailscaled --no-pager
+
+# Containers Docker Creative Studio
+docker ps --filter name=workstation_
+
+# Santé ComfyUI (attendre start_period 120s)
+curl -s http://127.0.0.1:8188/system_stats | python3 -m json.tool
+
+# Santé Remotion (attendre start_period 60s)
+curl -s http://127.0.0.1:3200/health
 
 # Tailscale connecté
 echo MOT_DE_PASSE | sudo -S tailscale status
 
-# OpenClaw accessible depuis le Pi
-curl -s https://javisi.ewutelo.cloud -o /dev/null -w "%{http_code}"  # → 200
-
 # Depuis un client VPN externe
-curl -s https://mc.ewutelo.cloud/ -o /dev/null -w "%{http_code}"     # → 200
-curl -s https://oc.ewutelo.cloud/ -o /dev/null -w "%{http_code}"     # → 200
+curl -s https://studio.ewutelo.cloud/system_stats -o /dev/null -w "%{http_code}"  # → 200
+curl -s https://cut.ewutelo.cloud/health -o /dev/null -w "%{http_code}"           # → 200
+curl -s https://oc.ewutelo.cloud/ -o /dev/null -w "%{http_code}"                  # → 200
 ```
 
 ### 17.9 Chemins importants sur le Pi
 
 | Chemin | Contenu |
 |---|---|
-| `/opt/workstation/configs/caddy/Caddyfile` | Config Caddy |
+| `/opt/workstation/configs/caddy/Caddyfile` | Config Caddy (studio + cut + oc) |
+| `/opt/workstation/comfyui/docker-compose-creative.yml` | Docker Compose ComfyUI + Remotion |
 | `/opt/workstation/configs/opencode/opencode.json` | Config OpenCode (provider LiteLLM) |
-| `/opt/workstation/mission-control/.env` | Config Mission Control (URL OpenClaw) |
-| `/opt/workstation/data/mission-control/mission-control.db` | Base SQLite Mission Control |
+| `/opt/workstation/data/comfyui/models/` | Modèles IA (checkpoints, LoRAs, VAE…) |
+| `/opt/workstation/data/comfyui/output/` | Images générées |
+| `/opt/workstation/data/remotion/output/` | Vidéos rendues (MP4) |
+| `/opt/workstation/data/creative-assets/` | Assets partagés ComfyUI ↔ Remotion |
 | `/home/mobuone/.claude/` | Tokens OAuth Claude Code (ne pas supprimer) |
 | `/usr/bin/caddy` | Caddy buildé avec module OVH |
 | `/usr/local/go/` | Go 1.24.2 (requis pour xcaddy) |
@@ -1320,8 +1356,10 @@ curl -s https://oc.ewutelo.cloud/ -o /dev/null -w "%{http_code}"     # → 200
 | `opencode: not found` | npm prefix NodeSource = `/usr` | Binary dans `/usr/bin/opencode` |
 | `tailscale up` bloque | Headscale down | Vérifier Docker Compose sur Seko-VPN |
 | `caddy: Go version too old` | Ubuntu 24.04 fournit Go 1.22 | Go 1.24.2 installé dans `/usr/local/go/` |
-| MC ne joind pas OpenClaw | URL WSS incorrecte | Vérifier `OPENCLAW_GATEWAY_URL` dans `.env` |
-| `mc.ewutelo.cloud` → 404 | DNS Headscale manquant | Ajouter `extra_records` + restart headscale |
+| ComfyUI healthcheck fail | Modèles longs à charger | `start_period: 120s` — attendre 2 min |
+| `studio.ewutelo.cloud` → 404 | DNS Headscale manquant | Ajouter `extra_records` + restart headscale |
+| n8n → ComfyUI timeout | Cross-host latency | Normal CPU — timeout 300 000 ms dans le workflow |
+| Remotion OOM | Chrome headless | Vérifier 512M limit — augmenter si Pi 16GB |
 | Claude Code facturation API | `ANTHROPIC_API_KEY` défini | Supprimer la variable, refaire `claude auth` |
 
 > Voir aussi `docs/TROUBLESHOOTING.md` section 0 pour les pièges détaillés.

@@ -1115,4 +1115,151 @@ diun:         depends_on: []
 
 ---
 
+## 11. Workstation Pi — AI Creative Studio
+
+> **Ajouté** : v1.6.0 (2026-02-22) — Phases 6.5–14
+
+Le Workstation Pi (RPi5 16 GB) héberge le **AI Creative Studio** : génération d'images (ComfyUI) et rendu vidéo (Remotion), exposés via Caddy workstation avec TLS DNS-01 OVH, accessibles uniquement via VPN.
+
+### 11.1 Services Docker (réseau `workstation_creative`)
+
+| Container | Image | Port interne | Ressources | Subdomain |
+|---|---|---|---|---|
+| `workstation_comfyui` | `comfyui-local:v0.3.27` | 8188 | 4096M / 3.0 CPU | `studio` |
+| `workstation_remotion` | `remotion-local:4.0.259` | 3200 | 512M / 2.0 CPU | `cut` |
+
+**Réseau Docker** :
+```yaml
+networks:
+  creative:
+    name: workstation_creative
+    driver: bridge
+```
+
+### 11.2 Volumes de Données
+
+```
+/opt/workstation/data/
+├── comfyui/
+│   ├── models/           # Modèles IA (checkpoints, LoRAs, VAE…)
+│   ├── output/           # Images générées
+│   ├── input/            # Images d'entrée
+│   └── custom_nodes/     # Extensions ComfyUI
+├── remotion/
+│   └── output/           # Vidéos rendues (MP4)
+└── creative-assets/      # Assets partagés ComfyUI ↔ Remotion (ro pour Remotion)
+```
+
+### 11.3 Sécurité Containers
+
+```yaml
+security_opt:
+  - no-new-privileges:true
+cap_drop:
+  - ALL
+cap_add:
+  - CHOWN
+  - SETGID
+  - SETUID
+
+# Remotion (Chrome headless) : pas de SYS_ADMIN, utilise flag --no-sandbox
+environment:
+  CHROMIUM_FLAGS: "--no-sandbox --disable-setuid-sandbox"
+```
+
+### 11.4 Caddy Workstation — Reverse Proxy
+
+```
+# /opt/workstation/configs/caddy/Caddyfile
+# TLS DNS-01 OVH, VPN-only ACL (100.64.0.0/10)
+
+studio.{{ domain_name }} {
+    import vpn_only
+    reverse_proxy 127.0.0.1:8188
+}
+
+cut.{{ domain_name }} {
+    import vpn_only
+    reverse_proxy 127.0.0.1:3200
+}
+
+oc.{{ domain_name }} {
+    import vpn_only
+    reverse_proxy 127.0.0.1:3456
+}
+```
+
+### 11.5 Healthchecks
+
+```yaml
+# ComfyUI
+healthcheck:
+  test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8188/system_stats', timeout=8)\" || exit 1"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+  start_period: 120s    # Temps de chargement des modèles
+
+# Remotion
+healthcheck:
+  test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3200/health || exit 1"]
+  interval: 30s
+  timeout: 10s
+  retries: 5
+  start_period: 60s
+```
+
+### 11.6 n8n Creative Pipeline (cross-host)
+
+Le workflow `creative-pipeline` tourne sur n8n (VPS), mais appelle les services sur le Pi via les URLs Caddy (HTTPS, Tailscale mesh) :
+
+```
+n8n (VPS, backend network)
+    ├── POST https://studio.ewutelo.cloud/prompt      → ComfyUI (image)
+    ├── POST https://cut.ewutelo.cloud/render         → Remotion (video-composition)
+    └── POST https://api.byteplus.com/v1/video/generate → Seedance (video cloud)
+```
+
+**Timeout** : 300 000 ms (5 min) pour ComfyUI et Remotion — les modèles CPU sont lents.
+
+### 11.7 Asset Provenance — PostgreSQL
+
+Le workflow `asset-register` stocke la provenance de chaque asset généré dans PostgreSQL (VPS) :
+
+```sql
+-- Table : asset_provenance
+CREATE TABLE asset_provenance (
+    asset_id     TEXT PRIMARY KEY,
+    type         TEXT,           -- image | video
+    provider     TEXT,           -- comfyui | litellm-cloud | remotion | seedance
+    model        TEXT,
+    prompt       TEXT,
+    output_name  TEXT,
+    result_url   TEXT,
+    render_id    TEXT,
+    agent_id     TEXT,
+    cost_usd     NUMERIC(10,6),
+    storage_path TEXT,
+    generated_at TIMESTAMPTZ DEFAULT NOW(),
+    metadata     JSONB
+);
+```
+
+Tous les champs sont **paramétrés** (`$1..$13`) — pas d'interpolation directe dans le SQL.
+
+### 11.8 Kaneo — Project Management (VPS)
+
+Kaneo remplace Mission Control comme outil PM. Il tourne sur le **VPS Sese-AI** (pas sur le Pi).
+
+```yaml
+# Container : kaneo (VPS, réseau backend)
+ports:
+  - "127.0.0.1:1337:1337"   # API
+  - "127.0.0.1:3000:3000"   # Web UI
+subdomain: hq               # hq.ewutelo.cloud (VPN-only)
+database: kaneo (PostgreSQL partagé)
+```
+
+---
+
 *Fin de la Spécification Technique — Document de référence pour l'implémentation.*

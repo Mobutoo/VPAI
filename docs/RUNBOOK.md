@@ -18,6 +18,9 @@
 8. [Secret Rotation](#8-secret-rotation)
 9. [Restore from Backup](#9-restore-from-backup)
 10. [Incident Response](#10-incident-response)
+11. [VPN Mode Toggle](#11-vpn-mode-toggle)
+12. [LiteLLM — Surveillance des Coûts](#12-litellm--surveillance-des-co%C3%BBts)
+13. [Workstation Pi — AI Creative Studio](#13-workstation-pi--ai-creative-studio)
 
 ---
 
@@ -487,3 +490,137 @@ Configuré dans `inventory/group_vars/all/main.yml` :
 - `litellm_anthropic_budget_daily` (défaut: 20$)
 - `litellm_openrouter_budget_daily` (défaut: 5$)
 - `litellm_openai_budget_daily`
+
+---
+
+## 13. Workstation Pi — AI Creative Studio
+
+> **SSH** : `ssh -i ~/.ssh/seko-vpn-deploy mobuone@192.168.1.8`
+> **Docker Compose** : `/opt/workstation/comfyui/docker-compose-creative.yml`
+
+### 13.1 Start / Stop Creative Studio
+
+```bash
+# SSH sur le Pi
+ssh -i ~/.ssh/seko-vpn-deploy mobuone@192.168.1.8
+
+# Démarrer
+cd /opt/workstation/comfyui
+sudo docker compose -f docker-compose-creative.yml up -d
+
+# Arrêter
+sudo docker compose -f docker-compose-creative.yml down
+
+# Restart d'un service
+sudo docker compose -f docker-compose-creative.yml restart comfyui
+sudo docker compose -f docker-compose-creative.yml restart remotion
+```
+
+### 13.2 Vérifier l'état
+
+```bash
+# Status containers
+docker ps --filter name=workstation_
+
+# Santé ComfyUI (attendre ~2 min au démarrage)
+curl -s http://127.0.0.1:8188/system_stats | python3 -m json.tool
+
+# Santé Remotion
+curl -s http://127.0.0.1:3200/health
+
+# Logs
+docker logs workstation_comfyui --tail 50
+docker logs workstation_remotion --tail 50
+
+# Services systemd
+systemctl status caddy-workstation tailscaled --no-pager
+```
+
+### 13.3 Tester le Creative Pipeline depuis n8n
+
+Depuis un navigateur VPN, ouvrir n8n (`https://tala.ewutelo.cloud`) et déclencher le workflow `Creative Pipeline` manuellement avec un payload test :
+
+```json
+{
+  "type": "image",
+  "prompt": "a beautiful sunset over mountains, photorealistic",
+  "model": "comfyui",
+  "output_name": "test-sunset"
+}
+```
+
+Pour un test vidéo :
+```json
+{
+  "type": "video",
+  "prompt": "a time-lapse of clouds moving over a city",
+  "model": "remotion",
+  "composition": "ProductDemo",
+  "duration": 5,
+  "output_name": "test-video"
+}
+```
+
+### 13.4 Ajouter un modèle ComfyUI
+
+```bash
+# SSH sur le Pi
+ssh -i ~/.ssh/seko-vpn-deploy mobuone@192.168.1.8
+
+# Télécharger dans le répertoire models (ex: checkpoints)
+wget -O /opt/workstation/data/comfyui/models/checkpoints/mon_modele.safetensors \
+  "https://url_du_modele"
+
+# Le modèle est disponible immédiatement (volume monté)
+# Vérifier dans l'UI : https://studio.ewutelo.cloud
+```
+
+Ou via Ansible (recommandé pour les modèles récurrents) : ajouter dans `comfyui_models` dans `inventory/group_vars/all/main.yml`.
+
+### 13.5 Mettre à jour ComfyUI ou Remotion
+
+```bash
+# 1. Mettre à jour la version dans versions.yml (ou defaults/main.yml)
+# comfyui_version: "v0.3.28"
+# remotion_version: "4.0.260"
+
+# 2. Redéployer le rôle (rebuild l'image Docker ARM64)
+source .venv/bin/activate
+ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags comfyui
+ansible-playbook playbooks/workstation.yml --vault-password-file .vault_pass --tags remotion
+```
+
+> **Durée** : ~10-15 min par service (build ARM64 depuis source).
+
+### 13.6 Dépannage Creative Studio
+
+| Symptôme | Cause probable | Fix |
+|---|---|---|
+| `workstation_comfyui` unhealthy | Modèles pas chargés | Attendre 2 min, vérifier `docker logs` |
+| `studio.ewutelo.cloud` → 502 | ComfyUI pas démarré | `docker compose up -d comfyui` |
+| n8n → ComfyUI timeout | CPU trop lent / modèle lourd | Normal — timeout 300s, attendre |
+| `cut.ewutelo.cloud` → 502 | Remotion pas démarré | `docker compose up -d remotion` |
+| Remotion OOM (exit code 137) | 512M insuffisant | Augmenter `remotion_memory_limit` dans defaults |
+| Images générées vides | Modèle absent dans `/models/checkpoints/` | Télécharger le modèle (section 13.4) |
+| Tailscale déconnecté | Reboot Pi sans reconnexion | `sudo tailscale up` (normalement auto) |
+
+### 13.7 Asset Provenance (PostgreSQL VPS)
+
+Les assets générés sont tracés dans la table `asset_provenance` sur le VPS :
+
+```bash
+# Depuis WSL (via ansible)
+ansible prod-server -m shell -a "docker exec javisi_postgresql psql -U n8n -d n8n -t -A -c \
+  \"SELECT asset_id, type, provider, output_name, generated_at FROM asset_provenance ORDER BY generated_at DESC LIMIT 10;\"" -b
+```
+
+### 13.8 Caddy Workstation — Redémarrage
+
+```bash
+ssh -i ~/.ssh/seko-vpn-deploy mobuone@192.168.1.8
+sudo systemctl restart caddy-workstation
+sudo systemctl status caddy-workstation --no-pager
+
+# Vérifier les certificats TLS
+sudo caddy list-modules 2>&1 | grep -i ovh   # dns.providers.ovh doit être présent
+```

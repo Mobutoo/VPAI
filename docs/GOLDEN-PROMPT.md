@@ -460,19 +460,341 @@ Dashboards provisionnes automatiquement via fichiers JSON :
 
 ---
 
+## Phase 6.5 — Suppression Mission Control
+
+> **Statut** : Complet (commit 114a205)
+> **Date** : Février 2026
+
+### 6.5.1 Contexte
+
+Mission Control (PM tool Next.js) a été remplacé par Kaneo. Suppression complète avant d'ajouter le nouveau rôle.
+
+- **Suppression** : `roles/mission-control/` (5 fichiers : tasks, defaults, handlers, 2 templates)
+- **Nettoyage références** : `mc_subdomain`, target `deploy-mc` dans Makefile, `allowedOrigins` OpenClaw, DNS record `mc.*`
+
+```bash
+git rm -r roles/mission-control/
+```
+
+---
+
+## Phase 7 (bis) — Kaneo (PM Tool, remplace Mission Control)
+
+> **Statut** : Complet (commit 114a205)
+
+### 7.1 Rôle kaneo
+
+- **Nouveau rôle** : `roles/kaneo/` — PostgreSQL shared (DB `kaneo`), Docker Compose Phase B
+- **Ports** : API :1337, Web :3000 — internes uniquement
+- **Subdomain** : `hq.<domain>` (VPN-only via Caddy)
+- **Template** : `kaneo.env.j2` — DATABASE_URL, BETTER_AUTH_SECRET, CORS_ORIGIN
+
+### 7.2 Intégrations
+
+- **`docker-compose.yml`** : Service `kaneo` ajouté (réseau backend, `depends_on: postgresql`)
+- **`caddy/Caddyfile.j2`** : Vhost `hq.<domain>` → `reverse_proxy kaneo:3000`
+- **`vpn-dns`** : DNS record `hq.*` → IP Tailscale VPS
+- **`smoke-tests`** : Check HTTP kaneo:3000
+- **`openclaw`** : `kaneo` ajouté dans `allowedOrigins`
+
+### 7.3 REX
+
+- **`DATABASE_URL` format** : `postgresql://user:pass@host:5432/db` — PostgreSQL module Drizzle exige ce format exact, pas `postgres://`
+- **CORS** : `CORS_ORIGIN` doit inclure `https://hq.<domain>` ET `http://localhost:3000` pour dev local
+
+---
+
+## Phase 8 — Kaneo CI/CD (GitHub Actions fork build)
+
+> **Statut** : Complet (commit 372771b)
+
+### 8.1 Workflow `.github/workflows/kaneo-build.yml`
+
+- **Trigger** : push `main` sur `kaneo-src/**` ou `roles/kaneo/**`, tag `kaneo-v*`, `workflow_dispatch`
+- **Build multi-arch** : `linux/amd64` + `linux/arm64` via Docker Buildx + QEMU
+- **Registry** : GHCR — images `kaneo-vpai-api` + `kaneo-vpai-web`
+- **Cache** : GitHub Actions cache scoped `kaneo-api` / `kaneo-web`
+- **Job `update-versions`** : auto-commit SHA tag dans `versions.yml` après build réussi
+- **Job `notify`** : Telegram build result (succès/échec)
+
+### 8.2 REX
+
+- **QEMU requis** : `docker/setup-qemu-action@v3` avant `setup-buildx-action` pour cross-compile ARM64
+- **`push: true` dans buildx** : sans ça, l'image est buildée mais pas pushée sur GHCR
+- **Secrets GitHub** : `GHCR_TOKEN` (PAT avec `write:packages`), `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+
+---
+
+## Phase 9 — ComfyUI Docker ARM64 (RPi5)
+
+> **Statut** : Complet (commit 114a205)
+
+### 9.1 Rôle comfyui
+
+- **Image** : `comfyui-local:v0.3.27` — Dockerfile multi-stage Python 3.12 + PyTorch CPU ARM64
+- **Port** : 8188 (bind `127.0.0.1:8188`)
+- **Mémoire** : 4096M limit / 1024M reservation, `cpus: "3.0"`
+- **Subdomain** : `studio.<domain>` (VPN-only, workstation Caddy)
+- **Volumes** : `models/`, `output/`, `input/`, `custom_nodes/`, `creative-assets/` (partagé Remotion)
+- **Réseau** : `workstation_creative` (bridge, nommé)
+
+### 9.2 Sécurité
+
+```yaml
+security_opt: [no-new-privileges:true]
+cap_drop: [ALL]
+cap_add: [CHOWN, SETGID, SETUID]
+```
+
+### 9.3 Build ARM64 (Ansible)
+
+```yaml
+- community.docker.docker_image:
+    name: comfyui-local
+    tag: "{{ comfyui_version }}"
+    source: build
+    build:
+      path: "{{ comfyui_install_dir }}"
+      platform: linux/arm64
+    force_source: "{{ comfyui_dockerfile.changed }}"
+```
+
+### 9.4 REX
+
+- **PyTorch CPU ARM64** : Utiliser `torch+cpu` depuis `download.pytorch.org/whl/cpu` — pas PyPI standard
+- **`start_period: 120s`** : ComfyUI charge les modèles au démarrage — healthcheck doit attendre
+- **Docker Compose partagé** : `docker-compose-creative.yml.j2` est déployé par `comfyui` et utilisé par `remotion` — les deux services y sont définis
+- **DNS cross-host** : n8n (VPS) ne peut pas résoudre `comfyui:8188` — toujours utiliser les URLs Caddy HTTPS (`studio.<domain>`)
+
+---
+
+## Phase 10 — Remotion Docker ARM64 (RPi5)
+
+> **Statut** : Complet (commit 114a205)
+
+### 10.1 Rôle remotion
+
+- **Image** : `remotion-local:4.0.259` — Dockerfile Node 22 + Chrome Headless Shell ARM64
+- **Port** : 3200 (bind `127.0.0.1:3200`)
+- **Mémoire** : 512M limit / 256M reservation, `cpus: "2.0"`
+- **Subdomain** : `cut.<domain>` (VPN-only, workstation Caddy)
+- **API Express** : `POST /render`, `GET /status/:id`, `GET /output/:id`
+- **Volume `creative-assets:ro`** : Remotion monte les assets en lecture seule
+
+### 10.2 Chrome Headless ARM64
+
+```dockerfile
+ENV CHROMIUM_FLAGS="--no-sandbox --disable-setuid-sandbox"
+# Pas besoin de cap_add: SYS_ADMIN avec --no-sandbox
+```
+
+### 10.3 REX
+
+- **Chrome ARM64** : Télécharger depuis `storage.googleapis.com/chromium-browser-snapshots/Linux_ARM/` — pas depuis apt (chromium-browser Ubuntu ARM = snap, incompatible Docker)
+- **`failed_when: false`** sur `wait_for` Remotion : peut être omis si `remotion_port` non défini (feature désactivable)
+- **Compositions Remotion** : Ajouter dans `roles/remotion/files/src/compositions/` — ex: `ProductDemo`, `TextOverlay`, etc.
+
+---
+
+## Phase 11 — Workflows n8n Bridge (Kaneo + Stack Health)
+
+> **Statut** : Complet (commit 372771b)
+
+### 11.1 Workflow `kaneo-agents-sync`
+
+- **Trigger** : cron 6h + webhook `POST /kaneo-agents-sync`
+- **Logique** : liste statique 9 agents OpenClaw → diff vs tâches Kaneo → create/update si changement
+- **Agents** : concierge, cfo, maintainer, artist, researcher, writer, analyst, coder, reviewer
+- **Notification** : Telegram si changements détectés
+
+### 11.2 Workflow `stack-health`
+
+- **Trigger** : cron 15min
+- **Services monitorés** : LiteLLM, n8n, OpenClaw, Grafana, Qdrant, Kaneo API (timeout 5s)
+- **Agrégation** : `overall: ok | degraded | down` + latence par service
+- **Alerte** : Telegram si `overall != ok`
+
+### 11.3 REX
+
+- **Kaneo API auth** : Requêtes n8n → Kaneo nécessitent `Authorization: Bearer <token>` — créer un token API dans Kaneo settings
+- **n8n sandbox** : `NODE_FUNCTION_ALLOW_BUILTIN=crypto` si UUID natif requis dans les nœuds Code
+
+---
+
+## Phase 12 — Agents OpenClaw CFO + Maintainer
+
+> **Statut** : Complet (commit 114a205)
+
+### 12.1 Nouveaux agents
+
+| Agent | Modèle | Rôle |
+|---|---|---|
+| `cfo` | `minimax-m25` | Monitoring budget LiteLLM, alertes 70%/90%/100%, commandes `/budget` |
+| `maintainer` | `qwen3-coder` | Health checks stack, sync Kaneo, mises à jour via n8n |
+
+### 12.2 Nouveaux skills (7)
+
+- `budget-monitor` — polling LiteLLM `/spend`, calcul % consommé
+- `cost-analysis` — top modèles coûteux (PostgreSQL `LiteLLM_SpendLogs`)
+- `infra-maintain` — restart services, containers unhealthy
+- `deploy-check` — CI/CD status GitHub Actions
+- `task-management` — création/update tâches Kaneo via API
+- `image-generation` — appel creative-pipeline (ComfyUI/Seedream)
+- `video-composition` — appel creative-pipeline (Remotion/Seedance)
+
+### 12.3 REX
+
+- **`minimax-m25`** : Modèle économique ($0.0002/1K tokens) — idéal pour monitoring répétitif
+- **`qwen3-coder`** : Eco model — actif même si budget épuisé (le maintainer tourne toujours)
+- **`openclaw_agents_list`** dans `defaults/main.yml` — structure YAML utilisée par kaneo-agents-sync
+
+---
+
+## Phase 12.7 — Claude Code CLI + MCP Servers (RPi)
+
+> **Statut** : Complet (commit 114a205)
+
+### 12.7.1 Rôle claude-code
+
+- **Installation** : `npm install -g @anthropic-ai/claude-code` (NodeSource)
+- **Auth** : OAuth Max Plan — auth manuelle unique via `claude` en SSH (URL dans terminal → navigateur)
+- **Config** : `~/.claude/` — tokens auto-renouvelés, **jamais `ANTHROPIC_API_KEY`**
+
+### 12.7.2 MCP Servers configurés (4)
+
+| MCP Server | Type | Usage |
+|---|---|---|
+| `context7` | HTTP | Docs bibliothèques (Ansible, Docker, Python…) |
+| `filesystem` | Local | Accès fichiers `/home/mobuone/` + `/opt/workstation/` |
+| `kaneo` | SSE | Lecture/écriture tâches Kaneo (`localhost:1337/api/mcp/sse`) |
+| `n8n` | SSE | Trigger workflows n8n depuis Claude Code |
+
+### 12.7.3 REX
+
+- **`ANTHROPIC_API_KEY` interdit** : Si défini dans l'environnement → OAuth contourné → facturation directe. Supprimer de tout `.bashrc`, `.profile`, `.env`
+- **`settings.json` permissions** : `allow: ["Bash", "Read", "Write", "Edit"]`, `deny: ["Bash(rm -rf *)"]`
+- **MCP SSE Kaneo** : URL `http://localhost:1337/api/mcp/sse` — uniquement accessible localement (port non exposé)
+
+---
+
+## Phase 13 — Asset Provenance (PostgreSQL + n8n)
+
+> **Statut** : Complet (commit 30550e1)
+
+### 13.1 Migration SQL (idempotente)
+
+```sql
+-- roles/postgresql/files/migrations/001_asset_provenance.sql
+CREATE TABLE IF NOT EXISTS asset_provenance (
+    asset_id     TEXT PRIMARY KEY,
+    type         TEXT,       -- image | video
+    provider     TEXT,       -- comfyui | litellm-cloud | remotion | seedance
+    model        TEXT,
+    prompt       TEXT,
+    output_name  TEXT,
+    result_url   TEXT,
+    render_id    TEXT,
+    agent_id     TEXT,
+    cost_usd     NUMERIC(10,6),
+    storage_path TEXT,
+    generated_at TIMESTAMPTZ DEFAULT NOW(),
+    metadata     JSONB
+);
+
+CREATE VIEW asset_cost_daily AS
+  SELECT DATE(generated_at) as day, type, provider,
+         COUNT(*) as count, SUM(cost_usd) as total_cost
+  FROM asset_provenance
+  WHERE generated_at > NOW() - INTERVAL '30 days'
+  GROUP BY 1, 2, 3;
+```
+
+Migration appliquée via MD5 checksum — skip si fichier inchangé.
+
+### 13.2 Workflow `asset-register`
+
+- **Trigger** : `POST /asset-register`
+- **Logique** : Parse → enregistrement Kaneo + PostgreSQL **en parallèle**
+- **SQL** : 13 champs **tous paramétrés** (`$1..$13`) — pas d'interpolation directe
+- **`ON CONFLICT`** : `DO UPDATE SET metadata, result_url` — idempotent sur `asset_id`
+
+### 13.3 REX
+
+- **SQL injection** : Même les champs "safe" (`type`, `provider`) doivent être paramétrés — le nœud PostgreSQL n8n interprète `{{ }}` dans le SQL comme des templates Jinja2
+- **`$13::jsonb`** : Cast explicite requis pour le champ JSONB
+- **`asset_id` génération** : `crypto.randomUUID()` dans nœud Code (pas `Math.random()`)
+
+---
+
+## Phase 14 — Monitoring RPi + Creative Studio + Dashboards
+
+> **Statut** : Complet (commit 30550e1)
+
+### 14.1 Rôle workstation-monitoring
+
+**Node Exporter ARM64 natif** :
+- `node_exporter v1.9.1` — binaire ARM64 depuis GitHub releases
+- Systemd service `node_exporter.service` (user dédié `node_exporter`)
+- Port 9100, textfile collector dans `/var/lib/node_exporter/textfile_collector/`
+
+**Collecteur métriques custom Python** (`comfyui-metrics.py.j2`) :
+- Poll `http://127.0.0.1:8188/system_stats` + `/queue` (ComfyUI)
+- Poll `http://127.0.0.1:3200/status` (Remotion)
+- Format Prometheus textfile — écriture atomique via `os.replace()`
+- Cron toutes les `{{ workstation_metrics_interval }}s` (défaut: 30s)
+
+### 14.2 Intégration Alloy (scrape RPi via Tailscale)
+
+```alloy
+prometheus.scrape "workstation_pi" {
+  targets = [
+    { "__address__" = "{{ workstation_tailscale_ip }}:9100",
+      "instance" = "workstation-pi", "job" = "node_exporter" },
+    { "__address__" = "{{ workstation_tailscale_ip }}:9101",
+      "instance" = "workstation-pi", "job" = "comfyui_metrics" },
+  ]
+  forward_to = [prometheus.remote_write.victoriametrics.receiver]
+}
+```
+
+### 14.3 Dashboards Grafana (2 nouveaux, total 11)
+
+**`creative-studio.json`** : ComfyUI status/CPU/RAM, Remotion status, queue pending/running, pipeline logs (Loki), assets 24h (PostgreSQL)
+
+**`budget-ai.json`** : Budget global gauge ($5), dépenses par provider (bargauge), timeseries 7j, top 10 modèles, coût assets créatifs (`asset_provenance`)
+
+### 14.4 REX
+
+- **Scrape via Tailscale** : `tailscaled` doit être démarré sur le Pi avant le premier scrape Alloy
+- **Textfile race condition** : Écrire dans `.tmp` puis `os.replace()` — Prometheus ne lit jamais un fichier partiellement écrit
+- **Dashboard PostgreSQL datasource** : Utiliser DB `n8n` (contient `asset_provenance`) — pas `litellm`
+- **Alloy scrape interval** : `30s` suffisant pour métriques workstation
+
+---
+
 ## Résumé des Phases
 
-| Phase | Roles | Effort estime | Checkpoint |
-|-------|-------|--------------|------------|
-| 1 -- Fondations | common, hardening, docker, headscale-node | 4-6h | Security + Docker setup |
-| 2 -- Donnees & Proxy | caddy, postgresql, redis, qdrant | 4-6h | Data layer + routing |
-| 3 -- Applications | n8n, openclaw, litellm | 4-6h | App connectivity |
-| 4 -- Observabilite | monitoring, diun | 4-6h | Metrics + logs + alerts |
-| 5 -- Resilience | backup-config, uptime-config, smoke-tests | 3-4h | Backup + monitoring externe |
-| 6 -- CI/CD & Docs | workflows, docs, polish | 3-4h | **Review finale** |
-| 7 -- AI Pipeline | n8n-provision, monitoring (dashboards) | 6-8h | Workflows + Cockpit Grafana |
+| Phase | Roles / Fichiers | Effort estimé | Checkpoint |
+|-------|-----------------|--------------|------------|
+| 1 — Fondations | common, hardening, docker, headscale-node | 4-6h | Security + Docker |
+| 2 — Données & Proxy | caddy, postgresql, redis, qdrant | 4-6h | Data layer + routing |
+| 3 — Applications | n8n, openclaw, litellm | 4-6h | App connectivity |
+| 4 — Observabilité | monitoring, diun | 4-6h | Metrics + logs + alerts |
+| 5 — Résilience | backup-config, uptime-config, smoke-tests | 3-4h | Backup + monitoring ext. |
+| 6 — CI/CD & Docs | workflows, docs, polish | 3-4h | **Review finale VPS** |
+| 7 — AI Pipeline | n8n-provision, monitoring (dashboards) | 6-8h | Workflows + Cockpit Grafana |
+| **6.5** — Nettoyage | Suppression mission-control | 0.5h | Dead code removed |
+| **7 (bis)** — Kaneo | kaneo, vpn-dns, caddy, smoke-tests | 2-3h | PM tool opérationnel |
+| **8** — Kaneo CI/CD | .github/workflows/kaneo-build.yml | 2-3h | Multi-arch Docker GHCR |
+| **9** — ComfyUI | comfyui, workstation-caddy | 3-4h | Image gen ARM64 Pi |
+| **10** — Remotion | remotion | 2-3h | Video render ARM64 Pi |
+| **11** — n8n Bridge | kaneo-agents-sync, stack-health | 2-3h | Workflows bridge |
+| **12** — Agents | openclaw (CFO, Maintainer, 7 skills) | 3-4h | 9 agents complets |
+| **12.7** — Claude CLI | claude-code (4 MCP servers) | 1-2h | Dev workflow Pi |
+| **13** — Provenance | postgresql (migration), n8n (asset-register) | 2-3h | Tracking assets |
+| **14** — Monitoring Pi | workstation-monitoring, monitoring, dashboards | 3-4h | RPi + Creative Studio |
 
-**Total estime** : 28-40 heures de developpement Claude Code.
+**Total estimé** : 28-40h (VPS phases 1-7) + 25-35h (Creative Studio phases 6.5-14) = **53-75h de développement Claude Code.**
 
 ---
 

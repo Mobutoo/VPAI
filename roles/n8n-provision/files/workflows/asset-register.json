@@ -59,9 +59,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO asset_provenance (asset_id, type, provider, model, prompt, output_name, result_url, render_id, agent_id, cost_usd, storage_path, generated_at, metadata) VALUES ('{{ $('Parse & enrich').first().json.asset_id }}', '{{ $('Parse & enrich').first().json.type }}', '{{ $('Parse & enrich').first().json.provider }}', '{{ $('Parse & enrich').first().json.model }}', $1, '{{ $('Parse & enrich').first().json.output_name }}', $2, $3, '{{ $('Parse & enrich').first().json.agent_id }}', {{ $('Parse & enrich').first().json.cost_usd }}, $4, '{{ $('Parse & enrich').first().json.timestamp }}', $5::jsonb) ON CONFLICT (asset_id) DO UPDATE SET metadata = EXCLUDED.metadata, result_url = EXCLUDED.result_url RETURNING asset_id",
+        "query": "INSERT INTO asset_provenance (asset_id, type, provider, model, prompt, output_name, result_url, render_id, agent_id, cost_usd, storage_path, generated_at, metadata) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb) ON CONFLICT (asset_id) DO UPDATE SET metadata = EXCLUDED.metadata, result_url = EXCLUDED.result_url RETURNING asset_id",
         "additionalFields": {
-          "queryParams": "={{ [\n  $('Parse & enrich').first().json.prompt,\n  $('Parse & enrich').first().json.result_url,\n  $('Parse & enrich').first().json.render_id,\n  $('Parse & enrich').first().json.storage_path,\n  JSON.stringify($('Parse & enrich').first().json)\n] }}"
+          "queryParams": "={{ [\n  $('Parse & enrich').first().json.asset_id,\n  $('Parse & enrich').first().json.type,\n  $('Parse & enrich').first().json.provider,\n  $('Parse & enrich').first().json.model,\n  $('Parse & enrich').first().json.prompt,\n  $('Parse & enrich').first().json.output_name,\n  $('Parse & enrich').first().json.result_url,\n  $('Parse & enrich').first().json.render_id,\n  $('Parse & enrich').first().json.agent_id,\n  $('Parse & enrich').first().json.cost_usd,\n  $('Parse & enrich').first().json.storage_path,\n  $('Parse & enrich').first().json.timestamp,\n  JSON.stringify($('Parse & enrich').first().json)\n] }}"
         }
       },
       "id": "ar-0001-0000-0000-0000-000000000005",

@@ -101,6 +101,15 @@
   become: true
   when: n8n_container_check.stdout | default('') | length > 0
 
+# Template workflows that require Ansible variable substitution (cross-host URLs)
+- name: Template creative-pipeline workflow (resolves workstation Caddy URLs)
+  ansible.builtin.template:
+    src: "workflows/creative-pipeline.json.j2"
+    dest: "/tmp/n8n-workflow-creative-pipeline.json"
+    mode: "0644"
+  become: true
+  when: n8n_container_check.stdout | default('') | length > 0
+
 - name: Copy n8n workflow files to server
   ansible.builtin.copy:
     src: "workflows/{{ item }}.json"
@@ -124,7 +133,6 @@
     - budget-control
     - kaneo-agents-sync
     - stack-health
-    - creative-pipeline
     - asset-register
   when: n8n_container_check.stdout | default('') | length > 0
 

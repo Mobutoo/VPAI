@@ -171,7 +171,11 @@ services:
       - SETGID
       - SETUID
     environment:
-      KANEO_API_URL: "http://kaneo-api:1337"
+      # REX: KANEO_API_URL must be the PUBLIC URL (https://...) — env.sh replaces the literal
+      # "KANEO_API_URL" placeholder in the JS bundle at container start. If set to the internal
+      # Docker hostname (http://kaneo-api:1337), the browser cannot resolve it → "Failed to fetch".
+      KANEO_API_URL: "https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}"
+      KANEO_CLIENT_URL: "https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}"
     networks:
       - frontend
       - backend

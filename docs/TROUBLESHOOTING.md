@@ -162,6 +162,36 @@ workstation_pi_become_pass: "{{ vault_workstation_become_pass }}"
 | Git Bash / PowerShell | `/c/Users/mmomb/.ssh/seko-vpn-deploy` |
 | SSH depuis Git Bash | `ssh -i /c/Users/mmomb/.ssh/seko-vpn-deploy mobuone@192.168.1.8` |
 
+### 0.11 Tailscale — reconnexion automatique au démarrage du Pi
+
+**C'est en place automatiquement.** Le rôle `headscale-node` active `tailscaled` en tant que service systemd `enabled: true` :
+
+```yaml
+- name: Enable and start Tailscale service
+  ansible.builtin.systemd:
+    name: tailscaled
+    state: started
+    enabled: true   # démarre automatiquement à chaque boot
+```
+
+**Comportement au reboot du Pi :**
+1. systemd démarre `tailscaled` automatiquement
+2. Tailscale lit sa clé de session depuis `/var/lib/tailscale/` (persistée après le 1er `tailscale up`)
+3. Le Pi se reconnecte au réseau Headscale **sans intervention** — la pre-auth key vault n'est plus nécessaire
+
+**Vérifier la connexion après reboot :**
+```bash
+# Sur le Pi
+tailscale status         # doit afficher "workstation-pi ... active"
+tailscale ip -4          # IP Tailscale assignée (100.64.x.x)
+ping <headscale_vpn_ip>  # ping vers Seko-VPN via VPN
+```
+
+**Cas où la reconnexion échoue :**
+- Headscale est down → voir 0.6
+- La session Tailscale a été révoquée depuis le serveur Headscale → régénérer une pre-auth key (voir 0.7) et redéployer `--tags headscale-node`
+- Vérifier l'état du daemon : `sudo systemctl status tailscaled`
+
 ---
 
 ## 1. Ansible & Linting

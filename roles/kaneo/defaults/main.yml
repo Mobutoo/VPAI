@@ -18,3 +18,34 @@ kaneo_db_user: "kaneo"
 
 # Subdomain (VPN-only, served by Caddy)
 kaneo_subdomain: "{{ kaneo_subdomain_override | default('hq') }}"
+
+# Agent service account — used by n8n workflows and OpenClaw Messenger to authenticate
+# against the Kaneo BetterAuth API. Must be created during initial Kaneo setup.
+# Credentials are stored in secrets.yml (Ansible Vault).
+# kaneo_agent_email and kaneo_agent_password are defined in secrets.yml
+
+# ============================================================================
+# OpenClaw Agents — Kaneo membership (native userId assignment)
+# ============================================================================
+# One shared password for all 10 service accounts (never used by humans).
+# ⚠️  Changing vault_kaneo_agents_password AFTER first provision will NOT update passwords
+#     (BetterAuth sign-in returns 200 with old password → provisioning detects accounts exist).
+#     To reset: use Kaneo Admin UI or ansible-playbook --tags kaneo --extra-vars kaneo_force_password_reset=true
+kaneo_agents_password: "{{ vault_kaneo_agents_password | default('') }}"
+kaneo_agent_email_prefix: "agent-"
+
+# Agent list — id must match openclaw_agents_list[].id
+# name = persona displayed in Kaneo UI (not the service account email)
+# role = workspace Kaneo role: member | admin
+# emoji = task title prefix in "OpenClaw Agents" project
+kaneo_openclaw_agents:
+  - {id: "concierge", name: "Mobutoo", role: "member", emoji: "🎖️"}
+  - {id: "builder", name: "Imhotep", role: "member", emoji: "⚙️"}
+  - {id: "writer", name: "Thot", role: "member", emoji: "✍️"}
+  - {id: "artist", name: "Basquiat", role: "member", emoji: "🎨"}
+  - {id: "tutor", name: "Piccolo", role: "member", emoji: "📚"}
+  - {id: "explorer", name: "R2D2", role: "member", emoji: "🔍"}
+  - {id: "marketer", name: "Marketer", role: "member", emoji: "📣"}
+  - {id: "cfo", name: "CFO", role: "member", emoji: "💰"}
+  - {id: "maintainer", name: "Maintainer", role: "admin", emoji: "🔧"}
+  - {id: "messenger", name: "Hermes", role: "member", emoji: "⚡"}

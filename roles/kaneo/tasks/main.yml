@@ -29,3 +29,284 @@
     mode: "0600"
   become: true
   notify: Restart kaneo stack
+
+# Provision Kaneo agent service account (used by n8n workflows + OpenClaw Messenger)
+# This account is used for internal API calls only — not for human access.
+# Only runs once if kaneo_agent_email is defined and container is running.
+# ⚠️  WARNING: Changing kaneo_agent_password in vault AFTER first provisioning will NOT update
+# the account password — BetterAuth sign-in still returns HTTP 200 with old password, so the
+# provisioning task detects the account as existing and skips. To update the password, use the
+# Kaneo admin UI (https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}) or
+# re-provision manually: docker exec <kaneo-api> sh -c 'curl -X POST .../api/auth/update-user ...'
+- name: Check if Kaneo container is running
+  ansible.builtin.command:
+    cmd: "docker ps -q -f name={{ project_name }}_kaneo-api"
+  register: kaneo_container_check
+  changed_when: false
+  failed_when: false
+  become: true
+  when: kaneo_agent_email | default('') | length > 0
+
+- name: Check if Kaneo agent user already exists
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      docker exec {{ project_name }}_kaneo-api sh -c '
+        curl -sf -o /dev/null -w "%{http_code}" \
+          -X POST http://localhost:1337/api/auth/sign-in \
+          -H "Content-Type: application/json" \
+          -d "{\"email\":\"{{ kaneo_agent_email }}\",\"password\":\"{{ kaneo_agent_password }}\"}" 2>/dev/null
+      '
+  register: kaneo_agent_check
+  changed_when: false
+  failed_when: false
+  no_log: true
+  become: true
+  when:
+    - kaneo_agent_email | default('') | length > 0
+    - kaneo_container_check.stdout | default('') | length > 0
+
+- name: Provision Kaneo agent service account
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      docker exec {{ project_name }}_kaneo-api sh -c '
+        curl -sf -o /dev/null -w "%{http_code}" \
+          -X POST http://localhost:1337/api/auth/sign-up \
+          -H "Content-Type: application/json" \
+          -d "{\"email\":\"{{ kaneo_agent_email }}\",\"password\":\"{{ kaneo_agent_password }}\",\"name\":\"Agent Service\"}" 2>/dev/null
+      '
+  register: kaneo_agent_provision
+  changed_when: kaneo_agent_provision.stdout | default('') in ['200', '201']
+  failed_when: false
+  no_log: true
+  become: true
+  when:
+    - kaneo_agent_email | default('') | length > 0
+    - kaneo_container_check.stdout | default('') | length > 0
+    - kaneo_agent_check.stdout | default('') != '200'
+
+- name: Display Kaneo agent provisioning result
+  ansible.builtin.debug:
+    msg: >-
+      {% if not (kaneo_agent_email | default('') | length > 0) %}
+      ℹ️  kaneo_agent_email not configured — skipping agent user provisioning.
+      Add kaneo_agent_email + kaneo_agent_password to secrets.yml.
+      {% elif kaneo_agent_check.stdout | default('') == '200' %}
+      ℹ️  Kaneo agent user already exists. Skipping.
+      {% elif kaneo_agent_provision.stdout | default('') in ['200', '201'] %}
+      ✅ Kaneo agent service account created successfully.
+      {% else %}
+      ⚠️  Kaneo agent provisioning returned: {{ kaneo_agent_provision.stdout | default('unknown') }}.
+      Manual creation may be needed.
+      {% endif %}
+  when: kaneo_agent_email | default('') | length > 0 or kaneo_container_check is defined
+
+# =============================================================================
+# OpenClaw Agents — Kaneo workspace membership (native userId assignment)
+# =============================================================================
+# Provisions 10 BetterAuth accounts (one per OpenClaw agent) and adds them
+# as Kaneo workspace members so tasks can be natively assigned via userId.
+#
+# Pattern: email = agent-<id>@<domain_name>, name = persona (Imhotep, Thot...)
+# Rôles: member (all), admin (maintainer only)
+#
+# ⚠️  Changing vault_kaneo_agents_password AFTER first provisioning will NOT update
+#     passwords — BetterAuth sign-in returns 200 with old password → task skips.
+#     Reset via Kaneo Admin UI or: --extra-vars kaneo_force_password_reset=true
+#     (dedicated task to be added in V2)
+# =============================================================================
+
+- name: Check if Kaneo container is running (agents provisioning)
+  ansible.builtin.command:
+    cmd: "docker ps -q -f name={{ project_name }}_kaneo-api"
+  register: kaneo_container_agents_check
+  changed_when: false
+  failed_when: false
+  become: true
+  when: kaneo_openclaw_agents | default([]) | length > 0
+
+- name: Wait for Kaneo API to be responsive
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      docker exec {{ project_name }}_kaneo-api sh -c '
+        curl -sf -o /dev/null -w "%{http_code}" http://localhost:1337/api/health 2>/dev/null || echo "0"
+      '
+  register: kaneo_health_check
+  changed_when: false
+  failed_when: false
+  retries: 3
+  delay: 5
+  until: kaneo_health_check.stdout | default('0') == '200'
+  become: true
+  when:
+    - kaneo_openclaw_agents | default([]) | length > 0
+    - kaneo_container_agents_check.stdout | default('') | length > 0
+
+- name: Fetch Kaneo organizationId for workspace membership
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      docker exec {{ project_name }}_kaneo-api sh -c '
+        COOKIE=$(curl -sf -D - -o /dev/null \
+          -X POST http://localhost:1337/api/auth/sign-in \
+          -H "Content-Type: application/json" \
+          -d "{\"email\":\"{{ kaneo_agent_email }}\",\"password\":\"{{ kaneo_agent_password }}\"}" \
+          2>/dev/null | grep -i "set-cookie:" | head -1 | awk "{print \$2}" | cut -d";" -f1)
+        curl -sf -H "Cookie: $COOKIE" http://localhost:1337/api/auth/organization/list 2>/dev/null | \
+          python3 -c "import sys,json; orgs=json.load(sys.stdin); print(orgs[0][\"id\"] if orgs else \"\")" 2>/dev/null || echo ""
+      '
+  register: kaneo_org_id
+  changed_when: false
+  failed_when: false
+  no_log: true
+  become: true
+  when:
+    - kaneo_openclaw_agents | default([]) | length > 0
+    - kaneo_container_agents_check.stdout | default('') | length > 0
+    - kaneo_health_check.stdout | default('') == '200'
+
+- name: Check if Kaneo agent accounts exist
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      docker exec {{ project_name }}_kaneo-api sh -c '
+        curl -sf -o /dev/null -w "%{http_code}" \
+          -X POST http://localhost:1337/api/auth/sign-in \
+          -H "Content-Type: application/json" \
+          -d "{\"email\":\"{{ kaneo_agent_email_prefix }}{{ item.id }}@{{ domain_name }}\",\"password\":\"{{ kaneo_agents_password }}\"}" \
+          2>/dev/null
+      '
+  register: kaneo_agent_probe
+  changed_when: false
+  failed_when: false
+  no_log: true
+  become: true
+  loop: "{{ kaneo_openclaw_agents }}"
+  loop_control:
+    label: "{{ item.id }}"
+  when:
+    - kaneo_openclaw_agents | default([]) | length > 0
+    - kaneo_container_agents_check.stdout | default('') | length > 0
+    - kaneo_health_check.stdout | default('') == '200'
+    - kaneo_agents_password | default('') | length > 0
+
+- name: Create Kaneo agent accounts (missing only — name set to persona)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      AGENT_EMAIL="{{ kaneo_agent_email_prefix }}{{ item.item.id }}@{{ domain_name }}"
+      AGENT_NAME="{{ item.item.name }}"
+      AGENT_PASS="{{ kaneo_agents_password }}"
+      docker exec \
+        -e AGENT_EMAIL="${AGENT_EMAIL}" \
+        -e AGENT_PASS="${AGENT_PASS}" \
+        -e AGENT_NAME="${AGENT_NAME}" \
+        {{ project_name }}_kaneo-api sh -c '
+          curl -sf -o /dev/null -w "%{http_code}" \
+            -X POST http://localhost:1337/api/auth/sign-up \
+            -H "Content-Type: application/json" \
+            -d "{\"email\":\"${AGENT_EMAIL}\",\"password\":\"${AGENT_PASS}\",\"name\":\"${AGENT_NAME}\"}" \
+            2>/dev/null
+        '
+  register: kaneo_agent_create
+  changed_when: kaneo_agent_create.stdout | default('') in ['200', '201']
+  failed_when: false
+  no_log: true
+  become: true
+  loop: "{{ kaneo_agent_probe.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.id }}"
+  when:
+    - kaneo_openclaw_agents | default([]) | length > 0
+    - kaneo_container_agents_check.stdout | default('') | length > 0
+    - item.stdout | default('') != '200'
+
+- name: Fetch userId for each Kaneo agent (sign-in + get-session)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      docker exec {{ project_name }}_kaneo-api sh -c '
+        RESP=$(curl -sf -D - -o /dev/null \
+          -X POST http://localhost:1337/api/auth/sign-in \
+          -H "Content-Type: application/json" \
+          -d "{\"email\":\"{{ kaneo_agent_email_prefix }}{{ item.id }}@{{ domain_name }}\",\"password\":\"{{ kaneo_agents_password }}\"}" \
+          2>/dev/null)
+        COOKIE=$(echo "$RESP" | grep -i "set-cookie:" | head -1 | awk "{print \$2}" | cut -d";" -f1)
+        curl -sf -H "Cookie: $COOKIE" http://localhost:1337/api/auth/get-session 2>/dev/null | \
+          python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get(\"user\",{}).get(\"id\",\"\"))" 2>/dev/null || echo ""
+      '
+  register: kaneo_agent_userids
+  changed_when: false
+  failed_when: false
+  no_log: true
+  become: true
+  loop: "{{ kaneo_openclaw_agents }}"
+  loop_control:
+    label: "{{ item.id }}"
+  when:
+    - kaneo_openclaw_agents | default([]) | length > 0
+    - kaneo_container_agents_check.stdout | default('') | length > 0
+    - kaneo_health_check.stdout | default('') == '200'
+    - kaneo_agents_password | default('') | length > 0
+
+- name: Add Kaneo agents to workspace (idempotent — skips existing members)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      ORG="{{ kaneo_org_id.stdout | default('') }}"
+      UID="{{ item.stdout | default('') }}"
+      ROLE="{{ kaneo_openclaw_agents[loop_index].role }}"
+      docker exec {{ project_name }}_kaneo-api sh -c "
+        SVCOOKIE=\$(curl -sf -D - -o /dev/null \
+          -X POST http://localhost:1337/api/auth/sign-in \
+          -H 'Content-Type: application/json' \
+          -d '{\"email\":\"{{ kaneo_agent_email }}\",\"password\":\"{{ kaneo_agent_password }}\"}' \
+          2>/dev/null | grep -i 'set-cookie:' | head -1 | awk '{print \$2}' | cut -d';' -f1)
+        curl -sf -o /dev/null -w \"%{http_code}\" \
+          -X POST http://localhost:1337/api/auth/organization/add-member \
+          -H 'Content-Type: application/json' \
+          -H \"Cookie: \$SVCOOKIE\" \
+          -d '{\"organizationId\":\"${ORG}\",\"userId\":\"${UID}\",\"role\":\"${ROLE}\"}' \
+          2>/dev/null
+      "
+  register: kaneo_add_member
+  changed_when: kaneo_add_member.stdout | default('') in ['200', '201']
+  failed_when: false
+  no_log: true
+  become: true
+  loop: "{{ kaneo_agent_userids.results | default([]) }}"
+  loop_control:
+    label: "{{ kaneo_openclaw_agents[loop_index].id }}"
+    index_var: loop_index
+  when:
+    - kaneo_openclaw_agents | default([]) | length > 0
+    - kaneo_org_id.stdout | default('') | length > 0
+    - item.stdout | default('') | length > 0
+
+- name: Display Kaneo agents provisioning summary
+  ansible.builtin.debug:
+    msg: >-
+      {% if not (kaneo_openclaw_agents | default([]) | length > 0) %}
+      ℹ️  kaneo_openclaw_agents not configured — skipping OpenClaw agent membership.
+      {% elif not (kaneo_agents_password | default('') | length > 0) %}
+      ⚠️  kaneo_agents_password not set — skipping OpenClaw agent membership.
+      Add vault_kaneo_agents_password to secrets.yml.
+      {% else %}
+      Kaneo agents sync:
+      Created: {{ kaneo_agent_create.results | default([]) | selectattr('changed') | map(attribute='item.item.id') | list | join(', ') | default('none') }}
+      Added to workspace:
+      {{ kaneo_add_member.results | default([]) | selectattr('changed') | map(attribute='_ansible_item_label') | list | join(', ') | default('none') }}
+      Skipped (already exist):
+      {{ kaneo_agent_probe.results | default([]) | selectattr('stdout', 'equalto', '200') | map(attribute='item.id') | list | join(', ') | default('none') }}
+      {% endif %}
+  when: kaneo_openclaw_agents | default([]) | length > 0

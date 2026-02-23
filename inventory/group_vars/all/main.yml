@@ -199,6 +199,13 @@ workstation_pi_disk_gb: 256
 
 # Kaneo (PM tool — replaces Mission Control)
 kaneo_subdomain_override: "hq"
+# Agent service account — used by n8n workflows + OpenClaw Messenger for BetterAuth API calls.
+# Add vault_kaneo_agent_email + vault_kaneo_agent_password to secrets.yml (ansible-vault edit).
+kaneo_agent_email: "{{ vault_kaneo_agent_email | default('') }}"
+kaneo_agent_password: "{{ vault_kaneo_agent_password | default('') }}"
+# Shared password for 10 OpenClaw agent service accounts in Kaneo.
+# Add vault_kaneo_agents_password to secrets.yml (ansible-vault edit).
+kaneo_agents_password: "{{ vault_kaneo_agents_password | default('') }}"
 
 # Sure (personal finance)
 sure_subdomain: "nzimbu"

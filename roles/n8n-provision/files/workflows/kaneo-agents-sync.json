@@ -12,7 +12,7 @@
           ]
         }
       },
-      "id": "kas-0001-0000-0000-0000-000000000001",
+      "id": "kas-0002-0000-0000-0000-000000000001",
       "name": "Cron Daily 6h",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
@@ -25,7 +25,7 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "kas-0001-0000-0000-0000-000000000002",
+      "id": "kas-0002-0000-0000-0000-000000000002",
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
@@ -33,133 +33,716 @@
     },
     {
       "parameters": {
-        "jsCode": "// Agents OpenClaw list (mirrored from openclaw_agents_list in Ansible defaults)\n// Update this list when adding new agents to roles/openclaw/defaults/main.yml\nconst OPENCLAW_AGENTS = [\n  { id: 'concierge', name: 'Mobutoo', type: 'orchestrator', model: 'minimax-m25', emoji: '🎖️' },\n  { id: 'builder',   name: 'Imhotep', type: 'builder',      model: 'qwen3-coder', emoji: '⚙️' },\n  { id: 'writer',    name: 'Thot',    type: 'writer',       model: 'glm-5',       emoji: '✍️' },\n  { id: 'artist',    name: 'Basquiat',type: 'artist',       model: 'minimax-m25', emoji: '🎨' },\n  { id: 'tutor',     name: 'Piccolo', type: 'tutor',        model: 'minimax-m25', emoji: '📚' },\n  { id: 'explorer',  name: 'R2D2',    type: 'explorer',     model: 'grok-search', emoji: '🔍' },\n  { id: 'marketer',  name: 'Marketer',type: 'marketer',     model: 'minimax-m25', emoji: '📣' },\n  { id: 'cfo',       name: 'CFO',     type: 'finance',      model: 'minimax-m25', emoji: '💰' },\n  { id: 'maintainer',name: 'Maintainer', type: 'devops',   model: 'qwen3-coder', emoji: '🔧' }\n];\n\nreturn OPENCLAW_AGENTS.map(agent => ({ json: agent }));"
+        "method": "POST",
+        "url": "http://kaneo-api:1337/api/auth/sign-in",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"email\": \"{{ $env.KANEO_AGENT_EMAIL }}\", \"password\": \"{{ $env.KANEO_AGENT_PASSWORD }}\" }",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
       },
-      "id": "kas-0001-0000-0000-0000-000000000003",
-      "name": "Build agents list",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "kas-0002-0000-0000-0000-000000000003",
+      "name": "Auth Kaneo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [480, 380]
     },
     {
       "parameters": {
+        "jsCode": "// Extract session cookie from auth response\nconst response = $input.first().json;\nconst headers = response.headers || {};\nconst setCookie = headers['set-cookie'] || [];\n\nlet cookie = '';\nif (Array.isArray(setCookie)) {\n  cookie = setCookie.map(c => c.split(';')[0]).join('; ');\n} else if (typeof setCookie === 'string') {\n  cookie = setCookie.split(';')[0];\n}\n\nif (!cookie) {\n  throw new Error('Kaneo auth failed: no session cookie. Check KANEO_AGENT_EMAIL / KANEO_AGENT_PASSWORD.');\n}\n\nreturn [{ json: { cookie } }];"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000004",
+      "name": "Extract cookie",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 380]
+    },
+    {
+      "parameters": {
         "method": "GET",
-        "url": "=http://kaneo-api:1337/api/tasks",
-        "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            { "name": "tag", "value": "agent" }
-          ]
-        },
+        "url": "http://kaneo-api:1337/api/auth/organization/list",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "=Bearer {{ $env.KANEO_API_KEY }}" },
-            { "name": "Content-Type", "value": "application/json" }
+            { "name": "Cookie", "value": "={{ $json.cookie }}" }
           ]
         },
-        "options": {}
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
       },
-      "id": "kas-0001-0000-0000-0000-000000000004",
-      "name": "Fetch existing Kaneo tasks",
+      "id": "kas-0002-0000-0000-0000-000000000005",
+      "name": "Get org info",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [480, 560]
+      "position": [920, 380],
+      "continueOnFail": true
     },
     {
       "parameters": {
-        "jsCode": "// Merge agents list with existing Kaneo tasks to decide: create vs update\nconst agents = $('Build agents list').all().map(i => i.json);\nconst existingRaw = $('Fetch existing Kaneo tasks').first().json;\nconst existing = Array.isArray(existingRaw) ? existingRaw\n  : (existingRaw.tasks || existingRaw.data || []);\n\n// Build lookup by agent_id in metadata\nconst byAgentId = {};\nfor (const task of existing) {\n  const meta = task.metadata || {};\n  if (meta.agent_id) byAgentId[meta.agent_id] = task;\n}\n\nconst toCreate = [];\nconst toUpdate = [];\n\nfor (const agent of agents) {\n  const existing_task = byAgentId[agent.id];\n  if (!existing_task) {\n    toCreate.push(agent);\n  } else {\n    // Check if model changed\n    const currentModel = (existing_task.metadata || {}).model;\n    if (currentModel !== agent.model) {\n      toUpdate.push({ ...agent, task_id: existing_task.id });\n    }\n  }\n}\n\nreturn [{ json: { toCreate, toUpdate, total: agents.length, skipped: agents.length - toCreate.length - toUpdate.length } }];"
+        "jsCode": "const cookie = $('Extract cookie').first().json.cookie;\nconst orgResp = $input.first().json;\n\n// orgResp can be array or {organizations: [...]}\nconst orgs = Array.isArray(orgResp) ? orgResp : (orgResp.organizations || orgResp.data || []);\nconst org = orgs[0] || {};\nconst orgId = org.id || '';\n\n// Agent list — mirrors kaneo_openclaw_agents in roles/kaneo/defaults/main.yml\n// Update both when adding/removing agents\nconst KANEO_AGENT_DOMAIN = $env.KANEO_AGENT_DOMAIN || '';\nconst KANEO_AGENTS_PASSWORD = $env.KANEO_AGENTS_PASSWORD || '';\n\nconst OPENCLAW_AGENTS = [\n  { id: 'concierge',  name: 'Mobutoo',    role: 'member', emoji: '🎖️', type: 'orchestrator', model: 'minimax-m25'  },\n  { id: 'builder',    name: 'Imhotep',    role: 'member', emoji: '⚙️', type: 'builder',      model: 'qwen3-coder'  },\n  { id: 'writer',     name: 'Thot',       role: 'member', emoji: '✍️', type: 'writer',       model: 'glm-5'        },\n  { id: 'artist',     name: 'Basquiat',   role: 'member', emoji: '🎨', type: 'artist',       model: 'minimax-m25'  },\n  { id: 'tutor',      name: 'Piccolo',    role: 'member', emoji: '📚', type: 'tutor',        model: 'minimax-m25'  },\n  { id: 'explorer',   name: 'R2D2',       role: 'member', emoji: '🔍', type: 'explorer',     model: 'grok-search'  },\n  { id: 'marketer',   name: 'Marketer',   role: 'member', emoji: '📣', type: 'marketer',     model: 'minimax-m25'  },\n  { id: 'cfo',        name: 'CFO',        role: 'member', emoji: '💰', type: 'finance',      model: 'minimax-m25'  },\n  { id: 'maintainer', name: 'Maintainer', role: 'admin',  emoji: '🔧', type: 'devops',       model: 'qwen3-coder'  },\n  { id: 'messenger',  name: 'Hermes',     role: 'member', emoji: '⚡', type: 'messenger',    model: 'deepseek-v3'  }\n];\n\nreturn [{ json: {\n  cookie,\n  orgId,\n  agents: OPENCLAW_AGENTS,\n  domain: KANEO_AGENT_DOMAIN,\n  agentsPassword: KANEO_AGENTS_PASSWORD,\n  errors: []\n}}];"
       },
-      "id": "kas-0001-0000-0000-0000-000000000005",
-      "name": "Diff agents vs tasks",
+      "id": "kas-0002-0000-0000-0000-000000000006",
+      "name": "Build context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [700, 460]
+      "position": [1140, 380]
     },
     {
       "parameters": {
-        "jsCode": "const { toCreate } = $input.first().json;\nif (toCreate.length === 0) return [{ json: { skipped: true } }];\nreturn toCreate.map(agent => ({ json: agent }));"
+        "method": "GET",
+        "url": "http://kaneo-api:1337/api/auth/organization/list-members",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.cookie }}" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
       },
-      "id": "kas-0001-0000-0000-0000-000000000006",
-      "name": "Agents to create",
+      "id": "kas-0002-0000-0000-0000-000000000007",
+      "name": "Get current members",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 380],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// For each agent: sign-in to get their userId (via get-session)\n// Returns array of {agentId, userId, email, error}\nconst ctx = $('Build context').first().json;\nconst { agents, domain, agentsPassword } = ctx;\nconst results = [];\n\nif (!agentsPassword || !domain) {\n  return [{ json: { ...ctx, agentUserIds: [], errors: ['KANEO_AGENTS_PASSWORD or KANEO_AGENT_DOMAIN not set'] } }];\n}\n\n// Note: n8n Code node is synchronous — HTTP calls done inline via $http (n8n built-in)\n// We return the agent list for the next looping node to process\nreturn agents.map(agent => ({\n  json: {\n    agent,\n    cookie: ctx.cookie,\n    orgId: ctx.orgId,\n    domain,\n    agentsPassword,\n    allAgents: agents,\n    errors: ctx.errors || []\n  }\n}));"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000008",
+      "name": "Prepare agent loop",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [920, 340]
+      "position": [1580, 380]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "http://kaneo-api:1337/api/tasks",
+        "url": "=http://kaneo-api:1337/api/auth/sign-in",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "=Bearer {{ $env.KANEO_API_KEY }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
-        "bodyParameters": {
+        "specifyBody": "json",
+        "jsonBody": "={ \"email\": \"agent-{{ $json.agent.id }}@{{ $json.domain }}\", \"password\": \"{{ $json.agentsPassword }}\" }",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "kas-0002-0000-0000-0000-000000000009",
+      "name": "Sign-in each agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1800, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if account exists (200 = exists, otherwise needs sign-up)\nconst resp = $input.first().json;\nconst prev = $('Prepare agent loop').all()[{{ $runIndex }}]?.json || $('Prepare agent loop').first().json;\nconst agent = prev.agent;\nconst statusCode = resp.statusCode || (resp.headers ? 200 : 401);\n\nconst headers = resp.headers || {};\nconst setCookie = headers['set-cookie'] || [];\nlet agentCookie = '';\nif (Array.isArray(setCookie)) {\n  agentCookie = setCookie.map(c => c.split(';')[0]).join('; ');\n} else if (typeof setCookie === 'string') {\n  agentCookie = setCookie.split(';')[0];\n}\n\nreturn [{ json: {\n  agent,\n  agentCookie,\n  accountExists: statusCode === 200 && agentCookie.length > 0,\n  cookie: prev.cookie,\n  orgId: prev.orgId,\n  domain: prev.domain,\n  agentsPassword: prev.agentsPassword,\n  allAgents: prev.allAgents,\n  errors: prev.errors || []\n}}];"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000010",
+      "name": "Check account status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2020, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-account-exists",
+              "leftValue": "={{ $json.accountExists }}",
+              "rightValue": false,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "kas-0002-0000-0000-0000-000000000011",
+      "name": "Needs sign-up?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://kaneo-api:1337/api/auth/sign-up",
+        "sendHeaders": true,
+        "headerParameters": {
           "parameters": [
-            { "name": "title", "value": "=🤖 Agent {{ $json.emoji }} {{ $json.name }} ({{ $json.id }})" },
-            { "name": "description", "value": "=Agent OpenClaw de type {{ $json.type }}. Modèle : {{ $json.model }}" },
-            { "name": "status", "value": "in-progress" },
-            { "name": "priority", "value": "medium" },
-            { "name": "tags", "value": "=[\"agent\", \"ai\", \"{{ $json.type }}\"]" },
-            { "name": "metadata", "value": "={ \"agent_id\": \"{{ $json.id }}\", \"model\": \"{{ $json.model }}\", \"type\": \"{{ $json.type }}\", \"synced_at\": \"{{ $now }}\" }" }
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"email\": \"agent-{{ $json.agent.id }}@{{ $json.domain }}\",\n  \"password\": \"{{ $json.agentsPassword }}\",\n  \"name\": \"{{ $json.agent.name }}\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "kas-0002-0000-0000-0000-000000000012",
+      "name": "Sign-up agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2460, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract cookie from sign-up or pass through from sign-in\nlet agentCookie = '';\nlet prev;\n\ntry {\n  const signupResp = $input.first().json;\n  prev = $('Check account status').last().json;\n  const headers = signupResp.headers || {};\n  const setCookie = headers['set-cookie'] || [];\n  if (Array.isArray(setCookie)) {\n    agentCookie = setCookie.map(c => c.split(';')[0]).join('; ');\n  } else if (typeof setCookie === 'string') {\n    agentCookie = setCookie.split(';')[0];\n  }\n} catch(e) {\n  prev = $('Check account status').last().json;\n  agentCookie = prev.agentCookie || '';\n}\n\nreturn [{ json: {\n  agent: prev.agent,\n  agentCookie,\n  cookie: prev.cookie,\n  orgId: prev.orgId,\n  domain: prev.domain,\n  agentsPassword: prev.agentsPassword,\n  allAgents: prev.allAgents,\n  errors: prev.errors || []\n}}];"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000013",
+      "name": "Resolve agent cookie",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2680, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://kaneo-api:1337/api/auth/get-session",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.agentCookie }}" }
           ]
         },
         "options": {}
       },
-      "id": "kas-0001-0000-0000-0000-000000000007",
-      "name": "Create agent tasks",
+      "id": "kas-0002-0000-0000-0000-000000000014",
+      "name": "Get agent session",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1140, 260]
+      "position": [2900, 300],
+      "continueOnFail": true
     },
     {
       "parameters": {
-        "jsCode": "const { toUpdate } = $('Diff agents vs tasks').first().json;\nif (toUpdate.length === 0) return [{ json: { skipped: true } }];\nreturn toUpdate.map(agent => ({ json: agent }));"
+        "jsCode": "const sessionResp = $input.first().json;\nconst prev = $('Resolve agent cookie').last().json;\nconst userId = (sessionResp.user || {}).id || '';\n\nconst errors = [...(prev.errors || [])];\nif (!userId) {\n  errors.push(`${prev.agent.id}: get-session failed — userId not found`);\n}\n\nreturn [{ json: {\n  agent: prev.agent,\n  userId,\n  cookie: prev.cookie,\n  orgId: prev.orgId,\n  domain: prev.domain,\n  agentsPassword: prev.agentsPassword,\n  allAgents: prev.allAgents,\n  errors\n}}];"
       },
-      "id": "kas-0001-0000-0000-0000-000000000008",
+      "id": "kas-0002-0000-0000-0000-000000000015",
+      "name": "Extract userId",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3120, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://kaneo-api:1337/api/auth/organization/add-member",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.cookie }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"organizationId\": \"{{ $json.orgId }}\",\n  \"userId\": \"{{ $json.userId }}\",\n  \"role\": \"{{ $json.agent.role }}\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "kas-0002-0000-0000-0000-000000000016",
+      "name": "Add agent to workspace",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3340, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect all agent userId mappings from the loop runs\n// Each run of the loop produced one item in Extract userId\nconst allItems = $('Extract userId').all();\nconst userIdMap = {};\nconst allErrors = [];\n\nfor (const item of allItems) {\n  const { agent, userId, errors } = item.json;\n  if (userId) userIdMap[agent.id] = userId;\n  if (errors && errors.length > 0) allErrors.push(...errors);\n}\n\n// Pass context from first item\nconst ctx = $('Build context').first().json;\n\nreturn [{ json: {\n  cookie: ctx.cookie,\n  orgId: ctx.orgId,\n  agents: ctx.agents,\n  domain: ctx.domain,\n  userIdMap,\n  errors: allErrors\n}}];"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000017",
+      "name": "Collect userIds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3560, 380]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://kaneo-api:1337/api/auth/organization/list-members",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.cookie }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "kas-0002-0000-0000-0000-000000000018",
+      "name": "Get updated members",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3780, 380],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://kaneo-api:1337/api/project",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $('Collect userIds').first().json.cookie }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "kas-0002-0000-0000-0000-000000000019",
+      "name": "Get all projects",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4000, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "const projects = $input.first().json;\nconst ctx = $('Collect userIds').first().json;\n\nconst projectsArr = Array.isArray(projects) ? projects : (projects.projects || projects.data || []);\nconst agentsProject = projectsArr.find(p =>\n  (p.name || '').toLowerCase().includes('openclaw agents')\n);\n\nreturn [{ json: {\n  ...ctx,\n  project_id: agentsProject ? agentsProject.id : null,\n  project_exists: !!agentsProject\n}}];"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000020",
+      "name": "Find agents project",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4220, 380]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-project-exists",
+              "leftValue": "={{ $json.project_exists }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "kas-0002-0000-0000-0000-000000000021",
+      "name": "Project exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [4440, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://kaneo-api:1337/api/project",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.cookie }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"name\": \"OpenClaw Agents\", \"description\": \"Catalogue et registre des agents OpenClaw actifs\", \"icon\": \"🤖\" }",
+        "options": {}
+      },
+      "id": "kas-0002-0000-0000-0000-000000000022",
+      "name": "Create agents project",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4660, 480]
+    },
+    {
+      "parameters": {
+        "jsCode": "let project_id, ctx;\ntry {\n  const created = $('Create agents project').first().json;\n  project_id = created.id || created.data?.id;\n  ctx = $('Find agents project').first().json;\n} catch(e) {\n  ctx = $('Find agents project').first().json;\n  project_id = ctx.project_id;\n}\nif (!project_id) throw new Error('Could not resolve agents project_id');\nreturn [{ json: { ...ctx, project_id } }];"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000023",
+      "name": "Resolve project_id",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4880, 380]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://kaneo-api:1337/api/task/tasks/{{ $json.project_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.cookie }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "kas-0002-0000-0000-0000-000000000024",
+      "name": "Get existing tasks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [5100, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "const tasksResp = $input.first().json;\nconst ctx = $('Resolve project_id').first().json;\n\nconst existing = Array.isArray(tasksResp) ? tasksResp : (tasksResp.tasks || tasksResp.data || []);\n\n// Build lookup by agent_id embedded in description prefix '[agent:<id>]'\nconst byAgentId = {};\nfor (const task of existing) {\n  const match = (task.description || '').match(/\\[agent:([^\\]]+)\\]/);\n  if (match) byAgentId[match[1]] = task;\n}\n\n// Find REGISTRY task\nconst registryTask = existing.find(t => (t.title || '').includes('REGISTRY'));\n\nconst toCreate = [];\nconst toUpdate = [];\nconst toArchive = [];\n\nconst agentIds = ctx.agents.map(a => a.id);\n\n// Tasks for current agents\nfor (const agent of ctx.agents) {\n  const existingTask = byAgentId[agent.id];\n  if (!existingTask) {\n    toCreate.push(agent);\n  } else {\n    // Always update assignee (userId may have changed)\n    toUpdate.push({ ...agent, task_id: existingTask.id });\n  }\n}\n\n// Tasks for deprecated agents (in Kaneo but not in desired list)\nfor (const task of existing) {\n  const match = (task.description || '').match(/\\[agent:([^\\]]+)\\]/);\n  if (match && !agentIds.includes(match[1])) {\n    toArchive.push({ task_id: task.id, agent_id: match[1] });\n  }\n}\n\nreturn [{ json: {\n  ...ctx,\n  toCreate,\n  toUpdate,\n  toArchive,\n  registryTaskId: registryTask ? registryTask.id : null,\n  existingCount: existing.length\n}}];"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000025",
+      "name": "Diff agents vs tasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5320, 380]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://kaneo-api:1337/api/column/{{ $json.project_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.cookie }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "kas-0002-0000-0000-0000-000000000026",
+      "name": "Get columns",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [5540, 260]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create tasks for new agents and assign them to their userId\nconst cols = $input.first().json;\nconst ctx = $('Diff agents vs tasks').first().json;\nconst colsArr = Array.isArray(cols) ? cols : (cols.columns || cols.data || []);\nconst column_id = (colsArr[0] || {}).id || null;\n\nif (ctx.toCreate.length === 0) return [{ json: { skipped: true, ...ctx, column_id } }];\nreturn ctx.toCreate.map(agent => ({ json: { ...ctx, agent, column_id } }));"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000027",
+      "name": "Agents to create",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5760, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://kaneo-api:1337/api/task/{{ $json.project_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.cookie }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"{{ $json.agent.emoji }} {{ $json.agent.name }} ({{ $json.agent.id }})\",\n  \"description\": \"[agent:{{ $json.agent.id }}] Type: {{ $json.agent.type }}. Modele: {{ $json.agent.model }}\",\n  \"columnId\": \"{{ $json.column_id }}\"\n}",
+        "options": {}
+      },
+      "id": "kas-0002-0000-0000-0000-000000000028",
+      "name": "Create agent task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [5980, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://kaneo-api:1337/api/label",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $('Agents to create').last().json.cookie }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"taskId\": \"{{ $json.id || $json.data.id }}\",\n  \"name\": \"agent:{{ $('Agents to create').last().json.agent.id }}\",\n  \"color\": \"#6366f1\"\n}",
+        "options": {},
+        "continueOnFail": true
+      },
+      "id": "kas-0002-0000-0000-0000-000000000029",
+      "name": "Add agent label",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [6200, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=http://kaneo-api:1337/api/task/assignee/{{ $('Create agent task').last().json.id || $('Create agent task').last().json.data.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $('Agents to create').last().json.cookie }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"userId\": \"{{ $('Collect userIds').first().json.userIdMap[$('Agents to create').last().json.agent.id] || '' }}\"\n}",
+        "options": {},
+        "continueOnFail": true
+      },
+      "id": "kas-0002-0000-0000-0000-000000000030",
+      "name": "Assign new task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [6420, 200],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update assignee for existing tasks (userId may have changed)\nconst ctx = $('Diff agents vs tasks').first().json;\nif (ctx.toUpdate.length === 0) return [{ json: { skipped: true } }];\nreturn ctx.toUpdate.map(agent => ({ json: { ...ctx, agent } }));"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000031",
       "name": "Agents to update",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [920, 540]
+      "position": [5760, 400]
     },
     {
       "parameters": {
-        "method": "PATCH",
-        "url": "=http://kaneo-api:1337/api/tasks/{{ $json.task_id }}",
+        "method": "PUT",
+        "url": "=http://kaneo-api:1337/api/task/assignee/{{ $json.agent.task_id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "=Bearer {{ $env.KANEO_API_KEY }}" },
+            { "name": "Cookie", "value": "={{ $json.cookie }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
-        "bodyParameters": {
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"userId\": \"{{ $('Collect userIds').first().json.userIdMap[$json.agent.id] || '' }}\"\n}",
+        "options": {},
+        "continueOnFail": true
+      },
+      "id": "kas-0002-0000-0000-0000-000000000032",
+      "name": "Update task assignee",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [5980, 400],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Archive tasks of deprecated agents (move to Done column)\nconst ctx = $('Diff agents vs tasks').first().json;\nif (ctx.toArchive.length === 0) return [{ json: { skipped: true } }];\nreturn ctx.toArchive.map(item => ({ json: { ...ctx, ...item } }));"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000033",
+      "name": "Tasks to archive",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5760, 560]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://kaneo-api:1337/api/column/{{ $json.project_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
           "parameters": [
-            { "name": "metadata", "value": "={ \"agent_id\": \"{{ $json.id }}\", \"model\": \"{{ $json.model }}\", \"type\": \"{{ $json.type }}\", \"synced_at\": \"{{ $now }}\" }" }
+            { "name": "Cookie", "value": "={{ $json.cookie }}" }
           ]
         },
         "options": {}
       },
-      "id": "kas-0001-0000-0000-0000-000000000009",
-      "name": "Update agent tasks",
+      "id": "kas-0002-0000-0000-0000-000000000034",
+      "name": "Get columns for archive",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1140, 540]
+      "position": [5980, 560],
+      "continueOnFail": true
     },
     {
       "parameters": {
-        "jsCode": "const diff = $('Diff agents vs tasks').first().json;\nconst created = diff.toCreate.length;\nconst updated = diff.toUpdate.length;\nconst skipped = diff.skipped;\nconst total = diff.total;\n\nconst msg = [\n  `✅ Kaneo Agents Sync terminé`,\n  ``,\n  `📊 Total agents : ${total}`,\n  `➕ Créés : ${created}`,\n  `📝 Mis à jour : ${updated}`,\n  `⏭ Inchangés : ${skipped}`\n].join('\\n');\n\nreturn [{ json: { message: msg, created, updated, skipped, total } }];"
+        "jsCode": "const cols = $input.first().json;\nconst archiveItem = $('Tasks to archive').last().json;\nconst colsArr = Array.isArray(cols) ? cols : (cols.columns || cols.data || []);\n// Find 'Done' column or last column\nconst doneCol = colsArr.find(c => (c.name || '').toLowerCase() === 'done') || colsArr[colsArr.length - 1] || {};\nreturn [{ json: { ...archiveItem, done_column_id: doneCol.id || null } }];"
       },
-      "id": "kas-0001-0000-0000-0000-000000000010",
+      "id": "kas-0002-0000-0000-0000-000000000035",
+      "name": "Resolve done column",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [6200, 560]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=http://kaneo-api:1337/api/task/status/{{ $json.task_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.cookie }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"columnId\": \"{{ $json.done_column_id }}\" }",
+        "options": {},
+        "continueOnFail": true
+      },
+      "id": "kas-0002-0000-0000-0000-000000000036",
+      "name": "Archive deprecated task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [6420, 560],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build REGISTRY JSON and find/create the REGISTRY task\nconst ctx = $('Diff agents vs tasks').first().json;\nconst { userIdMap, cookie, project_id, registryTaskId } = { ...ctx, ...($('Collect userIds').first().json) };\n\nconst registryJson = JSON.stringify(userIdMap);\nconst registryTitle = '⚙️ REGISTRY — userId mappings';\nconst registryDesc = `[registry] ${registryJson}`;\n\nreturn [{ json: {\n  cookie,\n  project_id,\n  registryTaskId,\n  registryTitle,\n  registryDesc,\n  userIdMap,\n  errors: ctx.errors || []\n}}];"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000037",
+      "name": "Build REGISTRY",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [6640, 380]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-registry-exists",
+              "leftValue": "={{ $json.registryTaskId }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "kas-0002-0000-0000-0000-000000000038",
+      "name": "REGISTRY task exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [6860, 380]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=http://kaneo-api:1337/api/task/description/{{ $json.registryTaskId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.cookie }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"description\": \"{{ $json.registryDesc }}\" }",
+        "options": {},
+        "continueOnFail": true
+      },
+      "id": "kas-0002-0000-0000-0000-000000000039",
+      "name": "Update REGISTRY task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [7080, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=http://kaneo-api:1337/api/column/{{ $json.project_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.cookie }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "kas-0002-0000-0000-0000-000000000040",
+      "name": "Get cols for registry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [7080, 480],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://kaneo-api:1337/api/task/{{ $('Build REGISTRY').first().json.project_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $('Build REGISTRY').first().json.cookie }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"{{ $('Build REGISTRY').first().json.registryTitle }}\",\n  \"description\": \"{{ $('Build REGISTRY').first().json.registryDesc }}\",\n  \"columnId\": \"{{ ($input.first().json.columns || $input.first().json)[0].id || '' }}\"\n}",
+        "options": {},
+        "continueOnFail": true
+      },
+      "id": "kas-0002-0000-0000-0000-000000000041",
+      "name": "Create REGISTRY task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [7300, 480],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const diffCtx = $('Diff agents vs tasks').first().json;\nconst collectCtx = $('Collect userIds').first().json;\n\nconst created = diffCtx.toCreate.length;\nconst updated = diffCtx.toUpdate.length;\nconst archived = diffCtx.toArchive.length;\nconst skipped = diffCtx.agents.length - created - updated;\nconst errors = collectCtx.errors || [];\n\nconst userIdsCount = Object.keys(collectCtx.userIdMap || {}).length;\n\nlet msg;\nif (errors.length > 0) {\n  msg = [\n    '⚠️ Kaneo Agents Sync — Erreurs',\n    '',\n    `📊 Agents: ${diffCtx.agents.length} total`,\n    `➕ Créés: ${created}`,\n    `🔄 Mis à jour: ${updated}`,\n    `📦 Archivés (deprecated): ${archived}`,\n    `🆔 UserId résolus: ${userIdsCount}/${diffCtx.agents.length}`,\n    '',\n    `❌ Erreurs (${errors.length}):`,\n    ...errors.map(e => `  • ${e}`)\n  ].join('\\n');\n} else if (created + updated + archived > 0) {\n  msg = [\n    '✅ Kaneo Agents Sync',\n    '',\n    `➕ Créés: ${created}`,\n    `🔄 Assignés (userId): ${updated}`,\n    `📦 Archivés: ${archived}`,\n    `⏭ Inchangés: ${skipped}`,\n    `🆔 Registry: ${userIdsCount} userId mappés`\n  ].join('\\n');\n} else {\n  msg = null; // No changes, no notification\n}\n\nreturn [{ json: {\n  message: msg,\n  created, updated, archived, skipped,\n  errors: errors.length,\n  hasChanges: created + updated + archived > 0 || errors.length > 0\n}}];"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000042",
       "name": "Build rapport",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 400]
+      "position": [7520, 380]
     },
     {
       "parameters": {
@@ -168,20 +751,20 @@
           "conditions": [
             {
               "id": "cond-notify",
-              "leftValue": "={{ $json.created + $json.updated }}",
-              "rightValue": 0,
-              "operator": { "type": "number", "operation": "gt" }
+              "leftValue": "={{ $json.hasChanges }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
             }
           ],
           "combinator": "and"
         },
         "options": {}
       },
-      "id": "kas-0001-0000-0000-0000-000000000011",
-      "name": "Changements?",
+      "id": "kas-0002-0000-0000-0000-000000000043",
+      "name": "Should notify?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1560, 400]
+      "position": [7740, 380]
     },
     {
       "parameters": {
@@ -195,49 +778,92 @@
             { "name": "parse_mode", "value": "HTML" }
           ]
         },
-        "options": {}
+        "options": {},
+        "continueOnFail": true
       },
-      "id": "kas-0001-0000-0000-0000-000000000012",
+      "id": "kas-0002-0000-0000-0000-000000000044",
       "name": "Telegram notify",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1760, 300]
+      "position": [7960, 300]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', created: $('Build rapport').first().json.created, updated: $('Build rapport').first().json.updated } }}"
+        "responseBody": "={{ { status: 'ok', created: $('Build rapport').first().json.created, updated: $('Build rapport').first().json.updated, archived: $('Build rapport').first().json.archived, errors: $('Build rapport').first().json.errors } }}"
       },
-      "id": "kas-0001-0000-0000-0000-000000000013",
+      "id": "kas-0002-0000-0000-0000-000000000045",
       "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1760, 500]
+      "position": [7960, 460]
     }
   ],
   "connections": {
-    "Cron Daily 6h": { "main": [[{ "node": "Build agents list", "type": "main", "index": 0 }]] },
-    "Webhook Trigger": { "main": [[{ "node": "Build agents list", "type": "main", "index": 0 }]] },
-    "Build agents list": {
-      "main": [[
-        { "node": "Fetch existing Kaneo tasks", "type": "main", "index": 0 }
-      ]]
+    "Cron Daily 6h": { "main": [[{ "node": "Auth Kaneo", "type": "main", "index": 0 }]] },
+    "Webhook Trigger": { "main": [[{ "node": "Auth Kaneo", "type": "main", "index": 0 }]] },
+    "Auth Kaneo": { "main": [[{ "node": "Extract cookie", "type": "main", "index": 0 }]] },
+    "Extract cookie": { "main": [[{ "node": "Get org info", "type": "main", "index": 0 }]] },
+    "Get org info": { "main": [[{ "node": "Build context", "type": "main", "index": 0 }]] },
+    "Build context": { "main": [[{ "node": "Get current members", "type": "main", "index": 0 }]] },
+    "Get current members": { "main": [[{ "node": "Prepare agent loop", "type": "main", "index": 0 }]] },
+    "Prepare agent loop": { "main": [[{ "node": "Sign-in each agent", "type": "main", "index": 0 }]] },
+    "Sign-in each agent": { "main": [[{ "node": "Check account status", "type": "main", "index": 0 }]] },
+    "Check account status": { "main": [[{ "node": "Needs sign-up?", "type": "main", "index": 0 }]] },
+    "Needs sign-up?": {
+      "main": [
+        [{ "node": "Sign-up agent", "type": "main", "index": 0 }],
+        [{ "node": "Resolve agent cookie", "type": "main", "index": 0 }]
+      ]
     },
-    "Fetch existing Kaneo tasks": {
-      "main": [[{ "node": "Diff agents vs tasks", "type": "main", "index": 0 }]]
+    "Sign-up agent": { "main": [[{ "node": "Resolve agent cookie", "type": "main", "index": 0 }]] },
+    "Resolve agent cookie": { "main": [[{ "node": "Get agent session", "type": "main", "index": 0 }]] },
+    "Get agent session": { "main": [[{ "node": "Extract userId", "type": "main", "index": 0 }]] },
+    "Extract userId": { "main": [[{ "node": "Add agent to workspace", "type": "main", "index": 0 }]] },
+    "Add agent to workspace": { "main": [[{ "node": "Collect userIds", "type": "main", "index": 0 }]] },
+    "Collect userIds": { "main": [[{ "node": "Get updated members", "type": "main", "index": 0 }]] },
+    "Get updated members": { "main": [[{ "node": "Get all projects", "type": "main", "index": 0 }]] },
+    "Get all projects": { "main": [[{ "node": "Find agents project", "type": "main", "index": 0 }]] },
+    "Find agents project": { "main": [[{ "node": "Project exists?", "type": "main", "index": 0 }]] },
+    "Project exists?": {
+      "main": [
+        [{ "node": "Resolve project_id", "type": "main", "index": 0 }],
+        [{ "node": "Create agents project", "type": "main", "index": 0 }]
+      ]
     },
+    "Create agents project": { "main": [[{ "node": "Resolve project_id", "type": "main", "index": 0 }]] },
+    "Resolve project_id": { "main": [[{ "node": "Get existing tasks", "type": "main", "index": 0 }]] },
+    "Get existing tasks": { "main": [[{ "node": "Diff agents vs tasks", "type": "main", "index": 0 }]] },
     "Diff agents vs tasks": {
       "main": [[
-        { "node": "Agents to create", "type": "main", "index": 0 },
-        { "node": "Agents to update", "type": "main", "index": 0 }
+        { "node": "Get columns", "type": "main", "index": 0 },
+        { "node": "Agents to update", "type": "main", "index": 0 },
+        { "node": "Tasks to archive", "type": "main", "index": 0 }
       ]]
     },
-    "Agents to create": { "main": [[{ "node": "Create agent tasks", "type": "main", "index": 0 }]] },
-    "Agents to update": { "main": [[{ "node": "Update agent tasks", "type": "main", "index": 0 }]] },
-    "Create agent tasks": { "main": [[{ "node": "Build rapport", "type": "main", "index": 0 }]] },
-    "Update agent tasks": { "main": [[{ "node": "Build rapport", "type": "main", "index": 0 }]] },
-    "Build rapport": { "main": [[{ "node": "Changements?", "type": "main", "index": 0 }]] },
-    "Changements?": {
+    "Get columns": { "main": [[{ "node": "Agents to create", "type": "main", "index": 0 }]] },
+    "Agents to create": { "main": [[{ "node": "Create agent task", "type": "main", "index": 0 }]] },
+    "Create agent task": { "main": [[{ "node": "Add agent label", "type": "main", "index": 0 }]] },
+    "Add agent label": { "main": [[{ "node": "Assign new task", "type": "main", "index": 0 }]] },
+    "Assign new task": { "main": [[{ "node": "Build REGISTRY", "type": "main", "index": 0 }]] },
+    "Agents to update": { "main": [[{ "node": "Update task assignee", "type": "main", "index": 0 }]] },
+    "Update task assignee": { "main": [[{ "node": "Build REGISTRY", "type": "main", "index": 0 }]] },
+    "Tasks to archive": { "main": [[{ "node": "Get columns for archive", "type": "main", "index": 0 }]] },
+    "Get columns for archive": { "main": [[{ "node": "Resolve done column", "type": "main", "index": 0 }]] },
+    "Resolve done column": { "main": [[{ "node": "Archive deprecated task", "type": "main", "index": 0 }]] },
+    "Archive deprecated task": { "main": [[{ "node": "Build REGISTRY", "type": "main", "index": 0 }]] },
+    "Build REGISTRY": { "main": [[{ "node": "REGISTRY task exists?", "type": "main", "index": 0 }]] },
+    "REGISTRY task exists?": {
+      "main": [
+        [{ "node": "Update REGISTRY task", "type": "main", "index": 0 }],
+        [{ "node": "Get cols for registry", "type": "main", "index": 0 }]
+      ]
+    },
+    "Update REGISTRY task": { "main": [[{ "node": "Build rapport", "type": "main", "index": 0 }]] },
+    "Get cols for registry": { "main": [[{ "node": "Create REGISTRY task", "type": "main", "index": 0 }]] },
+    "Create REGISTRY task": { "main": [[{ "node": "Build rapport", "type": "main", "index": 0 }]] },
+    "Build rapport": { "main": [[{ "node": "Should notify?", "type": "main", "index": 0 }]] },
+    "Should notify?": {
       "main": [
         [{ "node": "Telegram notify", "type": "main", "index": 0 }],
         [{ "node": "Webhook Response", "type": "main", "index": 0 }]
@@ -254,8 +880,8 @@
     "errorWorkflow": ""
   },
   "staticData": null,
-  "tags": [{ "name": "kaneo" }, { "name": "sync" }, { "name": "agents" }],
+  "tags": [{ "name": "kaneo" }, { "name": "sync" }, { "name": "agents" }, { "name": "membership" }],
   "triggerCount": 2,
-  "updatedAt": "2026-02-22T00:00:00.000Z",
-  "versionId": "1"
+  "updatedAt": "2026-02-23T00:00:00.000Z",
+  "versionId": "3"
 }

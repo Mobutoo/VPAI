@@ -1,0 +1,258 @@
+---
+name: project-management
+description: Full project lifecycle in Kaneo via Messenger agent. Create projects, assign tasks, track time, attach deliverables. Used by Concierge and all sub-agents.
+metadata: { "openclaw": { "emoji": "📊", "always": true } }
+---
+
+# Skill: Gestion de Projet Kaneo
+
+Pilotage complet du cycle de vie des projets dans Kaneo via le Messenger (Hermes).
+Ce skill est charge par le concierge ET tous les sous-agents.
+
+---
+
+## 1. Protocole Messenger
+
+**Le Messenger** (`{{ openclaw_agent_messenger_name }}`) est l'interface unique avec l'API Kaneo.
+Tout appel Kaneo passe par lui via `sessions_spawn`.
+
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "<instructions structurees>")
+```
+
+Le Messenger :
+- Gere l'auth BetterAuth (cookie en cache Redis)
+- Execute les appels curl vers `http://kaneo-api:{{ kaneo_api_port | default(1337) }}/api/*`
+- Retourne le JSON brut + l'ID de l'entite creee
+
+---
+
+## 2. Creer un projet complet
+
+Sequence complete a executer dans cet ordre :
+
+```
+1. sessions_spawn({{ openclaw_agent_messenger_name }}, "create_project name=<nom> description=<desc>")
+   -> Retourne: project_id
+
+2. sessions_spawn({{ openclaw_agent_messenger_name }}, "create_columns projectId=<id>")
+   -> Cree 4 colonnes: Backlog, In Progress, Review, Done
+   -> Retourne: backlog_column_id, inprogress_column_id, review_column_id, done_column_id
+
+3. Pour chaque tache:
+   sessions_spawn({{ openclaw_agent_messenger_name }}, "create_task projectId=<id> columnId=<backlog_id> title=<titre> description=<desc>")
+   -> Retourne: task_id
+
+4. Pour chaque tache, ajouter les labels:
+   sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<id> name=agent:<agentId> color=#6366f1")
+   sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<id> name=type:code color=#22c55e")
+
+5. Assigner nativement a l'agent (userId Kaneo) :
+   sessions_spawn({{ openclaw_agent_messenger_name }}, "assign_task taskId=<id> agentId=<agentId>")
+   -> Enregistre le userId natif -> visible dans "My tasks" de l'UI Kaneo
+
+6. Deadlines (si connues):
+   sessions_spawn({{ openclaw_agent_messenger_name }}, "set_due_date taskId=<id> dueDate=<ISO8601>")
+
+7. Priorites:
+   sessions_spawn({{ openclaw_agent_messenger_name }}, "set_priority taskId=<id> priority=high")
+
+8. Optionnel — Lier repo GitHub au projet:
+   sessions_spawn({{ openclaw_agent_messenger_name }}, "create_github_integration projectId=<id> repo=<owner/repo>")
+```
+
+---
+
+## 3. Gerer les taches en cours
+
+### Timer (suivi du temps)
+```
+# Demarrer:
+sessions_spawn({{ openclaw_agent_messenger_name }}, "start_timer taskId=<id>")
+-> Retourne: time_entry_id (a conserver pour l'arreter)
+
+# Arreter:
+sessions_spawn({{ openclaw_agent_messenger_name }}, "stop_timer timeEntryId=<id>")
+```
+
+### Commentaires (progres en cours de route)
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<id> text=<description du progres>")
+```
+
+### Livrables (attacher une PR, un fichier, un doc)
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_link taskId=<id> url=<url> title=<titre>")
+```
+
+Exemples de livrables :
+- PR GitHub : `url=https://github.com/Mobutoo/vpai/pull/42 title=PR #42 — fix caddy ACL`
+- Fichier workspace : `url=/workspace/output/rapport.md title=Rapport analyse`
+- Doc externe : `url=https://... title=Reference technique`
+
+### Statuts
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<id> status=in-progress")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<id> status=done")
+```
+
+### Lire l'etat d'un projet
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "get_tasks projectId=<id>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "get_project projectId=<id>")
+```
+
+---
+
+## 4. Conventions labels
+
+| Label | Couleur | Signification |
+|-------|---------|---------------|
+| `agent:builder` | `#6366f1` | Tache assignee a Imhotep |
+| `agent:writer` | `#6366f1` | Tache assignee a Thot |
+| `agent:explorer` | `#6366f1` | Tache assignee a R2D2 |
+| `agent:artist` | `#6366f1` | Tache assignee a Basquiat |
+| `agent:maintainer` | `#6366f1` | Tache assignee au Maintainer |
+| `type:code` | `#22c55e` | Livrable code / infrastructure |
+| `type:content` | `#3b82f6` | Livrable texte / documentation |
+| `type:research` | `#f59e0b` | Livrable recherche / analyse |
+| `type:visual` | `#ec4899` | Livrable visuel / image / video |
+| `type:ops` | `#8b5cf6` | Livrable operations / monitoring |
+| `correction` | `#ef4444` | Tache de correction issue d'une review |
+| `blocked` | `#78716c` | Tache bloquee par une dependance |
+
+> **Double tracking** : le label `agent:<id>` reste toujours present pour le filtrage Kanban.
+> `assign_task` ajoute EN PLUS l'assignee natif Kaneo (userId) pour la vue "My tasks" de l'UI.
+> Les deux mecanismes sont complementaires — ne pas retirer les labels quand on assigne nativement.
+
+---
+
+## 5. Protocole Demande Longue (pour le Concierge)
+
+Declenche quand une demande necessite > 30 minutes, plusieurs agents, ou plusieurs etapes.
+
+### Etape 1 — Detection
+Criteres : "implemente", "developpe", "cree un systeme", "refactorise", "migre", "integre".
+Pas un simple toggle ou une correction de ligne.
+
+### Etape 2 — Reformulation strategique
+Identifier l'objectif reel, les contraintes, les dependances, les risques.
+Decomposer en taches atomiques avec un agent responsable par tache.
+
+### Etape 3 — Creation du projet Kaneo
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "create_project ...")
+```
+Creer les colonnes, toutes les taches, les labels, les deadlines.
+Assigner chaque tache nativement : `assign_task taskId=<id> agentId=<agentId>`
+
+### Etape 4 — Dispatch
+Pour chaque tache :
+```
+sessions_spawn(<agentId>, "
+  Tache Kaneo : task_id=<id>, project_id=<id>
+  Titre : <titre>
+  Objectif : <description precise>
+  Contraintes : <contraintes VPAI, securite, etc.>
+  Contexte : <ce que l'agent doit savoir>
+  Livrables attendus : <PR, fichier, rapport, etc.>
+")
+```
+
+### Etape 5 — Suivi des rapports
+A chaque announce d'un sous-agent :
+- Verifier le livrable (external-link present ?)
+- Si code -> sessions_spawn({{ openclaw_agent_builder_name }}, "review") -> delegate-n8n
+- Si erreur -> sessions_spawn({{ openclaw_agent_maintainer_name }}, "error-to-task")
+- Mettre a jour statut via Messenger
+- Notifier Telegram si etape cle
+
+### Etape 6 — Cloture
+Quand toutes taches done :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment projectId=<id> text=Projet termine. Recap : ...")
+```
+Notification Telegram avec le recap complet.
+
+### Limite
+Max 3 projets actifs simultanes. Si > 3, le plus ancien non-urgent passe en attente.
+
+---
+
+## 6. Protocole Sous-Agent (pour Builder, Writer, Explorer, Artist, Maintainer)
+
+Quand tu recois une tache avec `task_id` et `project_id` :
+
+**AU DEBUT** (obligatoire) :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "start_timer taskId=<task_id>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "assign_task taskId=<task_id> agentId=<ton_agent_id>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<task_id> status=in-progress")
+```
+
+> `assign_task` enregistre ton userId natif Kaneo sur la tache -> visible dans "My tasks" de l'UI.
+> Le label `agent:<id>` reste present pour le filtrage Kanban.
+
+**PENDANT** (toutes les 15-20 minutes de travail effectif) :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<task_id> text=<description du progres en cours>")
+```
+
+**A LA FIN** (obligatoire) :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "stop_timer timeEntryId=<id>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_link taskId=<task_id> url=<url_livrable> title=<titre>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<task_id> status=done")
+```
+
+Puis rapporter au Concierge (announce) : "Tache <task_id> terminee. Livrable : <url>. [Review necessaire si code]"
+
+---
+
+## 7. Delegation n8n (outils d'execution)
+
+Les sous-agents utilisent `delegate-n8n` pour des operations specifiques :
+
+### Code review (Builder uniquement)
+```
+delegate-n8n endpoint=/webhook/code-review payload={
+  "task_id": "<id>",
+  "project_id": "<id>",
+  "repo_url": "<url>",
+  "branch": "<branch>"
+}
+```
+Le workflow SSH vers le RPi, execute la review LiteLLM, logue le resultat en commentaire Kaneo.
+
+### Error to task
+```
+delegate-n8n endpoint=/webhook/error-to-task payload={
+  "error_message": "<message>",
+  "source_task_id": "<id>",
+  "project_id": "<id>",
+  "agent_id": "<agentId>"
+}
+```
+Cree une tache de correction + external-link entre les deux taches.
+
+### Project status
+```
+delegate-n8n endpoint=/webhook/project-status payload={
+  "project_id": "<id>"
+}
+```
+Retourne rapport JSON : temps passe, livrables, avancement.
+
+---
+
+## Kaneo UI
+
+URL : `https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}`
+
+Vues disponibles :
+- **Kanban** : taches par colonne, filtrees par label
+- **Liste** : toutes les taches avec priorites et dates
+
+Labels pour filtrer par agent : `agent:builder`, `agent:writer`, etc.
+Labels pour filtrer par type : `type:code`, `type:content`, etc.
+Vue "My tasks" : utilise l'assignee natif userId (renseigne par `assign_task`).

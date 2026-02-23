@@ -463,6 +463,20 @@
 {% endif %}
     }
   },
+  "heartbeat": {
+    "intervalMinutes": 30,
+    "activeHours": { "start": 8, "end": 22 }
+  },
+  "cron": [
+    {
+      "id": "project-digest",
+      "schedule": "0 9 * * *",
+      "agentId": "{{ openclaw_agent_concierge_name }}",
+      "message": "Fais le point sur tous les projets Kaneo actifs via le messenger. Resume par projet : taches done/total, temps passe, livrables produits, blocages. Envoie le resume sur Telegram.",
+      "mode": "main-session",
+      "delivery": "announce"
+    }
+  ],
   "logging": {
     "level": "info"
   }

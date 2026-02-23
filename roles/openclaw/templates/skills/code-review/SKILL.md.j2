@@ -1,0 +1,120 @@
+---
+name: code-review
+description: Automated code review against VPAI standards via SSH Pi + LiteLLM. Used by Builder after code deliverables.
+metadata: { "openclaw": { "emoji": "🔍", "always": false } }
+---
+
+# Skill: Code Review VPAI
+
+Review automatique du code produit par le Builder, selon les criteres du projet VPAI.
+
+## Quand utiliser ce skill
+
+- Apres chaque PR cree par le Builder
+- Apres chaque modification de fichier critique (Ansible, Docker Compose, Jinja2, Caddy)
+- Avant tout merge en production
+- Sur demande explicite du Concierge
+
+## Qui execute la review
+
+Le **Builder** (Imhotep) execute la review via `delegate-n8n`.
+Le Concierge delegue en disant : `sessions_spawn(builder, "review ce code : branch=<branch> repo=<url> task_id=<id> project_id=<id>")`
+
+## Comment declencer la review
+
+1. Builder cree une sous-tache Kaneo "Review" via Messenger :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "create_task projectId=<id> columnId=<review_col_id> title=Review: <titre_tache_parent>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<review_task_id> name=type:review color=#f59e0b")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<review_task_id> name=agent:builder color=#6366f1")
+```
+
+2. Builder appelle delegate-n8n :
+```
+delegate-n8n endpoint=/webhook/code-review payload={
+  "repo_url": "<url>",
+  "branch": "<branch>",
+  "task_id": "<review_task_id>",
+  "project_id": "<project_id>",
+  "secret": "${N8N_WEBHOOK_SECRET}"
+}
+```
+
+3. Le workflow n8n :
+   - SSH vers le RPi
+   - Clone/pull le repo
+   - Execute la review via LiteLLM (modele gpt-codex ou glm-5)
+   - Logue le resultat en commentaire Kaneo via `POST /api/activity/comment`
+
+## Criteres de review VPAI
+
+### Ansible
+- [ ] **FQCN obligatoire** : `ansible.builtin.apt`, `community.general.ufw` — jamais le module court
+- [ ] **`changed_when`** explicite sur toutes les taches `command` et `shell`
+- [ ] **`failed_when`** explicite si la commande peut retourner un code non-zero valide
+- [ ] **`set -euo pipefail`** + **`executable: /bin/bash`** sur toutes les taches `shell`
+- [ ] Pas de `command`/`shell` si un module Ansible existe
+- [ ] **Idempotence** : 0 changed a la 2eme execution
+- [ ] Pas de `become: yes` global — seulement sur les taches qui en ont besoin
+- [ ] Tags presents sur toutes les taches importantes
+
+### Docker
+- [ ] **Jamais `:latest` ni `:stable`** — images pinnees dans `versions.yml`
+- [ ] **`cap_drop: ALL`** + `cap_add` minimal
+- [ ] **`restart: unless-stopped`** sur tous les services
+- [ ] **Healthchecks** sur chaque service
+- [ ] **Limites memoire/CPU** presentes
+- [ ] Log rotation configuree (max-size 10m, max-file 3)
+
+### Securite
+- [ ] **Aucun secret en clair** — tous dans `secrets.yml` vault
+- [ ] **Aucun nom hardcode** — variables Jinja2 uniquement
+- [ ] Variables dans `defaults/main.yml` (overridable) ou `vars/main.yml` (fixes)
+- [ ] Ports SSH/admin non exposes publiquement
+
+### Jinja2 / Templates
+- [ ] Extension `.j2` pour tous les templates
+- [ ] Filtres `| default()` sur les variables optionnelles
+- [ ] Pas de `grep -r 'valeur_specifique' .` qui devrait trouver des resultats
+
+## Format du rapport de review
+
+```markdown
+## Code Review — <titre>
+**Statut** : ✅ PASS / ❌ FAIL
+**Fichiers analyses** : <liste>
+**Modele utilise** : <modele>
+
+### Problemes critiques (bloquants)
+- [FQCN] `apt:` ligne 42 → `ansible.builtin.apt:`
+- [SECRET] Valeur hardcodee ligne 18
+
+### Avertissements (non-bloquants)
+- [STYLE] Commentaire manquant sur tache complexe ligne 67
+
+### Suggestions
+- Utiliser `community.docker.docker_container` au lieu de `command: docker run`
+
+### Verdict
+[PASS — peut etre merge] / [FAIL — corrections necessaires avant merge]
+```
+
+## Tracabilite Kaneo
+
+Apres la review :
+- Statut `done` si PASS, `blocked` si FAIL
+- Rapport complet en commentaire d'activite sur la tache de review
+- Label `correction` sur les taches a corriger
+
+## Modeles de review
+
+| Complexite | Modele | Usage |
+|------------|--------|-------|
+| Standard | minimax-m25 | Code non-critique, formatting |
+| Smart | gpt-codex | Code applicatif, logique |
+| Premium | claude-opus | Architecture, securite critique |
+
+## Limite
+
+Max 3 iterations de review (Gen -> Review -> Fix) avant escalade au Concierge.
+Compteur Redis : `kaneo:corrections:<task_id>` — si > 2, escalader.

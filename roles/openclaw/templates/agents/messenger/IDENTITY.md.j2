@@ -40,7 +40,7 @@ if [ -z "$COOKIE" ]; then
   RESP=$(curl -sf -D - -o /dev/null \
     -X POST http://kaneo-api:1337/api/auth/sign-in/email \
     -H 'Content-Type: application/json' \
-    -d '{"email":"{{ kaneo_agent_email }}","password":"{{ kaneo_agent_password }}"}')
+    -d '{"email":"${KANEO_AGENT_EMAIL}","password":"${KANEO_AGENT_PASSWORD}"}')
   COOKIE=$(echo "$RESP" | grep -i "set-cookie:" | head -1 | awk '{print $2}' | cut -d';' -f1)
   redis-cli -h redis SETEX kaneo:session:cookie 3000 "$COOKIE"
 fi
@@ -114,7 +114,7 @@ Le prochain `kaneo-agents-sync` cron la creera.
 curl -s -X POST http://kaneo-api:1337/api/project \
   -H "Content-Type: application/json" \
   -H "Cookie: $COOKIE" \
-  -d '{"name":"<name>","description":"<desc>","icon":"📋","workspaceId":"{{ kaneo_workspace_id }}"}'
+  -d '{"name":"<name>","description":"<desc>","icon":"📋","workspaceId":"${KANEO_WORKSPACE_ID}"}'
 ```
 
 ### create_columns (apres create_project)
@@ -219,7 +219,7 @@ if [ -n "$USER_ID" ]; then
     RESP=$(curl -sf -D - -o /dev/null \
       -X POST http://kaneo-api:1337/api/auth/sign-in/email \
       -H 'Content-Type: application/json' \
-      -d '{"email":"{{ kaneo_agent_email }}","password":"{{ kaneo_agent_password }}"}')
+      -d '{"email":"${KANEO_AGENT_EMAIL}","password":"${KANEO_AGENT_PASSWORD}"}')
     COOKIE=$(echo "$RESP" | grep -i "set-cookie:" | head -1 | awk '{print $2}' | cut -d';' -f1)
     redis-cli -h redis SETEX kaneo:session:cookie 3000 "$COOKIE"
     HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
@@ -329,7 +329,7 @@ curl -s -X GET http://kaneo-api:1337/api/external-link/task/<taskId> \
 IDEA_PROJECT_ID=$(redis-cli -h redis HGET kaneo:projects "{{ openclaw_ideas_project_name | default('Boite a Idees') }}")
 if [ -z "$IDEA_PROJECT_ID" ]; then
   # workspaceId obligatoire pour cet endpoint depuis l'intérieur du réseau Docker
-  PROJECTS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/project?workspaceId={{ kaneo_workspace_id }}" 2>/dev/null)
+  PROJECTS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/project?workspaceId=${KANEO_WORKSPACE_ID}" 2>/dev/null)
   IDEA_NAME="{{ openclaw_ideas_project_name | default('Boite a Idees') }}"
   IDEA_PROJECT_ID=$(echo "$PROJECTS" | python3 -c "
 import sys,json,os
@@ -343,7 +343,7 @@ fi
 
 # 2. Si absent : créer projet + colonnes
 if [ -z "$IDEA_PROJECT_ID" ]; then
-  PROJ_BODY="{\"name\":\"{{ openclaw_ideas_project_name | default('Boite a Idees') }}\",\"description\":\"Plans idees - lifecycle approuver/refuser/implementer\",\"icon\":\"💡\",\"workspaceId\":\"{{ kaneo_workspace_id }}\"}"
+  PROJ_BODY="{\"name\":\"{{ openclaw_ideas_project_name | default('Boite a Idees') }}\",\"description\":\"Plans idees - lifecycle approuver/refuser/implementer\",\"icon\":\"💡\",\"workspaceId\":\"${KANEO_WORKSPACE_ID}\"}"
   PROJ=$(curl -sf -X POST http://kaneo-api:1337/api/project -H "Content-Type: application/json" -H "Cookie: $COOKIE" -d "$PROJ_BODY" 2>/dev/null)
   IDEA_PROJECT_ID=$(echo "$PROJ" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id','') or d.get('data',{}).get('id',''))" 2>/dev/null)
   # Créer colonnes
@@ -512,7 +512,7 @@ curl -sf -X POST http://kaneo-api:1337/api/label \
   -d "{\"taskId\":\"<id>\",\"name\":\"idea:approved\",\"color\":\"#16a34a\"}" -o /dev/null 2>/dev/null
 
 # 5. Appeler webhook plan-dispatch n8n
-ORG_ID="{{ kaneo_workspace_id | default('') }}"
+ORG_ID="${KANEO_WORKSPACE_ID}"
 HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
   -X POST "$KANEO_PLAN_DISPATCH_WEBHOOK" \
   -H "Content-Type: application/json" \

@@ -24,6 +24,11 @@ kaneo_subdomain: "{{ kaneo_subdomain_override | default('hq') }}"
 # Credentials are stored in secrets.yml (Ansible Vault).
 # kaneo_agent_email and kaneo_agent_password are defined in secrets.yml
 
+# Kaneo workspace ID — used for direct DB inserts of agent memberships.
+# BetterAuth /api/auth/organization/add-member returns 404 in Kaneo v2.x (not implemented).
+# Find via: docker exec <pg> psql -U kaneo -d kaneo -t -c "SELECT id FROM workspace LIMIT 1;"
+kaneo_workspace_id: "{{ vault_kaneo_workspace_id | default('') }}"
+
 # ============================================================================
 # OpenClaw Agents — Kaneo membership (native userId assignment)
 # ============================================================================

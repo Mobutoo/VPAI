@@ -206,6 +206,9 @@ kaneo_agent_password: "{{ vault_kaneo_agent_password | default('') }}"
 # Shared password for 10 OpenClaw agent service accounts in Kaneo.
 # Add vault_kaneo_agents_password to secrets.yml (ansible-vault edit).
 kaneo_agents_password: "{{ vault_kaneo_agents_password | default('') }}"
+# Workspace ID for direct DB membership inserts (BetterAuth add-member endpoint not available in v2.x).
+# Find via: docker exec <pg> psql -U kaneo -d kaneo -t -c "SELECT id FROM workspace LIMIT 1;"
+kaneo_workspace_id: "{{ vault_kaneo_workspace_id | default('') }}"
 
 # Sure (personal finance)
 sure_subdomain: "nzimbu"

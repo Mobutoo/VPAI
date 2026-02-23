@@ -18,7 +18,7 @@ remotion_memory_reservation: "256M"
 remotion_cpu_limit: "2.0"
 
 # Subdomain (VPN-only via workstation Caddy)
-remotion_subdomain: "cut"
+remotion_subdomain: "re"
 
 # Shared creative assets volume (shared with ComfyUI)
 creative_assets_dir: "/opt/workstation/data/creative-assets"

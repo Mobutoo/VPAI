@@ -192,6 +192,46 @@ ping <headscale_vpn_ip>  # ping vers Seko-VPN via VPN
 - La session Tailscale a été révoquée depuis le serveur Headscale → régénérer une pre-auth key (voir 0.7) et redéployer `--tags headscale-node`
 - Vérifier l'état du daemon : `sudo systemctl status tailscaled`
 
+### 0.12 Caddy Workstation — service et chemins
+
+Le Pi utilise un service Caddy **custom** (pas le paquet standard) :
+
+| Element | Valeur |
+|---|---|
+| Service systemd | `caddy-workstation.service` (PAS `caddy.service`) |
+| Caddyfile | `/opt/workstation/configs/caddy/Caddyfile` |
+| Binary | `/usr/bin/caddy` (xcaddy build avec module OVH DNS) |
+| Data | `/opt/workstation/data/caddy` |
+
+```bash
+# FAUX — service inexistant
+sudo systemctl status caddy
+sudo caddy validate --config /etc/caddy/Caddyfile
+
+# CORRECT
+sudo systemctl status caddy-workstation
+sudo systemctl reload caddy-workstation
+sudo caddy validate --config /opt/workstation/configs/caddy/Caddyfile
+```
+
+### 0.13 OpenCut — service on-demand (pas autostart)
+
+OpenCut est deploye mais **pas demarre** par defaut (`opencut_autostart: false`).
+Le controle se fait via Telegram (workflow n8n `opencut-control`).
+
+```bash
+# Demarrer manuellement sur le Pi
+sudo docker compose -f /opt/workstation/docker-compose-opencut.yml up -d
+
+# Arreter
+sudo docker compose -f /opt/workstation/docker-compose-opencut.yml down
+
+# Status
+sudo docker compose -f /opt/workstation/docker-compose-opencut.yml ps
+```
+
+Une erreur 502 sur `cut.ewutelo.cloud` est **normale** quand le service est arrete — la page bleue "Service en veille" s'affiche.
+
 ---
 
 ## 1. Ansible & Linting
@@ -826,6 +866,48 @@ make deploy-vpn-dns
 pas sur le Pi. Ajouter un play `vpn` a `workstation.yml` coupleraient les deux playbooks.
 Un playbook dedie est plus propre et reciblable independamment.
 
+### 12.7 handle_response vs handle_errors — backend down
+
+**Symptome** : `handle_response` dans Caddy ne capture pas les erreurs 502/503 quand le backend est arrete.
+
+**Cause** : `handle_response` intercepte les **reponses HTTP** de l'upstream. Quand l'upstream est down,
+il n'y a pas de reponse — c'est une **erreur Caddy interne**. Il faut `handle_errors`.
+
+```caddyfile
+# FAUX — ne fonctionne pas quand le backend est arrete
+reverse_proxy localhost:3100 {
+    handle_response @502 {
+        respond "Service stopped" 502
+    }
+}
+
+# CORRECT — capture les erreurs Caddy (backend unreachable)
+reverse_proxy localhost:3100
+handle_errors {
+    @stopped expression `{http.error.status_code} in [502, 503]`
+    respond @stopped "Service stopped" 502
+}
+```
+
+### 12.8 Caddy handle_errors — ordre des matchers et fallback
+
+Quand `handle_errors` doit gerer **differents types d'erreur** (502 pour service arrete, 403 pour VPN),
+utiliser des matchers nommes avec `expression` pour filtrer, puis un fallback sans matcher :
+
+```caddyfile
+handle_errors {
+    @stopped expression `{http.error.status_code} in [502, 503]`
+    respond @stopped "Service en veille" 502
+
+    # Fallback pour les autres erreurs (403, etc.)
+    respond "Acces refuse" {http.error.status_code}
+}
+```
+
+**Piege** : Ne pas mettre `import vpn_error_page` sur un site qui a deja un `handle_errors` custom —
+deux blocs `handle_errors` au meme niveau causent un conflit. Integrer le fallback VPN directement
+dans le `handle_errors` du site.
+
 ---
 
 ## 13. Systeme & Debian 13
@@ -962,4 +1044,4 @@ Le playbook `vpn-toggle.yml` inclut un dead man switch :
 > **Ne jamais activer** `hardening_vpn_only_mode=true` manuellement sans le playbook
 > `vpn-toggle.yml` — utiliser `make vpn-on` qui inclut les safety checks.
 
-*Dernière mise à jour : 2026-02-18 — Session 8 (Split DNS, Caddy ACL fix, LiteLLM health checks, max_tokens OpenRouter)*
+*Derniere mise a jour : 2026-02-23 — Session 9 (Creative Stack Pi, OpenCut on-demand, VPN error pages, subdomain swap)*

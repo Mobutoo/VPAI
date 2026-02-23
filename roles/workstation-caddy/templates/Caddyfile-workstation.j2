@@ -10,7 +10,17 @@
 # Pi = Caddy natif (pas Docker) → pas de DNAT bridge, IP source directe
 (vpn_only) {
     @blocked not client_ip {{ vpn_network_cidr }}
-    respond @blocked 403
+    error @blocked 403
+}
+
+# VPN error page — same style as VPS restricted-zone.html (red/green terminal)
+(vpn_error_page) {
+    handle_errors {
+        header Content-Type "text/html; charset=utf-8"
+        respond <<VPNERR
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Zone Restreinte</title><style>*{margin:0;padding:0;box-sizing:border-box}body{min-height:100vh;background:#0a0a0a;color:#00ff41;font-family:'Courier New',monospace;display:flex;justify-content:center;align-items:center;overflow:hidden;position:relative}body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,255,65,.03) 2px,rgba(0,255,65,.03) 4px);pointer-events:none;z-index:10}.c{text-align:center;padding:2rem;max-width:620px;position:relative;z-index:5}.i{font-size:5rem;margin-bottom:1rem;animation:p 2s ease-in-out infinite;filter:drop-shadow(0 0 20px rgba(255,60,60,.6))}@keyframes p{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(1.05)}}.n{font-size:6rem;font-weight:bold;color:#ff3c3c;text-shadow:0 0 30px rgba(255,60,60,.5);line-height:1}h1{font-size:1.4rem;margin:1.2rem 0 .5rem;text-transform:uppercase;letter-spacing:4px;color:#ff3c3c}.t{display:inline-block;padding:.3rem 1.2rem;margin:1rem 0;border:2px solid #ff3c3c;color:#ff3c3c;font-size:.9rem;letter-spacing:6px;text-transform:uppercase;animation:b 3s ease-in-out infinite}@keyframes b{0%,100%{opacity:1}50%{opacity:.4}}.m{color:#00cc33;font-size:.85rem;line-height:1.8;margin:1.5rem 0}.l{color:#00ff41;font-size:.75rem;opacity:.6;margin:.3rem 0}.l::before{content:'> ';color:#ff3c3c}.g{position:fixed;inset:0;z-index:1;background-image:linear-gradient(rgba(0,255,65,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,65,.04) 1px,transparent 1px);background-size:40px 40px}</style></head><body><div class="g"></div><div class="c"><div class="i">&#9888;</div><div class="n">403</div><h1>Acces non autorise</h1><div class="t">Classifie</div><div class="m">Vous tentez d'acceder a une zone restreinte.<br>Ce secteur est sous surveillance permanente.<br>Seul le personnel autorise disposant d'un acces<br>reseau securise peut penetrer dans cette zone.</div><div class="l">CONNEXION REFUSEE &mdash; PROTOCOLE VPN REQUIS</div><div class="l">INCIDENT JOURNALISE &mdash; ID: <span id="ts"></span></div><div class="l">COORDONNEES VISITEUR ENREGISTREES</div></div><script>document.getElementById('ts').textContent=new Date().toISOString().replace(/[-:T]/g,'').slice(0,14)</script></body></html>
+VPNERR 403
+    }
 }
 
 # Shared TLS block — DNS-01 via OVH + bypass systemd-resolved NOTIMP (REX §12.5)
@@ -39,6 +49,7 @@
 {{ workstation_oc_domain }} {
     import ovh_tls
     import vpn_only
+    import vpn_error_page
     import security_headers
     reverse_proxy localhost:{{ opencode_port | default(3456) }}
 }
@@ -48,27 +59,43 @@
 {{ comfyui_subdomain }}.{{ domain_name }} {
     import ovh_tls
     import vpn_only
+    import vpn_error_page
     import security_headers
     reverse_proxy localhost:{{ comfyui_port | default(8188) }}
 }
 {% endif %}
 
-# Remotion — Video rendering server (Docker)
+# Remotion — Video rendering API (Docker)
 {% if remotion_subdomain | default('') | length > 0 %}
 {{ remotion_subdomain }}.{{ domain_name }} {
     import ovh_tls
     import vpn_only
+    import vpn_error_page
     import security_headers
     reverse_proxy localhost:{{ remotion_port | default(3200) }}
 }
 {% endif %}
 
 # OpenCut — Video editor (on-demand Docker)
+# Styled error page when the service is stopped (502/503 → "start via Telegram")
+# Blue/cyan theme to differentiate from the 403 red/green VPN error page
 {% if opencut_subdomain | default('') | length > 0 %}
 {{ opencut_subdomain }}.{{ domain_name }} {
     import ovh_tls
     import vpn_only
     import security_headers
     reverse_proxy localhost:{{ opencut_port | default(3100) }}
+    handle_errors {
+        @stopped expression `{http.error.status_code} in [502, 503]`
+        header @stopped Content-Type "text/html; charset=utf-8"
+        respond @stopped <<OCSTOPPED
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OpenCut &mdash; En veille</title><style>*{margin:0;padding:0;box-sizing:border-box}body{min-height:100vh;background:#0a0a0a;color:#00d4ff;font-family:'Courier New',monospace;display:flex;justify-content:center;align-items:center;overflow:hidden;position:relative}body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,212,255,.03) 2px,rgba(0,212,255,.03) 4px);pointer-events:none;z-index:10}.c{text-align:center;padding:2rem;max-width:620px;position:relative;z-index:5}.i{font-size:5rem;margin-bottom:1rem;animation:p 3s ease-in-out infinite;filter:drop-shadow(0 0 20px rgba(0,150,255,.6))}@keyframes p{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(1.05)}}.n{font-size:6rem;font-weight:bold;color:#0096ff;text-shadow:0 0 30px rgba(0,150,255,.5);line-height:1}h1{font-size:1.4rem;margin:1.2rem 0 .5rem;text-transform:uppercase;letter-spacing:4px;color:#0096ff}.t{display:inline-block;padding:.3rem 1.2rem;margin:1rem 0;border:2px solid #0096ff;color:#0096ff;font-size:.9rem;letter-spacing:6px;text-transform:uppercase;animation:b 3s ease-in-out infinite}@keyframes b{0%,100%{opacity:1}50%{opacity:.4}}.m{color:#00aacc;font-size:.85rem;line-height:1.8;margin:1.5rem 0}.l{color:#00d4ff;font-size:.75rem;opacity:.6;margin:.3rem 0}.l::before{content:'> ';color:#0096ff}.g{position:fixed;inset:0;z-index:1;background-image:linear-gradient(rgba(0,212,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.04) 1px,transparent 1px);background-size:40px 40px}.cr{position:fixed;width:60px;height:60px;z-index:2}.cr::before,.cr::after{content:'';position:absolute;background:#0096ff}.tl{top:20px;left:20px}.tl::before{width:30px;height:2px;top:0;left:0}.tl::after{width:2px;height:30px;top:0;left:0}.tr{top:20px;right:20px}.tr::before{width:30px;height:2px;top:0;right:0}.tr::after{width:2px;height:30px;top:0;right:0}.bl{bottom:20px;left:20px}.bl::before{width:30px;height:2px;bottom:0;left:0}.bl::after{width:2px;height:30px;bottom:0;left:0}.br{bottom:20px;right:20px}.br::before{width:30px;height:2px;bottom:0;right:0}.br::after{width:2px;height:30px;bottom:0;right:0}</style></head><body><div class="g"></div><div class="cr tl"></div><div class="cr tr"></div><div class="cr bl"></div><div class="cr br"></div><div class="c"><div class="i">&#9212;</div><div class="n">502</div><h1>Service en veille</h1><div class="t">Standby</div><div class="m">OpenCut est actuellement en veille pour economiser les ressources.<br>Ce service demarre a la demande en quelques secondes.<br>Envoyez la commande ci-dessous via Telegram pour le lancer.</div><div class="l">COMMANDE &mdash; /opencut start</div><div class="l">TEMPS DE DEMARRAGE &mdash; ~30 secondes</div><div class="l">ARRET AUTOMATIQUE &mdash; via /opencut stop</div></div></body></html>
+OCSTOPPED 502
+        # Non-502/503 errors (e.g. 403 from vpn_only) → VPN error page
+        header Content-Type "text/html; charset=utf-8"
+        respond <<VPNERR2
+<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Zone Restreinte</title><style>*{margin:0;padding:0;box-sizing:border-box}body{min-height:100vh;background:#0a0a0a;color:#00ff41;font-family:'Courier New',monospace;display:flex;justify-content:center;align-items:center;overflow:hidden;position:relative}body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,255,65,.03) 2px,rgba(0,255,65,.03) 4px);pointer-events:none;z-index:10}.c{text-align:center;padding:2rem;max-width:620px;position:relative;z-index:5}.i{font-size:5rem;margin-bottom:1rem;animation:p 2s ease-in-out infinite;filter:drop-shadow(0 0 20px rgba(255,60,60,.6))}@keyframes p{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.7;transform:scale(1.05)}}.n{font-size:6rem;font-weight:bold;color:#ff3c3c;text-shadow:0 0 30px rgba(255,60,60,.5);line-height:1}h1{font-size:1.4rem;margin:1.2rem 0 .5rem;text-transform:uppercase;letter-spacing:4px;color:#ff3c3c}.t{display:inline-block;padding:.3rem 1.2rem;margin:1rem 0;border:2px solid #ff3c3c;color:#ff3c3c;font-size:.9rem;letter-spacing:6px;text-transform:uppercase;animation:b 3s ease-in-out infinite}@keyframes b{0%,100%{opacity:1}50%{opacity:.4}}.m{color:#00cc33;font-size:.85rem;line-height:1.8;margin:1.5rem 0}.l{color:#00ff41;font-size:.75rem;opacity:.6;margin:.3rem 0}.l::before{content:'> ';color:#ff3c3c}.g{position:fixed;inset:0;z-index:1;background-image:linear-gradient(rgba(0,255,65,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,65,.04) 1px,transparent 1px);background-size:40px 40px}</style></head><body><div class="g"></div><div class="c"><div class="i">&#9888;</div><div class="n">403</div><h1>Acces non autorise</h1><div class="t">Classifie</div><div class="m">Vous tentez d'acceder a une zone restreinte.<br>Ce secteur est sous surveillance permanente.<br>Seul le personnel autorise disposant d'un acces<br>reseau securise peut penetrer dans cette zone.</div><div class="l">CONNEXION REFUSEE &mdash; PROTOCOLE VPN REQUIS</div><div class="l">INCIDENT JOURNALISE &mdash; ID: <span id="ts"></span></div><div class="l">COORDONNEES VISITEUR ENREGISTREES</div></div><script>document.getElementById('ts').textContent=new Date().toISOString().replace(/[-:T]/g,'').slice(0,14)</script></body></html>
+VPNERR2 {http.error.status_code}
+    }
 }
 {% endif %}

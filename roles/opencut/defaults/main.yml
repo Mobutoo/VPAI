@@ -19,7 +19,7 @@ opencut_memory_reservation: "256M"
 opencut_cpu_limit: "2.0"
 
 # Subdomain (VPN-only via workstation Caddy)
-opencut_subdomain: "edit"
+opencut_subdomain: "cut"
 
 # PostgreSQL — dedicated DB for OpenCut (separate from VPS PG)
 opencut_db_name: "opencut"

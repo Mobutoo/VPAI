@@ -218,6 +218,12 @@ autofix_workspace: "/home/{{ workstation_pi_user }}/projects/autofix"
 # OpenCode
 oc_subdomain: "oc"
 
+# ComfyUI + Remotion (workstation Pi)
+# Doit etre declare ici (pas seulement dans role defaults) pour que vpn-dns
+# puisse construire les extra_records Headscale depuis vpn-server.
+comfyui_subdomain: "studio"
+remotion_subdomain: "cut"
+
 # --- Prod Apps (Hetzner CX22) ---
 app_prod_hostname: "app-prod-01"
 app_prod_location: "fsn1"

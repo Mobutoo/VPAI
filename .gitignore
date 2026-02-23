@@ -64,3 +64,5 @@ roles/*/molecule/default/.molecule/
 terraform.tfstate*
 .terraform/
 PRD.md
+docs/PLAN-*.md
+docs/TASKS-*.md

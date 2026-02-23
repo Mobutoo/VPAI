@@ -361,12 +361,73 @@
     },
     {
       "parameters": {
+        "jsCode": "// Detect agents that are workspace members but no longer in OPENCLAW_AGENTS.\n// Filters on email pattern agent-*@domain to avoid touching owner/service accounts.\nconst membersResp = $input.first().json;\nconst ctx = $('Collect userIds').first().json;\n\nconst membersArr = Array.isArray(membersResp)\n  ? membersResp\n  : (membersResp.members || membersResp.data || []);\n\nconst desiredIds = new Set(ctx.agents.map(a => a.id));\nconst domain = ctx.domain || '';\n\nconst toRemove = [];\nfor (const member of membersArr) {\n  const email = (member.user?.email || member.email || '').toLowerCase();\n  const match = email.match(/^agent-([^@]+)@/);\n  if (!match) continue; // skip owner, service account, etc.\n  const agentId = match[1];\n  if (!desiredIds.has(agentId)) {\n    toRemove.push({\n      agentId,\n      email,\n      userId: member.user?.id || member.userId || ''\n    });\n  }\n}\n\nreturn [{ json: { ...ctx, toRemove } }];"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000047",
+      "name": "Detect removed agents",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4000, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nif (ctx.toRemove.length === 0) return [{ json: ctx }];\nreturn ctx.toRemove.map(r => ({ json: { ...ctx, removeTarget: r } }));"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000048",
+      "name": "Agents to remove",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4220, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://kaneo-api:1337/api/auth/organization/remove-member",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.cookie }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Origin", "value": "http://kaneo-web:3000" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"organizationId\": \"{{ $json.orgId }}\",\n  \"memberIdOrEmail\": \"{{ $json.removeTarget.email }}\"\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "kas-0002-0000-0000-0000-000000000049",
+      "name": "Remove from workspace",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4440, 380],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Collect removal results — pass enriched context to Get all projects\nconst removeItems = $('Remove from workspace').all();\nconst ctx = $('Detect removed agents').first().json;\n\nconst removed = [];\nconst removalErrors = [];\nfor (let i = 0; i < removeItems.length; i++) {\n  const target = ctx.toRemove[i];\n  const result = removeItems[i]?.json || {};\n  if (result.error || result.code) {\n    removalErrors.push(`${target?.agentId}: remove-member failed — ${result.message || result.code}`);\n  } else {\n    removed.push(target?.agentId);\n  }\n}\n\nreturn [{ json: {\n  ...ctx,\n  removed,\n  errors: [...(ctx.errors || []), ...removalErrors]\n}}];"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000050",
+      "name": "Collect removals",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [4660, 380]
+    },
+    {
+      "parameters": {
         "method": "GET",
         "url": "http://kaneo-api:1337/api/project",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $('Collect userIds').first().json.cookie }}" }
+            { "name": "Cookie", "value": "={{ $json.cookie }}" }
           ]
         },
         "options": {}
@@ -379,7 +440,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const projects = $input.first().json;\nconst ctx = $('Collect userIds').first().json;\n\nconst projectsArr = Array.isArray(projects) ? projects : (projects.projects || projects.data || []);\nconst agentsProject = projectsArr.find(p =>\n  (p.name || '').toLowerCase().includes('openclaw agents')\n);\n\nreturn [{ json: {\n  ...ctx,\n  project_id: agentsProject ? agentsProject.id : null,\n  project_exists: !!agentsProject\n}}];"
+        "jsCode": "const projects = $input.first().json;\n// Read from Collect removals to carry removed/toRemove through\nconst ctx = $('Collect removals').first().json;\n\nconst projectsArr = Array.isArray(projects) ? projects : (projects.projects || projects.data || []);\nconst agentsProject = projectsArr.find(p =>\n  (p.name || '').toLowerCase().includes('openclaw agents')\n);\n\nreturn [{ json: {\n  ...ctx,\n  project_id: agentsProject ? agentsProject.id : null,\n  project_exists: !!agentsProject\n}}];"
       },
       "id": "kas-0002-0000-0000-0000-000000000020",
       "name": "Find agents project",
@@ -461,7 +522,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const tasksResp = $input.first().json;\nconst ctx = $('Resolve project_id').first().json;\n\nconst existing = Array.isArray(tasksResp) ? tasksResp : (tasksResp.tasks || tasksResp.data || []);\n\n// Build lookup by agent_id embedded in description prefix '[agent:<id>]'\nconst byAgentId = {};\nfor (const task of existing) {\n  const match = (task.description || '').match(/\\[agent:([^\\]]+)\\]/);\n  if (match) byAgentId[match[1]] = task;\n}\n\n// Find REGISTRY task\nconst registryTask = existing.find(t => (t.title || '').includes('REGISTRY'));\n\nconst toCreate = [];\nconst toUpdate = [];\nconst toArchive = [];\n\nconst agentIds = ctx.agents.map(a => a.id);\n\n// Tasks for current agents\nfor (const agent of ctx.agents) {\n  const existingTask = byAgentId[agent.id];\n  if (!existingTask) {\n    toCreate.push(agent);\n  } else {\n    // Always update assignee (userId may have changed)\n    toUpdate.push({ ...agent, task_id: existingTask.id });\n  }\n}\n\n// Tasks for deprecated agents (in Kaneo but not in desired list)\nfor (const task of existing) {\n  const match = (task.description || '').match(/\\[agent:([^\\]]+)\\]/);\n  if (match && !agentIds.includes(match[1])) {\n    toArchive.push({ task_id: task.id, agent_id: match[1] });\n  }\n}\n\nreturn [{ json: {\n  ...ctx,\n  toCreate,\n  toUpdate,\n  toArchive,\n  registryTaskId: registryTask ? registryTask.id : null,\n  existingCount: existing.length\n}}];"
+        "jsCode": "const tasksResp = $input.first().json;\nconst ctx = $('Resolve project_id').first().json;\n\nconst existing = Array.isArray(tasksResp) ? tasksResp : (tasksResp.tasks || tasksResp.data || []);\n\n// Build lookup by agent_id embedded in description prefix '[agent:<id>]'\nconst byAgentId = {};\nfor (const task of existing) {\n  const match = (task.description || '').match(/\\[agent:([^\\]]+)\\]/);\n  if (match) byAgentId[match[1]] = task;\n}\n\n// Find REGISTRY task\nconst registryTask = existing.find(t => (t.title || '').includes('REGISTRY'));\n\nconst toCreate = [];\nconst toUpdate = [];\n// toUnassign: active tasks of removed agents → strip assignee, leave for Concierge\n// toArchive: Done tasks of removed agents → already closed, leave as-is\nconst toUnassign = [];\nconst toArchive = [];\n\nconst agentIds = ctx.agents.map(a => a.id);\n\n// Tasks for current agents\nfor (const agent of ctx.agents) {\n  const existingTask = byAgentId[agent.id];\n  if (!existingTask) {\n    toCreate.push(agent);\n  } else {\n    // Always update assignee (userId may have changed)\n    toUpdate.push({ ...agent, task_id: existingTask.id });\n  }\n}\n\n// Tasks for removed agents (in Kaneo but not in desired list)\nfor (const task of existing) {\n  const match = (task.description || '').match(/\\[agent:([^\\]]+)\\]/);\n  if (!match || agentIds.includes(match[1])) continue;\n  const isDone = (task.column?.name || '').toLowerCase() === 'done';\n  if (isDone) {\n    // Already closed — leave untouched (archived in place)\n    toArchive.push({ task_id: task.id, agent_id: match[1], alreadyDone: true });\n  } else {\n    // Active task — unassign only, Concierge decides what to do\n    toUnassign.push({ task_id: task.id, agent_id: match[1] });\n  }\n}\n\nreturn [{ json: {\n  ...ctx,\n  toCreate,\n  toUpdate,\n  toUnassign,\n  toArchive,\n  registryTaskId: registryTask ? registryTask.id : null,\n  existingCount: existing.length\n}}];"
       },
       "id": "kas-0002-0000-0000-0000-000000000025",
       "name": "Diff agents vs tasks",
@@ -570,6 +631,40 @@
     },
     {
       "parameters": {
+        "jsCode": "// Unassign active tasks of removed agents — strip userId, leave task in place.\n// The Concierge will decide: reassign to someone else or archive.\nconst ctx = $('Diff agents vs tasks').first().json;\nif (ctx.toUnassign.length === 0) return [{ json: { skipped: true } }];\nreturn ctx.toUnassign.map(item => ({ json: { ...ctx, unassignItem: item } }));"
+      },
+      "id": "kas-0002-0000-0000-0000-000000000051",
+      "name": "Agents to unassign",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [5760, 560]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=http://kaneo-api:1337/api/task/assignee/{{ $json.unassignItem.task_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.cookie }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"userId\": null }",
+        "options": {},
+        "continueOnFail": true
+      },
+      "id": "kas-0002-0000-0000-0000-000000000052",
+      "name": "Unassign orphan task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [5980, 560],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
         "jsCode": "// Update assignee for existing tasks (userId may have changed)\nconst ctx = $('Diff agents vs tasks').first().json;\nif (ctx.toUpdate.length === 0) return [{ json: { skipped: true } }];\nreturn ctx.toUpdate.map(agent => ({ json: { ...ctx, agent } }));"
       },
       "id": "kas-0002-0000-0000-0000-000000000031",
@@ -604,7 +699,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Archive tasks of deprecated agents (move to Done column)\nconst ctx = $('Diff agents vs tasks').first().json;\nif (ctx.toArchive.length === 0) return [{ json: { skipped: true } }];\nreturn ctx.toArchive.map(item => ({ json: { ...ctx, ...item } }));"
+        "jsCode": "// toArchive = tasks already in Done column — leave untouched (no-op).\n// Active tasks of removed agents are handled by 'Agents to unassign' branch.\nreturn [{ json: { skipped: true } }];"
       },
       "id": "kas-0002-0000-0000-0000-000000000033",
       "name": "Tasks to archive",
@@ -766,7 +861,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const diffCtx = $('Diff agents vs tasks').first().json;\nconst collectCtx = $('Collect userIds').first().json;\n\nconst created = diffCtx.toCreate.length;\nconst updated = diffCtx.toUpdate.length;\nconst archived = diffCtx.toArchive.length;\nconst skipped = diffCtx.agents.length - created - updated;\nconst errors = collectCtx.errors || [];\n\nconst userIdsCount = Object.keys(collectCtx.userIdMap || {}).length;\n\n// Count name updates (PATCH /update-user ran for all agents — always)\nconst nameUpdatesTotal = diffCtx.agents.length;\n\nlet msg;\nif (errors.length > 0) {\n  msg = [\n    '⚠️ Kaneo Agents Sync — Erreurs',\n    '',\n    `📊 Agents: ${diffCtx.agents.length} total`,\n    `➕ Créés: ${created}`,\n    `🔄 Mis à jour: ${updated}`,\n    `✏️ Noms sync: ${nameUpdatesTotal}`,\n    `📦 Archivés (deprecated): ${archived}`,\n    `🆔 UserId résolus: ${userIdsCount}/${diffCtx.agents.length}`,\n    '',\n    `❌ Erreurs (${errors.length}):`,\n    ...errors.map(e => `  • ${e}`)\n  ].join('\\n');\n} else if (created + updated + archived > 0) {\n  msg = [\n    '✅ Kaneo Agents Sync',\n    '',\n    `➕ Créés: ${created}`,\n    `🔄 Assignés (userId): ${updated}`,\n    `✏️ Noms sync: ${nameUpdatesTotal}`,\n    `📦 Archivés: ${archived}`,\n    `⏭ Inchangés: ${skipped}`,\n    `🆔 Registry: ${userIdsCount} userId mappés`\n  ].join('\\n');\n} else {\n  msg = null; // No changes, no notification\n}\n\nreturn [{ json: {\n  message: msg,\n  created, updated, archived, skipped,\n  nameUpdates: nameUpdatesTotal,\n  errors: errors.length,\n  hasChanges: created + updated + archived > 0 || errors.length > 0\n}}];"
+        "jsCode": "const diffCtx = $('Diff agents vs tasks').first().json;\nconst collectCtx = $('Collect userIds').first().json;\nconst removeCtx = $('Collect removals').first().json;\n\nconst created = diffCtx.toCreate.length;\nconst updated = diffCtx.toUpdate.length;\nconst unassigned = diffCtx.toUnassign.length;\nconst skipped = diffCtx.agents.length - created - updated;\nconst removed = (removeCtx.removed || []).length;\nconst errors = [\n  ...(collectCtx.errors || []),\n  ...(removeCtx.errors || [])\n];\n\nconst userIdsCount = Object.keys(collectCtx.userIdMap || {}).length;\nconst nameUpdatesTotal = diffCtx.agents.length;\n\nconst hasChanges = created + updated + removed + unassigned > 0 || errors.length > 0;\n\nlet msg;\nif (errors.length > 0) {\n  msg = [\n    '⚠️ Kaneo Agents Sync — Erreurs',\n    '',\n    `📊 Agents: ${diffCtx.agents.length} total`,\n    `➕ Créés: ${created}`,\n    `🔄 Mis à jour: ${updated}`,\n    `✏️ Noms sync: ${nameUpdatesTotal}`,\n    `🗑️ Retirés du workspace: ${removed}`,\n    `⬜ Tâches désassignées (Concierge): ${unassigned}`,\n    `🆔 UserId résolus: ${userIdsCount}/${diffCtx.agents.length}`,\n    '',\n    `❌ Erreurs (${errors.length}):`,\n    ...errors.map(e => `  • ${e}`)\n  ].join('\\n');\n} else if (hasChanges) {\n  msg = [\n    '✅ Kaneo Agents Sync',\n    '',\n    `➕ Créés: ${created}`,\n    `🔄 Assignés (userId): ${updated}`,\n    `✏️ Noms sync: ${nameUpdatesTotal}`,\n    `🗑️ Retirés du workspace: ${removed}`,\n    `⬜ Tâches désassignées (Concierge): ${unassigned}`,\n    `⏭ Inchangés: ${skipped}`,\n    `🆔 Registry: ${userIdsCount} userId mappés`\n  ].join('\\n');\n} else {\n  msg = null;\n}\n\nreturn [{ json: {\n  message: msg,\n  created, updated, removed, unassigned, skipped,\n  nameUpdates: nameUpdatesTotal,\n  errors: errors.length,\n  hasChanges\n}}];"
       },
       "id": "kas-0002-0000-0000-0000-000000000042",
       "name": "Build rapport",
@@ -853,7 +948,11 @@
     "Extract userId": { "main": [[{ "node": "Add agent to workspace", "type": "main", "index": 0 }]] },
     "Add agent to workspace": { "main": [[{ "node": "Collect userIds", "type": "main", "index": 0 }]] },
     "Collect userIds": { "main": [[{ "node": "Get updated members", "type": "main", "index": 0 }]] },
-    "Get updated members": { "main": [[{ "node": "Get all projects", "type": "main", "index": 0 }]] },
+    "Get updated members": { "main": [[{ "node": "Detect removed agents", "type": "main", "index": 0 }]] },
+    "Detect removed agents": { "main": [[{ "node": "Agents to remove", "type": "main", "index": 0 }]] },
+    "Agents to remove": { "main": [[{ "node": "Remove from workspace", "type": "main", "index": 0 }]] },
+    "Remove from workspace": { "main": [[{ "node": "Collect removals", "type": "main", "index": 0 }]] },
+    "Collect removals": { "main": [[{ "node": "Get all projects", "type": "main", "index": 0 }]] },
     "Get all projects": { "main": [[{ "node": "Find agents project", "type": "main", "index": 0 }]] },
     "Find agents project": { "main": [[{ "node": "Project exists?", "type": "main", "index": 0 }]] },
     "Project exists?": {
@@ -869,7 +968,8 @@
       "main": [[
         { "node": "Get columns", "type": "main", "index": 0 },
         { "node": "Agents to update", "type": "main", "index": 0 },
-        { "node": "Tasks to archive", "type": "main", "index": 0 }
+        { "node": "Tasks to archive", "type": "main", "index": 0 },
+        { "node": "Agents to unassign", "type": "main", "index": 0 }
       ]]
     },
     "Get columns": { "main": [[{ "node": "Agents to create", "type": "main", "index": 0 }]] },
@@ -879,10 +979,9 @@
     "Assign new task": { "main": [[{ "node": "Build REGISTRY", "type": "main", "index": 0 }]] },
     "Agents to update": { "main": [[{ "node": "Update task assignee", "type": "main", "index": 0 }]] },
     "Update task assignee": { "main": [[{ "node": "Build REGISTRY", "type": "main", "index": 0 }]] },
-    "Tasks to archive": { "main": [[{ "node": "Get columns for archive", "type": "main", "index": 0 }]] },
-    "Get columns for archive": { "main": [[{ "node": "Resolve done column", "type": "main", "index": 0 }]] },
-    "Resolve done column": { "main": [[{ "node": "Archive deprecated task", "type": "main", "index": 0 }]] },
-    "Archive deprecated task": { "main": [[{ "node": "Build REGISTRY", "type": "main", "index": 0 }]] },
+    "Tasks to archive": { "main": [[{ "node": "Build REGISTRY", "type": "main", "index": 0 }]] },
+    "Agents to unassign": { "main": [[{ "node": "Unassign orphan task", "type": "main", "index": 0 }]] },
+    "Unassign orphan task": { "main": [[{ "node": "Build REGISTRY", "type": "main", "index": 0 }]] },
     "Build REGISTRY": { "main": [[{ "node": "REGISTRY task exists?", "type": "main", "index": 0 }]] },
     "REGISTRY task exists?": {
       "main": [

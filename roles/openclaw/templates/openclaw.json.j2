@@ -304,6 +304,22 @@
           },
 {% if openrouter_api_key | default('') | length > 0 %}
           {
+            "id": "deepseek-v3-free",
+            "name": "DeepSeek V3 (FREE — 0 crédit)",
+            "reasoning": false,
+            "input": ["text"],
+            "contextWindow": 131072,
+            "maxTokens": 4096
+          },
+          {
+            "id": "deepseek-r1-free",
+            "name": "DeepSeek R1 (FREE — raisonnement)",
+            "reasoning": true,
+            "input": ["text"],
+            "contextWindow": 131072,
+            "maxTokens": 4096
+          },
+          {
             "id": "kimi-k2",
             "name": "Kimi K2.5 (concierge/agent)",
             "reasoning": false,

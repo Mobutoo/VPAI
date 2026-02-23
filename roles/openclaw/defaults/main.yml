@@ -112,20 +112,24 @@ openclaw_agents_list:
 # Strategy: open-source first, Anthropic/OpenAI only when precision demands it
 # Review: builder uses qwen3-coder, review by different family (GLM-5 or gpt-codex)
 # NOTE: kimi-k2 ecarté du concierge/tutor — tokens tool_call_begin/end fuient en texte brut
-# via OpenRouter (bug upstream kimi-k2 tool calling). minimax-m25 = Function Calling #1 (76.8%)
-openclaw_concierge_model: "custom-litellm/minimax-m25"
+# via OpenRouter (bug upstream kimi-k2 tool calling).
+# NOTE: minimax-m25/glm-5/deepseek-v3 sont des modèles payants OpenRouter — quand les crédits
+# sont épuisés, utiliser les variantes :free (qwen3-coder, deepseek-v3-free, deepseek-r1-free)
+# deepseek-v3-free = openrouter/deepseek/deepseek-chat:free (0 crédit requis)
+# qwen3-coder = openrouter/qwen/qwen3-coder:free (0 crédit requis)
+openclaw_concierge_model: "custom-litellm/deepseek-v3-free"
 openclaw_builder_model: "custom-litellm/qwen3-coder"
-openclaw_writer_model: "custom-litellm/glm-5"
-openclaw_artist_model: "custom-litellm/minimax-m25"
-openclaw_tutor_model: "custom-litellm/minimax-m25"
-openclaw_explorer_model: "custom-litellm/grok-search"
-openclaw_marketer_model: "custom-litellm/minimax-m25"
-openclaw_cfo_model: "custom-litellm/minimax-m25"
+openclaw_writer_model: "custom-litellm/deepseek-v3-free"
+openclaw_artist_model: "custom-litellm/deepseek-v3-free"
+openclaw_tutor_model: "custom-litellm/deepseek-v3-free"
+openclaw_explorer_model: "custom-litellm/deepseek-v3-free"
+openclaw_marketer_model: "custom-litellm/deepseek-v3-free"
+openclaw_cfo_model: "custom-litellm/deepseek-v3-free"
 openclaw_maintainer_model: "custom-litellm/qwen3-coder"
 openclaw_code_model: "custom-litellm/qwen3-coder"
-openclaw_quick_model: "custom-litellm/deepseek-v3"
+openclaw_quick_model: "custom-litellm/qwen3-coder"
 openclaw_cheap_model: "custom-litellm/qwen3-coder"
-openclaw_messenger_model: "custom-litellm/deepseek-v3"
+openclaw_messenger_model: "custom-litellm/qwen3-coder"
 
 # --- Skills ---
 # Centralized list of all OpenClaw skills (used in 3 task loops: dirs, deploy, cleanup)

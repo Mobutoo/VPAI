@@ -49,19 +49,9 @@
         "maxConcurrent": 4,
         "archiveAfterMinutes": 120
       },
-{% if litellm_master_key | default('') | length > 0 %}
       "memorySearch": {
-        "enabled": true,
-        "embeddingProvider": "openai-compatible",
-        "embeddingBaseUrl": "http://litellm:4000/v1",
-        "embeddingApiKey": "${LITELLM_API_KEY}",
-        "embeddingModel": "embedding"
+        "enabled": {{ 'true' if litellm_master_key | default('') | length > 0 else 'false' }}
       }
-{% else %}
-      "memorySearch": {
-        "enabled": false
-      }
-{% endif %}
     },
     "list": [
       {
@@ -235,7 +225,6 @@
         },
         "tools": {
           "exec": { "timeoutSec": 15 },
-          "fs": { "enabled": false },
           "elevated": { "enabled": false }
         }
       }
@@ -448,20 +437,18 @@
     }
 {% endif %}
   ],
-  "heartbeat": {
-    "intervalMinutes": 30,
-    "activeHours": { "start": 8, "end": 22 }
+  "cron": {
+    "jobs": [
+      {
+        "id": "project-digest",
+        "schedule": "0 9 * * *",
+        "agentId": "{{ openclaw_agent_concierge_name }}",
+        "message": "Fais le point sur tous les projets Kaneo actifs via le messenger. Resume par projet : taches done/total, temps passe, livrables produits, blocages. Envoie le resume sur Telegram.",
+        "mode": "main-session",
+        "delivery": "announce"
+      }
+    ]
   },
-  "cron": [
-    {
-      "id": "project-digest",
-      "schedule": "0 9 * * *",
-      "agentId": "{{ openclaw_agent_concierge_name }}",
-      "message": "Fais le point sur tous les projets Kaneo actifs via le messenger. Resume par projet : taches done/total, temps passe, livrables produits, blocages. Envoie le resume sur Telegram.",
-      "mode": "main-session",
-      "delivery": "announce"
-    }
-  ],
   "logging": {
     "level": "info"
   }

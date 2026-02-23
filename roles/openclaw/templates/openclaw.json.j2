@@ -437,6 +437,16 @@
     }
 {% endif %}
   ],
+  "plugins": {
+    "entries": {
+{% if telegram_openclaw_bot_token | default('') | length > 0 %}
+      "telegram": { "enabled": true }{{ ',' if whatsapp_tutor_enabled | default(false) else '' }}
+{% endif %}
+{% if whatsapp_tutor_enabled | default(false) %}
+      "whatsapp": { "enabled": true }
+{% endif %}
+    }
+  },
   "logging": {
     "level": "info"
   }

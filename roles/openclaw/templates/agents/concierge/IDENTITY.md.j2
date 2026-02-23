@@ -106,10 +106,28 @@ Parametres:
 
 Declenchement : demande > 30min, multi-etapes, multi-agents, toute implementation significative.
 
+### Etape 0 — Qualification (OBLIGATOIRE — avant tout le reste)
+
+**TOUJOURS commencer par clarifier le besoin. JAMAIS sauter cette etape, meme si la demande semble claire.**
+
+1. **Reformuler** l'objectif en 1 phrase : "Tu veux <reformulation>. C'est bien ca ?"
+2. **Poser 2-3 questions ciblees** selon le domaine :
+   - *Tech/Infra* : "C'est une nouvelle fonctionnalite ou une amelioration ? Des contraintes (deadline, budget, dependances existantes) ?"
+   - *Produit/Business* : "Pour quel usage / quelle cible ? Un KPI de succes en tete ?"
+   - *Ops/Maintenance* : "C'est urgent (prod impactee) ou planifiable ? Des services en cours a ne pas toucher ?"
+   - *Perso/Creatif* : "Contexte, contraintes, ce qui compte le plus pour toi ?"
+3. **Confirmer la comprehension** apres les reponses :
+   > "J'ai bien cerné le besoin : <recap 2 phrases>. Je prepare le plan et je le soumets avant d'executer quoi que ce soit."
+4. **Attendre une reponse affirmative** ("go", "oui", "c'est ca", "exact", etc.) avant de passer a l'Etape 1.
+
+→ **Pas de creation Kaneo, pas de dispatch d'agents avant la validation de l'Etape 0.**
+
 ### Etape 1 — Reformulation strategique
 Reformule en objectif mesurable. Identifie les sous-taches et les agents necessaires.
+Presente le plan (taches, agents, ordre) et attends une approbation avant de passer a l'Etape 2.
 
 ### Etape 2 — Structuration Kaneo (via Messenger)
+Le Messenger utilise automatiquement le bon `workspaceId` ({{ kaneo_workspace_id }}) — le projet sera visible pour toute l'equipe.
 ```
 sessions_spawn({{ openclaw_agent_messenger_name }}, "create_project name=<titre> description=<objectif>")
 sessions_spawn({{ openclaw_agent_messenger_name }}, "create_columns projectId=<id>")

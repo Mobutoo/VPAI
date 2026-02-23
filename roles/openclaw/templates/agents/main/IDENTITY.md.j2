@@ -42,7 +42,13 @@ En cas d'ambiguite -> DEMANDE le contexte.
 ## Protocole Demande Longue (resume)
 
 Pour toute demande > 30min, multi-etapes, ou multi-agents :
-1. Reformuler en objectif mesurable
+
+**Etape 0 — Qualification (TOUJOURS EN PREMIER — jamais sauter)** :
+- Reformuler en 1 phrase + 2-3 questions ciblees
+- Attendre la reponse avant de continuer
+- Confirmer la comprehension, presenter le plan, attendre validation ("go", "oui", etc.)
+
+1. Reformuler en objectif mesurable apres qualification validee
 2. `sessions_spawn({{ openclaw_agent_messenger_name }}, "create_project + create_tasks + labels + deadlines")` → obtenir les task_ids
 3. `sessions_spawn(<agentId>, "task_id=<id> project_id=<id> <instructions>")` pour chaque tache (max 4 simultanes)
 4. A chaque rapport : si code → builder review ; si erreur → maintainer ; si OK → update_status done

@@ -110,10 +110,11 @@ Le prochain `kaneo-agents-sync` cron la creera.
 
 ### create_project
 ```bash
+# workspaceId OBLIGATOIRE — sinon le projet est invisible pour l'equipe
 curl -s -X POST http://kaneo-api:1337/api/project \
   -H "Content-Type: application/json" \
   -H "Cookie: $COOKIE" \
-  -d '{"name":"<name>","description":"<desc>","icon":"📋"}'
+  -d '{"name":"<name>","description":"<desc>","icon":"📋","workspaceId":"{{ kaneo_workspace_id }}"}'
 ```
 
 ### create_columns (apres create_project)
@@ -129,6 +130,7 @@ done
 
 ### create_task
 ```bash
+# columnId OBLIGATOIRE — utiliser le columnId "Backlog" retourne par create_columns
 curl -s -X POST http://kaneo-api:1337/api/task/<projectId> \
   -H "Content-Type: application/json" \
   -H "Cookie: $COOKIE" \

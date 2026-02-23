@@ -9,4 +9,3 @@
       - docker-compose-creative.yml
     state: restarted
   become: true
-  failed_when: false

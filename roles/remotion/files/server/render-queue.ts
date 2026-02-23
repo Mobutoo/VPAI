@@ -18,6 +18,10 @@ type JobState =
       cancel: () => void;
     }
   | {
+      status: "cancelled";
+      data: JobData;
+    }
+  | {
       status: "in-progress";
       progress: number;
       data: JobData;
@@ -39,18 +43,21 @@ export const makeRenderQueue = ({
   serveUrl,
   rendersDir,
   chromiumExecutable,
+  publicBaseUrl,
 }: {
   port: number;
   serveUrl: string;
   rendersDir: string;
   chromiumExecutable?: string;
+  publicBaseUrl?: string;
 }) => {
   const jobs = new Map<string, JobState>();
   let queue: Promise<unknown> = Promise.resolve();
 
   const processRender = async (jobId: string) => {
     const job = jobs.get(jobId);
-    if (!job) throw new Error(`Render job ${jobId} not found`);
+    // Job was cancelled before processing started
+    if (!job || job.status === "cancelled") return;
 
     const { cancel, cancelSignal } = makeCancelSignal();
 
@@ -80,13 +87,14 @@ export const makeRenderQueue = ({
         codec: "h264",
         // ARM64: use system Chromium if configured
         ...(chromiumExecutable ? { chromiumExecutable } : {}),
-        // Disable sandbox for Docker (needed for root/headless)
         chromiumOptions: {
           disableWebSecurity: false,
           gl: "angle",
           userAgent: undefined,
           ignoreCertificateErrors: false,
           headless: true,
+          // Required: cap_drop: ALL removes CAP_SYS_ADMIN needed for sandbox
+          disableSandbox: true,
         },
         onProgress: (progress) => {
           console.info(`${jobId} progress: ${Math.round(progress.progress * 100)}%`);
@@ -100,9 +108,10 @@ export const makeRenderQueue = ({
         outputLocation: path.join(rendersDir, `${jobId}.mp4`),
       });
 
+      const base = publicBaseUrl ?? `http://localhost:${port}`;
       jobs.set(jobId, {
         status: "completed",
-        videoUrl: `http://localhost:${port}/renders/${jobId}.mp4`,
+        videoUrl: `${base}/renders/${jobId}.mp4`,
         data: job.data,
       });
     } catch (error) {
@@ -120,7 +129,7 @@ export const makeRenderQueue = ({
       status: "queued",
       data,
       cancel: () => {
-        jobs.delete(jobId);
+        jobs.set(jobId, { status: "cancelled", data });
       },
     });
     queue = queue.then(() => processRender(jobId));

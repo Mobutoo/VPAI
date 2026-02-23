@@ -23,7 +23,6 @@
     mode: "0755"
   become: true
   loop:
-    - output
     - renders
 
 - name: Create Remotion source subdirectories
@@ -81,6 +80,16 @@
     - { src: "remotion/HelloWorld/HelloWorld.tsx", dest: "remotion/HelloWorld/HelloWorld.tsx" }
   register: remotion_composition_files
 
+- name: Generate package-lock.json for reproducible builds (npm install --package-lock-only)
+  ansible.builtin.command:
+    cmd: npm install --package-lock-only --ignore-scripts
+    chdir: "{{ remotion_install_dir }}"
+  become: true
+  become_user: "{{ workstation_pi_user }}"
+  args:
+    creates: "{{ remotion_install_dir }}/package-lock.json"
+  changed_when: true
+
 - name: Build Remotion Docker image (ARM64 — system Chromium)
   community.docker.docker_image:
     name: "remotion-local"
@@ -103,7 +112,6 @@
     timeout: 120
     state: started
   changed_when: false
-  failed_when: false
 
 - name: Check Remotion health endpoint
   ansible.builtin.uri:
@@ -115,8 +123,8 @@
   register: remotion_health
   until: remotion_health.status == 200
   changed_when: false
-  failed_when: false
 
-- name: Display Remotion health status
-  ansible.builtin.debug:
-    msg: "Remotion: {{ 'healthy' if remotion_health.status == 200 else 'unhealthy (status: ' ~ remotion_health.status | default('unknown') ~ ')' }}"
+- name: Fail if Remotion is unhealthy
+  ansible.builtin.fail:
+    msg: "Remotion health check failed (status: {{ remotion_health.status | default('unknown') }})"
+  when: remotion_health.status | default(0) != 200

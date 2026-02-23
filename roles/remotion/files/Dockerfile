@@ -34,7 +34,7 @@ WORKDIR /app
 # Copy package files first for layer caching
 COPY package.json package-lock.json* ./
 
-RUN npm install
+RUN npm ci
 
 # Copy all source files
 COPY . .
@@ -49,8 +49,8 @@ ENV CHROME_EXECUTABLE_PATH=/usr/bin/chromium
 # Skip Remotion's automatic browser download
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
-# Create output dirs
-RUN mkdir -p renders output creative-assets && \
+# Create runtime dirs
+RUN mkdir -p renders creative-assets && \
     chown -R 1000:1000 /app
 
 ENV NODE_ENV=production

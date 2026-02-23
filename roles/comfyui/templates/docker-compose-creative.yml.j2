@@ -56,10 +56,10 @@ services:
     environment:
       PORT: "{{ remotion_port }}"
       REMOTION_API_TOKEN: "{{ vault_remotion_api_token | default('') }}"
+      REMOTION_PUBLIC_URL: "https://{{ remotion_subdomain }}.{{ domain_name }}"
       NODE_ENV: "production"
-      CHROMIUM_FLAGS: "--no-sandbox --disable-setuid-sandbox"
     volumes:
-      - {{ remotion_data_dir }}/output:/app/output
+      - {{ remotion_data_dir }}/renders:/app/renders
       - {{ creative_assets_dir }}:/app/creative-assets:ro
     ports:
       - "127.0.0.1:{{ remotion_port }}:{{ remotion_port }}"

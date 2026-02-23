@@ -1,10 +1,43 @@
-import express from "express";
+import express, { NextFunction, Request, Response } from "express";
 import { makeRenderQueue } from "./render-queue";
 import { bundle } from "@remotion/bundler";
 import path from "node:path";
 import { ensureBrowser } from "@remotion/renderer";
+import { z } from "zod";
 
-const { PORT = 3200, REMOTION_SERVE_URL, CHROME_EXECUTABLE_PATH } = process.env;
+const {
+  PORT = 3200,
+  REMOTION_SERVE_URL,
+  CHROME_EXECUTABLE_PATH,
+  REMOTION_API_TOKEN,
+  REMOTION_PUBLIC_URL,
+} = process.env;
+
+// Maximum queued + in-progress jobs before returning 429
+const MAX_QUEUE_DEPTH = 10;
+
+// Allowlist of registered composition IDs
+const KNOWN_COMPOSITIONS = new Set(["HelloWorld"]);
+
+const RenderRequestSchema = z.object({
+  compositionId: z.string().optional(),
+  inputProps: z.record(z.unknown()).optional(),
+});
+
+// Auth middleware — no-op when token is not configured
+function requireAuth(req: Request, res: Response, next: NextFunction): void {
+  if (!REMOTION_API_TOKEN) {
+    next();
+    return;
+  }
+  const header = req.headers.authorization ?? "";
+  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
+  if (token !== REMOTION_API_TOKEN) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+  next();
+}
 
 function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
   const app = express();
@@ -16,31 +49,52 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
     serveUrl: remotionBundleUrl,
     rendersDir,
     chromiumExecutable: CHROME_EXECUTABLE_PATH,
+    publicBaseUrl: REMOTION_PUBLIC_URL,
   });
 
   // Host renders on /renders
   app.use("/renders", express.static(rendersDir));
   app.use(express.json());
 
-  // Health check
+  // Health check — unauthenticated
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", renders: queue.jobs.size });
   });
 
   // Endpoint to create a new render job
-  app.post("/renders", async (req, res) => {
-    const { compositionId, inputProps } = req.body || {};
+  app.post("/renders", requireAuth, (req, res) => {
+    // Queue depth cap — prevent resource exhaustion
+    const active = [...queue.jobs.values()].filter(
+      (j) => j.status === "queued" || j.status === "in-progress",
+    ).length;
+    if (active >= MAX_QUEUE_DEPTH) {
+      res.status(429).json({ message: "Queue full, try again later" });
+      return;
+    }
+
+    const parsed = RenderRequestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ message: "Invalid request body", errors: parsed.error.issues });
+      return;
+    }
+
+    const compositionId = parsed.data.compositionId ?? "HelloWorld";
+
+    if (!KNOWN_COMPOSITIONS.has(compositionId)) {
+      res.status(400).json({ message: "Unknown composition" });
+      return;
+    }
+
     const jobId = queue.createJob({
-      compositionId: compositionId || "HelloWorld",
-      inputProps: inputProps || {},
+      compositionId,
+      inputProps: parsed.data.inputProps ?? {},
     });
     res.json({ jobId });
   });
 
   // Endpoint to get a job status
-  app.get("/renders/:jobId", (req, res) => {
-    const jobId = req.params.jobId;
-    const job = queue.jobs.get(jobId);
+  app.get("/renders/:jobId", requireAuth, (req, res) => {
+    const job = queue.jobs.get(req.params.jobId);
     if (!job) {
       res.status(404).json({ message: "Job not found" });
       return;
@@ -49,9 +103,8 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
   });
 
   // Endpoint to cancel a job
-  app.delete("/renders/:jobId", (req, res) => {
-    const jobId = req.params.jobId;
-    const job = queue.jobs.get(jobId);
+  app.delete("/renders/:jobId", requireAuth, (req, res) => {
+    const job = queue.jobs.get(req.params.jobId);
     if (!job) {
       res.status(404).json({ message: "Job not found" });
       return;

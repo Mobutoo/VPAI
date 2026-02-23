@@ -710,18 +710,83 @@ reverse_proxy openclaw:18789 {
 - **CVE** : GHSA-gv46-4xfq-jv58 (RCE bypass), GHSA-xw4p-pw82-hqr7 (path traversal)
 - **Reseau sandbox** : `{{ project_name }}_sandbox` (internal, 172.20.5.0/24) — seul LiteLLM accessible
 
-### 11.9 Modeles — Assignation Open-Source First
+### 11.9 Modeles — Assignation Open-Source First (Free Tier)
 
 | Agent | Persona | Modele | Justification |
 |---|---|---|---|
-| Concierge | Mobutoo | minimax-m25 | Function Calling #1 (76.8%) — kimi-k2 ecarte (tokens leakage) |
-| Builder | Imhotep | qwen3-coder | Code gen FREE, excellent SWE-bench |
-| Writer | Thot | glm-5 | Agent-oriented, low hallucination |
-| Artist | Basquiat | minimax-m25 | 1M context, multimodal |
-| Tutor | Piccolo | minimax-m25 | kimi-k2 ecarte (tokens leakage) |
-| Explorer | R2D2 | grok-search | #1 Search Arena, web+X natif |
+| Concierge | Mobutoo | deepseek-v3-free | DeepSeek V3 :free OpenRouter — 0 credit requis |
+| Builder | Imhotep | qwen3-coder | Qwen3 Coder :free OpenRouter — 0 credit requis |
+| Writer | Thot | deepseek-v3-free | Generaliste, 0 credit |
+| Artist | Basquiat | deepseek-v3-free | Fallback libre quand credits vides |
+| Tutor | Piccolo | deepseek-v3-free | 0 credit requis |
+| Explorer | R2D2 | deepseek-v3-free | Fallback (grok-search si credits dispo) |
+| Messenger | — | qwen3-coder | Taches courtes, 0 credit |
+
+**Modeles payants OpenRouter** (utiliser uniquement si credits disponibles) : `minimax-m25`, `glm-5`, `kimi-k2`, `grok-search`, `perplexity-pro`, `deepseek-v3` (sans `:free`).
 
 **kimi-k2 ecarte** : Bug amont via OpenRouter — les tokens speciaux `<|tool_call_begin|>`, `<|tool_call_end|>` fuient dans le texte. Confirme charmbracelet/crush#725 + moonshotai/Kimi-K2-Instruct discussions#41.
+
+**OpenRouter :free vs payant** : Les IDs de modeles OpenRouter ont une variante `:free` (ex: `openrouter/deepseek/deepseek-chat:free`) qui ne consomme pas de credits mais a des rate-limits de 20 req/min. Sans le suffixe `:free`, le modele est payant et echoue en 402 si le solde est epuise.
+
+---
+
+### 11.10 Plugins — Activation Obligatoire depuis v2026.2.22
+
+**Breaking change v2026.2.22** : Tous les plugins "channel" (telegram, discord, whatsapp, slack…) sont desactives par defaut. Seuls ces 3 plugins sont charges automatiquement :
+```
+device-pair | phone-control | talk-voice
+```
+
+**Symptome** : Bot Telegram silencieux malgre `channels.telegram` correctement configure. Aucun log `[telegram]`. `channels list` retourne vide.
+
+**Diagnostic** :
+```bash
+docker exec javisi_openclaw node /app/openclaw.mjs plugins list
+# Si "telegram | disabled | bundled (disabled by default)" → fix requis
+```
+
+**Fix dans `openclaw.json.j2`** (OBLIGATOIRE depuis v2026.2.22) :
+```json
+"plugins": {
+  "entries": {
+    "telegram": { "enabled": true }
+  }
+}
+```
+Pour WhatsApp : ajouter `"whatsapp": { "enabled": true }`.
+
+**Regle** : Apres chaque montee de version OpenClaw, verifier `plugins list`. Tout plugin `disabled (bundled by default)` doit etre active explicitement.
+
+---
+
+### 11.11 Doctor — Config Overwrite au Demarrage
+
+**Symptome** : `[reload] config change detected … changedPaths=1` dans les logs a chaque redemarrage.
+
+**Cause** : Le "doctor" OpenClaw ajoute les defaults de migration absents (ex: `agents.defaults.compaction: {mode: "safeguard"}`). Comportement normal.
+
+**Regle** :
+- `changedPaths=1` = doctor a ajoute 1 default de migration → **normal, ignorer**
+- `changedPaths > 3` → investiguer (doctor corrige une config corrompue)
+- Le doctor ne supprime jamais de cles existantes
+
+---
+
+### 11.12 Diagnostic "No API key found for provider openrouter" — Message Trompeur
+
+**Symptome** : `[diagnostic] lane task error: No API key found for provider "openrouter"` en boucle dans les logs, meme si `OPENROUTER_API_KEY` est bien present dans l'env LiteLLM.
+
+**Cause reelle** : Ce n'est PAS une cle manquante. C'est une erreur 402 (credits epuises) retournee par OpenRouter via LiteLLM, que le moteur d'auth OpenClaw (model-auth) reformate maladroitement en "No API key found".
+
+**Verification** :
+```bash
+# Inspecter les sessions du concierge pour voir l'erreur reelle
+docker exec javisi_openclaw sh -c \
+  "grep -l openrouter /home/node/.openclaw/agents/concierge/sessions/*.jsonl | head -3 | \
+   xargs -I{} grep 'OpenrouterException\|402\|credits' {} | head -10"
+```
+
+**Fix** : Changer les modeles des agents vers des variantes `:free` (voir 11.9) OU recharger le compte OpenRouter.
 
 ---
 

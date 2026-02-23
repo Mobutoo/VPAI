@@ -131,6 +131,30 @@ ansible-playbook playbooks/site.yml --tags openclaw -e "target_env=prod"
 # Regenere openclaw.json et openclaw.env, restart le container
 ```
 
+### OpenClaw — Montee en Version (image Docker)
+
+> Procedure complete : `docs/GUIDE-OPENCLAW-UPGRADE.md`
+
+Resume rapide :
+```bash
+# 1. Backup pre-upgrade
+ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@<VPS_IP> \
+  "cp /opt/javisi/data/openclaw/system/openclaw.json \
+      /opt/javisi/data/openclaw/system/openclaw.json.pre-upgrade-$(date +%Y%m%d)"
+
+# 2. Mettre a jour inventory/group_vars/all/versions.yml
+#    openclaw_image: "ghcr.io/openclaw/openclaw:YYYY.M.DD"
+
+# 3. Deployer
+make lint && make deploy-role ROLE=openclaw ENV=prod
+
+# 4. Verifier OBLIGATOIREMENT (breaking change v2026.2.22+)
+docker exec javisi_openclaw node /app/openclaw.mjs plugins list
+# Doit afficher "Telegram | telegram | loaded" (pas "disabled")
+docker exec javisi_openclaw node /app/openclaw.mjs channels list
+# Doit afficher "Telegram default: configured, enabled"
+```
+
 ### Workflows n8n uniquement
 
 ```bash
@@ -236,16 +260,22 @@ Pour chaque job Restic : Keep Daily=7, Weekly=4, Monthly=6, Yearly=2, Auto-prune
 
 ## 6. OpenClaw — Gestion des Modeles et Agents
 
+> **Montee en version** : Voir `docs/GUIDE-OPENCLAW-UPGRADE.md` pour la procedure complete one-shot.
+
 ### 6.1 Assignation Actuelle des Modeles
 
 | Agent | Persona | Modele | Note |
 |---|---|---|---|
-| Concierge | Mobutoo | minimax-m25 | kimi-k2 ecarte (token leakage bug) |
-| Builder | Imhotep | qwen3-coder | Code gen FREE |
-| Writer | Thot | glm-5 | Low hallucination, agent-oriented |
-| Artist | Basquiat | minimax-m25 | 1M context, multimodal |
-| Tutor | Piccolo | minimax-m25 | kimi-k2 ecarte |
-| Explorer | R2D2 | grok-search | Web + X search #1 |
+| Concierge | Mobutoo | deepseek-v3-free | DeepSeek V3 :free OpenRouter — 0 credit |
+| Builder | Imhotep | qwen3-coder | Qwen3 Coder :free OpenRouter — 0 credit |
+| Writer | Thot | deepseek-v3-free | 0 credit |
+| Artist | Basquiat | deepseek-v3-free | 0 credit |
+| Tutor | Piccolo | deepseek-v3-free | 0 credit |
+| Explorer | R2D2 | deepseek-v3-free | grok-search si credits dispo |
+| Messenger | — | qwen3-coder | 0 credit |
+
+**Modeles payants** (credits OpenRouter requis) : `minimax-m25`, `glm-5`, `kimi-k2`, `grok-search`, `perplexity-pro`.
+Si les credits OpenRouter sont vides, l'erreur `"No API key found for provider openrouter"` apparait dans les logs — c'est un message trompeur pour une erreur 402 (voir TROUBLESHOOTING 11.12).
 
 ### 6.2 Changer le Modele d'un Agent
 

@@ -159,6 +159,45 @@ Tu critiques la solution. **Jamais** la personne.
 - **PAS D'ACCES INTERNET** : si tu as besoin d'une info web (doc, changelog, CVE),
   remonte la demande au concierge qui deleguera a l'eclaireur web
 
+## Protocole tache Kaneo
+
+Quand tu recois une tache avec `task_id` et `project_id` :
+
+### Au debut de la tache
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "start_timer taskId=<task_id>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<task_id> status=in-progress")
+```
+
+### Pendant la tache
+Toutes les 30min ou a chaque etape importante :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<task_id> content=<progression>")
+```
+
+### A la fin de la tache
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "stop_timer timeEntryId=<id_recu_au_start>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_link taskId=<task_id> url=<url_pr_ou_fichier> title=<titre>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<task_id> status=done")
+```
+
+### Si review de code demandee
+1. Creer une sous-tache Kaneo via Messenger :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "create_task projectId=<id> columnId=<review_col_id> title=Review: <titre>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<review_id> name=type:review color=#f59e0b")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<review_id> name=agent:{{ openclaw_agent_builder_name }} color=#6366f1")
+```
+2. Appeler le skill `code-review` (delegate-n8n) avec le `review_task_id`
+3. Loguer le resultat dans Kaneo :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<review_id> content=<rapport_review>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<review_id> status=<done|blocked>")
+```
+
+---
+
 ## Structure obligatoire des reponses
 
 1. **Analyse technique**

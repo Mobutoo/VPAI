@@ -313,6 +313,468 @@ curl -s -X GET http://kaneo-api:1337/api/external-link/task/<taskId> \
 
 ---
 
+## Boîte à Idées — Commandes
+
+### create_idea_plan
+
+`create_idea_plan title=<titre> domain=<domain> plan_json_b64=<base64>`
+
+```bash
+# Auth (cache Redis — voir section Auth ci-dessus)
+
+# 1. Trouver ou créer le projet "Boîte à Idées"
+PROJECTS=$(curl -sf -H "Cookie: $COOKIE" http://kaneo-api:1337/api/project 2>/dev/null)
+IDEA_PROJECT_ID=$(echo "$PROJECTS" | python3 -c "
+import sys,json
+projects=json.load(sys.stdin)
+if isinstance(projects, dict): projects=projects.get('projects', projects.get('data', []))
+p=[x for x in projects if x.get('name','')=='{{ openclaw_ideas_project_name | default(\"Boite a Idees\") }}']
+print(p[0]['id'] if p else '')
+" 2>/dev/null)
+
+# 2. Si absent : créer projet + colonnes
+if [ -z "$IDEA_PROJECT_ID" ]; then
+  PROJ=$(curl -sf -X POST http://kaneo-api:1337/api/project \
+    -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
+    -d '{"name":"{{ openclaw_ideas_project_name | default(\"Boite a Idees\") }}","description":"Plans idees — lifecycle approuver/refuser/implementer","icon":"💡"}' 2>/dev/null)
+  IDEA_PROJECT_ID=$(echo "$PROJ" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id','') or d.get('data',{}).get('id',''))" 2>/dev/null)
+  # Créer colonnes
+  for COL in "Draft" "In Review" "Approved" "Rejected" "Implemented"; do
+    curl -sf -X POST "http://kaneo-api:1337/api/column/$IDEA_PROJECT_ID" \
+      -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
+      -d "{\"name\":\"$COL\"}" -o /dev/null 2>/dev/null
+  done
+fi
+
+# 3. Trouver columnId "Draft"
+COLS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/column/$IDEA_PROJECT_ID" 2>/dev/null)
+DRAFT_COL_ID=$(echo "$COLS" | python3 -c "
+import sys,json
+cols=json.load(sys.stdin)
+if isinstance(cols, dict): cols=cols.get('columns', cols.get('data', []))
+c=[x for x in cols if x.get('name','')=='Draft']
+print(c[0]['id'] if c else '')
+" 2>/dev/null)
+
+# 4. Créer la tâche idée
+IDEA_DATE=$(date +%Y-%m-%d)
+IDEA_META="{\"id\":\"idea-${IDEA_DATE}-$(date +%H%M%S)\",\"domain\":\"<domain>\",\"status\":\"pending\",\"iterations\":1,\"created\":\"${IDEA_DATE}\"}"
+PLAN_JSON=$(echo "<plan_json_b64>" | base64 -d 2>/dev/null || echo "<plan_json_b64>")
+DESCRIPTION="---IDEA-PLAN-META-START---
+${IDEA_META}
+---IDEA-PLAN-META-END---
+
+---IDEA-PLAN-V1-START---
+${PLAN_JSON}
+---IDEA-PLAN-V1-END---"
+
+TASK=$(curl -sf -X POST "http://kaneo-api:1337/api/task/$IDEA_PROJECT_ID" \
+  -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
+  -d "{\"title\":\"💡 [IDEA] <titre>\",\"columnId\":\"$DRAFT_COL_ID\",\"description\":$(echo "$DESCRIPTION" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}" 2>/dev/null)
+TASK_ID=$(echo "$TASK" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id','') or d.get('data',{}).get('id',''))" 2>/dev/null)
+
+# 5. Ajouter label idea:pending
+curl -sf -X POST http://kaneo-api:1337/api/label \
+  -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
+  -d "{\"taskId\":\"$TASK_ID\",\"name\":\"idea:pending\",\"color\":\"#7c3aed\"}" -o /dev/null 2>/dev/null
+
+# 6. Cacher l'ID projet dans Redis
+redis-cli -h redis HSET kaneo:projects "{{ openclaw_ideas_project_name | default('Boite a Idees') }}" "$IDEA_PROJECT_ID"
+
+echo "{\"task_id\":\"$TASK_ID\",\"project_id\":\"$IDEA_PROJECT_ID\",\"column\":\"Draft\",\"url\":\"https://{{ kaneo_subdomain }}.{{ domain_name }}/\"}"
+```
+
+### update_idea
+
+`update_idea task_id=<id> version=<N> feedback=<texte> plan_json_b64=<base64>`
+
+```bash
+# Auth (cache Redis)
+
+# 1. Récupérer description actuelle
+CURRENT=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/task/<id>" 2>/dev/null)
+CURRENT_DESC=$(echo "$CURRENT" | python3 -c "import sys,json; d=json.load(sys.stdin); t=d.get('task',d); print(t.get('description',''))" 2>/dev/null)
+
+# 2. Compter versions actives — si > 3 : archiver la plus ancienne dans add_comment
+VERSION_COUNT=$(echo "$CURRENT_DESC" | grep -c "IDEA-PLAN-V[0-9]*-START" || echo 0)
+if [ "$VERSION_COUNT" -ge 3 ]; then
+  OLDEST=$(echo "$CURRENT_DESC" | python3 -c "
+import sys,re
+desc=sys.stdin.read()
+m=re.search(r'---IDEA-PLAN-V(\d+)-START---(.*?)---IDEA-PLAN-V\d+-END---', desc, re.DOTALL)
+print(m.group(0) if m else '')
+" 2>/dev/null)
+  if [ -n "$OLDEST" ]; then
+    curl -sf -X POST http://kaneo-api:1337/api/activity/comment \
+      -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
+      -d "{\"taskId\":\"<id>\",\"content\":\"[archived] $OLDEST\"}" -o /dev/null 2>/dev/null
+    # Supprimer la version archivée de la description
+    CURRENT_DESC=$(echo "$CURRENT_DESC" | python3 -c "
+import sys,re
+desc=sys.stdin.read()
+print(re.sub(r'---IDEA-PLAN-V1-START---.*?---IDEA-PLAN-V1-END---\n?','',desc,count=1,flags=re.DOTALL), end='')
+" 2>/dev/null)
+  fi
+fi
+
+# 3. Construire nouvelle description avec feedback + plan vN
+PREV_N=$(( <version> - 1 ))
+NEW_N=<version>
+PLAN_JSON=$(echo "<plan_json_b64>" | base64 -d 2>/dev/null || echo "<plan_json_b64>")
+FEEDBACK_BLOCK="---IDEA-FEEDBACK-V${PREV_N}-START---
+{\"from\":\"user\",\"date\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"comment\":\"<feedback>\",\"type\":\"modify\"}
+---IDEA-FEEDBACK-V${PREV_N}-END---"
+PLAN_BLOCK="---IDEA-PLAN-V${NEW_N}-START---
+${PLAN_JSON}
+---IDEA-PLAN-V${NEW_N}-END---"
+
+NEW_DESC="${CURRENT_DESC}
+
+${FEEDBACK_BLOCK}
+
+${PLAN_BLOCK}"
+
+# 4. Mettre à jour description + passer en "In Review"
+IDEA_PROJECT_ID=$(redis-cli -h redis HGET kaneo:projects "{{ openclaw_ideas_project_name | default('Boite a Idees') }}")
+COLS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/column/$IDEA_PROJECT_ID" 2>/dev/null)
+REVIEW_COL_ID=$(echo "$COLS" | python3 -c "
+import sys,json
+cols=json.load(sys.stdin)
+if isinstance(cols, dict): cols=cols.get('columns', cols.get('data', []))
+c=[x for x in cols if x.get('name','')=='In Review']
+print(c[0]['id'] if c else '')
+" 2>/dev/null)
+
+curl -sf -X PUT "http://kaneo-api:1337/api/task/description/<id>" \
+  -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
+  -d "{\"description\":$(echo "$NEW_DESC" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}" -o /dev/null 2>/dev/null
+
+curl -sf -X PUT "http://kaneo-api:1337/api/task/column/<id>" \
+  -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
+  -d "{\"columnId\":\"$REVIEW_COL_ID\"}" -o /dev/null 2>/dev/null
+
+# 5. Incrémenter compteur itérations Redis
+redis-cli -h redis HINCRBY "idea:<id>:meta" iterations 1
+
+echo "{\"updated\":true,\"task_id\":\"<id>\",\"version\":$NEW_N,\"column\":\"In Review\"}"
+```
+
+### approve_idea
+
+`approve_idea task_id=<id>`
+
+```bash
+# Auth (cache Redis)
+
+# 1. Idempotence — vérifier si déjà dispatché
+DISPATCHED=$(redis-cli -h redis GET "idea:<id>:dispatched")
+if [ "$DISPATCHED" = "true" ]; then
+  echo "{\"already_dispatched\":true,\"task_id\":\"<id>\"}"
+  exit 0
+fi
+
+# 2. Trouver project_id + columnId "Approved"
+IDEA_PROJECT_ID=$(redis-cli -h redis HGET kaneo:projects "{{ openclaw_ideas_project_name | default('Boite a Idees') }}")
+COLS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/column/$IDEA_PROJECT_ID" 2>/dev/null)
+APPROVED_COL_ID=$(echo "$COLS" | python3 -c "
+import sys,json
+cols=json.load(sys.stdin)
+if isinstance(cols, dict): cols=cols.get('columns', cols.get('data', []))
+c=[x for x in cols if x.get('name','')=='Approved']
+print(c[0]['id'] if c else '')
+" 2>/dev/null)
+
+# 3. Passer en colonne "Approved"
+curl -sf -X PUT "http://kaneo-api:1337/api/task/column/<id>" \
+  -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
+  -d "{\"columnId\":\"$APPROVED_COL_ID\"}" -o /dev/null 2>/dev/null
+
+# 4. Swap labels : idea:pending → idea:approved
+# (supprimer l'ancien label et créer le nouveau)
+LABELS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/label/task/<id>" 2>/dev/null)
+OLD_LABEL_ID=$(echo "$LABELS" | python3 -c "
+import sys,json
+labels=json.load(sys.stdin)
+if isinstance(labels, dict): labels=labels.get('labels', labels.get('data', []))
+l=[x for x in labels if x.get('name','')=='idea:pending']
+print(l[0]['id'] if l else '')
+" 2>/dev/null)
+[ -n "$OLD_LABEL_ID" ] && curl -sf -X DELETE "http://kaneo-api:1337/api/label/$OLD_LABEL_ID" \
+  -H "Cookie: $COOKIE" -o /dev/null 2>/dev/null
+curl -sf -X POST http://kaneo-api:1337/api/label \
+  -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
+  -d "{\"taskId\":\"<id>\",\"name\":\"idea:approved\",\"color\":\"#16a34a\"}" -o /dev/null 2>/dev/null
+
+# 5. Appeler webhook plan-dispatch n8n
+ORG_ID="{{ kaneo_workspace_id | default('') }}"
+HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+  -X POST "$KANEO_PLAN_DISPATCH_WEBHOOK" \
+  -H "Content-Type: application/json" \
+  -d "{\"task_id\":\"<id>\",\"org_id\":\"$ORG_ID\"}" 2>/dev/null)
+
+# 6. Indexer dans Qdrant (feed_idea — mémoire sémantique long-terme)
+# Appel inline identique à la commande feed_idea (évite un spawn supplémentaire)
+CURRENT=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/task/<id>" 2>/dev/null)
+PLAN_JSON=$(echo "$CURRENT" | python3 -c "
+import sys,re,json
+d=json.load(sys.stdin)
+t=d.get('task',d)
+desc=t.get('description','')
+matches=re.findall(r'---IDEA-PLAN-V\d+-START---(.*?)---IDEA-PLAN-V\d+-END---', desc, re.DOTALL)
+print(matches[-1].strip() if matches else '')
+" 2>/dev/null)
+
+if [ -n "\$PLAN_JSON" ]; then
+  EMBED_INPUT=$(echo "\$PLAN_JSON" | python3 -c "
+import sys,json
+d=json.loads(sys.stdin.read())
+title=d.get('title','')
+summary=d.get('summary','')
+tech=', '.join(d.get('resources',{}).get('tech_stack',[]) + d.get('resources',{}).get('tools',[]))
+print(f'{title}. {summary}. Technologies/outils: {tech}')
+" 2>/dev/null)
+  EMBEDDING=$(curl -sf -X POST http://litellm:4000/v1/embeddings \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer \$LITELLM_API_KEY" \
+    -d "{\"model\":\"embedding\",\"input\":$(echo "\$EMBED_INPUT" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}" 2>/dev/null | \
+    python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d['data'][0]['embedding']))" 2>/dev/null)
+  if [ -n "\$EMBEDDING" ]; then
+    POINT_UUID=$(echo "<id>" | python3 -c "import sys,uuid; print(str(uuid.uuid5(uuid.NAMESPACE_URL, sys.stdin.read().strip())))" 2>/dev/null)
+    PAYLOAD=$(echo "\$PLAN_JSON" | python3 -c "
+import sys,json
+d=json.loads(sys.stdin.read())
+print(json.dumps({'title':d.get('title',''),'domain':d.get('domain','autre'),'summary':d.get('summary',''),'tech_stack':d.get('resources',{}).get('tech_stack',[])+d.get('resources',{}).get('tools',[]),'status':'approved','kaneo_task_id':'<id>','kpi_victoire':d.get('kpi_victoire',[])}))
+" 2>/dev/null)
+    curl -sf -o /dev/null \
+      -X PUT "http://qdrant:6333/collections/{{ openclaw_qdrant_ideas_collection | default('ideas') }}/points" \
+      -H "Content-Type: application/json" \
+      -H "api-key: \$QDRANT_API_KEY" \
+      -d "{\"points\":[{\"id\":\"\$POINT_UUID\",\"vector\":\$EMBEDDING,\"payload\":\$PAYLOAD}]}" 2>/dev/null
+  fi
+fi
+
+echo "{\"approved\":true,\"task_id\":\"<id>\",\"dispatch_http\":\"$HTTP_CODE\"}"
+```
+
+### reject_idea
+
+`reject_idea task_id=<id> reason=<texte>`
+
+```bash
+# Auth (cache Redis)
+
+# 1. Trouver columnId "Rejected"
+IDEA_PROJECT_ID=$(redis-cli -h redis HGET kaneo:projects "{{ openclaw_ideas_project_name | default('Boite a Idees') }}")
+COLS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/column/$IDEA_PROJECT_ID" 2>/dev/null)
+REJECTED_COL_ID=$(echo "$COLS" | python3 -c "
+import sys,json
+cols=json.load(sys.stdin)
+if isinstance(cols, dict): cols=cols.get('columns', cols.get('data', []))
+c=[x for x in cols if x.get('name','')=='Rejected']
+print(c[0]['id'] if c else '')
+" 2>/dev/null)
+
+# 2. Passer en colonne "Rejected"
+curl -sf -X PUT "http://kaneo-api:1337/api/task/column/<id>" \
+  -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
+  -d "{\"columnId\":\"$REJECTED_COL_ID\"}" -o /dev/null 2>/dev/null
+
+# 3. Swap labels : idea:pending → idea:rejected
+LABELS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/label/task/<id>" 2>/dev/null)
+OLD_LABEL_ID=$(echo "$LABELS" | python3 -c "
+import sys,json
+labels=json.load(sys.stdin)
+if isinstance(labels, dict): labels=labels.get('labels', labels.get('data', []))
+l=[x for x in labels if 'idea:' in x.get('name','')]
+print(l[0]['id'] if l else '')
+" 2>/dev/null)
+[ -n "$OLD_LABEL_ID" ] && curl -sf -X DELETE "http://kaneo-api:1337/api/label/$OLD_LABEL_ID" \
+  -H "Cookie: $COOKIE" -o /dev/null 2>/dev/null
+curl -sf -X POST http://kaneo-api:1337/api/label \
+  -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
+  -d "{\"taskId\":\"<id>\",\"name\":\"idea:rejected\",\"color\":\"#dc2626\"}" -o /dev/null 2>/dev/null
+
+# 4. Ajouter commentaire de refus
+curl -sf -X POST http://kaneo-api:1337/api/activity/comment \
+  -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
+  -d "{\"taskId\":\"<id>\",\"content\":\"[REJECTED] $(date -u +%Y-%m-%dT%H:%M:%SZ) — <reason>\"}" -o /dev/null 2>/dev/null
+
+# 5. Nettoyer Redis (idée active)
+redis-cli -h redis DEL "idea:<id>:dispatched" "idea:<id>:meta"
+
+echo "{\"rejected\":true,\"task_id\":\"<id>\"}"
+```
+
+### feed_idea (indexation Qdrant)
+
+`feed_idea task_id=<id>`
+
+```bash
+# 1. Récupérer la dernière version du plan depuis la description Kaneo
+CURRENT=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/task/<id>" 2>/dev/null)
+PLAN_JSON=$(echo "$CURRENT" | python3 -c "
+import sys,re,json
+d=json.load(sys.stdin)
+t=d.get('task',d)
+desc=t.get('description','')
+# Extraire la dernière version
+matches=re.findall(r'---IDEA-PLAN-V\d+-START---(.*?)---IDEA-PLAN-V\d+-END---', desc, re.DOTALL)
+print(matches[-1].strip() if matches else '')
+" 2>/dev/null)
+
+if [ -z "$PLAN_JSON" ]; then
+  echo "{\"error\":\"no plan found in task description\"}"
+  exit 1
+fi
+
+# 2. Extraire champs pour embedding
+EMBED_INPUT=$(echo "$PLAN_JSON" | python3 -c "
+import sys,json
+d=json.loads(sys.stdin.read())
+title=d.get('title','')
+summary=d.get('summary','')
+tech=', '.join(d.get('resources',{}).get('tech_stack',[]) + d.get('resources',{}).get('tools',[]))
+print(f'{title}. {summary}. Technologies/outils: {tech}')
+" 2>/dev/null)
+
+# 3. Générer embedding via LiteLLM
+EMBEDDING=$(curl -sf -X POST http://litellm:4000/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  -d "{\"model\":\"embedding\",\"input\":$(echo "$EMBED_INPUT" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}" 2>/dev/null | \
+  python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d['data'][0]['embedding']))" 2>/dev/null)
+
+if [ -z "$EMBEDDING" ]; then
+  echo "{\"error\":\"embedding failed\"}"
+  exit 1
+fi
+
+# 4. Générer UUID déterministe depuis task_id
+POINT_UUID=$(echo "<id>" | python3 -c "
+import sys,uuid
+task_id=sys.stdin.read().strip()
+print(str(uuid.uuid5(uuid.NAMESPACE_URL, task_id)))
+" 2>/dev/null)
+
+# 5. Indexer dans Qdrant
+PAYLOAD=$(echo "$PLAN_JSON" | python3 -c "
+import sys,json
+d=json.loads(sys.stdin.read())
+payload={
+  'title': d.get('title',''),
+  'domain': d.get('domain','autre'),
+  'summary': d.get('summary',''),
+  'tech_stack': d.get('resources',{}).get('tech_stack',[]) + d.get('resources',{}).get('tools',[]),
+  'status': 'approved',
+  'kaneo_task_id': '<id>',
+  'date': '$(date -u +%Y-%m-%d)',
+  'kpi_victoire': d.get('kpi_victoire',[])
+}
+print(json.dumps(payload))
+" 2>/dev/null)
+
+HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+  -X PUT "http://qdrant:6333/collections/{{ openclaw_qdrant_ideas_collection | default('ideas') }}/points" \
+  -H "Content-Type: application/json" \
+  -H "api-key: $QDRANT_API_KEY" \
+  -d "{\"points\":[{\"id\":\"$POINT_UUID\",\"vector\":$EMBEDDING,\"payload\":$PAYLOAD}]}" 2>/dev/null)
+
+echo "{\"indexed\":true,\"point_id\":\"$POINT_UUID\",\"collection\":\"{{ openclaw_qdrant_ideas_collection | default('ideas') }}\",\"http\":\"$HTTP_CODE\"}"
+```
+
+### update_ideas_memory (V3 — mémoire native OpenClaw)
+
+`update_ideas_memory task_id=<id> title=<titre> domain=<domain> status=<statut> summary=<resume>`
+
+```bash
+# Écrire dans memory/ideas.md — indexé automatiquement par OpenClaw v2026.2.22 memorySearch
+MEMORY_FILE="/home/node/.openclaw/workspace/memory/ideas.md"
+TODAY=$(date +%Y-%m-%d)
+
+# Créer le fichier s'il n'existe pas
+mkdir -p "$(dirname "$MEMORY_FILE")"
+touch "$MEMORY_FILE"
+
+# Supprimer l'entrée existante pour ce task_id si elle existe
+python3 -c "
+import re
+task_id='<id>'
+try:
+    content=open('$MEMORY_FILE').read()
+    updated=re.sub(r'## \[.*?\].*?\ntask_id: ' + re.escape(task_id) + r'.*?\n\n?','',content,flags=re.DOTALL)
+    open('$MEMORY_FILE','w').write(updated)
+except: pass
+" 2>/dev/null
+
+# Ajouter la nouvelle entrée
+printf '## [%s] <titre> [<domain>] — <statut>\ntask_id: <id> | <resume>\n\n' "$TODAY" >> "$MEMORY_FILE"
+echo "{\"memory_updated\":true,\"file\":\"memory/ideas.md\",\"task_id\":\"<id>\"}"
+```
+
+### telegram_send_placeholder (V3 — streaming progressif)
+
+`telegram_send_placeholder msg=<texte>`
+
+```bash
+RESP=$(curl -sf -X POST \
+  "https://api.telegram.org/bot${TELEGRAM_OPENCLAW_BOT_TOKEN}/sendMessage" \
+  -H "Content-Type: application/json" \
+  -d "{\"chat_id\":\"${TELEGRAM_OPENCLAW_CHAT_ID}\",\"text\":\"<texte>\",\"parse_mode\":\"HTML\"}" 2>/dev/null)
+MSG_ID=$(echo "$RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('result',{}).get('message_id',''))" 2>/dev/null)
+echo "{\"message_id\":\"$MSG_ID\"}"
+```
+
+### telegram_edit (V3 — mise à jour message existant)
+
+`telegram_edit message_id=<id> text=<texte> [reply_markup_b64=<base64_json>]`
+
+```bash
+MARKUP_PART=""
+if [ -n "<reply_markup_b64>" ]; then
+  MARKUP=$(echo "<reply_markup_b64>" | base64 -d 2>/dev/null)
+  MARKUP_PART=",\"reply_markup\":${MARKUP}"
+fi
+HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" -X POST \
+  "https://api.telegram.org/bot${TELEGRAM_OPENCLAW_BOT_TOKEN}/editMessageText" \
+  -H "Content-Type: application/json" \
+  -d "{\"chat_id\":\"${TELEGRAM_OPENCLAW_CHAT_ID}\",\"message_id\":<id>,\"text\":\"<texte>\",\"parse_mode\":\"HTML\"${MARKUP_PART}}" 2>/dev/null)
+echo "{\"edited\":true,\"message_id\":\"<id>\",\"http\":\"$HTTP_CODE\"}"
+```
+
+### search_ideas (RAG sémantique)
+
+`search_ideas query=<texte> limit=5`
+
+```bash
+# 1. Embedding de la requête
+EMBEDDING=$(curl -sf -X POST http://litellm:4000/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $LITELLM_API_KEY" \
+  -d "{\"model\":\"embedding\",\"input\":\"<query>\"}" 2>/dev/null | \
+  python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d['data'][0]['embedding']))" 2>/dev/null)
+
+# 2. Recherche dans Qdrant
+RESULTS=$(curl -sf -X POST \
+  "http://qdrant:6333/collections/{{ openclaw_qdrant_ideas_collection | default('ideas') }}/points/search" \
+  -H "Content-Type: application/json" \
+  -H "api-key: $QDRANT_API_KEY" \
+  -d "{\"vector\":$EMBEDDING,\"limit\":<limit>,\"score_threshold\":0.65,\"with_payload\":true}" 2>/dev/null)
+
+# 3. Formater résultats
+echo "$RESULTS" | python3 -c "
+import sys,json
+data=json.load(sys.stdin)
+results=data.get('result',[])
+output=[]
+for r in results:
+  p=r.get('payload',{})
+  output.append({'title':p.get('title',''),'domain':p.get('domain',''),'summary':p.get('summary',''),'status':p.get('status',''),'score':round(r.get('score',0),3),'kaneo_task_id':p.get('kaneo_task_id','')})
+print(json.dumps({'ideas':output,'count':len(output)}))
+" 2>/dev/null
+```
+
+---
+
 ## Format de reponse
 
 Tu retournes toujours :

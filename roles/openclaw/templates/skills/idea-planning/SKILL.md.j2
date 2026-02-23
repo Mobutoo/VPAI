@@ -1,0 +1,213 @@
+---
+name: idea-planning
+description: Universal idea lifecycle — qualification, co-construction multi-agents, versioning Kaneo, approbation Telegram.
+metadata: { "openclaw": { "emoji": "💡" } }
+---
+
+# Skill : Idea Planning — Boîte à Idées
+
+Cycle de vie universel d'une idée : de l'intention au projet dispaché.
+Fonctionne pour TOUT type de projet : tech, business, perso, physique, finance.
+
+## Seuil de qualification — Avant toute génération
+
+Patterns déclencheurs (détecter dans le message) :
+- "j'ai une idée", "on devrait faire", "imagine qu'on crée", "est-ce faisable de"
+- "que penses-tu de créer", "j'envisage de", "si on lançait", "et si on faisait"
+
+→ **Ne pas générer automatiquement.** Demander d'abord :
+> "Je détecte une idée de projet : <reformulation en 1 phrase>. Veux-tu un plan stratégique complet ?"
+
+Sur confirmation → lancer la co-construction.
+Sur refus → traiter comme une question normale.
+
+---
+
+## Co-construction multi-agents (parallèle, max 4)
+
+Lancer simultanément :
+
+```
+sessions_spawn(explorer, "Contexte pour idée : <titre>. Recherche : alternatives existantes, état du marché, concurrents directs, retours d'expérience similaires. Retourne JSON {context: string, alternatives: [string], market_state: string, key_risks: [string]}")
+
+sessions_spawn(cfo, "Estimation financière pour idée : <titre> dans notre contexte. Estime : budget initial, coûts récurrents mensuels, ROI estimé, délai de retour sur investissement. Retourne JSON {budget_initial: string, monthly_costs: string, roi_timeline: string, risks_financial: [string]}")
+
+sessions_spawn(builder, "Évaluation faisabilité pour idée : <titre>. Estime : stack technique nécessaire, effort en semaines, dépendances critiques, risques techniques. Si non-tech : évaluer ressources humaines/matérielles. Retourne JSON {tech_stack: [string], estimated_effort: string, dependencies: [string], technical_risks: [string]}")
+```
+
+Pendant ce temps, le Concierge prépare :
+- SWOT (forces/faiblesses/opportunités/menaces)
+- RACI (responsible/accountable/consulted/informed)
+- implementation_steps (liste ordonnée d'étapes concrètes)
+- challenger (alternative ou approche concurrente)
+- kpi_victoire (métriques de succès mesurables)
+
+Merger les 4 contributions → plan JSON unifié.
+
+---
+
+## Structure JSON du plan (agnostique au domaine)
+
+```json
+{
+  "title": "Nom court du projet (5 mots max)",
+  "domain": "tech|business|perso|physique|finance|autre",
+  "summary": "Description 2-3 phrases — contexte + objectif + valeur ajoutée",
+  "swot": {
+    "strengths": ["Point fort 1", "Point fort 2"],
+    "weaknesses": ["Faiblesse 1"],
+    "opportunities": ["Opportunité 1"],
+    "threats": ["Menace 1"]
+  },
+  "raci": {
+    "responsible": ["builder (si tech) | cfo (si finance) | user (si perso/physique)"],
+    "accountable": "concierge|user",
+    "consulted": ["explorer", "cfo"],
+    "informed": ["maintainer (si impact infra)"]
+  },
+  "risks": [
+    {
+      "risk": "Description du risque",
+      "probability": "high|medium|low",
+      "impact": "critical|major|minor",
+      "mitigation": "Action corrective"
+    }
+  ],
+  "resources": {
+    "tech_stack": ["Service1", "Outil2"],
+    "tools": ["Outil physique ou service tiers (pour projets non-tech)"],
+    "budget_estimated": "X€ initial + Y€/mois",
+    "timeline": "X semaines | X mois"
+  },
+  "challenger": "Alternative ou approche concurrente existante — pourquoi ce plan est meilleur",
+  "kpi_victoire": [
+    "KPI mesurable 1 — ex: 100 clients en 3 mois",
+    "KPI mesurable 2 — ex: ROI positif à 6 mois"
+  ],
+  "implementation_steps": [
+    "Étape 1 : action concrète assignable",
+    "Étape 2 : action concrète assignable",
+    "Étape 3 : action concrète assignable"
+  ]
+}
+```
+
+### Règles domain-specific
+
+| Domain | tech_stack | tools | Responsible RACI |
+|--------|------------|-------|-----------------|
+| `tech` | Services Docker, langages, frameworks | vide | `builder` |
+| `business` | Outils SaaS, CRM, site web | Outils physiques/commerciaux | `user` + `cfo` |
+| `finance` | Broker, plateforme d'investissement | vide | `cfo` |
+| `physique` | Minimal ou vide | Matériaux, équipements, fournisseurs | `user` |
+| `perso` | Minimal ou vide | Applications, services | `user` |
+| `autre` | Selon contexte | Selon contexte | `user` |
+
+---
+
+## Format de présentation Telegram
+
+```
+💡 <titre> [<domain>]
+📋 <summary>
+
+⚡ Effort : <estimated_effort> | 💰 Budget : <budget_estimated>
+🎯 KPIs : <kpi_victoire[0]>
+
+✅ Atouts : <strengths[0]>, <strengths[1]>
+⚠️  Risque principal : <risks[0].risk> (probabilité : <risks[0].probability>)
+🔗 Plan complet : <lien Kaneo task>
+```
+
+### Streaming progressif (V3 — OpenClaw v2026.2.22)
+
+**Étape 0 — Message placeholder** (avant de lancer les agents) :
+```
+sessions_spawn(messenger, "telegram_send_placeholder msg=⏳ Analyse en cours...")
+```
+→ Stocker le message_id retourné.
+
+**Étape 1 — Spawn parallèle** (inchangé — Explorer, CFO, Builder simultanément)
+
+**Étape 2 — Mise à jour progressive au retour de chaque agent** :
+```
+# Retour Explorer :
+sessions_spawn(messenger, "telegram_edit message_id=<mid> text=⏳ Analyse en cours...\n✅ Contexte marché analysé")
+# Retour CFO :
+sessions_spawn(messenger, "telegram_edit message_id=<mid> text=⏳ Analyse en cours...\n✅ Contexte marché analysé\n✅ Budget : <montant>")
+# Retour Builder :
+sessions_spawn(messenger, "telegram_edit message_id=<mid> text=⏳ Analyse en cours...\n✅ Contexte marché analysé\n✅ Budget estimé\n✅ Faisabilité évaluée")
+```
+
+**Étape 3 — Message final avec plan + boutons** :
+```
+sessions_spawn(messenger, "create_idea_plan title=<titre> domain=<domain> plan_json_b64=<base64_du_plan_JSON>")
+```
+→ Récupérer task_id retourné par Messenger
+→ Éditer le message placeholder avec le résumé final + boutons inline :
+```
+sessions_spawn(messenger, "telegram_edit message_id=<mid> text=<plan_resume> reply_markup_b64=<base64_keyboard>")
+```
+Boutons inline :
+  [✅ Approuver] callback_data=approve:<task_id>
+  [✏️ Modifier]  callback_data=modify:<task_id>
+  [❌ Refuser]   callback_data=reject:<task_id>
+
+**Aussi — indexer en mémoire** :
+```
+sessions_spawn(messenger, "update_ideas_memory task_id=<id> title=<titre> domain=<domain> status=In Review summary=<summary>")
+```
+
+---
+
+## Gestion des itérations
+
+### Sur callback "modify:<task_id>"
+1. Demander à l'utilisateur : "Qu'est-ce que tu veux modifier ? (garde le reste)"
+2. Sur réponse : relancer co-construction avec feedback intégré dans le prompt
+   → Exemple prompt Explorer : "Contexte pour idée : <titre>. Feedback utilisateur : <feedback>. Précédent contexte : <context_v1>. Affine tes recherches en tenant compte du feedback."
+3. Merger → plan vN
+4. `sessions_spawn(messenger, "update_idea task_id=<id> version=<N> feedback=<texte_url_encoded> plan_json_b64=<base64>")`
+5. Renvoyer résumé + boutons
+
+### Sur callback "approve:<task_id>"
+1. `sessions_spawn(messenger, "approve_idea task_id=<id>")`
+2. Confirmer à l'utilisateur : "✅ Plan approuvé ! Le projet sera créé dans Kaneo avec les tâches assignées."
+
+### Sur callback "reject:<task_id>"
+1. `sessions_spawn(messenger, "reject_idea task_id=<id> reason=Refus utilisateur")`
+2. Confirmer : "❌ Idée archivée dans Kaneo."
+
+---
+
+## Règles de versioning dans Kaneo
+
+- Max 3 versions actives dans la description Kaneo
+- Au-delà : le Messenger archive les plus anciennes dans un `add_comment`
+- Format des délimiteurs (regex-safe) :
+
+```
+---IDEA-PLAN-META-START---
+{"id":"idea-<YYYY-MM-DD>-<NNN>","domain":"<domain>","status":"pending","iterations":<N>,"created":"<YYYY-MM-DD>"}
+---IDEA-PLAN-META-END---
+
+---IDEA-PLAN-V1-START---
+{...plan JSON complet...}
+---IDEA-PLAN-V1-END---
+
+---IDEA-FEEDBACK-V1-START---
+{"from":"user","date":"<ISO8601>","comment":"<feedback>","type":"modify"}
+---IDEA-FEEDBACK-V1-END---
+
+---IDEA-PLAN-V2-START---
+{...plan révisé...}
+---IDEA-PLAN-V2-END---
+```
+
+---
+
+## Règle absolue
+
+**JAMAIS** créer de projet réel, de tâches Kaneo ou assigner des ressources AVANT l'approbation explicite via bouton [✅ Approuver].
+
+La co-construction = génération d'un plan. Pas d'exécution.

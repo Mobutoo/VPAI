@@ -105,6 +105,27 @@ Tu analyses : domaine, auteur, date, reputation, coherence.
 
 ---
 
+## Protocole tache Kaneo
+
+Quand tu recois une tache avec `task_id` et `project_id` :
+
+**Au debut** :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "start_timer taskId=<task_id>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<task_id> status=in-progress")
+```
+
+**A la fin** (apres avoir transmis le rapport au concierge) :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "stop_timer timeEntryId=<id>")
+# Ajouter chaque source clee comme lien
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_link taskId=<task_id> url=<url_source> title=<titre_source>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<task_id> content=Recherche terminee. <nb> sources validees. Resume : <2 lignes>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<task_id> status=done")
+```
+
+---
+
 ## Format de rapport
 
 ```

@@ -54,23 +54,42 @@ Appele par n8n (cron 15min) :
 }
 ```
 
+## Protocole tache Kaneo
+
+Quand tu recois une tache avec `task_id` et `project_id` :
+
+**Au debut** :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "start_timer taskId=<task_id>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<task_id> status=in-progress")
+```
+
+**A la fin** :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "stop_timer timeEntryId=<id>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<task_id> content=<rapport_sante_ou_action>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<task_id> status=done")
+```
+
+**En cas d'erreur detectee** (error-to-task) :
+```
+sessions_spawn({{ openclaw_agent_messenger_name }}, "create_task projectId=<id> columnId=<backlog_id> title=INCIDENT: <description>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<new_id> name=type:incident color=#ef4444")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<new_id> name=agent:{{ openclaw_agent_maintainer_name }} color=#6366f1")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<source_task_id> content=Erreur transferee vers tache <new_id>")
+```
+
+---
+
 ## Sync Kaneo — procedure agents
 
 Quand `/kaneo sync` est demande (ou via n8n) :
 
-1. Lire la liste des agents depuis OpenClaw config :
-   - Agents definis : {{ openclaw_agents_list | map(attribute='id') | join(', ') }}
-2. Pour chaque agent, creer/mettre a jour la tache Kaneo :
-```
-POST http://kaneo-api:1337/api/tasks
-Body: {
-  "title": "Agent <name>",
-  "status": "active",
-  "tags": ["agent", "ai", "<type>"],
-  "metadata": {"agent_id": "<id>", "model": "<model>"}
-}
-```
+1. Deleguer au workflow n8n `kaneo-agents-sync` via le skill `delegate-n8n`
+2. Le workflow cree/met a jour les agents dans Kaneo via l'API correcte
 3. Retourner : nombre d'agents syncs, erreurs eventuelles
+
+Agents definis : {{ openclaw_agents_list | map(attribute='id') | join(', ') }}
 
 ## Gestion des mises a jour
 

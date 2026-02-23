@@ -275,6 +275,175 @@
     - kaneo_workspace_id | default('') | length > 0
     - item.json.user.id | default('') | length > 0
 
+# =============================================================================
+# Boîte à Idées — PostgreSQL GIN index + Qdrant collection + Kaneo project
+# =============================================================================
+
+- name: Create GIN index on Kaneo task descriptions (full-text search)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      docker exec {{ project_name }}_postgresql psql -U kaneo -d kaneo -t \
+        -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_task_description_gin
+            ON task USING GIN (to_tsvector('french', COALESCE(description, '')));" 2>&1
+  register: kaneo_gin_index
+  changed_when: "'CREATE INDEX' in kaneo_gin_index.stdout"
+  failed_when: false
+  become: true
+  when: kaneo_agent_email | default('') | length > 0
+
+- name: Create Qdrant ideas collection
+  ansible.builtin.uri:
+    url: "http://qdrant:6333/collections/{{ openclaw_qdrant_ideas_collection | default('ideas') }}"
+    method: PUT
+    body_format: json
+    body:
+      vectors:
+        size: 1536
+        distance: "Cosine"
+    headers:
+      api-key: "{{ qdrant_api_key | default('') }}"
+    status_code: [200, 400]
+    return_content: false
+  delegate_to: "{{ groups['prod'][0] }}"
+  failed_when: false
+  when:
+    - openclaw_qdrant_ideas_collection | default('') | length > 0
+    - qdrant_api_key | default('') | length > 0
+
+- name: Sign in as Kaneo service account (ideas project provisioning)
+  ansible.builtin.uri:
+    url: "https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}/api/auth/sign-in/email"
+    method: POST
+    body_format: json
+    body:
+      email: "{{ kaneo_agent_email }}"
+      password: "{{ kaneo_agent_password }}"
+    status_code: [200, -1]
+    return_content: true
+  register: kaneo_ideas_signin
+  delegate_to: localhost
+  no_log: true
+  failed_when: false
+  when:
+    - kaneo_agent_email | default('') | length > 0
+    - openclaw_ideas_project_name | default('') | length > 0
+
+- name: Get Kaneo projects list (ideas project check)
+  ansible.builtin.uri:
+    url: "https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}/api/project"
+    method: GET
+    headers:
+      Cookie: "{{ kaneo_ideas_signin.set_cookie | default('') }}"
+    status_code: [200, -1]
+    return_content: true
+  register: kaneo_projects_list
+  delegate_to: localhost
+  failed_when: false
+  when:
+    - openclaw_ideas_project_name | default('') | length > 0
+    - kaneo_ideas_signin.status | default(0) == 200
+
+- name: Set ideas project id fact
+  ansible.builtin.set_fact:
+    kaneo_ideas_project_id: >-
+      {{ (kaneo_projects_list.json | default([]))
+         | selectattr('name', 'equalto', openclaw_ideas_project_name)
+         | map(attribute='id') | first | default('') }}
+  when: kaneo_projects_list.json is defined
+
+- name: Create Boite a Idees project in Kaneo
+  ansible.builtin.uri:
+    url: "https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}/api/project"
+    method: POST
+    body_format: json
+    body:
+      name: "{{ openclaw_ideas_project_name | default('Boîte à Idées') }}"
+      description: "Plans d idees — versioning, lifecycle approuver/refuser/implementer"
+      icon: "💡"
+    headers:
+      Cookie: "{{ kaneo_ideas_signin.set_cookie | default('') }}"
+    status_code: [200, 201, -1]
+    return_content: true
+  register: kaneo_ideas_project_create
+  delegate_to: localhost
+  changed_when: kaneo_ideas_project_create.status | default(0) in [200, 201]
+  failed_when: false
+  when:
+    - openclaw_ideas_project_name | default('') | length > 0
+    - kaneo_ideas_project_id | default('') | length == 0
+    - kaneo_ideas_signin.status | default(0) == 200
+
+# Fetch existing columns to check idempotence — avoids re-creating if run fails mid-way
+- name: Get existing columns in Boite a Idees project
+  ansible.builtin.uri:
+    url: "https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}\
+      /api/column/{{ kaneo_ideas_project_create.json.id | default(kaneo_ideas_project_id | default('')) }}"
+    method: GET
+    headers:
+      Cookie: "{{ kaneo_ideas_signin.set_cookie | default('') }}"
+    status_code: [200, -1]
+    return_content: true
+  register: kaneo_ideas_columns_existing
+  delegate_to: localhost
+  failed_when: false
+  when:
+    - openclaw_ideas_project_name | default('') | length > 0
+    - kaneo_ideas_signin.status | default(0) == 200
+    - (kaneo_ideas_project_create.json.id | default('') | length > 0) or (kaneo_ideas_project_id | default('') | length > 0)
+
+- name: Set existing column names fact
+  ansible.builtin.set_fact:
+    kaneo_ideas_existing_columns: >-
+      {{ (kaneo_ideas_columns_existing.json | default([]))
+         | map(attribute='name') | list }}
+  when: kaneo_ideas_columns_existing.json is defined
+
+- name: Create columns in Boite a Idees project
+  ansible.builtin.uri:
+    url: "https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}\
+      /api/column/{{ kaneo_ideas_project_create.json.id | default(kaneo_ideas_project_id | default('')) }}"
+    method: POST
+    body_format: json
+    body:
+      name: "{{ item.name }}"
+    headers:
+      Cookie: "{{ kaneo_ideas_signin.set_cookie | default('') }}"
+    status_code: [200, 201, -1]
+  delegate_to: localhost
+  loop:
+    - {name: "Draft", order: 0}
+    - {name: "In Review", order: 1}
+    - {name: "Approved", order: 2}
+    - {name: "Rejected", order: 3}
+    - {name: "Implemented", order: 4}
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: true
+  failed_when: false
+  when:
+    - openclaw_ideas_project_name | default('') | length > 0
+    - kaneo_ideas_signin.status | default(0) == 200
+    - (kaneo_ideas_project_create.json.id | default('') | length > 0) or (kaneo_ideas_project_id | default('') | length > 0)
+    - item.name not in (kaneo_ideas_existing_columns | default([]))
+
+- name: Display Boite a Idees project provisioning result
+  ansible.builtin.debug:
+    msg: >-
+      {% if not (openclaw_ideas_project_name | default('') | length > 0) %}
+      ℹ️  openclaw_ideas_project_name not set — skipping Boite a Idees provisioning.
+      {% elif kaneo_ideas_signin.status | default(0) != 200 %}
+      ⚠️  Kaneo sign-in failed — Boite a Idees project not provisioned.
+      {% elif kaneo_ideas_project_create.changed | default(false) %}
+      ✅ Boite a Idees project created with 5 columns (Draft/In Review/Approved/Rejected/Implemented).
+      {% elif kaneo_ideas_project_id | default('') | length > 0 %}
+      ℹ️  Boite a Idees project already exists (id: {{ kaneo_ideas_project_id }}). Skipping.
+      {% else %}
+      ⚠️  Boite a Idees provisioning: unexpected state. Check Kaneo UI.
+      {% endif %}
+  when: openclaw_ideas_project_name | default('') | length > 0
+
 - name: Display Kaneo agents provisioning summary
   ansible.builtin.debug:
     msg: >-

@@ -1,0 +1,4 @@
+{
+  "_note": "This file is superseded by templates/workflows/plan-dispatch.json.j2 which supports Jinja2 variable substitution (KANEO_PUBLIC_URL). Do not use this file directly.",
+  "_replaced_by": "roles/n8n-provision/templates/workflows/plan-dispatch.json.j2"
+}

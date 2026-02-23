@@ -48,7 +48,20 @@
       "subagents": {
         "maxConcurrent": 4,
         "archiveAfterMinutes": 120
+      },
+{% if litellm_master_key | default('') | length > 0 %}
+      "memorySearch": {
+        "enabled": true,
+        "embeddingProvider": "openai-compatible",
+        "embeddingBaseUrl": "http://litellm:4000/v1",
+        "embeddingApiKey": "${LITELLM_API_KEY}",
+        "embeddingModel": "embedding"
       }
+{% else %}
+      "memorySearch": {
+        "enabled": false
+      }
+{% endif %}
     },
     "list": [
       {
@@ -67,7 +80,8 @@
             "{{ openclaw_agent_explorer_name }}",
             "{{ openclaw_agent_marketer_name }}",
             "{{ openclaw_agent_cfo_name }}",
-            "{{ openclaw_agent_maintainer_name }}"
+            "{{ openclaw_agent_maintainer_name }}",
+            "{{ openclaw_agent_messenger_name }}"
           ]
         },
         "tools": {
@@ -81,6 +95,9 @@
           "primary": "{{ openclaw_builder_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace",
+        "subagents": {
+          "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
+        },
         "tools": {
           "fs": { "workspaceOnly": true },
           "exec": {
@@ -96,6 +113,9 @@
           "primary": "{{ openclaw_writer_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace",
+        "subagents": {
+          "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
+        },
         "tools": {
           "fs": { "workspaceOnly": true },
           "elevated": { "enabled": false }
@@ -107,6 +127,9 @@
           "primary": "{{ openclaw_artist_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace",
+        "subagents": {
+          "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
+        },
         "tools": {
           "fs": { "workspaceOnly": true },
           "elevated": { "enabled": false }
@@ -118,6 +141,9 @@
           "primary": "{{ openclaw_tutor_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace/tutor",
+        "subagents": {
+          "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
+        },
         "tools": {
           "fs": { "workspaceOnly": true },
           "elevated": { "enabled": false }
@@ -135,6 +161,9 @@
             "network": "{{ project_name }}_egress"
           }
         },
+        "subagents": {
+          "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
+        },
         "tools": {
           "fs": { "workspaceOnly": true },
           "elevated": { "enabled": false }
@@ -146,6 +175,9 @@
           "primary": "{{ openclaw_marketer_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace",
+        "subagents": {
+          "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
+        },
         "tools": {
           "fs": { "workspaceOnly": true },
           "elevated": { "enabled": false }
@@ -157,6 +189,9 @@
           "primary": "{{ openclaw_cfo_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace/finance",
+        "subagents": {
+          "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
+        },
         "tools": {
           "fs": { "workspaceOnly": true },
           "elevated": { "enabled": false }
@@ -168,12 +203,39 @@
           "primary": "{{ openclaw_maintainer_model }}"
         },
         "workspace": "/home/node/.openclaw/workspace",
+        "subagents": {
+          "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
+        },
         "tools": {
           "fs": { "workspaceOnly": true },
           "exec": {
             "applyPatch": { "workspaceOnly": true },
             "timeoutSec": 300
           },
+          "elevated": { "enabled": false }
+        }
+      },
+      {
+        "id": "{{ openclaw_agent_messenger_name }}",
+        "model": {
+          "primary": "{{ openclaw_messenger_model }}"
+        },
+        "workspace": "/home/node/.openclaw/workspace",
+        "sandbox": {
+          "mode": "all",
+          "docker": {
+            "network": "{{ project_name }}_backend",
+            "readOnlyRoot": true,
+            "tmpfs": ["/tmp", "/var/tmp", "/run"],
+            "user": "1000:1000",
+            "capDrop": ["ALL"],
+            "memory": "256m",
+            "cpus": 0.5
+          }
+        },
+        "tools": {
+          "exec": { "timeoutSec": 15 },
+          "fs": { "enabled": false },
           "elevated": { "enabled": false }
         }
       }
@@ -385,6 +447,20 @@
       "match": { "channel": "whatsapp" }
     }
 {% endif %}
+  ],
+  "heartbeat": {
+    "intervalMinutes": 30,
+    "activeHours": { "start": 8, "end": 22 }
+  },
+  "cron": [
+    {
+      "id": "project-digest",
+      "schedule": "0 9 * * *",
+      "agentId": "{{ openclaw_agent_concierge_name }}",
+      "message": "Fais le point sur tous les projets Kaneo actifs via le messenger. Resume par projet : taches done/total, temps passe, livrables produits, blocages. Envoie le resume sur Telegram.",
+      "mode": "main-session",
+      "delivery": "announce"
+    }
   ],
   "logging": {
     "level": "info"

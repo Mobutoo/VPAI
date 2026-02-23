@@ -206,6 +206,7 @@
     - "{{ openclaw_agent_explorer_name }}"
     - "{{ openclaw_agent_cfo_name }}"
     - "{{ openclaw_agent_maintainer_name }}"
+    - "{{ openclaw_agent_messenger_name }}"
   when: openclaw_volume_isolation | default(false)
 
 # Deploy agent IDENTITY.md files (only with volume isolation)
@@ -226,6 +227,7 @@
     - "{{ openclaw_agent_explorer_name }}"
     - "{{ openclaw_agent_cfo_name }}"
     - "{{ openclaw_agent_maintainer_name }}"
+    - "{{ openclaw_agent_messenger_name }}"
   when: openclaw_volume_isolation | default(false)
   notify: Restart openclaw stack
 
@@ -236,6 +238,19 @@
   ansible.builtin.template:
     src: "agents/{{ openclaw_agent_concierge_name }}/IDENTITY.md.j2"
     dest: "{{ openclaw_workspace_dir }}/IDENTITY.md"
+    owner: "1000"
+    group: "1000"
+    mode: "0644"
+  become: true
+  when: openclaw_volume_isolation | default(false)
+  notify: Restart openclaw stack
+
+# Deploy HEARTBEAT.md to workspace root
+# OpenClaw reads workspace/HEARTBEAT.md on each heartbeat activation.
+- name: Deploy heartbeat instructions to workspace root
+  ansible.builtin.template:
+    src: "HEARTBEAT.md.j2"
+    dest: "{{ openclaw_workspace_dir }}/HEARTBEAT.md"
     owner: "1000"
     group: "1000"
     mode: "0644"

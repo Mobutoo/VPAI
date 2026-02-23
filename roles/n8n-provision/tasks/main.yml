@@ -101,11 +101,53 @@
   become: true
   when: n8n_container_check.stdout | default('') | length > 0
 
+# Pre-register RPi SSH host key in n8n container known_hosts
+# Eliminates StrictHostKeyChecking=accept-new TOFU risk for github-autofix and code-review workflows.
+# Runs only when WORKSTATION_PI_IP is configured and n8n container is up.
+- name: Pre-register RPi SSH host key in n8n container known_hosts
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      PI_IP="{{ workstation_pi_tailscale_ip | default('') }}"
+      if [ -z "$PI_IP" ]; then
+        echo "SKIP: workstation_pi_tailscale_ip not configured"
+        exit 0
+      fi
+      # Scan host key and add to n8n container known_hosts
+      KNOWN_HOSTS=$(docker exec {{ project_name }}_n8n sh -c \
+        "ssh-keyscan -T 5 $PI_IP 2>/dev/null")
+      if [ -z "$KNOWN_HOSTS" ]; then
+        echo "WARN: ssh-keyscan returned nothing for $PI_IP — container may not reach Pi yet"
+        exit 0
+      fi
+      docker exec {{ project_name }}_n8n sh -c "
+        mkdir -p /home/node/.ssh && chmod 700 /home/node/.ssh
+        touch /home/node/.ssh/known_hosts && chmod 600 /home/node/.ssh/known_hosts
+        grep -qF '$PI_IP' /home/node/.ssh/known_hosts || echo '$KNOWN_HOSTS' >> /home/node/.ssh/known_hosts
+      "
+      echo "OK: host key registered for $PI_IP"
+  register: n8n_known_hosts_result
+  changed_when: "'OK:' in (n8n_known_hosts_result.stdout | default(''))"
+  failed_when: false
+  become: true
+  when:
+    - n8n_container_check.stdout | default('') | length > 0
+    - workstation_pi_tailscale_ip | default('') | length > 0
+
 # Template workflows that require Ansible variable substitution (cross-host URLs)
 - name: Template creative-pipeline workflow (resolves workstation Caddy URLs)
   ansible.builtin.template:
     src: "workflows/creative-pipeline.json.j2"
     dest: "/tmp/n8n-workflow-creative-pipeline.json"
+    mode: "0644"
+  become: true
+  when: n8n_container_check.stdout | default('') | length > 0
+
+- name: Template plan-dispatch workflow (resolves KANEO_PUBLIC_URL + Jinja2 vars)
+  ansible.builtin.template:
+    src: "workflows/plan-dispatch.json.j2"
+    dest: "/tmp/n8n-workflow-plan-dispatch.json"
     mode: "0644"
   become: true
   when: n8n_container_check.stdout | default('') | length > 0
@@ -131,10 +173,14 @@
     - content-generate
     - budget-monitor
     - budget-control
+    - github-autofix
     - kaneo-agents-sync
     - stack-health
     - asset-register
     - opencut-control
+    - code-review
+    - error-to-task
+    - project-status
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Check workflow update status (checksum comparison)
@@ -172,11 +218,16 @@
     - {file: "content-generate", name: "Content Generate"}
     - {file: "budget-monitor", name: "Budget Monitor"}
     - {file: "budget-control", name: "Budget Control"}
+    - {file: "github-autofix", name: "GitHub Auto-Fix"}
     - {file: "kaneo-agents-sync", name: "Kaneo Agents Sync"}
     - {file: "stack-health", name: "Stack Health Check"}
     - {file: "creative-pipeline", name: "Creative Pipeline"}
     - {file: "asset-register", name: "Asset Register"}
     - {file: "opencut-control", name: "OpenCut Control"}
+    - {file: "code-review", name: "OpenClaw Code Review"}
+    - {file: "error-to-task", name: "OpenClaw Error to Task"}
+    - {file: "project-status", name: "OpenClaw Project Status"}
+    - {file: "plan-dispatch", name: "OpenClaw Plan Dispatch"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -347,11 +398,16 @@
     - {file: "content-generate", name: "Content Generate"}
     - {file: "budget-monitor", name: "Budget Monitor"}
     - {file: "budget-control", name: "Budget Control"}
+    - {file: "github-autofix", name: "GitHub Auto-Fix"}
     - {file: "kaneo-agents-sync", name: "Kaneo Agents Sync"}
     - {file: "stack-health", name: "Stack Health Check"}
     - {file: "creative-pipeline", name: "Creative Pipeline"}
     - {file: "asset-register", name: "Asset Register"}
     - {file: "opencut-control", name: "OpenCut Control"}
+    - {file: "code-review", name: "OpenClaw Code Review"}
+    - {file: "error-to-task", name: "OpenClaw Error to Task"}
+    - {file: "project-status", name: "OpenClaw Project Status"}
+    - {file: "plan-dispatch", name: "OpenClaw Plan Dispatch"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -385,11 +441,16 @@
     - content-generate
     - budget-monitor
     - budget-control
+    - github-autofix
     - kaneo-agents-sync
     - stack-health
     - creative-pipeline
     - asset-register
     - opencut-control
+    - code-review
+    - error-to-task
+    - project-status
+    - plan-dispatch
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Display n8n workflow update results

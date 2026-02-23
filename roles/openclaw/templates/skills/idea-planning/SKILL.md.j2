@@ -9,17 +9,47 @@ metadata: { "openclaw": { "emoji": "💡" } }
 Cycle de vie universel d'une idée : de l'intention au projet dispaché.
 Fonctionne pour TOUT type de projet : tech, business, perso, physique, finance.
 
-## Seuil de qualification — Avant toute génération
+## Phase 1 — Qualification par dialogue (OBLIGATOIRE avant toute génération)
 
 Patterns déclencheurs (détecter dans le message) :
 - "j'ai une idée", "on devrait faire", "imagine qu'on crée", "est-ce faisable de"
 - "que penses-tu de créer", "j'envisage de", "si on lançait", "et si on faisait"
 
-→ **Ne pas générer automatiquement.** Demander d'abord :
-> "Je détecte une idée de projet : <reformulation en 1 phrase>. Veux-tu un plan stratégique complet ?"
+→ **Ne pas générer automatiquement.** Engager d'abord un dialogue de qualification.
+
+### Étape 1 — Reformulation + confirmation
+> "Je détecte une idée de projet : <reformulation en 1 phrase>. C'est bien ça ?"
+
+Sur confirmation → Étape 2. Sur refus → traiter comme question normale.
+
+### Étape 2 — Questions de qualification (2-3 questions max, adaptées au domaine)
+
+Poser les questions les plus utiles selon le domaine détecté. Exemples :
+
+**Si tech/infra :**
+- "C'est pour améliorer la stack existante ou créer quelque chose de nouveau ?"
+- "Tu as une contrainte de budget ou de délai particulière ?"
+- "Des dépendances avec ce qu'on a déjà (n8n, Kaneo, OpenClaw...) ?"
+
+**Si business/produit :**
+- "C'est B2B, B2C, ou usage interne ?"
+- "Tu as déjà une idée de la cible (audience/clients) ?"
+- "Quel serait le signe que c'est un succès dans 3 mois ?"
+
+**Si finance/investissement :**
+- "Tu as une enveloppe en tête ? Et un horizon de temps ?"
+- "Risque toléré : conservateur, équilibré, ou dynamique ?"
+
+**Si physique/perso :**
+- "C'est pour quand ? Et tu as déjà commencé à regarder ?"
+- "Il y a des contraintes (budget, lieu, temps) à intégrer ?"
+
+### Étape 3 — Récapitulatif avant lancement
+Reformuler en 2-3 phrases ce que tu as compris, puis demander :
+> "J'ai bien cerné l'idée. Je lance l'analyse complète (Explorer + CFO + Builder en parallèle) — ça prend ~30 secondes. Go ?"
 
 Sur confirmation → lancer la co-construction.
-Sur refus → traiter comme une question normale.
+Sur ajustement → intégrer et relancer l'étape 3.
 
 ---
 
@@ -115,9 +145,24 @@ Merger les 4 contributions → plan JSON unifié.
 🎯 KPIs : <kpi_victoire[0]>
 
 ✅ Atouts : <strengths[0]>, <strengths[1]>
-⚠️  Risque principal : <risks[0].risk> (probabilité : <risks[0].probability>)
+⚠️  Risque principal : <risks[0].risk> (prob. : <risks[0].probability>)
+
+👥 Équipe proposée :
+  • <emoji_agent1> <nom_agent1> — <phase ou rôle>
+  • <emoji_agent2> <nom_agent2> — <phase ou rôle>
+  (liste basée sur raci.responsible + raci.consulted)
+
 🔗 Plan complet : <lien Kaneo task>
 ```
+
+**Correspondance agents → emoji :**
+- builder (Imhotep) → ⚙️
+- writer (Thot) → ✍️
+- artist (Basquiat) → 🎨
+- explorer (R2D2) → 🔍
+- cfo (CFO) → 💰
+- maintainer (Maintainer) → 🔧
+- user → 👤
 
 ### Streaming progressif (V3 — OpenClaw v2026.2.22)
 
@@ -162,17 +207,33 @@ sessions_spawn(messenger, "update_ideas_memory task_id=<id> title=<titre> domain
 
 ## Gestion des itérations
 
-### Sur callback "modify:<task_id>"
-1. Demander à l'utilisateur : "Qu'est-ce que tu veux modifier ? (garde le reste)"
-2. Sur réponse : relancer co-construction avec feedback intégré dans le prompt
-   → Exemple prompt Explorer : "Contexte pour idée : <titre>. Feedback utilisateur : <feedback>. Précédent contexte : <context_v1>. Affine tes recherches en tenant compte du feedback."
+### Détection du contexte (message libre après plan présenté)
+
+Quand `active_idea_id` est défini en Redis (`idea:{chat_id}:active_idea_id`) :
+- **Ne pas re-déclencher la phase qualification**
+- Interpréter le message comme feedback sur le plan existant
+- Si ambigu → demander : "Tu veux modifier le plan en cours ou parler d'autre chose ?"
+
+Règle : **un message après un plan présenté = feedback par défaut**, sauf si le message est clairement hors-sujet.
+
+### Sur message "modifier" / feedback libre (plan existant)
+1. Confirmer la compréhension du feedback :
+   > "OK, je retiens : <reformulation feedback en 1 phrase>. Je relance l'analyse avec cet ajustement."
+2. Relancer co-construction avec feedback intégré :
+   → Prompt Explorer : "...Feedback utilisateur : <feedback>. Précédent contexte : <context_v1>. Affine tes recherches."
+   → Prompt CFO : "...Feedback : <feedback>. Révise si nécessaire le budget/délai."
+   → Prompt Builder : "...Feedback : <feedback>. Révise si nécessaire la faisabilité."
 3. Merger → plan vN
 4. `sessions_spawn(messenger, "update_idea task_id=<id> version=<N> feedback=<texte_url_encoded> plan_json_b64=<base64>")`
 5. Renvoyer résumé + boutons
 
+### Sur callback "modify:<task_id>" (bouton Telegram)
+1. Demander à l'utilisateur : "Qu'est-ce que tu veux modifier ? (garde le reste)"
+2. Attendre la réponse → traiter comme "Sur message modifier" ci-dessus
+
 ### Sur callback "approve:<task_id>"
 1. `sessions_spawn(messenger, "approve_idea task_id=<id>")`
-2. Confirmer à l'utilisateur : "✅ Plan approuvé ! Le projet sera créé dans Kaneo avec les tâches assignées."
+2. Confirmer à l'utilisateur : "✅ Plan approuvé ! Dispatché vers Kaneo avec les tâches assignées."
 
 ### Sur callback "reject:<task_id>"
 1. `sessions_spawn(messenger, "reject_idea task_id=<id> reason=Refus utilisateur")`

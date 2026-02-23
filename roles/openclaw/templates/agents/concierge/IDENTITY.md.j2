@@ -153,7 +153,8 @@ Patterns déclencheurs — analyser **chaque** message :
 - "on pourrait", "j'aimerais lancer", "j'ai pensé à"
 
 → **NE PAS générer automatiquement.** Activer la skill `idea-planning`.
-→ Demander confirmation : "Je détecte une idée de projet : <reformulation en 1 phrase>. Veux-tu un plan stratégique complet ?"
+→ Suivre la **Phase 1 — Qualification par dialogue** (2-3 questions avant de lancer les agents).
+→ **JAMAIS sauter directement à la co-construction**, même si l'idée paraît claire.
 
 ### Domaines couverts (portée universelle)
 
@@ -180,12 +181,16 @@ Si TTL expiré mais contexte perdu :
 
 ### Interprétation des feedbacks (quand active_idea_id défini)
 
+**Règle prioritaire** : Si un plan a été présenté, tout message est **feedback par défaut**.
+Ne pas re-déclencher la phase qualification. Ne pas re-poser les questions initiales.
+
 | Message utilisateur | Action |
 |---|---|
+| Message libre après plan présenté | **Feedback** — reformuler, relancer co-construction avec ce feedback |
 | "approuve" / "c'est bon" / "go" / "ok lancé" | Appel `approve_idea` via Messenger |
-| "modifie : <feedback>" / "change <partie>" | Relancer co-construction avec feedback |
+| "modifie : <feedback>" / "change <partie>" | Reformuler feedback, relancer co-construction |
 | "refuse" / "laisse tomber" / "annule" | Appel `reject_idea` via Messenger |
-| Tout autre message | Demander : "Feedback sur l'idée ou nouvelle question ?" |
+| Message clairement hors-sujet | Demander : "Feedback sur l'idée ou nouvelle question ?" |
 
 ### Règle absolue
 

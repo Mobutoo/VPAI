@@ -243,12 +243,42 @@
     },
     {
       "parameters": {
+        "method": "PATCH",
+        "url": "http://kaneo-api:1337/api/auth/update-user",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Cookie", "value": "={{ $json.agentCookie }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"name\": \"{{ $json.agent.name }}\" }",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "kas-0002-0000-0000-0000-000000000046",
+      "name": "Update agent name",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2900, 300],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
         "method": "GET",
         "url": "http://kaneo-api:1337/api/auth/get-session",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $json.agentCookie }}" }
+            { "name": "Cookie", "value": "={{ $('Resolve agent cookie').last().json.agentCookie }}" }
           ]
         },
         "options": {}
@@ -257,7 +287,7 @@
       "name": "Get agent session",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2900, 300],
+      "position": [3120, 300],
       "continueOnFail": true
     },
     {
@@ -268,7 +298,7 @@
       "name": "Extract userId",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3120, 300]
+      "position": [3340, 300]
     },
     {
       "parameters": {
@@ -297,7 +327,7 @@
       "name": "Add agent to workspace",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [3340, 300],
+      "position": [3560, 300],
       "continueOnFail": true
     },
     {
@@ -736,7 +766,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const diffCtx = $('Diff agents vs tasks').first().json;\nconst collectCtx = $('Collect userIds').first().json;\n\nconst created = diffCtx.toCreate.length;\nconst updated = diffCtx.toUpdate.length;\nconst archived = diffCtx.toArchive.length;\nconst skipped = diffCtx.agents.length - created - updated;\nconst errors = collectCtx.errors || [];\n\nconst userIdsCount = Object.keys(collectCtx.userIdMap || {}).length;\n\nlet msg;\nif (errors.length > 0) {\n  msg = [\n    '⚠️ Kaneo Agents Sync — Erreurs',\n    '',\n    `📊 Agents: ${diffCtx.agents.length} total`,\n    `➕ Créés: ${created}`,\n    `🔄 Mis à jour: ${updated}`,\n    `📦 Archivés (deprecated): ${archived}`,\n    `🆔 UserId résolus: ${userIdsCount}/${diffCtx.agents.length}`,\n    '',\n    `❌ Erreurs (${errors.length}):`,\n    ...errors.map(e => `  • ${e}`)\n  ].join('\\n');\n} else if (created + updated + archived > 0) {\n  msg = [\n    '✅ Kaneo Agents Sync',\n    '',\n    `➕ Créés: ${created}`,\n    `🔄 Assignés (userId): ${updated}`,\n    `📦 Archivés: ${archived}`,\n    `⏭ Inchangés: ${skipped}`,\n    `🆔 Registry: ${userIdsCount} userId mappés`\n  ].join('\\n');\n} else {\n  msg = null; // No changes, no notification\n}\n\nreturn [{ json: {\n  message: msg,\n  created, updated, archived, skipped,\n  errors: errors.length,\n  hasChanges: created + updated + archived > 0 || errors.length > 0\n}}];"
+        "jsCode": "const diffCtx = $('Diff agents vs tasks').first().json;\nconst collectCtx = $('Collect userIds').first().json;\n\nconst created = diffCtx.toCreate.length;\nconst updated = diffCtx.toUpdate.length;\nconst archived = diffCtx.toArchive.length;\nconst skipped = diffCtx.agents.length - created - updated;\nconst errors = collectCtx.errors || [];\n\nconst userIdsCount = Object.keys(collectCtx.userIdMap || {}).length;\n\n// Count name updates (PATCH /update-user ran for all agents — always)\nconst nameUpdatesTotal = diffCtx.agents.length;\n\nlet msg;\nif (errors.length > 0) {\n  msg = [\n    '⚠️ Kaneo Agents Sync — Erreurs',\n    '',\n    `📊 Agents: ${diffCtx.agents.length} total`,\n    `➕ Créés: ${created}`,\n    `🔄 Mis à jour: ${updated}`,\n    `✏️ Noms sync: ${nameUpdatesTotal}`,\n    `📦 Archivés (deprecated): ${archived}`,\n    `🆔 UserId résolus: ${userIdsCount}/${diffCtx.agents.length}`,\n    '',\n    `❌ Erreurs (${errors.length}):`,\n    ...errors.map(e => `  • ${e}`)\n  ].join('\\n');\n} else if (created + updated + archived > 0) {\n  msg = [\n    '✅ Kaneo Agents Sync',\n    '',\n    `➕ Créés: ${created}`,\n    `🔄 Assignés (userId): ${updated}`,\n    `✏️ Noms sync: ${nameUpdatesTotal}`,\n    `📦 Archivés: ${archived}`,\n    `⏭ Inchangés: ${skipped}`,\n    `🆔 Registry: ${userIdsCount} userId mappés`\n  ].join('\\n');\n} else {\n  msg = null; // No changes, no notification\n}\n\nreturn [{ json: {\n  message: msg,\n  created, updated, archived, skipped,\n  nameUpdates: nameUpdatesTotal,\n  errors: errors.length,\n  hasChanges: created + updated + archived > 0 || errors.length > 0\n}}];"
       },
       "id": "kas-0002-0000-0000-0000-000000000042",
       "name": "Build rapport",
@@ -817,7 +847,8 @@
       ]
     },
     "Sign-up agent": { "main": [[{ "node": "Resolve agent cookie", "type": "main", "index": 0 }]] },
-    "Resolve agent cookie": { "main": [[{ "node": "Get agent session", "type": "main", "index": 0 }]] },
+    "Resolve agent cookie": { "main": [[{ "node": "Update agent name", "type": "main", "index": 0 }]] },
+    "Update agent name": { "main": [[{ "node": "Get agent session", "type": "main", "index": 0 }]] },
     "Get agent session": { "main": [[{ "node": "Extract userId", "type": "main", "index": 0 }]] },
     "Extract userId": { "main": [[{ "node": "Add agent to workspace", "type": "main", "index": 0 }]] },
     "Add agent to workspace": { "main": [[{ "node": "Collect userIds", "type": "main", "index": 0 }]] },

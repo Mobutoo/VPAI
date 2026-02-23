@@ -741,6 +741,52 @@ reverse_proxy openclaw:18789 {
 
 ---
 
+### 12.5 Caddy Workstation — DNS-01 ACME echoue avec NOTIMP
+
+**Symptome** : `ERR_SSL_PROTOCOL_ERROR` sur tous les subdomains du Pi. Logs Caddy :
+```
+could not determine zone for domain "_acme-challenge.studio.ewutelo.cloud":
+unexpected response code 'NOTIMP' for ewutelo.cloud.
+```
+
+**Cause** : systemd-resolved (`127.0.0.53`) ne supporte pas les requetes NS/SOA
+qu'envoie certmagic (Caddy) pour decouvrir la zone autoritaire avant le challenge
+DNS-01. Le resolver local repond NOTIMP, bloquant toute emission de certificat.
+
+**Verification** :
+```bash
+dig NS ewutelo.cloud          # status: NOTIMP — confirme le bug
+dig NS ewutelo.cloud @8.8.8.8 # status: NOERROR, retourne dns20.ovh.net — domaine OK
+```
+
+**Solution** : Dans le Caddyfile workstation, utiliser `tls { dns ovh { ... } resolvers 8.8.8.8 1.1.1.1 }`
+par site au lieu de `acme_dns ovh` global. La directive `resolvers` dans le bloc `tls`
+force certmagic a utiliser des resolvers externes pour la decouverte de zone NS.
+
+**Syntaxes invalides testees** :
+- `resolvers 8.8.8.8` dans le bloc global → `unrecognized global option: resolvers`
+- `acme_resolvers 8.8.8.8` dans le bloc global → `unrecognized global option: acme_resolvers`
+- `resolvers 8.8.8.8` dans `acme_dns ovh { }` → `unrecognized subdirective 'resolvers'`
+- `tls { issuer acme { resolvers ... } }` + `acme_dns` global → config "unchanged" (global surpasse le per-site)
+
+**Syntaxe correcte** (Caddy v2.10, caddy-dns/ovh) :
+```caddyfile
+example.domain {
+    tls {
+        dns ovh {
+            endpoint ovh-eu
+            application_key {env.OVH_APPLICATION_KEY}
+            application_secret {env.OVH_APPLICATION_SECRET}
+            consumer_key {env.OVH_CONSUMER_KEY}
+        }
+        resolvers 8.8.8.8 1.1.1.1
+    }
+    reverse_proxy localhost:PORT
+}
+```
+
+---
+
 ## 13. Systeme & Debian 13
 
 ### 13.1 Debian 13 (Trixie) — Specifique

@@ -248,6 +248,10 @@ deploy-comfyui: ## Deployer ComfyUI (image gen) sur RPi
 deploy-remotion: ## Deployer Remotion (video render) sur RPi
 	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "remotion" --diff
 
+.PHONY: deploy-opencut
+deploy-opencut: ## Deployer OpenCut (video editor on-demand) sur RPi
+	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "opencut" --diff
+
 .PHONY: deploy-workstation-monitoring
 deploy-workstation-monitoring: ## Deployer node_exporter + metriques custom sur RPi
 	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "workstation-monitoring" --diff

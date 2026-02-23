@@ -134,6 +134,7 @@
     - kaneo-agents-sync
     - stack-health
     - asset-register
+    - opencut-control
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Check workflow update status (checksum comparison)
@@ -175,6 +176,7 @@
     - {file: "stack-health", name: "Stack Health Check"}
     - {file: "creative-pipeline", name: "Creative Pipeline"}
     - {file: "asset-register", name: "Asset Register"}
+    - {file: "opencut-control", name: "OpenCut Control"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -349,6 +351,7 @@
     - {file: "stack-health", name: "Stack Health Check"}
     - {file: "creative-pipeline", name: "Creative Pipeline"}
     - {file: "asset-register", name: "Asset Register"}
+    - {file: "opencut-control", name: "OpenCut Control"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -386,6 +389,7 @@
     - stack-health
     - creative-pipeline
     - asset-register
+    - opencut-control
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Display n8n workflow update results

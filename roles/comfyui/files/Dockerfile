@@ -26,9 +26,11 @@ RUN pip install --no-cache-dir --target=/build/deps \
     torch torchvision torchaudio \
     --index-url https://download.pytorch.org/whl/cpu
 
-# Install ComfyUI requirements
+# Install ComfyUI requirements + missing runtime deps
+# requests: required by app/frontend_management.py (not in requirements.txt as of v0.3.27)
 RUN pip install --no-cache-dir --target=/build/deps \
-    -r /build/comfyui/requirements.txt
+    -r /build/comfyui/requirements.txt \
+    requests
 
 # === Stage 2: Runtime ===
 FROM python:3.12-slim-bookworm

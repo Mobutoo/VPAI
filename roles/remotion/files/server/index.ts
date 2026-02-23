@@ -56,6 +56,20 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
   app.use("/renders", express.static(rendersDir));
   app.use(express.json());
 
+  // Root — API info (unauthenticated)
+  app.get("/", (_req, res) => {
+    res.json({
+      service: "Remotion Render Server",
+      status: "ok",
+      endpoints: {
+        health: "GET /health",
+        createRender: "POST /renders",
+        getJob: "GET /renders/:jobId",
+        cancelJob: "DELETE /renders/:jobId",
+      },
+    });
+  });
+
   // Health check — unauthenticated
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", renders: queue.jobs.size });

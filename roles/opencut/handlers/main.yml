@@ -1,0 +1,10 @@
+---
+# opencut — handlers
+
+- name: Restart opencut stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/workstation"
+    files:
+      - docker-compose-opencut.yml
+    state: restarted
+  become: true

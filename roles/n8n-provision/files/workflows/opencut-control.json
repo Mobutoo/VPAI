@@ -1,0 +1,241 @@
+{
+  "name": "OpenCut Control (Start/Stop)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "opencut-control",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "oc-ctrl-0001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "opencut-control"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\nconst action = (body.action || '').toLowerCase().trim();\n\nif (!['start', 'stop', 'status'].includes(action)) {\n  throw new Error('Invalid action: ' + action + '. Use: start, stop, or status');\n}\n\nreturn [{ json: { action } }];"
+      },
+      "id": "oc-ctrl-0002",
+      "name": "Parse action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "start",
+              "conditions": {
+                "options": { "caseSensitive": true },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "start",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "stop",
+              "conditions": {
+                "options": { "caseSensitive": true },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "stop",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            },
+            {
+              "outputKey": "status",
+              "conditions": {
+                "options": { "caseSensitive": true },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "status",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "options": {
+          "allMatchingOutputs": false
+        }
+      },
+      "id": "oc-ctrl-0003",
+      "name": "Action Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "command": "=ssh -i {{ $env.WORKSTATION_SSH_KEY_PATH || '/home/node/.ssh/id_ed25519' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 {{ $env.WORKSTATION_PI_USER || 'pi' }}@{{ $env.WORKSTATION_PI_IP }} 'set -e; sudo docker compose -f /opt/workstation/docker-compose-opencut.yml up -d 2>&1; echo \"--- WAITING FOR HEALTH ---\"; for i in $(seq 1 12); do sleep 5; HEALTH=$(sudo docker inspect --format=\"{{.State.Health.Status}}\" workstation_opencut 2>/dev/null || echo \"missing\"); if [ \"$HEALTH\" = \"healthy\" ]; then echo \"HEALTHY after ${i}x5s\"; exit 0; elif [ \"$HEALTH\" = \"unhealthy\" ]; then echo \"UNHEALTHY\"; sudo docker logs workstation_opencut --tail 20 2>&1; exit 1; fi; echo \"Waiting... ($HEALTH)\"; done; echo \"TIMEOUT after 60s\"; sudo docker logs workstation_opencut --tail 20 2>&1; exit 1'"
+      },
+      "id": "oc-ctrl-0004",
+      "name": "SSH Start OpenCut",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [960, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nconst exitCode = result.exitCode || 0;\nconst stdout = (result.stdout || '').trim();\nconst stderr = (result.stderr || '').trim();\nconst output = stdout + '\\n' + stderr;\n\nlet status, message;\nif (exitCode === 0 && output.includes('HEALTHY')) {\n  status = 'ok';\n  message = 'OpenCut started and healthy.\\nURL: https://' + ($env.OPENCUT_DOMAIN || 'edit.ewutelo.cloud');\n} else if (exitCode !== 0 && output.includes('UNHEALTHY')) {\n  // Extract last 5 lines of docker logs for the error\n  const lines = output.split('\\n').filter(l => l.trim());\n  const logLines = lines.slice(-5).join('\\n');\n  status = 'error';\n  message = 'OpenCut started but UNHEALTHY.\\nLogs:\\n' + logLines;\n} else if (exitCode !== 0 && output.includes('TIMEOUT')) {\n  const lines = output.split('\\n').filter(l => l.trim());\n  const logLines = lines.slice(-5).join('\\n');\n  status = 'error';\n  message = 'OpenCut started but health check TIMEOUT (60s).\\nLogs:\\n' + logLines;\n} else if (exitCode !== 0) {\n  status = 'error';\n  message = 'Failed to start OpenCut:\\n' + (stderr || stdout).slice(0, 500);\n} else {\n  status = 'ok';\n  message = 'OpenCut starting (health check in progress).\\nURL: https://' + ($env.OPENCUT_DOMAIN || 'edit.ewutelo.cloud');\n}\n\nreturn [{ json: { status, message, action: 'start', exitCode } }];"
+      },
+      "id": "oc-ctrl-0005",
+      "name": "Format Start Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 180]
+    },
+    {
+      "parameters": {
+        "command": "=ssh -i {{ $env.WORKSTATION_SSH_KEY_PATH || '/home/node/.ssh/id_ed25519' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 {{ $env.WORKSTATION_PI_USER || 'pi' }}@{{ $env.WORKSTATION_PI_IP }} 'sudo docker compose -f /opt/workstation/docker-compose-opencut.yml down 2>&1'"
+      },
+      "id": "oc-ctrl-0006",
+      "name": "SSH Stop OpenCut",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [960, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nconst exitCode = result.exitCode || 0;\nconst stdout = (result.stdout || '').trim();\nconst stderr = (result.stderr || '').trim();\n\nlet status, message;\nif (exitCode === 0) {\n  status = 'ok';\n  message = 'OpenCut stopped. All resources freed (PG + Redis + App).';\n} else {\n  status = 'error';\n  message = 'Failed to stop OpenCut (exit ' + exitCode + '):\\n' + (stderr || stdout).slice(0, 500);\n}\n\nreturn [{ json: { status, message, action: 'stop', exitCode } }];"
+      },
+      "id": "oc-ctrl-0007",
+      "name": "Format Stop Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 420]
+    },
+    {
+      "parameters": {
+        "command": "=ssh -i {{ $env.WORKSTATION_SSH_KEY_PATH || '/home/node/.ssh/id_ed25519' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 {{ $env.WORKSTATION_PI_USER || 'pi' }}@{{ $env.WORKSTATION_PI_IP }} 'sudo docker compose -f /opt/workstation/docker-compose-opencut.yml ps --format json 2>&1'"
+      },
+      "id": "oc-ctrl-0008",
+      "name": "SSH Status OpenCut",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [960, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nconst exitCode = result.exitCode || 0;\nconst stdout = (result.stdout || '').trim();\n\nlet status, message, running;\nif (exitCode === 0 && stdout.length > 2) {\n  try {\n    const containers = JSON.parse('[' + stdout.split('\\n').join(',') + ']');\n    const opencut = containers.find(c => c.Name && c.Name.includes('opencut') && !c.Name.includes('db') && !c.Name.includes('redis') && !c.Name.includes('valkey'));\n    running = opencut ? opencut.State === 'running' : false;\n    status = 'ok';\n    message = running\n      ? 'OpenCut is RUNNING (' + containers.length + ' containers). URL: https://' + ($env.OPENCUT_DOMAIN || 'edit.ewutelo.cloud')\n      : 'OpenCut is STOPPED (' + containers.filter(c => c.State === 'running').length + '/' + containers.length + ' running)';\n  } catch(e) {\n    status = 'ok';\n    running = false;\n    message = 'OpenCut is STOPPED (no containers)';\n  }\n} else {\n  status = 'ok';\n  running = false;\n  message = 'OpenCut is STOPPED (no containers)';\n}\n\nreturn [{ json: { status, message, action: 'status', running } }];"
+      },
+      "id": "oc-ctrl-0009",
+      "name": "Format Status Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1180, 600]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "oc-ctrl-0010",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1420, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text", "value": "={{ $json.status === 'ok' ? '\u2705' : '\u274c' }} *OpenCut {{ $json.action }}*\n{{ $json.message }}" },
+            { "name": "parse_mode", "value": "Markdown" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "oc-ctrl-0011",
+      "name": "Telegram Notify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1420, 560]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Parse action", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse action": {
+      "main": [
+        [{ "node": "Action Router", "type": "main", "index": 0 }]
+      ]
+    },
+    "Action Router": {
+      "main": [
+        [{ "node": "SSH Start OpenCut", "type": "main", "index": 0 }],
+        [{ "node": "SSH Stop OpenCut", "type": "main", "index": 0 }],
+        [{ "node": "SSH Status OpenCut", "type": "main", "index": 0 }]
+      ]
+    },
+    "SSH Start OpenCut": {
+      "main": [
+        [{ "node": "Format Start Result", "type": "main", "index": 0 }]
+      ]
+    },
+    "SSH Stop OpenCut": {
+      "main": [
+        [{ "node": "Format Stop Result", "type": "main", "index": 0 }]
+      ]
+    },
+    "SSH Status OpenCut": {
+      "main": [
+        [{ "node": "Format Status Result", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Start Result": {
+      "main": [
+        [
+          { "node": "Respond", "type": "main", "index": 0 },
+          { "node": "Telegram Notify", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Format Stop Result": {
+      "main": [
+        [
+          { "node": "Respond", "type": "main", "index": 0 },
+          { "node": "Telegram Notify", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Format Status Result": {
+      "main": [
+        [
+          { "node": "Respond", "type": "main", "index": 0 },
+          { "node": "Telegram Notify", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": true,
+  "tags": [
+    { "name": "workstation" },
+    { "name": "opencut" }
+  ]
+}

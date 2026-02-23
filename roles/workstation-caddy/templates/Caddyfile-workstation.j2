@@ -6,10 +6,16 @@
     }
 }
 
-# OpenCode Server
-{{ workstation_oc_domain }} {
+# VPN-only snippet — bloque tout trafic hors Tailscale CIDR
+# Pi = Caddy natif (pas Docker) → pas de DNAT bridge, IP source directe
+(vpn_only) {
+    @blocked not client_ip {{ vpn_network_cidr }}
+    respond @blocked 403
+}
+
+# Shared TLS block — DNS-01 via OVH + bypass systemd-resolved NOTIMP (REX §12.5)
+(ovh_tls) {
     tls {
-        # DNS-01 via OVH + bypass systemd-resolved (NOTIMP sur requêtes NS/SOA)
         dns ovh {
             endpoint {{ ovh_endpoint }}
             application_key {env.OVH_APPLICATION_KEY}
@@ -18,9 +24,10 @@
         }
         resolvers 8.8.8.8 1.1.1.1
     }
+}
 
-    reverse_proxy localhost:{{ opencode_port | default(3456) }}
-
+# Shared security headers
+(security_headers) {
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options "nosniff"
@@ -28,48 +35,40 @@
     }
 }
 
+# OpenCode Server
+{{ workstation_oc_domain }} {
+    import ovh_tls
+    import vpn_only
+    import security_headers
+    reverse_proxy localhost:{{ opencode_port | default(3456) }}
+}
+
 # ComfyUI — AI image generation (CPU-only, Docker)
 {% if comfyui_subdomain | default('') | length > 0 %}
 {{ comfyui_subdomain }}.{{ domain_name }} {
-    tls {
-        dns ovh {
-            endpoint {{ ovh_endpoint }}
-            application_key {env.OVH_APPLICATION_KEY}
-            application_secret {env.OVH_APPLICATION_SECRET}
-            consumer_key {env.OVH_CONSUMER_KEY}
-        }
-        resolvers 8.8.8.8 1.1.1.1
-    }
-
+    import ovh_tls
+    import vpn_only
+    import security_headers
     reverse_proxy localhost:{{ comfyui_port | default(8188) }}
-
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        -Server
-    }
 }
 {% endif %}
 
 # Remotion — Video rendering server (Docker)
 {% if remotion_subdomain | default('') | length > 0 %}
 {{ remotion_subdomain }}.{{ domain_name }} {
-    tls {
-        dns ovh {
-            endpoint {{ ovh_endpoint }}
-            application_key {env.OVH_APPLICATION_KEY}
-            application_secret {env.OVH_APPLICATION_SECRET}
-            consumer_key {env.OVH_CONSUMER_KEY}
-        }
-        resolvers 8.8.8.8 1.1.1.1
-    }
-
+    import ovh_tls
+    import vpn_only
+    import security_headers
     reverse_proxy localhost:{{ remotion_port | default(3200) }}
+}
+{% endif %}
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        -Server
-    }
+# OpenCut — Video editor (on-demand Docker)
+{% if opencut_subdomain | default('') | length > 0 %}
+{{ opencut_subdomain }}.{{ domain_name }} {
+    import ovh_tls
+    import vpn_only
+    import security_headers
+    reverse_proxy localhost:{{ opencut_port | default(3100) }}
 }
 {% endif %}

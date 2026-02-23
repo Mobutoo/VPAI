@@ -1,0 +1,35 @@
+---
+# opencut — defaults
+# OpenCut video editor (Next.js) on RPi 5 (ARM64)
+# On-demand service : docker compose up/down via n8n ou Telegram
+
+opencut_install_dir: "/opt/workstation/opencut"
+opencut_data_dir: "/opt/workstation/data/opencut"
+
+# OpenCut version (git tag from https://github.com/OpenCut-app/OpenCut)
+opencut_version: "v0.1.0"
+
+# Ports
+opencut_port: 3100
+
+# Docker resource limits (RPi 5 16GB — lightweight Next.js app)
+# FFmpeg/rendering runs client-side (WASM), server is just Next.js
+opencut_memory_limit: "1024M"
+opencut_memory_reservation: "256M"
+opencut_cpu_limit: "2.0"
+
+# Subdomain (VPN-only via workstation Caddy)
+opencut_subdomain: "edit"
+
+# PostgreSQL — dedicated DB for OpenCut (separate from VPS PG)
+opencut_db_name: "opencut"
+opencut_db_user: "opencut"
+# Password from vault: vault_opencut_db_password
+
+# Redis (Upstash REST API compat via serverless-redis-http)
+opencut_redis_port: 8079
+
+# Auth secret from vault: vault_opencut_auth_secret
+
+# Auto-start on boot (false = on-demand only)
+opencut_autostart: false

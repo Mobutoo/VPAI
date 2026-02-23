@@ -1,0 +1,123 @@
+---
+# opencut — tasks
+# OpenCut video editor on RPi 5 (ARM64)
+# On-demand service: deployed but not auto-started unless opencut_autostart=true
+#
+# Start/stop manually:
+#   docker compose -f /opt/workstation/docker-compose-opencut.yml up -d
+#   docker compose -f /opt/workstation/docker-compose-opencut.yml down
+
+- name: Create OpenCut install directory
+  ansible.builtin.file:
+    path: "{{ opencut_install_dir }}"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create OpenCut data directories
+  ansible.builtin.file:
+    path: "{{ opencut_data_dir }}/{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  loop:
+    - postgres
+    - valkey
+    - uploads
+
+- name: Copy OpenCut Dockerfile
+  ansible.builtin.copy:
+    src: "Dockerfile"
+    dest: "{{ opencut_install_dir }}/Dockerfile"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+  register: opencut_dockerfile
+
+- name: Build OpenCut Docker image (ARM64)
+  community.docker.docker_image:
+    name: "opencut-local"
+    tag: "{{ opencut_version }}"
+    source: build
+    build:
+      path: "{{ opencut_install_dir }}"
+      args:
+        OPENCUT_VERSION: "{{ opencut_version }}"
+      platform: "linux/arm64"
+    force_source: "{{ opencut_dockerfile.changed }}"
+  become: true
+  register: opencut_image_build
+
+- name: Deploy OpenCut docker-compose
+  ansible.builtin.template:
+    src: "docker-compose-opencut.yml.j2"
+    dest: "/opt/workstation/docker-compose-opencut.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  register: opencut_compose
+
+# On-demand: only start if autostart is true
+- name: Start OpenCut stack (autostart enabled)
+  community.docker.docker_compose_v2:
+    project_src: "/opt/workstation"
+    files:
+      - docker-compose-opencut.yml
+    state: present
+  become: true
+  when: opencut_autostart | default(false) | bool
+  register: opencut_started
+
+- name: Display on-demand usage instructions
+  ansible.builtin.debug:
+    msg: |
+      ━━━ OpenCut Video Editor — On-Demand Service ━━━
+      {% if opencut_autostart | default(false) | bool %}
+      Status: STARTED (autostart enabled)
+      {% else %}
+      Status: DEPLOYED but NOT STARTED (on-demand mode)
+      {% endif %}
+
+      URL: https://{{ opencut_subdomain }}.{{ domain_name }} (VPN-only)
+
+      Start:
+        docker compose -f /opt/workstation/docker-compose-opencut.yml up -d
+
+      Stop (free all resources):
+        docker compose -f /opt/workstation/docker-compose-opencut.yml down
+
+      Logs:
+        docker compose -f /opt/workstation/docker-compose-opencut.yml logs -f opencut
+
+      Resources when running: ~1.5 GB RAM (PG + Redis + Next.js)
+      Resources when stopped: 0
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  when: not (opencut_autostart | default(false) | bool)
+
+# Health check only when stack is running
+- name: Wait for OpenCut to be healthy
+  ansible.builtin.wait_for:
+    host: localhost
+    port: "{{ opencut_port }}"
+    timeout: 120
+    state: started
+  changed_when: false
+  when: opencut_autostart | default(false) | bool
+
+- name: Check OpenCut health endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ opencut_port }}/"
+    method: GET
+    status_code: [200]
+  retries: 6
+  delay: 10
+  register: opencut_health
+  until: opencut_health.status == 200
+  changed_when: false
+  when: opencut_autostart | default(false) | bool

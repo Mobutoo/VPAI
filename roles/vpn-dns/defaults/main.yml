@@ -105,4 +105,10 @@ _vpn_dns_records_default: >-
      if (remotion_subdomain | default('')) | length > 0
         and _vpn_dns_workstation_ts_ip | length > 0
      else [])
+    +
+    ([{"name": opencut_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_workstation_ts_ip}]
+     if (opencut_subdomain | default('')) | length > 0
+        and _vpn_dns_workstation_ts_ip | length > 0
+     else [])
   }}

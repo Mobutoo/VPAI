@@ -1,0 +1,153 @@
+---
+# docker-compose-opencut.yml — OpenCut video editor stack
+# On-demand service: start with `docker compose up -d`, stop with `docker compose down`
+#
+# Architecture:
+#   opencut (Next.js) → opencut-db (PostgreSQL) + opencut-redis (Upstash REST compat)
+#   All on internal bridge network, only opencut exposed via loopback
+
+services:
+  # PostgreSQL — dedicated instance for OpenCut (lightweight, local to Pi)
+  opencut-db:
+    image: postgres:{{ postgresql_version | default('17') }}-alpine
+    container_name: workstation_opencut_db
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID, DAC_OVERRIDE, FOWNER]
+    environment:
+      POSTGRES_DB: "{{ opencut_db_name }}"
+      POSTGRES_USER: "{{ opencut_db_user }}"
+      POSTGRES_PASSWORD: "{{ vault_opencut_db_password }}"
+    volumes:
+      - {{ opencut_data_dir }}/postgres:/var/lib/postgresql/data
+    networks:
+      - opencut
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ opencut_db_user }} -d {{ opencut_db_name }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+        reservations:
+          memory: 64M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis — Upstash REST API compatible (serverless-redis-http)
+  opencut-redis:
+    image: hiett/serverless-redis-http:latest
+    container_name: workstation_opencut_redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    environment:
+      SRH_MODE: env
+      SRH_TOKEN: "{{ vault_opencut_redis_token }}"
+      SRH_CONNECTION_STRING: "redis://opencut-valkey:6379"
+    networks:
+      - opencut
+    depends_on:
+      opencut-valkey:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Valkey (Redis fork) — backing store for serverless-redis-http
+  opencut-valkey:
+    image: valkey/valkey:8-alpine
+    container_name: workstation_opencut_valkey
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    cap_add: [SETGID, SETUID]
+    volumes:
+      - {{ opencut_data_dir }}/valkey:/data
+    networks:
+      - opencut
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # OpenCut — Next.js video editor
+  opencut:
+    image: opencut-local:{{ opencut_version }}
+    container_name: workstation_opencut
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    ports:
+      - "127.0.0.1:{{ opencut_port }}:3000"
+    environment:
+      NODE_ENV: "production"
+      DATABASE_URL: "postgresql://{{ opencut_db_user }}:{{ vault_opencut_db_password }}@opencut-db:5432/{{ opencut_db_name }}"
+      BETTER_AUTH_SECRET: "{{ vault_opencut_auth_secret }}"
+      UPSTASH_REDIS_REST_URL: "http://opencut-redis:80"
+      UPSTASH_REDIS_REST_TOKEN: "{{ vault_opencut_redis_token }}"
+      NEXT_PUBLIC_SITE_URL: "https://{{ opencut_subdomain }}.{{ domain_name }}"
+      NEXT_PUBLIC_MARBLE_API_URL: ""
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      - {{ opencut_data_dir }}/uploads:/app/uploads
+    networks:
+      - opencut
+    depends_on:
+      opencut-db:
+        condition: service_healthy
+      opencut-redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: {{ opencut_memory_limit }}
+          cpus: "{{ opencut_cpu_limit }}"
+        reservations:
+          memory: {{ opencut_memory_reservation }}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  opencut:
+    name: workstation_opencut
+    driver: bridge

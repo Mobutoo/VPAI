@@ -787,6 +787,47 @@ example.domain {
 
 ---
 
+### 12.6 Split DNS — Subdomains Pi absents de Headscale extra_records
+
+**Symptome** : `oc.ewutelo.cloud`, `studio.ewutelo.cloud`, `cut.ewutelo.cloud` resolvent
+vers l'IP publique du VPS (`87.106.30.160`) depuis un client Headscale au lieu du Pi (`100.64.0.1`).
+Les URLs restent inaccessibles meme avec Headscale VPN actif.
+
+**Cause** : Le role `vpn-dns` tourne dans `site.yml` (sur prod-server) et lit
+`hostvars[groups['workstation'][0]]['tailscale_ip']`. Mais `workstation.yml` est
+un playbook **separe** — quand `site.yml` s'execute, le Pi n'a jamais tourne
+`headscale-node`, donc le fait `tailscale_ip` est absent. Le guard defensif dans
+`vpn-dns/defaults/main.yml` renvoie `''` → les records Pi sont silencieusement omis.
+
+**Verification** :
+```bash
+# Sur le client Headscale (PC Windows via PowerShell) :
+Resolve-DnsName oc.ewutelo.cloud
+# Si "Address" = IP publique VPS → records Pi manquants dans Headscale
+
+# Sur le Pi directement :
+tailscale ip -4   # donne l'IP Tailscale du Pi (ex: 100.64.0.1)
+```
+
+**Solution** : Utiliser le playbook dedie `playbooks/vpn-dns.yml` qui collecte
+d'abord les IPs Tailscale de TOUS les noeuds (prod + workstation), puis deploie
+`vpn-dns` sur `vpn-server` avec les hostvars complets.
+
+```bash
+make deploy-vpn-dns
+# ou : ansible-playbook playbooks/vpn-dns.yml
+```
+
+**Architecture du correctif** :
+- Play 1 : `hosts: prod:workstation` — `tailscale ip -4` sur chaque noeud → fait `tailscale_ip`
+- Play 2 : `hosts: vpn` — role `vpn-dns` avec `hostvars` complets incluant le Pi
+
+**Pourquoi pas dans workstation.yml** : Le role `vpn-dns` tourne sur `vpn-server` (Seko-VPN),
+pas sur le Pi. Ajouter un play `vpn` a `workstation.yml` coupleraient les deux playbooks.
+Un playbook dedie est plus propre et reciblable independamment.
+
+---
+
 ## 13. Systeme & Debian 13
 
 ### 13.1 Debian 13 (Trixie) — Specifique

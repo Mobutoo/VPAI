@@ -252,6 +252,10 @@ deploy-remotion: ## Deployer Remotion (video render) sur RPi
 deploy-workstation-monitoring: ## Deployer node_exporter + metriques custom sur RPi
 	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "workstation-monitoring" --diff
 
+.PHONY: deploy-vpn-dns
+deploy-vpn-dns: ## Mettre a jour Split DNS Headscale (VPS + workstation Pi)
+	$(ANSIBLE_PLAYBOOK) playbooks/vpn-dns.yml --diff
+
 # ====================================================================
 # PROD APPS (Hetzner)
 # ====================================================================

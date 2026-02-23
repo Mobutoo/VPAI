@@ -1,0 +1,51 @@
+---
+# playbooks/vpn-dns.yml — Déploiement ciblé Split DNS Headscale
+#
+# Injecte les extra_records dans Headscale (VPN server) pour que les clients VPN
+# résolvent correctement les sous-domaines — VPS ET workstation Pi.
+#
+# Problème résolu : workstation.yml et site.yml tournent séparément.
+# vpn-dns (dans site.yml) n'a pas le tailscale_ip du Pi dans hostvars.
+# Ce playbook collecte d'abord les faits du Pi, puis déploie vpn-dns.
+#
+# Usage :
+#   ansible-playbook playbooks/vpn-dns.yml
+#   make deploy-vpn-dns
+#
+# REX §12.6 : workstation_tailscale_ip absent → records Pi silencieusement omis.
+
+# ============================================================
+# PLAY 1 : Collecter tailscale_ip depuis le Pi (workstation)
+# ============================================================
+- name: "VPN-DNS | Gather Tailscale IPs from all nodes"
+  hosts: prod:workstation
+  gather_facts: false
+
+  tasks:
+    - name: "VPN-DNS | Get Tailscale IP"
+      ansible.builtin.command:
+        cmd: tailscale ip -4
+      register: _ts_ip_result
+      changed_when: false
+      become: true
+
+    - name: "VPN-DNS | Save Tailscale IP as host fact"
+      ansible.builtin.set_fact:
+        tailscale_ip: "{{ _ts_ip_result.stdout | trim }}"
+        cacheable: true
+
+    - name: "VPN-DNS | Display Tailscale IP"
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} Tailscale IP: {{ tailscale_ip }}"
+
+# ============================================================
+# PLAY 2 : Déployer les DNS records sur Headscale (VPN server)
+# ============================================================
+- name: "VPN-DNS | Deploy Split DNS records to Headscale"
+  hosts: vpn
+  gather_facts: false
+
+  roles:
+    - role: vpn-dns
+      tags: [vpn-dns]
+      when: caddy_vpn_enforce | default(true) | bool

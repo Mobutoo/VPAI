@@ -656,6 +656,11 @@ reverse_proxy openclaw:18789 {
 - **`controlUi.basePath`** : `/` quand sous-domaine dedie
 - **`trustedProxies`** : Necessaire derriere Caddy pour X-Forwarded-For
 - **`allowInsecureAuth`** : Necessaire car WebCrypto requiert HTTPS ou localhost
+- **`heartbeat`** : **CLE INCONNUE en v2026.2.22** — cause crash-loop immédiat
+- **`cron`** comme array `[{...}]` : **NON SUPPORTÉ en v2026.2.22** — "expected object, received array"
+  → Ces deux clés sont documentées dans le plan mais pas encore implémentées dans cette version.
+  → Ne jamais les ajouter sans vérifier d'abord avec `docker logs javisi_openclaw 2>&1 | head -5` qu'elles sont acceptées.
+  → Règle générale : toute nouvelle clé dans `openclaw.json.j2` → tester en dry-run ou vérifier les logs immédiatement après deploy.
 
 ### 11.4 tools.web — Cles Valides
 

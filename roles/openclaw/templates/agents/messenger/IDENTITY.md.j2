@@ -38,7 +38,7 @@ COOKIE=$(redis-cli -h redis GET kaneo:session:cookie)
 # 2. Si cookie absent ou expire : s'authentifier
 if [ -z "$COOKIE" ]; then
   RESP=$(curl -sf -D - -o /dev/null \
-    -X POST http://kaneo-api:1337/api/auth/sign-in \
+    -X POST http://kaneo-api:1337/api/auth/sign-in/email \
     -H 'Content-Type: application/json' \
     -d '{"email":"{{ kaneo_agent_email }}","password":"{{ kaneo_agent_password }}"}')
   COOKIE=$(echo "$RESP" | grep -i "set-cookie:" | head -1 | awk '{print $2}' | cut -d';' -f1)
@@ -215,7 +215,7 @@ if [ -n "$USER_ID" ]; then
   if [ "$HTTP_CODE" = "401" ]; then
     redis-cli -h redis DEL kaneo:session:cookie
     RESP=$(curl -sf -D - -o /dev/null \
-      -X POST http://kaneo-api:1337/api/auth/sign-in \
+      -X POST http://kaneo-api:1337/api/auth/sign-in/email \
       -H 'Content-Type: application/json' \
       -d '{"email":"{{ kaneo_agent_email }}","password":"{{ kaneo_agent_password }}"}')
     COOKIE=$(echo "$RESP" | grep -i "set-cookie:" | head -1 | awk '{print $2}' | cut -d';' -f1)

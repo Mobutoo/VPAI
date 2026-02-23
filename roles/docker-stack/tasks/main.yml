@@ -286,6 +286,30 @@
       Qdrant={{ qdrant_health.stdout | default('?') }}
       Caddy={{ caddy_health.stdout | default('?') }}
 
+# === DETECT DOCKER SOCKET GID (for openclaw sandbox) ===
+# REX: openclaw node:1000 needs docker group membership to spawn sandbox containers
+# /var/run/docker.sock is owned by root:docker — detect GID dynamically (varies by distro)
+- name: Detect docker socket GID on host
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      stat -c '%g' /var/run/docker.sock 2>/dev/null || \
+        getent group docker | cut -d: -f3 || \
+        echo "999"
+  register: docker_socket_gid_raw
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Set docker_socket_gid fact
+  ansible.builtin.set_fact:
+    docker_socket_gid: "{{ docker_socket_gid_raw.stdout | trim | default('999') }}"
+
+- name: Show detected docker socket GID
+  ansible.builtin.debug:
+    msg: "Docker socket GID: {{ docker_socket_gid }} (openclaw will use group_add)"
+
 # === PHASE B : APPLICATIONS ===
 - name: Deploy docker-compose.yml template (apps + monitoring)
   ansible.builtin.template:

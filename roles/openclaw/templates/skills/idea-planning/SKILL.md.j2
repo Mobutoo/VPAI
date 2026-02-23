@@ -9,6 +9,24 @@ metadata: { "openclaw": { "emoji": "💡" } }
 Cycle de vie universel d'une idée : de l'intention au projet dispaché.
 Fonctionne pour TOUT type de projet : tech, business, perso, physique, finance.
 
+---
+
+## 🔑 Principe fondamental : Pattern Plan-Then-Approve
+
+**Inspiré du Plan Mode de Claude Code.** Ce skill fonctionne en 3 phases strictement séparées :
+
+```
+[PHASE EXPLORATION]  → Lire, questionner, analyser — AUCUNE création
+         ↓
+[PHASE PLAN]         → Présenter le plan complet pour review utilisateur
+         ↓ (approbation explicite REQUISE)
+[PHASE EXÉCUTION]    → Créer dans Kaneo, assigner, dispatcher
+```
+
+**Règle d'or** : Les phases sont **irréversibles dans l'ordre**. On ne peut pas passer à l'Exécution sans approbation explicite. On ne génère pas de plan en boucle sans que l'utilisateur ait validé la compréhension (Phase Exploration).
+
+---
+
 ## Phase 1 — Qualification par dialogue (OBLIGATOIRE avant toute génération)
 
 Patterns déclencheurs (détecter dans le message) :
@@ -44,12 +62,15 @@ Poser les questions les plus utiles selon le domaine détecté. Exemples :
 - "C'est pour quand ? Et tu as déjà commencé à regarder ?"
 - "Il y a des contraintes (budget, lieu, temps) à intégrer ?"
 
-### Étape 3 — Récapitulatif avant lancement
+### Étape 3 — Récapitulatif avant lancement (passage Phase Exploration → Phase Plan)
 Reformuler en 2-3 phrases ce que tu as compris, puis demander :
 > "J'ai bien cerné l'idée. Je lance l'analyse complète (Explorer + CFO + Builder en parallèle) — ça prend ~30 secondes. Go ?"
 
-Sur confirmation → lancer la co-construction.
-Sur ajustement → intégrer et relancer l'étape 3.
+**Attendre une réponse affirmative explicite** ("go", "oui", "vas-y", "ok", "c'est bon", etc.)
+→ Pas de génération automatique sans confirmation.
+→ Sur confirmation → lancer la co-construction.
+→ Sur ajustement → intégrer et relancer l'étape 3.
+→ Sur silence ou réponse ambiguë → demander à nouveau.
 
 ---
 
@@ -205,6 +226,30 @@ sessions_spawn(messenger, "update_ideas_memory task_id=<id> title=<titre> domain
 
 ---
 
+## 🚦 Porte de validation — Passage Phase Plan → Phase Exécution
+
+Le plan est présenté avec 3 boutons inline :
+- **[✅ Approuver]** → Callback `approve:<task_id>` → déclenche l'exécution complète
+- **[✏️ Modifier]** → Callback `modify:<task_id>` → retour Phase Plan (itération)
+- **[❌ Refuser]** → Callback `reject:<task_id>` → plan archivé, aucune exécution
+
+**La Phase Exécution ne démarre QUE sur [✅ Approuver] — jamais automatiquement.**
+
+Même si l'utilisateur écrit "c'est parfait" ou "j'adore l'idée" en texte libre → demander de cliquer le bouton ou de confirmer explicitement "approuve" pour déclencher l'exécution.
+
+```
+Exemples de messages qui NE déclenchent PAS l'exécution :
+- "super plan" → boutons toujours présents, attendre clic
+- "ça m'a l'air bien" → boutons toujours présents, attendre clic
+- "continue" → ambigu → demander "Tu veux approuver le plan ou modifier quelque chose ?"
+
+Exemples de messages qui déclenchent l'exécution (texte libre) :
+- "approuve" / "go" / "valide" / "ok go" → équivalent à [✅ Approuver]
+- "approuver" / "c'est approuvé" / "dispatch" → équivalent à [✅ Approuver]
+```
+
+---
+
 ## Gestion des itérations
 
 ### Détection du contexte (message libre après plan présenté)
@@ -267,8 +312,19 @@ Règle : **un message après un plan présenté = feedback par défaut**, sauf s
 
 ---
 
-## Règle absolue
+## Règles absolues
 
-**JAMAIS** créer de projet réel, de tâches Kaneo ou assigner des ressources AVANT l'approbation explicite via bouton [✅ Approuver].
+**JAMAIS** créer de projet réel, de tâches Kaneo ou assigner des ressources AVANT l'approbation explicite.
 
-La co-construction = génération d'un plan. Pas d'exécution.
+**JAMAIS** passer directement en Phase Plan sans avoir collecté les réponses de qualification (Étapes 1-2-3).
+
+**JAMAIS** passer en Phase Exécution sans `approve_idea` (bouton ou texte explicite).
+
+**Séquence garantie** :
+```
+Détection intention → Dialogue qualification → Confirmation "Go ?"
+    → Co-construction (Explorer + CFO + Builder) → Plan présenté avec boutons
+    → [✅ Approuver] → approve_idea → dispatch → Kaneo
+```
+
+La co-construction = **génération d'un plan uniquement**. Pas d'exécution.

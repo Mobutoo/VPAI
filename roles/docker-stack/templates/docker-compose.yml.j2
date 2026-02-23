@@ -107,6 +107,11 @@ services:
 {% endif %}
       # Docker socket required for sandbox: Gateway spawns isolated containers
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    # REX: node:1000 must be in docker group to access /var/run/docker.sock
+    # Without this, sandbox spawn fails with "Error: spawn docker EACCES"
+    # GID detected dynamically by docker-stack role (stat -c '%g' /var/run/docker.sock)
+    group_add:
+      - "{{ docker_socket_gid | default('989') }}"
     networks:
       - backend
       - egress

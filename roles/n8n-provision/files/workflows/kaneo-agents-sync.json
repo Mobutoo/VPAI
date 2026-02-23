@@ -34,7 +34,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://kaneo-api:1337/api/auth/sign-in",
+        "url": "http://kaneo-api:1337/api/auth/sign-in/email",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -144,7 +144,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://kaneo-api:1337/api/auth/sign-in",
+        "url": "=http://kaneo-api:1337/api/auth/sign-in/email",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

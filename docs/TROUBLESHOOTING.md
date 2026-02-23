@@ -790,6 +790,101 @@ docker exec javisi_openclaw sh -c \
 
 ---
 
+### 11.13 Subagent "spawn docker EACCES" — Sandbox non fonctionnel
+
+**Symptome** : Logs `Error: spawn docker EACCES` dans les lanes `subagent` et `session:agent:<name>:subagent:*`. Le Concierge rapporte "Subagent writer failed" sans detail. Aucun sous-agent ne peut demarrer.
+
+**Cause** : Le container OpenClaw tourne avec le user `node:1000`. Le socket Docker `/var/run/docker.sock` appartient au groupe `docker` (GID variable selon la distro, ex: 989 sur Debian). Le container ne peut pas acceder au socket sans etre dans ce groupe.
+
+**Diagnostic** :
+```bash
+# Verifier le GID du groupe docker sur le host
+getent group docker
+# Verifier les permissions du socket
+ls -la /var/run/docker.sock
+# Output attendu : srw-rw---- 1 root docker 0 ... /var/run/docker.sock
+
+# Verifier les groupes du container
+docker exec javisi_openclaw id
+# AVANT fix : uid=1000(node) gid=1000(node) groups=1000(node)  ← pas de groupe docker
+# APRES fix  : uid=1000(node) gid=1000(node) groups=1000(node),989(docker)
+```
+
+**Fix** : La directive `group_add` dans `docker-compose.yml.j2` ajoute le groupe docker au container. Le GID est detecte dynamiquement par le role `docker-stack` (tache "Detect docker socket GID") :
+```yaml
+group_add:
+  - "{{ docker_socket_gid | default('989') }}"
+```
+
+**Redeploiement** : `make deploy-role ROLE=docker-stack ENV=prod`
+
+**Pourquoi le Concierge ne voit pas l'erreur** : Les erreurs de spawn sont dans la lane `diagnostic`, pas propagees au contexte de la session principale. Normal — le Concierge doit poller l'etat des sous-agents via `sessions_get`. Si le sous-agent echoue immediatement (< 2s), la fenetre de poll est manquee.
+
+---
+
+### 11.14 Kaneo — Endpoint d'Auth BetterAuth (Route Correcte)
+
+**Symptome** : Messenger Hermes ne crée rien dans Kaneo. Aucune tâche, aucun projet. Pas d'erreur visible (curl avec `-sf` masque les 404).
+
+**Cause** : Kaneo utilise BetterAuth qui expose `/api/auth/sign-in/email` (pas `/api/auth/sign-in`). L'ancien endpoint retourne 404, le cookie n'est jamais extrait, toutes les opérations Kaneo échouent silencieusement.
+
+```bash
+# Mauvais (404)
+curl -X POST http://kaneo-api:1337/api/auth/sign-in ...
+
+# Correct (200 + Set-Cookie)
+curl -X POST http://kaneo-api:1337/api/auth/sign-in/email ...
+```
+
+**Fichiers affectés** :
+- `roles/openclaw/templates/agents/messenger/IDENTITY.md.j2` (2 occurrences)
+- `roles/n8n-provision/files/workflows/code-review.json`
+- `roles/n8n-provision/files/workflows/error-to-task.json`
+- `roles/n8n-provision/files/workflows/github-autofix.json`
+- `roles/n8n-provision/files/workflows/kaneo-agents-sync.json`
+- `roles/n8n-provision/files/workflows/project-status.json`
+- `roles/n8n-provision/templates/workflows/plan-dispatch.json.j2`
+
+**Cookie Kaneo** : Format `__Secure-better-auth.session_token=<value>`. Le flag `__Secure-` est pour les navigateurs — `curl` l'utilise en HTTP interne sans problème.
+
+**Diagnostic rapide** :
+```bash
+# Tester l'auth depuis le container openclaw
+docker exec javisi_openclaw curl -s -o /dev/null -w '%{http_code}' \
+  -X POST http://kaneo-api:1337/api/auth/sign-in/email \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"<kaneo_agent_email>","password":"<kaneo_agent_password>"}'
+# Attendu : 200
+# Si 404 : mauvais endpoint
+```
+
+---
+
+### 11.15 Kaneo — Doublons workspace_member (Double Provisioning)
+
+**Symptome** : Chaque agent apparait deux fois dans la liste des membres de l'espace de travail Kaneo.
+
+**Cause** : Double provisioning — le rôle Ansible `roles/kaneo/tasks/main.yml` insère des membres avec des IDs hardcodés (`kaneo-agent-member-XX-XX`) ET le workflow n8n `kaneo-agents-sync` en insère avec des IDs dynamiques (`agXXagXX...`).
+
+**Diagnostic** :
+```bash
+docker exec <project>_postgresql psql -U kaneo -d kaneo -t -c \
+  "SELECT u.email, COUNT(*) FROM workspace_member m
+   JOIN \"user\" u ON u.id = m.user_id
+   GROUP BY u.email HAVING COUNT(*) > 1;"
+```
+
+**Fix ponctuel** :
+```bash
+# Supprimer les entrées hardcodées (les IDs dynamiques agXX sont les valides)
+docker exec <project>_postgresql psql -U kaneo -d kaneo -t -c \
+  "DELETE FROM workspace_member WHERE id LIKE 'kaneo-agent-member-%';"
+```
+
+**Fix permanent** : Supprimer la tâche `Add OpenClaw agents to workspace` de `roles/kaneo/tasks/main.yml` (la déléguer uniquement au workflow n8n `kaneo-agents-sync`).
+
+---
+
 ## 12. Reseau & VPN
 
 ### 12.1 Reseaux Docker Isoles

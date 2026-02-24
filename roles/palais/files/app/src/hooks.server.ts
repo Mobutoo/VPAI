@@ -3,12 +3,14 @@ import { env } from '$env/dynamic/private';
 import { building } from '$app/environment';
 import { connectOpenClaw } from '$lib/server/ws/openclaw';
 import { startBudgetCron } from '$lib/server/budget/cron';
+import { ensureQdrantCollection } from '$lib/server/memory/qdrant';
 
 const API_KEY = env.PALAIS_API_KEY || 'dev-key';
 
 if (!building) {
 	connectOpenClaw();
 	startBudgetCron();
+	ensureQdrantCollection();
 }
 
 export const handle: Handle = async ({ event, resolve }) => {

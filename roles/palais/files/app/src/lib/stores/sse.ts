@@ -1,5 +1,5 @@
 import { browser } from '$app/environment';
-import type { AgentEvent } from '$lib/server/ws/openclaw';
+import type { AgentEvent } from '$lib/types/agent';
 
 type SSECallback = (event: AgentEvent) => void;
 

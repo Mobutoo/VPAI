@@ -3,21 +3,12 @@ import { env } from '$env/dynamic/private';
 import { db } from '$lib/server/db';
 import { agents, agentSessions } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
+import type { AgentEvent } from '$lib/types/agent';
+
+export type { AgentEvent };
 
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-export type AgentEvent = {
-	type: string;
-	agentId: string;
-	sessionId?: number;
-	status?: string;
-	taskId?: number;
-	model?: string;
-	tokens?: number;
-	cost?: number;
-	summary?: string;
-};
 
 const listeners = new Set<(event: AgentEvent) => void>();
 

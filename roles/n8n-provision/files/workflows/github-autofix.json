@@ -172,13 +172,12 @@
     },
     {
       "parameters": {
-        "command": "=ssh -i {{ $env.WORKSTATION_SSH_KEY_PATH || '/home/mobuone/.ssh/seko-vpn-deploy' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 {{ $env.WORKSTATION_PI_USER || 'mobuone' }}@{{ $env.WORKSTATION_PI_IP }} 'echo {{ $json.issue_data_b64 }} | base64 -d | claude-autofix --stdin'",
-        "options": {}
+        "jsCode": "const { exec } = require('child_process');\nconst keyPath = process.env.WORKSTATION_SSH_KEY_PATH || '/home/mobuone/.ssh/seko-vpn-deploy';\nconst piUser = process.env.WORKSTATION_PI_USER || 'mobuone';\nconst piIp = process.env.WORKSTATION_PI_IP;\nconst b64 = $input.first().json.issue_data_b64;\nconst cmd = `ssh -i ${keyPath} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 ${piUser}@${piIp} 'echo ${b64} | base64 -d | claude-autofix --stdin'`;\nconst result = await new Promise((resolve) => {\n  exec(cmd, { timeout: 600000, maxBuffer: 10*1024*1024 }, (error, stdout, stderr) => {\n    resolve({ stdout: stdout || '', stderr: stderr || '', exitCode: error ? (error.code || 1) : 0 });\n  });\n});\nreturn [{ json: result }];"
       },
       "id": "gha-0001-0000-0000-0000-000000000007",
       "name": "Execute Claude Code via SSH",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [1620, 200]
     },
     {
@@ -204,7 +203,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"{{ $json.success ? 'done' : 'todo' }}\" }",
+        "jsonBody": "={ \"status\": \"{{ $json.success ? 'done' : 'backlog' }}\" }",
         "options": {},
         "continueOnFail": true
       },
@@ -217,7 +216,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://kaneo-api:1337/api/external-link",
+        "url": "=http://kaneo-api:1337/api/activity/comment",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -227,7 +226,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"taskId\": \"{{ $json.kaneo_task_id }}\",\n  \"url\": \"{{ $json.pr_url }}\",\n  \"title\": \"PR Auto-fix GH-{{ $json.issue_id }}\"\n}",
+        "jsonBody": "={\n  \"taskId\": \"{{ $json.kaneo_task_id }}\",\n  \"comment\": \"[DELIVERABLE] PR Auto-fix GH-{{ $json.issue_id }} — {{ $json.pr_url }}\"\n}",
         "options": {},
         "continueOnFail": true
       },
@@ -250,7 +249,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"taskId\": \"{{ $json.kaneo_task_id }}\",\n  \"content\": \"Auto-fix {{ $json.success ? 'reussi' : 'echoue' }}. {{ $json.pr_url ? 'PR: ' + $json.pr_url : 'Pas de PR generee.' }}\"\n}",
+        "jsonBody": "={\n  \"taskId\": \"{{ $json.kaneo_task_id }}\",\n  \"comment\": \"Auto-fix {{ $json.success ? 'reussi' : 'echoue' }}. {{ $json.pr_url ? 'PR: ' + $json.pr_url : 'Pas de PR generee.' }}\"\n}",
         "options": {},
         "continueOnFail": true
       },

@@ -67,7 +67,7 @@
               "id": "cond-alert",
               "leftValue": "={{ $json.hasAlert }}",
               "rightValue": true,
-              "operator": { "type": "boolean", "operation": "equal" }
+              "operator": { "type": "boolean", "operation": "equals" }
             }
           ],
           "combinator": "and"

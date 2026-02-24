@@ -47,13 +47,12 @@
     },
     {
       "parameters": {
-        "command": "=ssh -i {{ $env.WORKSTATION_SSH_KEY_PATH || '/home/mobuone/.ssh/seko-vpn-deploy' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 {{ $env.WORKSTATION_PI_USER || 'mobuone' }}@{{ $env.WORKSTATION_PI_IP }} 'echo {{ $json.review_data_b64 }} | base64 -d | claude-code-review --stdin --model gpt-codex'",
-        "options": {}
+        "jsCode": "const { exec } = require('child_process');\nconst keyPath = process.env.WORKSTATION_SSH_KEY_PATH || '/home/mobuone/.ssh/seko-vpn-deploy';\nconst piUser = process.env.WORKSTATION_PI_USER || 'mobuone';\nconst piIp = process.env.WORKSTATION_PI_IP;\nconst b64 = $input.first().json.review_data_b64;\nconst cmd = `ssh -i ${keyPath} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 ${piUser}@${piIp} 'echo ${b64} | base64 -d | claude-code-review --stdin --model gpt-codex'`;\nconst result = await new Promise((resolve) => {\n  exec(cmd, { timeout: 300000, maxBuffer: 10*1024*1024 }, (error, stdout, stderr) => {\n    resolve({ stdout: stdout || '', stderr: stderr || '', exitCode: error ? (error.code || 1) : 0 });\n  });\n});\nreturn [{ json: result }];"
       },
       "id": "cr-0001-0000-0000-0000-000000000005",
       "name": "SSH Pi: Run Review",
-      "type": "n8n-nodes-base.executeCommand",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
       "position": [920, 300]
     },
     {

@@ -37,12 +37,14 @@
   tags: [palais]
 
 - name: Copy palais application source
-  ansible.builtin.copy:
+  ansible.posix.synchronize:
     src: "{{ palais_app_dir }}/"
     dest: "/opt/{{ project_name }}/palais-app/"
-    owner: "{{ prod_user }}"
-    group: "{{ prod_user }}"
-    mode: preserve
+    rsync_opts:
+      - "--exclude=node_modules"
+      - "--exclude=.svelte-kit"
+      - "--exclude=build"
+    delete: true
   become: true
   notify: Restart palais
   tags: [palais]

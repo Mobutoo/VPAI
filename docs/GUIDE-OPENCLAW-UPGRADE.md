@@ -295,4 +295,5 @@ make deploy-role ROLE=openclaw ENV=prod
 | Version | Date | Statut | Pieges |
 |---------|------|--------|--------|
 | `2026.2.15` | 2026-02-15 | Remplace | Premier deploiement — config compat |
-| `2026.2.22` | 2026-02-23 | **Actuelle** | Plugins bundled desactives par defaut (REX-45) |
+| `2026.2.22` | 2026-02-23 | Remplace | Plugins bundled desactives par defaut (REX-45) |
+| `2026.2.23` | 2026-02-24 | **Actuelle** | Pairing reset apres upgrade (paired.json vide) — docker-compose.yml gere par role docker-stack (make deploy-role ROLE=docker-stack si versions.yml change seul) |

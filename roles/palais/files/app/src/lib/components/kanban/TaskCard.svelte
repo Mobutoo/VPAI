@@ -35,6 +35,27 @@
 	let priorityColor = $derived(priorityColors[task.priority ?? 'none'] ?? priorityColors.none);
 	let badge = $derived(confidenceBadge(task.confidenceScore));
 
+	// ── Cost badge ─────────────────────────────────────────────────────────────
+	let costBadge = $derived((() => {
+		const est = task.estimatedCost;
+		const actual = task.actualCost;
+		if (est === null && actual === null) return null;
+		if (actual !== null && est !== null) {
+			const over = actual > est;
+			return {
+				actualLabel: `$${actual.toFixed(3)}`,
+				estLabel: `~$${est.toFixed(3)}`,
+				actualColor: over ? 'var(--palais-red)' : 'var(--palais-green)',
+				over
+			};
+		}
+		if (actual !== null) {
+			return { actualLabel: `$${actual.toFixed(3)}`, estLabel: null, actualColor: 'var(--palais-text-muted)', over: false };
+		}
+		// est only
+		return { actualLabel: null, estLabel: `~$${est!.toFixed(3)}`, actualColor: null, over: false };
+	})());
+
 	// ── Timer ─────────────────────────────────────────────────────────────────
 	let timerRunning = $state(false);
 	let timerStartedAt: Date | null = null;
@@ -126,9 +147,18 @@
 			</span>
 		{/if}
 
-		{#if task.estimatedCost !== null || task.actualCost !== null}
-			<span class="text-xs font-mono" style="color: var(--palais-text-muted); font-size: 0.65rem;">
-				${(task.actualCost ?? task.estimatedCost ?? 0).toFixed(3)}
+		{#if costBadge}
+			<span class="text-xs font-mono flex items-center gap-0.5" style="font-size: 0.65rem;">
+				{#if costBadge.actualLabel}
+					<span style="color: {costBadge.actualColor};">
+						{costBadge.over ? '▲' : ''}{costBadge.actualLabel}
+					</span>
+				{/if}
+				{#if costBadge.estLabel}
+					<span style="color: var(--palais-text-muted);">
+						{costBadge.actualLabel ? '/' : ''}{costBadge.estLabel}
+					</span>
+				{/if}
 			</span>
 		{/if}
 

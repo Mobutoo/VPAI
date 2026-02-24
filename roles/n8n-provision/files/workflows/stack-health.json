@@ -20,7 +20,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Services à surveiller (internes au réseau Docker backend)\nconst SERVICES = [\n  { name: 'LiteLLM',    url: 'http://litellm:4000/health',       timeout: 5000 },\n  { name: 'n8n',        url: 'http://n8n:5678/healthz',           timeout: 5000 },\n  { name: 'OpenClaw',   url: 'http://openclaw:18789/health',      timeout: 5000 },\n  { name: 'Grafana',    url: 'http://grafana:3000/api/health',    timeout: 5000 },\n  { name: 'Qdrant',     url: 'http://qdrant:6333/readyz',         timeout: 5000 },\n  { name: 'Kaneo API',  url: 'http://kaneo-api:1337/api/health',  timeout: 5000 }\n];\n\n// Retourner la liste pour le batch HTTP node\nreturn SERVICES.map(s => ({ json: s }));"
+        "jsCode": "// Services à surveiller (internes au réseau Docker backend)\nconst SERVICES = [\n  { name: 'LiteLLM',    url: 'http://litellm:4000/health/liveliness', timeout: 5000 },\n  { name: 'n8n',        url: 'http://n8n:5678/healthz',           timeout: 5000 },\n  { name: 'OpenClaw',   url: 'http://openclaw:18789/health',      timeout: 5000 },\n  { name: 'Grafana',    url: 'http://grafana:3000/api/health',    timeout: 5000 },\n  { name: 'Qdrant',     url: 'http://qdrant:6333/readyz',         timeout: 5000 },\n  { name: 'Kaneo API',  url: 'http://kaneo-api:1337/api/health',  timeout: 5000 }\n];\n\n// Retourner la liste pour le batch HTTP node\nreturn SERVICES.map(s => ({ json: s }));"
       },
       "id": "sh-0001-0000-0000-0000-000000000002",
       "name": "Services list",

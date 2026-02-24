@@ -25,7 +25,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/drizzle ./drizzle
 
-RUN addgroup -g 1000 palais && adduser -u 1000 -G palais -s /bin/sh -D palais
+RUN addgroup -g 1001 palais && adduser -u 1001 -G palais -s /bin/sh -D palais
 RUN mkdir -p /data/deliverables /data/avatars && chown -R palais:palais /data
 
 USER palais

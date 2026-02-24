@@ -423,7 +423,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://kaneo-api:1337/api/project",
+        "url": "=http://kaneo-api:1337/api/project?workspaceId={{ $env.KANEO_WORKSPACE_ID }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -483,7 +483,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "{ \"name\": \"OpenClaw Agents\", \"description\": \"Catalogue et registre des agents OpenClaw actifs\", \"icon\": \"🤖\" }",
+        "jsonBody": "={ \"name\": \"OpenClaw Agents\", \"description\": \"Catalogue et registre des agents OpenClaw actifs\", \"icon\": \"bot\", \"slug\": \"openclaw-agents\", \"workspaceId\": \"{{ $env.KANEO_WORKSPACE_ID }}\" }",
         "options": {}
       },
       "id": "kas-0002-0000-0000-0000-000000000022",
@@ -571,7 +571,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"{{ $json.agent.emoji }} {{ $json.agent.name }} ({{ $json.agent.id }})\",\n  \"description\": \"[agent:{{ $json.agent.id }}] Type: {{ $json.agent.type }}. Modele: {{ $json.agent.model }}\",\n  \"status\": \"backlog\",\n  \"priority\": \"no-priority\"\n}",
+        "jsonBody": "={\n  \"title\": \"{{ $json.agent.emoji }} {{ $json.agent.name }} ({{ $json.agent.id }})\",\n  \"description\": \"[agent:{{ $json.agent.id }}] Type: {{ $json.agent.type }}. Modele: {{ $json.agent.model }}\",\n  \"status\": \"to-do\",\n  \"priority\": \"no-priority\"\n}",
         "options": {}
       },
       "id": "kas-0002-0000-0000-0000-000000000028",
@@ -594,7 +594,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"taskId\": \"{{ $json.id || $json.data.id }}\",\n  \"name\": \"agent:{{ $('Agents to create').last().json.agent.id }}\",\n  \"color\": \"#6366f1\"\n}",
+        "jsonBody": "={\n  \"taskId\": \"{{ $json.id || $json.data.id }}\",\n  \"name\": \"agent:{{ $('Agents to create').last().json.agent.id }}\",\n  \"color\": \"#6366f1\",\n  \"workspaceId\": \"{{ $env.KANEO_WORKSPACE_ID }}\"\n}",
         "options": {},
         "continueOnFail": true
       },
@@ -848,7 +848,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"{{ $('Build REGISTRY').first().json.registryTitle }}\",\n  \"description\": \"{{ $('Build REGISTRY').first().json.registryDesc }}\",\n  \"status\": \"backlog\",\n  \"priority\": \"no-priority\"\n}",
+        "jsonBody": "={\n  \"title\": \"{{ $('Build REGISTRY').first().json.registryTitle }}\",\n  \"description\": \"{{ $('Build REGISTRY').first().json.registryDesc }}\",\n  \"status\": \"to-do\",\n  \"priority\": \"no-priority\"\n}",
         "options": {},
         "continueOnFail": true
       },

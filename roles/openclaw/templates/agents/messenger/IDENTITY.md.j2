@@ -114,30 +114,30 @@ Le prochain `kaneo-agents-sync` cron la creera.
 curl -s -X POST http://kaneo-api:1337/api/project \
   -H "Content-Type: application/json" \
   -H "Cookie: $COOKIE" \
-  -d '{"name":"<name>","description":"<desc>","icon":"📋","workspaceId":"${KANEO_WORKSPACE_ID}"}'
+  -d '{"name":"<name>","description":"<desc>","icon":"clipboard","slug":"<name-slug>","workspaceId":"${KANEO_WORKSPACE_ID}"}'
+# icon : nom Lucide icon (text, pas emoji). slug : kebab-case unique du nom.
 ```
 
 ### create_columns (apres create_project)
-Creer les 4 colonnes standard dans l'ordre :
+**Kaneo cree automatiquement 4 colonnes** : To Do (`to-do`), In Progress (`in-progress`), In Review (`in-review`), Done (`done`).
+Pour ajouter des colonnes custom :
 ```bash
-for COL in "Backlog" "In Progress" "Review" "Done"; do
-  curl -s -X POST http://kaneo-api:1337/api/column/<projectId> \
-    -H "Content-Type: application/json" \
-    -H "Cookie: $COOKIE" \
-    -d "{\"name\":\"$COL\"}"
-done
+curl -s -X POST http://kaneo-api:1337/api/column/<projectId> \
+  -H "Content-Type: application/json" \
+  -H "Cookie: $COOKIE" \
+  -d '{"name":"<ColName>"}'
 ```
-Slugs generes par Kaneo : Backlog→`backlog`, In Progress→`in-progress`, Review→`review`, Done→`done`.
+Slugs generes par Kaneo (kebab-case du nom) : To Do→`to-do`, In Progress→`in-progress`, etc.
 Les slugs servent de valeur `status` pour create_task et update_status.
 
 ### create_task
 ```bash
-# status = slug de colonne (backlog, in-progress, review, done)
+# status = slug de colonne (to-do, in-progress, in-review, done + colonnes custom)
 # priority = no-priority | low | medium | high | urgent
 curl -s -X POST http://kaneo-api:1337/api/task/<projectId> \
   -H "Content-Type: application/json" \
   -H "Cookie: $COOKIE" \
-  -d '{"title":"<title>","description":"<desc>","status":"backlog","priority":"no-priority"}'
+  -d '{"title":"<title>","description":"<desc>","status":"to-do","priority":"no-priority"}'
 ```
 
 ### update_status
@@ -145,7 +145,7 @@ curl -s -X POST http://kaneo-api:1337/api/task/<projectId> \
 curl -s -X PUT http://kaneo-api:1337/api/task/status/<taskId> \
   -H "Content-Type: application/json" \
   -H "Cookie: $COOKIE" \
-  -d '{"status":"<backlog|in-progress|review|done>"}'
+  -d '{"status":"<to-do|in-progress|in-review|done>"}'
 ```
 
 ### update_description
@@ -268,11 +268,11 @@ curl -s -X POST http://kaneo-api:1337/api/activity/comment \
 
 ### add_label
 ```bash
-# Creer un label puis l'associer a la tache
+# Creer un label et l'associer a la tache (workspaceId obligatoire)
 curl -s -X POST http://kaneo-api:1337/api/label \
   -H "Content-Type: application/json" \
   -H "Cookie: $COOKIE" \
-  -d '{"taskId":"<taskId>","name":"<label>","color":"<hex>"}'
+  -d '{"taskId":"<taskId>","name":"<label>","color":"<hex>","workspaceId":"${KANEO_WORKSPACE_ID}"}'
 ```
 
 Couleurs par convention :
@@ -292,12 +292,8 @@ curl -s -X GET "http://kaneo-api:1337/api/task/tasks/<projectId>" \
 
 ### get_project
 ```bash
-# Tous les projets
-curl -s -X GET http://kaneo-api:1337/api/project \
-  -H "Cookie: $COOKIE"
-
-# Un projet specifique
-curl -s -X GET http://kaneo-api:1337/api/project/<projectId> \
+# Tous les projets du workspace (query param obligatoire)
+curl -s -X GET "http://kaneo-api:1337/api/project?workspaceId=${KANEO_WORKSPACE_ID}" \
   -H "Cookie: $COOKIE"
 ```
 
@@ -357,7 +353,7 @@ fi
 
 # 2. Si absent : créer projet + colonnes
 if [ -z "$IDEA_PROJECT_ID" ]; then
-  PROJ_BODY="{\"name\":\"{{ openclaw_ideas_project_name | default('Boite a Idees') }}\",\"description\":\"Plans idees - lifecycle approuver/refuser/implementer\",\"icon\":\"💡\",\"workspaceId\":\"${KANEO_WORKSPACE_ID}\"}"
+  PROJ_BODY="{\"name\":\"{{ openclaw_ideas_project_name | default('Boite a Idees') }}\",\"description\":\"Plans idees - lifecycle approuver/refuser/implementer\",\"icon\":\"lightbulb\",\"slug\":\"boite-a-idees\",\"workspaceId\":\"${KANEO_WORKSPACE_ID}\"}"
   PROJ=$(curl -sf -X POST http://kaneo-api:1337/api/project -H "Content-Type: application/json" -H "Cookie: $COOKIE" -d "$PROJ_BODY" 2>/dev/null)
   IDEA_PROJECT_ID=$(echo "$PROJ" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id','') or d.get('data',{}).get('id',''))" 2>/dev/null)
   # Créer colonnes
@@ -386,7 +382,7 @@ TASK_ID=$(echo "$TASK" | python3 -c "import sys,json; d=json.load(sys.stdin); pr
 # 5. Ajouter label idea:pending
 curl -sf -X POST http://kaneo-api:1337/api/label \
   -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
-  -d "{\"taskId\":\"$TASK_ID\",\"name\":\"idea:pending\",\"color\":\"#7c3aed\"}" -o /dev/null 2>/dev/null
+  -d "{\"taskId\":\"$TASK_ID\",\"name\":\"idea:pending\",\"color\":\"#7c3aed\",\"workspaceId\":\"${KANEO_WORKSPACE_ID}\"}" -o /dev/null 2>/dev/null
 
 # 6. Cacher l'ID projet dans Redis
 redis-cli -h redis HSET kaneo:projects "{{ openclaw_ideas_project_name | default('Boite a Idees') }}" "$IDEA_PROJECT_ID"
@@ -492,7 +488,7 @@ print(l[0]['id'] if l else '')
   -H "Cookie: $COOKIE" -o /dev/null 2>/dev/null
 curl -sf -X POST http://kaneo-api:1337/api/label \
   -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
-  -d "{\"taskId\":\"<id>\",\"name\":\"idea:approved\",\"color\":\"#16a34a\"}" -o /dev/null 2>/dev/null
+  -d "{\"taskId\":\"<id>\",\"name\":\"idea:approved\",\"color\":\"#16a34a\",\"workspaceId\":\"${KANEO_WORKSPACE_ID}\"}" -o /dev/null 2>/dev/null
 
 # 5. Appeler webhook plan-dispatch n8n
 ORG_ID="${KANEO_WORKSPACE_ID}"
@@ -567,7 +563,7 @@ print(l[0]['id'] if l else '')
   -H "Cookie: $COOKIE" -o /dev/null 2>/dev/null
 curl -sf -X POST http://kaneo-api:1337/api/label \
   -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
-  -d "{\"taskId\":\"<id>\",\"name\":\"idea:rejected\",\"color\":\"#dc2626\"}" -o /dev/null 2>/dev/null
+  -d "{\"taskId\":\"<id>\",\"name\":\"idea:rejected\",\"color\":\"#dc2626\",\"workspaceId\":\"${KANEO_WORKSPACE_ID}\"}" -o /dev/null 2>/dev/null
 
 # 4. Ajouter commentaire de refus
 curl -sf -X POST http://kaneo-api:1337/api/activity/comment \

@@ -203,7 +203,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"{{ $json.success ? 'done' : 'backlog' }}\" }",
+        "jsonBody": "={ \"status\": \"{{ $json.success ? 'done' : 'to-do' }}\" }",
         "options": {},
         "continueOnFail": true
       },

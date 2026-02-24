@@ -139,7 +139,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"{{ $json.review_success ? 'done' : 'backlog' }}\" }",
+        "jsonBody": "={ \"status\": \"{{ $json.review_success ? 'done' : 'to-do' }}\" }",
         "options": {},
         "continueOnFail": true
       },
@@ -184,7 +184,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"taskId\": \"{{ $json.task_id }}\",\n  \"name\": \"correction\",\n  \"color\": \"#ef4444\"\n}",
+        "jsonBody": "={\n  \"taskId\": \"{{ $json.task_id }}\",\n  \"name\": \"correction\",\n  \"color\": \"#ef4444\",\n  \"workspaceId\": \"{{ $env.KANEO_WORKSPACE_ID }}\"\n}",
         "options": {},
         "continueOnFail": true
       },

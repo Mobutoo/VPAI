@@ -96,7 +96,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"{{ $json.error_title }}\",\n  \"description\": \"Erreur detectee par agent {{ $json.agent_id }}.\\n\\nMessage: {{ $json.error_message }}\",\n  \"status\": \"backlog\",\n  \"priority\": \"high\"\n}",
+        "jsonBody": "={\n  \"title\": \"{{ $json.error_title }}\",\n  \"description\": \"Erreur detectee par agent {{ $json.agent_id }}.\\n\\nMessage: {{ $json.error_message }}\",\n  \"status\": \"to-do\",\n  \"priority\": \"high\"\n}",
         "options": {}
       },
       "id": "et-0001-0000-0000-0000-000000000008",
@@ -128,7 +128,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"taskId\": \"{{ $json.new_task_id }}\",\n  \"name\": \"correction\",\n  \"color\": \"#ef4444\"\n}",
+        "jsonBody": "={\n  \"taskId\": \"{{ $json.new_task_id }}\",\n  \"name\": \"correction\",\n  \"color\": \"#ef4444\",\n  \"workspaceId\": \"{{ $env.KANEO_WORKSPACE_ID }}\"\n}",
         "options": {},
         "continueOnFail": true
       },
@@ -151,7 +151,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"taskId\": \"{{ $json.new_task_id }}\",\n  \"name\": \"agent:{{ $json.agent_id }}\",\n  \"color\": \"#6366f1\"\n}",
+        "jsonBody": "={\n  \"taskId\": \"{{ $json.new_task_id }}\",\n  \"name\": \"agent:{{ $json.agent_id }}\",\n  \"color\": \"#6366f1\",\n  \"workspaceId\": \"{{ $env.KANEO_WORKSPACE_ID }}\"\n}",
         "options": {},
         "continueOnFail": true
       },

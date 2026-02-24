@@ -13,15 +13,19 @@
 		};
 		byProvider: Record<string, number>;
 		byModel: Array<{ model: string; provider: string; spend: number; tokens: number; requests: number }>;
+		providerStatus: { openrouter: boolean; openai: boolean; anthropic: boolean; openrouterHasBaseline: boolean };
 		burnRatePerHour: number;
 		predictedExhaustionAt: string | null;
 		history: Array<{ date: string; spend: number }>;
 	}
 
+	type Period = 'day' | 'week' | 'month';
+
 	let data = $state<BudgetData | null>(null);
 	let loading = $state(true);
 	let ecoMode = $state(false);
 	let ecoToggling = $state(false);
+	let period = $state<Period>('day');
 	let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
 	async function loadBudget() {
@@ -47,47 +51,55 @@
 
 	onMount(() => {
 		loadBudget();
-		refreshInterval = setInterval(loadBudget, 60_000); // refresh every minute
+		refreshInterval = setInterval(loadBudget, 60_000);
 	});
-
 	onDestroy(() => { if (refreshInterval) clearInterval(refreshInterval); });
 
 	// ── Helpers ───────────────────────────────────────────────────────────────
-	function fmtCost(v: number): string {
-		return `$${v.toFixed(4)}`;
-	}
+	function fmtCost(v: number): string { return `$${v.toFixed(4)}`; }
 
 	function fmtTime(iso: string | null): string {
 		if (!iso) return '—';
-		const d = new Date(iso);
-		return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+		return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 	}
 
-	// Arc SVG for circular gauge (r=52, cx=60, cy=60)
-	const R = 52;
-	const CX = 60;
-	const CY = 65;
-	const CIRCUMFERENCE = Math.PI * R; // half-circle
+	// ── Period-aware gauge data ───────────────────────────────────────────────
+	const PERIOD_LABELS: Record<Period, string> = { day: 'JOURNALIER', week: 'HEBDOMADAIRE', month: 'MENSUEL' };
+	const PERIOD_MULTIPLIERS: Record<Period, number> = { day: 1, week: 7, month: 30 };
+
+	let periodSpend = $derived((() => {
+		if (!data) return 0;
+		if (period === 'day') return data.today.total;
+		const days = period === 'week' ? 7 : 30;
+		const slice = data.history.slice(-days);
+		return slice.reduce((s, d) => s + d.spend, 0);
+	})());
+
+	let periodLimit = $derived((data?.today.dailyLimit ?? DAILY_LIMIT_FALLBACK) * PERIOD_MULTIPLIERS[period]);
+	let periodPercent = $derived(Math.min(100, (periodSpend / Math.max(periodLimit, 0.001)) * 100));
+	let periodColor = $derived(
+		periodPercent >= 90 ? 'var(--palais-red)' :
+		periodPercent >= 70 ? 'var(--palais-amber)' : 'var(--palais-gold)'
+	);
+
+	const DAILY_LIMIT_FALLBACK = 5;
+
+	// ── Arc SVG gauge ─────────────────────────────────────────────────────────
+	const R = 52, CX = 60, CY = 65;
+	const CIRCUMFERENCE = Math.PI * R;
 
 	function arcPath(percent: number, color: string): string {
-		// Clamp
 		const p = Math.min(100, Math.max(0, percent)) / 100;
 		const len = p * CIRCUMFERENCE;
-		// Arc starts at left (180°) and sweeps right for fill
-		return `
-			<circle cx="${CX}" cy="${CY}" r="${R}"
-				fill="none"
-				stroke="${color}"
-				stroke-width="10"
-				stroke-dasharray="${len} ${CIRCUMFERENCE - len}"
-				stroke-dashoffset="${CIRCUMFERENCE * 0.5}"
-				stroke-linecap="round"
-				transform="rotate(180 ${CX} ${CY})"
-			/>
-		`;
+		return `<circle cx="${CX}" cy="${CY}" r="${R}"
+			fill="none" stroke="${color}" stroke-width="10"
+			stroke-dasharray="${len} ${CIRCUMFERENCE - len}"
+			stroke-dashoffset="${CIRCUMFERENCE * 0.5}"
+			stroke-linecap="round"
+			transform="rotate(180 ${CX} ${CY})" />`;
 	}
 
-	// Provider colors
+	// ── Provider colors ───────────────────────────────────────────────────────
 	const PROVIDER_COLORS: Record<string, string> = {
 		litellm: 'var(--palais-cyan)',
 		openai: 'var(--palais-green)',
@@ -105,11 +117,10 @@
 		data ? [...data.byModel].sort((a, b) => b.spend - a.spend).slice(0, 5) : []
 	);
 
-	// History chart: simple SVG line
+	// ── History chart ─────────────────────────────────────────────────────────
 	function historyPath(history: Array<{ date: string; spend: number }>, maxVal: number): string {
 		if (history.length < 2) return '';
-		const w = 400;
-		const h = 80;
+		const w = 400, h = 80;
 		const pts = history.map((d, i) => {
 			const x = (i / (history.length - 1)) * w;
 			const y = h - (d.spend / Math.max(maxVal, 0.001)) * h;
@@ -120,22 +131,35 @@
 </script>
 
 <div class="flex flex-col gap-6 max-w-5xl mx-auto">
-	<!-- Header -->
-	<div class="flex items-center justify-between">
+
+	<!-- ── Header ─────────────────────────────────────────────────────────── -->
+	<div class="flex items-center justify-between flex-wrap gap-3">
 		<h1 class="text-xl font-bold" style="font-family: 'Orbitron', sans-serif; color: var(--palais-text);">
 			💰 Budget Intelligence
 		</h1>
-		<div class="flex items-center gap-3">
-			<span class="text-xs" style="color: var(--palais-text-muted);">Actualisation auto · 1min</span>
-			<button
-				onclick={toggleEco}
-				disabled={ecoToggling}
-				class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all disabled:opacity-50"
-				style="background: {ecoMode ? 'var(--palais-cyan)' : 'var(--palais-surface)'};
-					   color: {ecoMode ? '#0A0A0F' : 'var(--palais-text-muted)'};
-					   border: 1px solid {ecoMode ? 'var(--palais-cyan)' : 'var(--palais-border)'};">
-				{ecoToggling ? '…' : ecoMode ? '🌿 Eco ON' : '🌿 Eco Mode'}
-			</button>
+		<div class="flex items-center gap-4">
+			<span class="text-xs" style="color: var(--palais-text-muted);">Actualisation · 1min</span>
+
+			<!-- Eco Mode slide toggle -->
+			<div class="flex items-center gap-2">
+				<span class="text-xs" style="color: var(--palais-text-muted);">🌿 Eco Mode</span>
+				<!-- svelte-ignore a11y_consider_explicit_label -->
+				<button
+					onclick={toggleEco}
+					disabled={ecoToggling}
+					title={ecoMode ? 'Eco actif — modèles économiques uniquement' : 'Activer le mode économique'}
+					class="relative flex-shrink-0 transition-opacity disabled:opacity-40"
+					style="width: 2.5rem; height: 1.375rem; background: {ecoMode ? 'var(--palais-cyan)' : 'var(--palais-border)'}; border-radius: 9999px; border: none; cursor: pointer; transition: background 0.2s;"
+				>
+					<span
+						class="absolute top-0.5 w-4 h-4 rounded-full"
+						style="background: white; transition: left 0.2s; left: {ecoMode ? '1.125rem' : '0.125rem'}; box-shadow: 0 1px 3px rgba(0,0,0,0.4);"
+					></span>
+				</button>
+				{#if ecoMode}
+					<span class="text-xs font-semibold" style="color: var(--palais-cyan);">ON</span>
+				{/if}
+			</div>
 		</div>
 	</div>
 
@@ -148,52 +172,77 @@
 				{/each}
 			</div>
 		</div>
+
 	{:else if data}
-		<!-- ── Main Row: Gauge + Summary ─────────────────────────────────── -->
+		<!-- ── Main Row: Gauge + Stats ────────────────────────────────────── -->
 		<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-			<!-- Circular gauge -->
-			<div class="rounded-xl p-5 flex flex-col items-center justify-center"
+			<!-- Circular gauge with period selector -->
+			<div class="rounded-xl p-5 flex flex-col items-center gap-3"
 				style="background: var(--palais-surface); border: 1px solid var(--palais-border);">
-				<svg width="120" height="80" viewBox="0 0 120 80">
-					<!-- Background arc -->
-					<circle cx={CX} cy={CY} r={R}
-						fill="none" stroke="var(--palais-bg)" stroke-width="10"
-						stroke-dasharray="{CIRCUMFERENCE} {CIRCUMFERENCE}"
-						stroke-dashoffset="{CIRCUMFERENCE * 0.5}"
-						stroke-linecap="round"
-						transform="rotate(180 {CX} {CY})" />
-					<!-- Fill arc -->
-					{@html arcPath(data.today.percentUsed,
-						data.today.percentUsed >= 90 ? 'var(--palais-red)' :
-						data.today.percentUsed >= 70 ? 'var(--palais-amber)' : 'var(--palais-gold)')}
-				</svg>
-				<p class="text-2xl font-bold font-mono -mt-4"
-					style="color: {data.today.percentUsed >= 90 ? 'var(--palais-red)' : data.today.percentUsed >= 70 ? 'var(--palais-amber)' : 'var(--palais-gold)'};">
-					{data.today.percentUsed.toFixed(1)}%
-				</p>
-				<p class="text-xs mt-1" style="color: var(--palais-text-muted);">
-					{fmtCost(data.today.total)} / {fmtCost(data.today.dailyLimit)}
-				</p>
+
+				<!-- Period tabs -->
+				<div class="flex rounded-lg overflow-hidden" style="background: var(--palais-bg); border: 1px solid var(--palais-border);">
+					{#each (['day', 'week', 'month'] as Period[]) as p}
+						<button
+							onclick={() => period = p}
+							class="px-3 py-1 text-xs font-medium transition-all"
+							style="background: {period === p ? 'var(--palais-surface)' : 'transparent'};
+								   color: {period === p ? 'var(--palais-gold)' : 'var(--palais-text-muted)'};
+								   border: none; cursor: pointer;
+								   font-family: 'Orbitron', sans-serif; font-size: 0.6rem; letter-spacing: 0.05em;">
+							{p === 'day' ? 'JOUR' : p === 'week' ? 'HEBDO' : 'MOIS'}
+						</button>
+					{/each}
+				</div>
+
+				<!-- Arc gauge -->
+				<div class="flex flex-col items-center">
+					<svg width="120" height="80" viewBox="0 0 120 80">
+						<circle cx={CX} cy={CY} r={R}
+							fill="none" stroke="var(--palais-bg)" stroke-width="10"
+							stroke-dasharray="{CIRCUMFERENCE} {CIRCUMFERENCE}"
+							stroke-dashoffset="{CIRCUMFERENCE * 0.5}"
+							stroke-linecap="round"
+							transform="rotate(180 {CX} {CY})" />
+						{@html arcPath(periodPercent, periodColor)}
+					</svg>
+					<p class="text-2xl font-bold font-mono -mt-3" style="color: {periodColor};">
+						{periodPercent.toFixed(1)}%
+					</p>
+				</div>
+
+				<!-- Spend / Limit labels -->
+				<div class="text-center">
+					<p class="text-xs font-mono" style="color: var(--palais-text-muted);">
+						{fmtCost(periodSpend)} / {fmtCost(periodLimit)}
+					</p>
+					<p class="text-xs mt-0.5" style="color: var(--palais-text-muted); font-family: 'Orbitron', sans-serif; font-size: 0.55rem; letter-spacing: 0.08em;">
+						{PERIOD_LABELS[period]}
+					</p>
+					<p class="text-xs mt-0.5" style="color: var(--palais-text-muted); font-size: 0.65rem;">
+						Limite : {fmtCost(data.today.dailyLimit)}/jour
+					</p>
+				</div>
 			</div>
 
-			<!-- Summary stats -->
+			<!-- Summary stat cards (always daily) -->
 			<div class="md:col-span-2 grid grid-cols-2 gap-3">
-				{@render statCard('Via LiteLLM', fmtCost(data.today.viaLitellm), 'var(--palais-cyan)')}
-				{@render statCard('Direct providers', fmtCost(data.today.viaDirect), 'var(--palais-amber)')}
-				{@render statCard('Restant', fmtCost(data.today.remaining),
-					data.today.remaining < 1 ? 'var(--palais-red)' : 'var(--palais-gold)')}
-				{@render statCard('Burn rate', `${fmtCost(data.burnRatePerHour)}/h`, 'var(--palais-text-muted)')}
+				{@render statCard('Via LiteLLM', fmtCost(data.today.viaLitellm), 'var(--palais-cyan)', 'journalier')}
+				{@render statCard('Providers directs', fmtCost(data.today.viaDirect), 'var(--palais-amber)', 'journalier')}
+				{@render statCard('Restant aujourd\'hui', fmtCost(data.today.remaining),
+					data.today.remaining < 1 ? 'var(--palais-red)' : 'var(--palais-gold)', 'journalier')}
+				{@render statCard('Burn rate', `${fmtCost(data.burnRatePerHour)}/h`, 'var(--palais-text-muted)', 'LiteLLM')}
 			</div>
 		</div>
 
-		<!-- Prediction banner -->
+		<!-- Prediction / stable banner -->
 		{#if data.predictedExhaustionAt}
 			{@const isToday = new Date(data.predictedExhaustionAt).toDateString() === new Date().toDateString()}
 			<div class="rounded-xl p-3 text-center text-sm"
 				style="background: color-mix(in srgb, var(--palais-red) 10%, var(--palais-surface));
 					   border: 1px solid var(--palais-red); color: var(--palais-red);">
-				⚠ Budget épuisé estimé à <strong>{fmtTime(data.predictedExhaustionAt)}</strong>
+				⚠ Budget journalier épuisé estimé à <strong>{fmtTime(data.predictedExhaustionAt)}</strong>
 				{isToday ? 'aujourd\'hui' : new Date(data.predictedExhaustionAt).toLocaleDateString('fr-FR')}
 			</div>
 		{:else}
@@ -206,13 +255,15 @@
 		<!-- ── By Provider + By Model ─────────────────────────────────────── -->
 		<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-			<!-- By provider donut-style bar -->
+			<!-- By provider -->
 			<div class="rounded-xl p-5" style="background: var(--palais-surface); border: 1px solid var(--palais-border);">
-				<p class="text-xs font-semibold mb-4"
-					style="color: var(--palais-gold); font-family: 'Orbitron', sans-serif; letter-spacing: 0.06em;">
-					PAR PROVIDER
-				</p>
-						<div class="flex flex-col gap-2">
+				<div class="flex items-center justify-between mb-4">
+					<p class="text-xs font-semibold"
+						style="color: var(--palais-gold); font-family: 'Orbitron', sans-serif; letter-spacing: 0.06em;">
+						PAR PROVIDER · JOURNALIER
+					</p>
+				</div>
+				<div class="flex flex-col gap-2">
 					{#each provEntries as [prov, spend]}
 						<div class="flex flex-col gap-1">
 							<div class="flex justify-between text-xs">
@@ -227,7 +278,26 @@
 						</div>
 					{/each}
 					{#if provEntries.length === 0}
-						<p class="text-xs" style="color: var(--palais-text-muted);">Aucune donnée provider.</p>
+						<p class="text-xs" style="color: var(--palais-text-muted);">Aucune donnée aujourd'hui.</p>
+					{/if}
+				</div>
+
+				<!-- Provider availability notes -->
+				<div class="mt-4 pt-3 flex flex-col gap-1" style="border-top: 1px solid var(--palais-border);">
+					{#if !data.providerStatus.openai}
+						<p class="text-xs" style="color: var(--palais-text-muted); font-size: 0.6rem;">
+							⚠ OpenAI — endpoint org requis (<code>sk-org-...</code>), clé projet insuffisante
+						</p>
+					{/if}
+					{#if !data.providerStatus.anthropic}
+						<p class="text-xs" style="color: var(--palais-text-muted); font-size: 0.6rem;">
+							⚠ Anthropic — API Usage non disponible sur ce plan
+						</p>
+					{/if}
+					{#if data.providerStatus.openrouter && !data.providerStatus.openrouterHasBaseline}
+						<p class="text-xs" style="color: var(--palais-text-muted); font-size: 0.6rem;">
+							ℹ OpenRouter — delta quotidien disponible dès la 2e journée de tracking
+						</p>
 					{/if}
 				</div>
 			</div>
@@ -236,19 +306,19 @@
 			<div class="rounded-xl p-5" style="background: var(--palais-surface); border: 1px solid var(--palais-border);">
 				<p class="text-xs font-semibold mb-4"
 					style="color: var(--palais-gold); font-family: 'Orbitron', sans-serif; letter-spacing: 0.06em;">
-					TOP MODÈLES
+					TOP MODÈLES · LiteLLM
 				</p>
-					<div class="flex flex-col gap-2">
+				<div class="flex flex-col gap-2">
 					{#each topModels as m}
 						<div class="flex items-center gap-2 text-xs">
 							<span class="w-2 h-2 rounded-full flex-shrink-0"
 								style="background: {PROVIDER_COLORS[m.provider] ?? PROVIDER_COLORS.unknown};"></span>
-							<span class="flex-1 truncate font-mono text-xs" style="color: var(--palais-text-muted); font-size: 0.65rem;">{m.model}</span>
+							<span class="flex-1 truncate font-mono" style="color: var(--palais-text-muted); font-size: 0.65rem;">{m.model}</span>
 							<span class="font-mono" style="color: var(--palais-text);">{fmtCost(m.spend)}</span>
 						</div>
 					{/each}
 					{#if topModels.length === 0}
-						<p class="text-xs" style="color: var(--palais-text-muted);">Pas de données modèle disponibles.</p>
+						<p class="text-xs" style="color: var(--palais-text-muted);">Aucun appel LiteLLM tracé aujourd'hui.</p>
 					{/if}
 				</div>
 			</div>
@@ -260,19 +330,16 @@
 			<div class="rounded-xl p-5" style="background: var(--palais-surface); border: 1px solid var(--palais-border);">
 				<p class="text-xs font-semibold mb-4"
 					style="color: var(--palais-gold); font-family: 'Orbitron', sans-serif; letter-spacing: 0.06em;">
-					HISTORIQUE 30 JOURS
+					HISTORIQUE 30 JOURS · JOURNALIER
 				</p>
 				<div class="relative">
 					<svg width="100%" height="80" viewBox="0 0 400 80" preserveAspectRatio="none">
-						<!-- Budget limit line -->
 						<line x1="0" y1="{80 - (data.today.dailyLimit / maxHist) * 80}"
 							x2="400" y2="{80 - (data.today.dailyLimit / maxHist) * 80}"
 							stroke="var(--palais-border)" stroke-dasharray="4 4" stroke-width="1" />
-						<!-- Spend line -->
 						<path d={historyPath(data.history, maxHist)}
 							fill="none" stroke="var(--palais-gold)" stroke-width="2"
 							stroke-linejoin="round" stroke-linecap="round" />
-						<!-- Area fill -->
 						{#if data.history.length > 1}
 							{@const lastX = 400}
 							{@const firstX = 0}
@@ -286,7 +353,6 @@
 							</linearGradient>
 						</defs>
 					</svg>
-					<!-- X-axis labels (first, mid, last) -->
 					<div class="flex justify-between text-xs mt-1" style="color: var(--palais-text-muted);">
 						{#if data.history.length > 0}
 							<span>{data.history[0].date.slice(5)}</span>
@@ -297,14 +363,15 @@
 						{/if}
 					</div>
 				</div>
-				<!-- Stats row -->
 				<div class="flex gap-6 mt-3 text-xs" style="color: var(--palais-text-muted);">
 					<span>Max: <span class="font-mono" style="color: var(--palais-text);">{fmtCost(maxHist)}</span></span>
-					<span>Limite: <span class="font-mono" style="color: var(--palais-text);">{fmtCost(data.today.dailyLimit)}</span></span>
-					<span>Avg: <span class="font-mono" style="color: var(--palais-text);">{fmtCost(data.history.reduce((s, d) => s + d.spend, 0) / Math.max(1, data.history.length))}</span></span>
+					<span>Limite/j: <span class="font-mono" style="color: var(--palais-text);">{fmtCost(data.today.dailyLimit)}</span></span>
+					<span>Moy/j: <span class="font-mono" style="color: var(--palais-text);">{fmtCost(data.history.reduce((s, d) => s + d.spend, 0) / Math.max(1, data.history.length))}</span></span>
+					<span>Total 30j: <span class="font-mono" style="color: var(--palais-text);">{fmtCost(data.history.reduce((s, d) => s + d.spend, 0))}</span></span>
 				</div>
 			</div>
 		{/if}
+
 	{:else}
 		<div class="text-center py-12">
 			<p class="text-3xl mb-2">📊</p>
@@ -313,9 +380,10 @@
 	{/if}
 </div>
 
-{#snippet statCard(label: string, value: string, color: string)}
+{#snippet statCard(label: string, value: string, color: string, sublabel: string)}
 	<div class="rounded-xl p-4" style="background: var(--palais-bg); border: 1px solid var(--palais-border);">
 		<p class="text-xs mb-1" style="color: var(--palais-text-muted);">{label}</p>
 		<p class="text-lg font-bold font-mono" style="color: {color};">{value}</p>
+		<p class="text-xs mt-0.5" style="color: var(--palais-border); font-size: 0.6rem; font-family: 'Orbitron', sans-serif; letter-spacing: 0.05em;">{sublabel}</p>
 	</div>
 {/snippet}

@@ -1,0 +1,161 @@
+# Skill: palais-bridge
+
+## Purpose
+Bridge entre les agents OpenClaw et Palais (plateforme d'intelligence opérationnelle).
+Permet aux agents de gérer les tâches, projets, mémoire, budget et livrables via MCP JSON-RPC.
+
+## Endpoint
+- **URL**: `http://palais:{{ palais_port }}/api/mcp`
+- **Auth**: Header `X-API-Key: {{ palais_api_key }}`
+- **Protocol**: MCP JSON-RPC 2.0
+
+## How to Call
+
+Toutes les interactions avec Palais passent par un appel JSON-RPC POST:
+
+```bash
+curl -s -X POST http://palais:{{ palais_port }}/api/mcp \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: {{ palais_api_key }}" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "<TOOL_NAME>",
+      "arguments": { ... }
+    }
+  }'
+```
+
+## Available Tools
+
+### Tasks
+| Tool | Description |
+|------|-------------|
+| `palais.tasks.list` | Lister tâches (filtres: projectId, status, assigneeAgentId, priority) |
+| `palais.tasks.create` | Créer tâche (projectId, columnId, title requis) |
+| `palais.tasks.update` | Modifier tâche (taskId requis + champs à modifier) |
+| `palais.tasks.comment` | Ajouter commentaire (taskId, content requis) |
+| `palais.tasks.start_timer` | Démarrer timer (taskId requis) |
+| `palais.tasks.stop_timer` | Arrêter timer (taskId requis) |
+
+### Projects
+| Tool | Description |
+|------|-------------|
+| `palais.projects.list` | Lister projets |
+| `palais.projects.create` | Créer projet (name requis) |
+| `palais.projects.analytics` | Analytics projet (projectId requis) |
+
+### Agents
+| Tool | Description |
+|------|-------------|
+| `palais.agents.status` | Statut de tous les agents |
+| `palais.agents.available` | Agents disponibles (idle) |
+
+### Budget
+| Tool | Description |
+|------|-------------|
+| `palais.budget.remaining` | Budget restant aujourd'hui |
+| `palais.budget.estimate` | Estimer coût d'une tâche |
+
+### Deliverables
+| Tool | Description |
+|------|-------------|
+| `palais.deliverables.upload` | Enregistrer un livrable |
+| `palais.deliverables.list` | Lister livrables d'une entité |
+
+### Memory (Knowledge Graph)
+| Tool | Description |
+|------|-------------|
+| `palais.memory.search` | Recherche sémantique (query requis) |
+| `palais.memory.recall` | Rappeler un nœud par ID |
+| `palais.memory.store` | Stocker un nouveau nœud mémoire |
+
+### Intelligence
+| Tool | Description |
+|------|-------------|
+| `palais.insights.active` | Insights non acquittés |
+| `palais.standup.latest` | Dernier briefing du matin |
+
+## Examples
+
+### Lister les tâches en cours
+```json
+{
+  "jsonrpc": "2.0", "id": 1,
+  "method": "tools/call",
+  "params": {
+    "name": "palais.tasks.list",
+    "arguments": { "status": "in-progress", "limit": 10 }
+  }
+}
+```
+
+### Créer une tâche
+```json
+{
+  "jsonrpc": "2.0", "id": 2,
+  "method": "tools/call",
+  "params": {
+    "name": "palais.tasks.create",
+    "arguments": {
+      "projectId": 1,
+      "columnId": 1,
+      "title": "Corriger le bug d'authentification",
+      "priority": "high",
+      "assigneeAgentId": "builder"
+    }
+  }
+}
+```
+
+### Chercher dans la mémoire
+```json
+{
+  "jsonrpc": "2.0", "id": 3,
+  "method": "tools/call",
+  "params": {
+    "name": "palais.memory.search",
+    "arguments": { "query": "Caddy 403 erreur CIDR", "limit": 5 }
+  }
+}
+```
+
+### Vérifier le budget
+```json
+{
+  "jsonrpc": "2.0", "id": 4,
+  "method": "tools/call",
+  "params": {
+    "name": "palais.budget.remaining",
+    "arguments": {}
+  }
+}
+```
+
+### Stocker une résolution en mémoire
+```json
+{
+  "jsonrpc": "2.0", "id": 5,
+  "method": "tools/call",
+  "params": {
+    "name": "palais.memory.store",
+    "arguments": {
+      "type": "episodic",
+      "content": "Bug résolu: Caddy retournait 403 sous VPN car le CIDR Docker frontend (172.20.1.0/24) n'était pas inclus dans la règle @blocked.",
+      "summary": "Fix Caddy 403 VPN — CIDR manquant",
+      "entityType": "error",
+      "tags": ["caddy", "vpn", "403", "cidr"]
+    }
+  }
+}
+```
+
+## Important Notes
+
+- **Toujours vérifier le budget** avant de lancer des tâches coûteuses (`palais.budget.remaining`)
+- **Toujours chercher dans la mémoire** avant de résoudre un problème connu (`palais.memory.search`)
+- **Stocker les résolutions** dans la mémoire après avoir résolu un problème (`palais.memory.store`)
+- **Ajouter des commentaires** sur les tâches pour tracer les décisions (`palais.tasks.comment`)
+- **Démarrer/arrêter les timers** pour le tracking du temps (`palais.tasks.start_timer` / `palais.tasks.stop_timer`)

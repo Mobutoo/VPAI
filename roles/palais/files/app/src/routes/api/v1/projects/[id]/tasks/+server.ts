@@ -21,7 +21,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		description: body.description,
 		priority: body.priority || 'none',
 		assigneeAgentId: body.assigneeAgentId,
-		creator: body.creator || 'user'
+		creator: body.creator || 'user',
+		startDate: body.startDate ? new Date(body.startDate) : null,
+		endDate: body.endDate ? new Date(body.endDate) : null,
+		dueDate: body.dueDate ? new Date(body.dueDate) : null,
+		estimatedCost: body.estimatedCost ?? null
 	}).returning();
 
 	return json(task, { status: 201 });

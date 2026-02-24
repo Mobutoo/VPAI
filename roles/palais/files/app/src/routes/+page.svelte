@@ -1,4 +1,6 @@
 <script lang="ts">
+	import StandupCard from '$lib/components/dashboard/StandupCard.svelte';
+	import InsightBanner from '$lib/components/dashboard/InsightBanner.svelte';
 	let { data } = $props();
 </script>
 
@@ -12,6 +14,14 @@
 			{new Date().toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
 		</span>
 	</div>
+
+	<!-- Critical Insight Banners -->
+	{#each data.insights.filter(i => i.severity === 'critical') as insight (insight.id)}
+		<InsightBanner {insight} />
+	{/each}
+
+	<!-- Digital Standup -->
+	<StandupCard standup={data.standup} />
 
 	<!-- Agent Grid -->
 	<section>

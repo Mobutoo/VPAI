@@ -233,6 +233,29 @@
   "models": {
     "mode": "merge",
     "providers": {
+      "openai": {
+        "baseUrl": "https://api.openai.com/v1",
+        "apiKey": "${OPENAI_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "gpt-4o-mini",
+            "name": "GPT-4o Mini (OpenAI direct)",
+            "reasoning": false,
+            "input": ["text"],
+            "contextWindow": 128000,
+            "maxTokens": 16384
+          },
+          {
+            "id": "gpt-4o",
+            "name": "GPT-4o (OpenAI direct)",
+            "reasoning": false,
+            "input": ["text"],
+            "contextWindow": 128000,
+            "maxTokens": 16384
+          }
+        ]
+      },
       "custom-litellm": {
         "baseUrl": "http://litellm:4000/v1",
         "apiKey": "${LITELLM_API_KEY}",

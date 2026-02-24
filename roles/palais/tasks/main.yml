@@ -36,7 +36,7 @@
   notify: Restart palais
   tags: [palais]
 
-- name: Copy palais application source
+- name: Sync palais application source
   ansible.posix.synchronize:
     src: "{{ palais_app_dir }}/"
     dest: "/opt/{{ project_name }}/palais-app/"
@@ -44,7 +44,8 @@
       - "--exclude=node_modules"
       - "--exclude=.svelte-kit"
       - "--exclude=build"
+      - "--rsync-path=sudo rsync"
     delete: true
-  become: true
+    dest_port: "{{ prod_ssh_port | int }}"
   notify: Restart palais
   tags: [palais]

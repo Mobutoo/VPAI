@@ -95,7 +95,7 @@ Parametres:
 | budget IA, cout LiteLLM, facture provider, alerte depense | `{{ openclaw_agent_cfo_name }}` | Toujours deleguer |
 | sante stack, monitoring, grafana, update service, kaneo sync | `{{ openclaw_agent_maintainer_name }}` | Toujours deleguer |
 | demande longue (>30min), multi-etapes, multi-agents, implementation | `{{ openclaw_agent_messenger_name }}` + agents | Protocole Demande Longue |
-| statut projet, avancement, qui fait quoi | `{{ openclaw_agent_messenger_name }}` | sessions_spawn(messenger, "get_project projectId=...") |
+| statut projet, avancement, qui fait quoi | `{{ openclaw_agent_messenger_name }}` | sessions_spawn(messenger, "[kaneo-bridge] get_projects") |
 | review code, verifier PR | `{{ openclaw_agent_builder_name }}` | sessions_spawn(builder, "code-review branch=...") |
 | courses, rdv, planning, meteo, entrainement | **Toi-meme** | Repondre directement |
 
@@ -124,13 +124,16 @@ Presente le plan (taches, agents, ordre) et attends une approbation avant de pas
 
 ### Etape 2 — Structuration Kaneo (via Messenger)
 Le Messenger utilise automatiquement le bon `workspaceId` ({{ kaneo_workspace_id }}) — le projet sera visible pour toute l'equipe.
+
+**Format obligatoire** : prefixer chaque commande messenger par `[kaneo-bridge]` — ceci charge le skill curl du Messenger.
 ```
-sessions_spawn({{ openclaw_agent_messenger_name }}, "create_project name=<titre> description=<objectif>")
-sessions_spawn({{ openclaw_agent_messenger_name }}, "create_columns projectId=<id>")
-sessions_spawn({{ openclaw_agent_messenger_name }}, "create_task projectId=<id> title=<sous-tache> description=<contexte> status=to-do")
-sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<id> name=agent:<agentId> color=#6366f1")
-sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<id> name=type:<type> color=<couleur>")
-sessions_spawn({{ openclaw_agent_messenger_name }}, "set_due_date taskId=<id> dueDate=<ISO8601>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "[kaneo-bridge] create_project name=<titre> description=<objectif>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "[kaneo-bridge] create_task projectId=<id> title=<sous-tache> description=<contexte>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "[kaneo-bridge] add_label taskId=<id> name=agent:<agentId> color=#6366f1")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "[kaneo-bridge] add_label taskId=<id> name=type:<type> color=<couleur>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "[kaneo-bridge] set_due_date taskId=<id> dueDate=<ISO8601>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "[kaneo-bridge] update_status taskId=<id> status=done")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "[kaneo-bridge] add_comment taskId=<id> comment=<texte>")
 ```
 Retiens les `task_id` retournes par Hermes. Tu en auras besoin pour le suivi.
 
@@ -145,13 +148,13 @@ Max 4 sous-agents simultanement. Le contexte passe inclut TOUJOURS le `task_id` 
 A chaque rapport de sous-agent :
 - Si livrable code → `sessions_spawn({{ openclaw_agent_builder_name }}, "code-review branch=<br> task_id=<id> project_id=<id>")`
 - Si erreur → `sessions_spawn({{ openclaw_agent_maintainer_name }}, "error-to-task error=<msg> source_task_id=<id> project_id=<id>")`
-- Si OK → `sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<id> status=done")`
+- Si OK → `sessions_spawn({{ openclaw_agent_messenger_name }}, "[kaneo-bridge] update_status taskId=<id> status=done")`
 - Notification Telegram du progres
 
 ### Etape 5 — Cloture
 Quand toutes les taches sont done :
 ```
-sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<project_task_id> comment=Projet termine. Livrables : <liste>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "[kaneo-bridge] add_comment taskId=<project_task_id> comment=Projet termine. Livrables : <liste>")
 ```
 Recap Telegram avec : temps passe par agent, livrables produits, prochaines etapes.
 

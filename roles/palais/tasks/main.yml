@@ -36,6 +36,16 @@
   notify: Restart palais
   tags: [palais]
 
+- name: Ensure palais app directory is writable by deploy user
+  ansible.builtin.file:
+    path: "/opt/{{ project_name }}/palais-app"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [palais]
+
 - name: Sync palais application source
   ansible.posix.synchronize:
     src: "{{ palais_app_dir }}/"
@@ -44,7 +54,6 @@
       - "--exclude=node_modules"
       - "--exclude=.svelte-kit"
       - "--exclude=build"
-      - "--rsync-path=sudo rsync"
     delete: true
     dest_port: "{{ prod_ssh_port | int }}"
   notify: Restart palais

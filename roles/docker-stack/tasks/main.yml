@@ -16,6 +16,24 @@
     - "/opt/{{ project_name }}/scripts"
   become: true
 
+- name: Deploy operational Makefile
+  ansible.builtin.template:
+    src: Makefile.j2
+    dest: "/opt/{{ project_name }}/Makefile"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+
+- name: Deploy interactive CLI menu
+  ansible.builtin.template:
+    src: menu.sh.j2
+    dest: "/opt/{{ project_name }}/menu.sh"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
 # === CLEANUP : Stop Phase B apps before redeploy (infra stays running) ===
 - name: Stop Phase B apps stack if it exists
   ansible.builtin.shell:

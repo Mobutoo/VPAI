@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+# menu.sh — Menu CLI operationnel {{ project_name | upper }}
+# Deploye par Ansible — ne pas editer manuellement
+set -euo pipefail
+
+PROJECT="{{ project_name }}"
+OC="docker exec ${PROJECT}_openclaw node /app/openclaw.mjs"
+
+# ─── Couleurs ───────────────────────────
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
+CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
+
+header() {
+  clear
+  echo -e "${BOLD}${CYAN}╔══════════════════════════════════════╗${RESET}"
+  echo -e "${BOLD}${CYAN}║   {{ project_name | upper | center(36) }}   ║${RESET}"
+  echo -e "${BOLD}${CYAN}║         Menu Operationnel            ║${RESET}"
+  echo -e "${BOLD}${CYAN}╚══════════════════════════════════════╝${RESET}"
+  echo ""
+}
+
+pause() { echo ""; read -rp "  Appuyez sur [Entrée] pour continuer..." _; }
+
+# ─── Menus ──────────────────────────────
+menu_main() {
+  header
+  echo -e "  ${BOLD}1)${RESET} OpenClaw — Devices & Pairing"
+  echo -e "  ${BOLD}2)${RESET} OpenClaw — Plugins / Channels / Agents"
+  echo -e "  ${BOLD}3)${RESET} Etat de la stack"
+  echo -e "  ${BOLD}4)${RESET} Logs d'un service"
+  echo -e "  ${BOLD}5)${RESET} Redemarrer un service"
+  echo -e "  ${BOLD}q)${RESET} Quitter"
+  echo ""
+  read -rp "  Choix : " choice
+  case "$choice" in
+    1) menu_devices ;;
+    2) menu_oc ;;
+    3) menu_status ;;
+    4) menu_logs ;;
+    5) menu_restart ;;
+    q|Q) echo ""; exit 0 ;;
+    *) menu_main ;;
+  esac
+}
+
+menu_devices() {
+  header
+  echo -e "  ${BOLD}OpenClaw — Devices & Pairing${RESET}"
+  echo ""
+  echo -e "  ${BOLD}1)${RESET} Lister les devices (pending + paired)"
+  echo -e "  ${BOLD}2)${RESET} Approuver une demande de pairing"
+  echo -e "  ${BOLD}3)${RESET} Supprimer un device"
+  echo -e "  ${BOLD}r)${RESET} Retour"
+  echo ""
+  read -rp "  Choix : " choice
+  case "$choice" in
+    1)
+      echo ""
+      $OC devices list
+      pause; menu_devices ;;
+    2)
+      echo ""
+      echo -e "  ${YELLOW}Demandes en attente :${RESET}"
+      $OC devices list
+      echo ""
+      read -rp "  Request ID à approuver : " req_id
+      if [ -n "$req_id" ]; then
+        $OC devices approve "$req_id" && \
+          echo -e "  ${GREEN}✓ Device appairé avec succès${RESET}" || \
+          echo -e "  ${RED}✗ Erreur lors de l'approbation${RESET}"
+      fi
+      pause; menu_devices ;;
+    3)
+      echo ""
+      $OC devices list
+      echo ""
+      read -rp "  Device ID à supprimer : " dev_id
+      if [ -n "$dev_id" ]; then
+        $OC devices remove "$dev_id" && \
+          echo -e "  ${GREEN}✓ Device supprimé${RESET}" || \
+          echo -e "  ${RED}✗ Erreur${RESET}"
+      fi
+      pause; menu_devices ;;
+    r|R) menu_main ;;
+    *) menu_devices ;;
+  esac
+}
+
+menu_oc() {
+  header
+  echo -e "  ${BOLD}OpenClaw — Plugins / Channels / Agents${RESET}"
+  echo ""
+  echo -e "  ${BOLD}1)${RESET} Lister les plugins"
+  echo -e "  ${BOLD}2)${RESET} Lister les channels"
+  echo -e "  ${BOLD}3)${RESET} Lister les agents"
+  echo -e "  ${BOLD}r)${RESET} Retour"
+  echo ""
+  read -rp "  Choix : " choice
+  case "$choice" in
+    1) echo ""; $OC plugins list; pause; menu_oc ;;
+    2) echo ""; $OC channels list; pause; menu_oc ;;
+    3) echo ""; $OC agents list; pause; menu_oc ;;
+    r|R) menu_main ;;
+    *) menu_oc ;;
+  esac
+}
+
+menu_status() {
+  header
+  echo -e "  ${BOLD}Etat de la stack${RESET}"
+  echo ""
+  docker ps --format 'table {% raw %}{{.Names}}\t{{.Status}}\t{{.Image}}{% endraw %}' \
+    | grep -E "${PROJECT}|NAME" | sort
+  echo ""
+  pause; menu_main
+}
+
+menu_logs() {
+  header
+  echo -e "  ${BOLD}Logs d'un service${RESET}"
+  echo ""
+  echo -e "  Services disponibles : openclaw, palais, litellm, n8n, caddy, postgresql, redis, qdrant"
+  echo ""
+  read -rp "  Service : " svc
+  read -rp "  Lignes (50) : " n
+  n=${n:-50}
+  if [ -n "$svc" ]; then
+    echo ""
+    docker logs "${PROJECT}_${svc}" --tail "$n" 2>&1 | tail -"$n"
+  fi
+  pause; menu_main
+}
+
+menu_restart() {
+  header
+  echo -e "  ${BOLD}Redemarrer un service${RESET}"
+  echo ""
+  echo -e "  Services : openclaw, palais, litellm, n8n, caddy"
+  echo ""
+  read -rp "  Service à redémarrer : " svc
+  if [ -n "$svc" ]; then
+    echo ""
+    cd /opt/"${PROJECT}" && docker compose up -d --force-recreate "$svc" && \
+      echo -e "  ${GREEN}✓ $svc redémarré${RESET}" || \
+      echo -e "  ${RED}✗ Erreur${RESET}"
+  fi
+  pause; menu_main
+}
+
+# ─── Point d'entree ─────────────────────
+menu_main

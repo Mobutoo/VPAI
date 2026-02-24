@@ -1,0 +1,107 @@
+# Makefile — Gestion operationnelle {{ project_name | upper }}
+# Usage : make <cible> [ID=<request-id>] [SVC=<service>]
+# Deploye par Ansible — ne pas editer manuellement
+
+PROJECT := {{ project_name }}
+OC      := docker exec $(PROJECT)_openclaw node /app/openclaw.mjs
+
+.DEFAULT_GOAL := help
+
+# ─────────────────────────────────────────
+# Aide
+# ─────────────────────────────────────────
+help: ## Afficher cette aide
+	@echo ""
+	@echo "  {{ project_name | upper }} — Gestion operationnelle"
+	@echo ""
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
+	@echo ""
+	@echo "  Variables : ID=<request-id>  SVC=<service>  N=<lignes-logs>"
+	@echo ""
+
+# ─────────────────────────────────────────
+# Stack — etat global
+# ─────────────────────────────────────────
+status: ## Etat de tous les containers (healthy / unhealthy / starting)
+	@docker ps --format 'table {% raw %}{{.Names}}\t{{.Status}}\t{{.Image}}{% endraw %}' \
+		| grep -E "$(PROJECT)|NAME" | sort
+
+logs: ## Logs d'un service (SVC= obligatoire, N=50 par defaut)
+	@if [ -z "$(SVC)" ]; then echo "Usage: make logs SVC=openclaw [N=100]"; exit 1; fi
+	docker logs $(PROJECT)_$(SVC) --tail $${N:-50} -f
+
+restart: ## Redemarrer un service (SVC= obligatoire)
+	@if [ -z "$(SVC)" ]; then echo "Usage: make restart SVC=openclaw"; exit 1; fi
+	@cd /opt/$(PROJECT) && docker compose up -d --force-recreate $(SVC)
+
+# ─────────────────────────────────────────
+# OpenClaw — Devices / Pairing
+# ─────────────────────────────────────────
+oc-devices: ## Lister devices (pending + paired)
+	$(OC) devices list
+
+oc-approve: ## Approuver une demande de pairing (ID= obligatoire)
+	@if [ -z "$(ID)" ]; then echo "Usage: make oc-approve ID=<request-id>"; exit 1; fi
+	$(OC) devices approve $(ID)
+
+oc-deny: ## Refuser / supprimer un device (ID= obligatoire)
+	@if [ -z "$(ID)" ]; then echo "Usage: make oc-deny ID=<device-id>"; exit 1; fi
+	$(OC) devices remove $(ID)
+
+# ─────────────────────────────────────────
+# OpenClaw — Plugins / Channels / Agents
+# ─────────────────────────────────────────
+oc-plugins: ## Lister plugins (loaded / disabled)
+	$(OC) plugins list
+
+oc-channels: ## Lister channels (telegram, whatsapp...)
+	$(OC) channels list
+
+oc-agents: ## Lister agents et leurs modeles
+	$(OC) agents list
+
+oc-logs: ## Logs OpenClaw (N=50)
+	docker logs $(PROJECT)_openclaw --tail $${N:-50} -f
+
+oc-restart: ## Redemarrer OpenClaw
+	@cd /opt/$(PROJECT) && docker compose up -d --force-recreate openclaw
+
+# ─────────────────────────────────────────
+# Palais
+# ─────────────────────────────────────────
+palais-health: ## Health check Palais
+	@curl -sf http://localhost:{{ palais_port }}/api/health | python3 -m json.tool
+
+palais-logs: ## Logs Palais (N=50)
+	docker logs $(PROJECT)_palais --tail $${N:-50} -f
+
+palais-restart: ## Redemarrer Palais
+	@cd /opt/$(PROJECT) && docker compose up -d --force-recreate palais
+
+# ─────────────────────────────────────────
+# LiteLLM
+# ─────────────────────────────────────────
+litellm-health: ## Health check LiteLLM
+	@curl -sf http://localhost:4000/health/liveliness | python3 -m json.tool
+
+litellm-logs: ## Logs LiteLLM (N=50)
+	docker logs $(PROJECT)_litellm --tail $${N:-50} -f
+
+litellm-restart: ## Redemarrer LiteLLM
+	@cd /opt/$(PROJECT) && docker compose up -d --force-recreate litellm
+
+# ─────────────────────────────────────────
+# n8n
+# ─────────────────────────────────────────
+n8n-logs: ## Logs n8n (N=50)
+	docker logs $(PROJECT)_n8n --tail $${N:-50} -f
+
+n8n-restart: ## Redemarrer n8n
+	@cd /opt/$(PROJECT) && docker compose up -d --force-recreate n8n
+
+.PHONY: help status logs restart \
+	oc-devices oc-approve oc-deny oc-plugins oc-channels oc-agents oc-logs oc-restart \
+	palais-health palais-logs palais-restart \
+	litellm-health litellm-logs litellm-restart \
+	n8n-logs n8n-restart

@@ -13,7 +13,7 @@
 3. [Redeploy Cible (sans downtime)](#3-redeploy-cible-sans-downtime)
 4. [Zerobyte Backup Configuration (Seko-VPN)](#4-zerobyte-backup-configuration-seko-vpn)
 5. [Uptime Kuma Configuration (Seko-VPN)](#5-uptime-kuma-configuration-seko-vpn)
-6. [OpenClaw — Gestion des Modeles et Agents](#6-openclaw--gestion-des-modeles-et-agents)
+6. [OpenClaw — Gestion des Modeles et Agents](#6-openclaw--gestion-des-modeles-et-agents) *(incl. Makefile + menu CLI + devices)*
 7. [Ajout d'un Nouveau Modele LiteLLM](#7-ajout-dun-nouveau-modele-litellm)
 8. [Secret Rotation](#8-secret-rotation)
 9. [Restore from Backup](#9-restore-from-backup)
@@ -305,6 +305,35 @@ docker exec javisi_openclaw node openclaw.mjs pairing approve telegram <CODE>
 https://<admin_subdomain>.<domain>/__bootstrap__
 # Injecte le gateway token dans localStorage et redirige vers l'UI
 ```
+
+### 6.6 Gestion des Devices (Pairing Browser)
+
+**Via le Makefile (depuis `/opt/javisi/`) :**
+
+```bash
+make oc-devices                        # Lister pending + paired
+make oc-approve ID=<request-id>        # Approuver une demande
+make oc-deny    ID=<device-id>         # Supprimer un device
+```
+
+**Via le menu interactif :**
+
+```bash
+/opt/javisi/menu.sh                    # Lance le menu
+# → 1) OpenClaw — Devices & Pairing
+# → 1) Lister / 2) Approuver / 3) Supprimer
+```
+
+**Via docker exec (commandes brutes) :**
+
+```bash
+docker exec javisi_openclaw node /app/openclaw.mjs devices list
+docker exec javisi_openclaw node /app/openclaw.mjs devices approve <request-id>
+docker exec javisi_openclaw node /app/openclaw.mjs devices remove <device-id>
+```
+
+> **Apres une montee de version** : `paired.json` peut etre vide (pairing invalide).
+> Le browser affiche "pairing required" → lancer `make oc-devices` puis `make oc-approve`.
 
 ---
 

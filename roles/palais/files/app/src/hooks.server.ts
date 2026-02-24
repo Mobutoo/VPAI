@@ -1,7 +1,13 @@
 import type { Handle } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
+import { building } from '$app/environment';
+import { connectOpenClaw } from '$lib/server/ws/openclaw';
 
 const API_KEY = env.PALAIS_API_KEY || 'dev-key';
+
+if (!building) {
+	connectOpenClaw();
+}
 
 export const handle: Handle = async ({ event, resolve }) => {
 	// API key auth (agents, n8n, MCP)

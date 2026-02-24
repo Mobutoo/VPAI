@@ -54,7 +54,7 @@
       set -o pipefail
       docker exec {{ project_name }}_kaneo_api sh -c '
         curl -sf -o /dev/null -w "%{http_code}" \
-          -X POST http://localhost:1337/api/auth/sign-in \
+          -X POST http://localhost:1337/api/auth/sign-in/email \
           -H "Content-Type: application/json" \
           -d "{\"email\":\"{{ kaneo_agent_email }}\",\"password\":\"{{ kaneo_agent_password }}\"}" 2>/dev/null
       '

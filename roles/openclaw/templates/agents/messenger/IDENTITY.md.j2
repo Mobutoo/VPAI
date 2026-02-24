@@ -127,14 +127,17 @@ for COL in "Backlog" "In Progress" "Review" "Done"; do
     -d "{\"name\":\"$COL\"}"
 done
 ```
+Slugs generes par Kaneo : Backlog→`backlog`, In Progress→`in-progress`, Review→`review`, Done→`done`.
+Les slugs servent de valeur `status` pour create_task et update_status.
 
 ### create_task
 ```bash
-# columnId OBLIGATOIRE — utiliser le columnId "Backlog" retourne par create_columns
+# status = slug de colonne (backlog, in-progress, review, done)
+# priority = no-priority | low | medium | high | urgent
 curl -s -X POST http://kaneo-api:1337/api/task/<projectId> \
   -H "Content-Type: application/json" \
   -H "Cookie: $COOKIE" \
-  -d '{"title":"<title>","description":"<desc>","columnId":"<backlog-column-id>"}'
+  -d '{"title":"<title>","description":"<desc>","status":"backlog","priority":"no-priority"}'
 ```
 
 ### update_status
@@ -142,7 +145,7 @@ curl -s -X POST http://kaneo-api:1337/api/task/<projectId> \
 curl -s -X PUT http://kaneo-api:1337/api/task/status/<taskId> \
   -H "Content-Type: application/json" \
   -H "Cookie: $COOKIE" \
-  -d '{"status":"<todo|in-progress|done>"}'
+  -d '{"status":"<backlog|in-progress|review|done>"}'
 ```
 
 ### update_description
@@ -158,7 +161,7 @@ curl -s -X PUT http://kaneo-api:1337/api/task/description/<taskId> \
 curl -s -X PUT http://kaneo-api:1337/api/task/priority/<taskId> \
   -H "Content-Type: application/json" \
   -H "Cookie: $COOKIE" \
-  -d '{"priority":"<none|urgent|high|medium|low>"}'
+  -d '{"priority":"<no-priority|urgent|high|medium|low>"}'
 ```
 
 ### set_due_date
@@ -249,15 +252,18 @@ curl -s -X PUT http://kaneo-api:1337/api/time-entry/<timeEntryId> \
 curl -s -X POST http://kaneo-api:1337/api/activity/comment \
   -H "Content-Type: application/json" \
   -H "Cookie: $COOKIE" \
-  -d '{"taskId":"<taskId>","content":"<text>"}'
+  -d '{"taskId":"<taskId>","comment":"<text>"}'
 ```
 
-### add_link (livrable)
+### add_deliverable (livrable — via commentaire structure)
 ```bash
-curl -s -X POST http://kaneo-api:1337/api/external-link \
+# NOTE: POST /api/external-link n'existe pas dans Kaneo v2.2.1 (read-only, GitHub integrations).
+# Workaround V1 : stocker les livrables comme commentaires avec prefixe [DELIVERABLE].
+# V2 (fork) : ajouter POST /api/external-link au fork Mobutoo/kaneo (voir docs/TROUBLESHOOTING.md 11.21).
+curl -s -X POST http://kaneo-api:1337/api/activity/comment \
   -H "Content-Type: application/json" \
   -H "Cookie: $COOKIE" \
-  -d '{"taskId":"<taskId>","url":"<url>","title":"<titre>"}'
+  -d '{"taskId":"<taskId>","comment":"[DELIVERABLE] <titre> — <url>"}'
 ```
 
 ### add_label
@@ -307,10 +313,18 @@ curl -s -X GET http://kaneo-api:1337/api/time-entry/task/<taskId> \
   -H "Cookie: $COOKIE"
 ```
 
-### get_links (livrables)
+### get_deliverables (livrables — depuis commentaires)
 ```bash
-curl -s -X GET http://kaneo-api:1337/api/external-link/task/<taskId> \
-  -H "Cookie: $COOKIE"
+# Lire les livrables stockes en commentaires [DELIVERABLE]
+# Filtre cote client : parser les commentaires commencant par "[DELIVERABLE]"
+curl -s -X GET "http://kaneo-api:1337/api/activity?taskId=<taskId>" \
+  -H "Cookie: $COOKIE" | python3 -c "
+import sys,json
+data=json.load(sys.stdin)
+activities=data if isinstance(data,list) else data.get('activities',data.get('data',[]))
+deliverables=[a for a in activities if a.get('comment','').startswith('[DELIVERABLE]')]
+print(json.dumps(deliverables))
+" 2>/dev/null
 ```
 
 ---
@@ -352,17 +366,7 @@ if [ -z "$IDEA_PROJECT_ID" ]; then
   done
 fi
 
-# 3. Trouver columnId "Draft"
-COLS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/column/$IDEA_PROJECT_ID" 2>/dev/null)
-DRAFT_COL_ID=$(echo "$COLS" | python3 -c "
-import sys,json
-cols=json.load(sys.stdin)
-if isinstance(cols, dict): cols=cols.get('columns', cols.get('data', []))
-c=[x for x in cols if x.get('name','')=='Draft']
-print(c[0]['id'] if c else '')
-" 2>/dev/null)
-
-# 4. Créer la tâche idée
+# 3. Créer la tâche idée (status slug "draft" au lieu de columnId)
 IDEA_DATE=$(date +%Y-%m-%d)
 IDEA_META="{\"id\":\"idea-${IDEA_DATE}-$(date +%H%M%S)\",\"domain\":\"<domain>\",\"status\":\"pending\",\"iterations\":1,\"created\":\"${IDEA_DATE}\"}"
 PLAN_JSON=$(echo "<plan_json_b64>" | base64 -d 2>/dev/null || echo "<plan_json_b64>")
@@ -376,7 +380,7 @@ ${PLAN_JSON}
 
 TASK=$(curl -sf -X POST "http://kaneo-api:1337/api/task/$IDEA_PROJECT_ID" \
   -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
-  -d "{\"title\":\"💡 [IDEA] <titre>\",\"columnId\":\"$DRAFT_COL_ID\",\"description\":$(echo "$DESCRIPTION" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}" 2>/dev/null)
+  -d "{\"title\":\"💡 [IDEA] <titre>\",\"status\":\"draft\",\"priority\":\"no-priority\",\"description\":$(echo "$DESCRIPTION" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}" 2>/dev/null)
 TASK_ID=$(echo "$TASK" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('id','') or d.get('data',{}).get('id',''))" 2>/dev/null)
 
 # 5. Ajouter label idea:pending
@@ -413,7 +417,7 @@ print(m.group(0) if m else '')
   if [ -n "$OLDEST" ]; then
     curl -sf -X POST http://kaneo-api:1337/api/activity/comment \
       -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
-      -d "{\"taskId\":\"<id>\",\"content\":\"[archived] $OLDEST\"}" -o /dev/null 2>/dev/null
+      -d "{\"taskId\":\"<id>\",\"comment\":\"[archived] $OLDEST\"}" -o /dev/null 2>/dev/null
     # Supprimer la version archivée de la description
     CURRENT_DESC=$(echo "$CURRENT_DESC" | python3 -c "
 import sys,re
@@ -441,23 +445,13 @@ ${FEEDBACK_BLOCK}
 ${PLAN_BLOCK}"
 
 # 4. Mettre à jour description + passer en "In Review"
-IDEA_PROJECT_ID=$(redis-cli -h redis HGET kaneo:projects "{{ openclaw_ideas_project_name | default('Boite a Idees') }}")
-COLS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/column/$IDEA_PROJECT_ID" 2>/dev/null)
-REVIEW_COL_ID=$(echo "$COLS" | python3 -c "
-import sys,json
-cols=json.load(sys.stdin)
-if isinstance(cols, dict): cols=cols.get('columns', cols.get('data', []))
-c=[x for x in cols if x.get('name','')=='In Review']
-print(c[0]['id'] if c else '')
-" 2>/dev/null)
-
 curl -sf -X PUT "http://kaneo-api:1337/api/task/description/<id>" \
   -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
   -d "{\"description\":$(echo "$NEW_DESC" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))')}" -o /dev/null 2>/dev/null
 
-curl -sf -X PUT "http://kaneo-api:1337/api/task/column/<id>" \
+curl -sf -X PUT "http://kaneo-api:1337/api/task/status/<id>" \
   -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
-  -d "{\"columnId\":\"$REVIEW_COL_ID\"}" -o /dev/null 2>/dev/null
+  -d '{"status":"in-review"}' -o /dev/null 2>/dev/null
 
 # 5. Incrémenter compteur itérations Redis
 redis-cli -h redis HINCRBY "idea:<id>:meta" iterations 1
@@ -479,21 +473,10 @@ if [ "$DISPATCHED" = "true" ]; then
   exit 0
 fi
 
-# 2. Trouver project_id + columnId "Approved"
-IDEA_PROJECT_ID=$(redis-cli -h redis HGET kaneo:projects "{{ openclaw_ideas_project_name | default('Boite a Idees') }}")
-COLS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/column/$IDEA_PROJECT_ID" 2>/dev/null)
-APPROVED_COL_ID=$(echo "$COLS" | python3 -c "
-import sys,json
-cols=json.load(sys.stdin)
-if isinstance(cols, dict): cols=cols.get('columns', cols.get('data', []))
-c=[x for x in cols if x.get('name','')=='Approved']
-print(c[0]['id'] if c else '')
-" 2>/dev/null)
-
-# 3. Passer en colonne "Approved"
-curl -sf -X PUT "http://kaneo-api:1337/api/task/column/<id>" \
+# 2. Passer en statut "Approved" (slug de colonne)
+curl -sf -X PUT "http://kaneo-api:1337/api/task/status/<id>" \
   -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
-  -d "{\"columnId\":\"$APPROVED_COL_ID\"}" -o /dev/null 2>/dev/null
+  -d '{"status":"approved"}' -o /dev/null 2>/dev/null
 
 # 4. Swap labels : idea:pending → idea:approved
 # (supprimer l'ancien label et créer le nouveau)
@@ -566,21 +549,10 @@ echo "{\"approved\":true,\"task_id\":\"<id>\",\"dispatch_http\":\"$HTTP_CODE\"}"
 ```bash
 # Auth (cache Redis)
 
-# 1. Trouver columnId "Rejected"
-IDEA_PROJECT_ID=$(redis-cli -h redis HGET kaneo:projects "{{ openclaw_ideas_project_name | default('Boite a Idees') }}")
-COLS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/column/$IDEA_PROJECT_ID" 2>/dev/null)
-REJECTED_COL_ID=$(echo "$COLS" | python3 -c "
-import sys,json
-cols=json.load(sys.stdin)
-if isinstance(cols, dict): cols=cols.get('columns', cols.get('data', []))
-c=[x for x in cols if x.get('name','')=='Rejected']
-print(c[0]['id'] if c else '')
-" 2>/dev/null)
-
-# 2. Passer en colonne "Rejected"
-curl -sf -X PUT "http://kaneo-api:1337/api/task/column/<id>" \
+# 1. Passer en statut "Rejected" (slug de colonne)
+curl -sf -X PUT "http://kaneo-api:1337/api/task/status/<id>" \
   -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
-  -d "{\"columnId\":\"$REJECTED_COL_ID\"}" -o /dev/null 2>/dev/null
+  -d '{"status":"rejected"}' -o /dev/null 2>/dev/null
 
 # 3. Swap labels : idea:pending → idea:rejected
 LABELS=$(curl -sf -H "Cookie: $COOKIE" "http://kaneo-api:1337/api/label/task/<id>" 2>/dev/null)
@@ -600,7 +572,7 @@ curl -sf -X POST http://kaneo-api:1337/api/label \
 # 4. Ajouter commentaire de refus
 curl -sf -X POST http://kaneo-api:1337/api/activity/comment \
   -H "Content-Type: application/json" -H "Cookie: $COOKIE" \
-  -d "{\"taskId\":\"<id>\",\"content\":\"[REJECTED] $(date -u +%Y-%m-%dT%H:%M:%SZ) — <reason>\"}" -o /dev/null 2>/dev/null
+  -d "{\"taskId\":\"<id>\",\"comment\":\"[REJECTED] $(date -u +%Y-%m-%dT%H:%M:%SZ) — <reason>\"}" -o /dev/null 2>/dev/null
 
 # 5. Nettoyer Redis (idée active)
 redis-cli -h redis DEL "idea:<id>:dispatched" "idea:<id>:meta"

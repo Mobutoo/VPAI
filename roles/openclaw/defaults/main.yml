@@ -24,6 +24,9 @@ openclaw_sandbox_mode: "non-main"
 openclaw_sandbox_image: "openclaw-sandbox:bookworm-slim"
 openclaw_sandbox_memory: "1g"
 openclaw_sandbox_cpus: 1
+# Extra APT packages to install in sandbox (e.g., redis-tools for redis-cli)
+openclaw_sandbox_extra_packages:
+  - redis-tools
 
 # --- Volume Isolation (moltworker pattern) ---
 # When enabled, splits the flat openclaw data dir into 3 layers:

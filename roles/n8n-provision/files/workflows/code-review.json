@@ -117,7 +117,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"taskId\": \"{{ $json.task_id }}\",\n  \"content\": \"## Code Review — {{ $json.branch }}\\n**Statut** : {{ $json.review_status === 'PASS' ? '✅ PASS' : '❌ FAIL' }}\\n\\n{{ $json.review_report }}\"\n}",
+        "jsonBody": "={\n  \"taskId\": \"{{ $json.task_id }}\",\n  \"comment\": \"## Code Review — {{ $json.branch }}\\n**Statut** : {{ $json.review_status === 'PASS' ? '✅ PASS' : '❌ FAIL' }}\\n\\n{{ $json.review_report }}\"\n}",
         "options": {},
         "continueOnFail": true
       },
@@ -140,7 +140,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"{{ $json.review_success ? 'done' : 'todo' }}\" }",
+        "jsonBody": "={ \"status\": \"{{ $json.review_success ? 'done' : 'backlog' }}\" }",
         "options": {},
         "continueOnFail": true
       },

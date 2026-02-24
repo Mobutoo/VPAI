@@ -37,11 +37,11 @@ Sequence complete a executer dans cet ordre :
 
 2. sessions_spawn({{ openclaw_agent_messenger_name }}, "create_columns projectId=<id>")
    -> Cree 4 colonnes: Backlog, In Progress, Review, Done
-   -> Retourne: backlog_column_id, inprogress_column_id, review_column_id, done_column_id
+   -> Slugs generes: backlog, in-progress, review, done
 
 3. Pour chaque tache:
-   sessions_spawn({{ openclaw_agent_messenger_name }}, "create_task projectId=<id> columnId=<backlog_id> title=<titre> description=<desc>")
-   -> Retourne: task_id
+   sessions_spawn({{ openclaw_agent_messenger_name }}, "create_task projectId=<id> title=<titre> description=<desc>")
+   -> Retourne: task_id (status=backlog et priority=no-priority par defaut)
 
 4. Pour chaque tache, ajouter les labels:
    sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<id> name=agent:<agentId> color=#6366f1")
@@ -82,8 +82,10 @@ sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<id> tex
 
 ### Livrables (attacher une PR, un fichier, un doc)
 ```
-sessions_spawn({{ openclaw_agent_messenger_name }}, "add_link taskId=<id> url=<url> title=<titre>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_deliverable taskId=<id> url=<url> title=<titre>")
 ```
+> Stocke comme commentaire `[DELIVERABLE] <titre> — <url>` (V1 workaround).
+> `get_deliverables taskId=<id>` pour lire les livrables.
 
 Exemples de livrables :
 - PR GitHub : `url=https://github.com/Mobutoo/vpai/pull/42 title=PR #42 — fix caddy ACL`
@@ -161,7 +163,7 @@ sessions_spawn(<agentId>, "
 
 ### Etape 5 — Suivi des rapports
 A chaque announce d'un sous-agent :
-- Verifier le livrable (external-link present ?)
+- Verifier le livrable (commentaire [DELIVERABLE] present ?)
 - Si code -> sessions_spawn({{ openclaw_agent_builder_name }}, "review") -> delegate-n8n
 - Si erreur -> sessions_spawn({{ openclaw_agent_maintainer_name }}, "error-to-task")
 - Mettre a jour statut via Messenger
@@ -201,7 +203,7 @@ sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<task_id
 **A LA FIN** (obligatoire) :
 ```
 sessions_spawn({{ openclaw_agent_messenger_name }}, "stop_timer timeEntryId=<id>")
-sessions_spawn({{ openclaw_agent_messenger_name }}, "add_link taskId=<task_id> url=<url_livrable> title=<titre>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_deliverable taskId=<task_id> url=<url_livrable> title=<titre>")
 sessions_spawn({{ openclaw_agent_messenger_name }}, "update_status taskId=<task_id> status=done")
 ```
 
@@ -233,7 +235,7 @@ delegate-n8n endpoint=/webhook/error-to-task payload={
   "agent_id": "<agentId>"
 }
 ```
-Cree une tache de correction + external-link entre les deux taches.
+Cree une tache de correction + commentaire de liaison entre les deux taches.
 
 ### Project status
 ```

@@ -75,25 +75,7 @@
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "=http://kaneo-api:1337/api/column/{{ $json.project_id }}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "Cookie", "value": "={{ $json.cookie }}" }
-          ]
-        },
-        "options": {}
-      },
-      "id": "et-0001-0000-0000-0000-000000000006",
-      "name": "Get project columns",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1140, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Find the first column (Backlog) for new correction task\nconst cols = $input.first().json;\nconst colsArr = Array.isArray(cols) ? cols : (cols.columns || cols.data || []);\nconst backlogCol = colsArr.find(c => (c.name || '').toLowerCase().includes('backlog')) || colsArr[0] || {};\nconst ctx = $('Extract cookie').first().json;\n\n// Build short error title (max 80 chars)\nconst shortError = ctx.error_message.length > 60\n  ? ctx.error_message.slice(0, 60) + '...'\n  : ctx.error_message;\n\nreturn [{ json: {\n  ...ctx,\n  column_id: backlogCol.id || null,\n  error_title: `INCIDENT [${ctx.agent_id}]: ${shortError}`\n}}];"
+        "jsCode": "// Build short error title (max 80 chars) — status slug used directly in task creation\nconst ctx = $('Extract cookie').first().json;\n\nconst shortError = ctx.error_message.length > 60\n  ? ctx.error_message.slice(0, 60) + '...'\n  : ctx.error_message;\n\nreturn [{ json: {\n  ...ctx,\n  error_title: `INCIDENT [${ctx.agent_id}]: ${shortError}`\n}}];"
       },
       "id": "et-0001-0000-0000-0000-000000000007",
       "name": "Prepare task data",
@@ -114,7 +96,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"{{ $json.error_title }}\",\n  \"description\": \"Erreur detectee par agent {{ $json.agent_id }}.\\n\\nMessage: {{ $json.error_message }}\",\n  \"columnId\": \"{{ $json.column_id }}\"\n}",
+        "jsonBody": "={\n  \"title\": \"{{ $json.error_title }}\",\n  \"description\": \"Erreur detectee par agent {{ $json.agent_id }}.\\n\\nMessage: {{ $json.error_message }}\",\n  \"status\": \"backlog\",\n  \"priority\": \"high\"\n}",
         "options": {}
       },
       "id": "et-0001-0000-0000-0000-000000000008",
@@ -214,7 +196,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"taskId\": \"{{ $json.source_task_id }}\",\n  \"content\": \"Erreur detectee — tache de correction creee : {{ $json.new_task_id }}\"\n}",
+        "jsonBody": "={\n  \"taskId\": \"{{ $json.source_task_id }}\",\n  \"comment\": \"Erreur detectee — tache de correction creee : {{ $json.new_task_id }}\"\n}",
         "options": {},
         "continueOnFail": true
       },
@@ -277,8 +259,7 @@
       ]]
     },
     "Auth Kaneo": { "main": [[{ "node": "Extract cookie", "type": "main", "index": 0 }]] },
-    "Extract cookie": { "main": [[{ "node": "Get project columns", "type": "main", "index": 0 }]] },
-    "Get project columns": { "main": [[{ "node": "Prepare task data", "type": "main", "index": 0 }]] },
+    "Extract cookie": { "main": [[{ "node": "Prepare task data", "type": "main", "index": 0 }]] },
     "Prepare task data": { "main": [[{ "node": "Create correction task", "type": "main", "index": 0 }]] },
     "Create correction task": { "main": [[{ "node": "Extract new task id", "type": "main", "index": 0 }]] },
     "Extract new task id": {

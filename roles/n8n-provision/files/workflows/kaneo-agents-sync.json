@@ -205,7 +205,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://kaneo-api:1337/api/auth/sign-up",
+        "url": "http://kaneo-api:1337/api/auth/sign-up/email",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -550,7 +550,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Create tasks for new agents and assign them to their userId\nconst cols = $input.first().json;\nconst ctx = $('Diff agents vs tasks').first().json;\nconst colsArr = Array.isArray(cols) ? cols : (cols.columns || cols.data || []);\nconst column_id = (colsArr[0] || {}).id || null;\n\nif (ctx.toCreate.length === 0) return [{ json: { skipped: true, ...ctx, column_id } }];\nreturn ctx.toCreate.map(agent => ({ json: { ...ctx, agent, column_id } }));"
+        "jsCode": "// Create tasks for new agents and assign them to their userId\n// status slug 'backlog' used directly in task creation — no columnId needed\nconst ctx = $('Diff agents vs tasks').first().json;\n\nif (ctx.toCreate.length === 0) return [{ json: { skipped: true, ...ctx } }];\nreturn ctx.toCreate.map(agent => ({ json: { ...ctx, agent } }));"
       },
       "id": "kas-0002-0000-0000-0000-000000000027",
       "name": "Agents to create",
@@ -571,7 +571,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"{{ $json.agent.emoji }} {{ $json.agent.name }} ({{ $json.agent.id }})\",\n  \"description\": \"[agent:{{ $json.agent.id }}] Type: {{ $json.agent.type }}. Modele: {{ $json.agent.model }}\",\n  \"columnId\": \"{{ $json.column_id }}\"\n}",
+        "jsonBody": "={\n  \"title\": \"{{ $json.agent.emoji }} {{ $json.agent.name }} ({{ $json.agent.id }})\",\n  \"description\": \"[agent:{{ $json.agent.id }}] Type: {{ $json.agent.type }}. Modele: {{ $json.agent.model }}\",\n  \"status\": \"backlog\",\n  \"priority\": \"no-priority\"\n}",
         "options": {}
       },
       "id": "kas-0002-0000-0000-0000-000000000028",
@@ -749,7 +749,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"columnId\": \"{{ $json.done_column_id }}\" }",
+        "jsonBody": "={ \"status\": \"done\" }",
         "options": {},
         "continueOnFail": true
       },
@@ -848,7 +848,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"{{ $('Build REGISTRY').first().json.registryTitle }}\",\n  \"description\": \"{{ $('Build REGISTRY').first().json.registryDesc }}\",\n  \"columnId\": \"{{ ($input.first().json.columns || $input.first().json)[0].id || '' }}\"\n}",
+        "jsonBody": "={\n  \"title\": \"{{ $('Build REGISTRY').first().json.registryTitle }}\",\n  \"description\": \"{{ $('Build REGISTRY').first().json.registryDesc }}\",\n  \"status\": \"backlog\",\n  \"priority\": \"no-priority\"\n}",
         "options": {},
         "continueOnFail": true
       },
@@ -966,13 +966,12 @@
     "Get existing tasks": { "main": [[{ "node": "Diff agents vs tasks", "type": "main", "index": 0 }]] },
     "Diff agents vs tasks": {
       "main": [[
-        { "node": "Get columns", "type": "main", "index": 0 },
+        { "node": "Agents to create", "type": "main", "index": 0 },
         { "node": "Agents to update", "type": "main", "index": 0 },
         { "node": "Tasks to archive", "type": "main", "index": 0 },
         { "node": "Agents to unassign", "type": "main", "index": 0 }
       ]]
     },
-    "Get columns": { "main": [[{ "node": "Agents to create", "type": "main", "index": 0 }]] },
     "Agents to create": { "main": [[{ "node": "Create agent task", "type": "main", "index": 0 }]] },
     "Create agent task": { "main": [[{ "node": "Add agent label", "type": "main", "index": 0 }]] },
     "Add agent label": { "main": [[{ "node": "Assign new task", "type": "main", "index": 0 }]] },
@@ -986,11 +985,10 @@
     "REGISTRY task exists?": {
       "main": [
         [{ "node": "Update REGISTRY task", "type": "main", "index": 0 }],
-        [{ "node": "Get cols for registry", "type": "main", "index": 0 }]
+        [{ "node": "Create REGISTRY task", "type": "main", "index": 0 }]
       ]
     },
     "Update REGISTRY task": { "main": [[{ "node": "Build rapport", "type": "main", "index": 0 }]] },
-    "Get cols for registry": { "main": [[{ "node": "Create REGISTRY task", "type": "main", "index": 0 }]] },
     "Create REGISTRY task": { "main": [[{ "node": "Build rapport", "type": "main", "index": 0 }]] },
     "Build rapport": { "main": [[{ "node": "Should notify?", "type": "main", "index": 0 }]] },
     "Should notify?": {

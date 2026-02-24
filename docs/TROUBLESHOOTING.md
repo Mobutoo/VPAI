@@ -19,7 +19,7 @@
 8. [Grafana](#8-grafana)
 9. [n8n 2.0+](#9-n8n-20)
 10. [LiteLLM](#10-litellm)
-11. [OpenClaw](#11-openclaw) — 11.16 workspaceAccess · 11.17 provider openai direct · 11.18 handler recreate
+11. [OpenClaw](#11-openclaw) — 11.16 workspaceAccess · 11.17 provider openai direct · 11.18 handler recreate · 11.19 heartbeat/cron · 11.20 status slugs · 11.21 external-link read-only · 11.22 comment field
 12. [Reseau & VPN](#12-reseau--vpn)
 13. [Systeme & Debian 13](#13-systeme--debian-13)
 
@@ -998,6 +998,77 @@ recreate: always
 **Fichier** : `roles/openclaw/handlers/main.yml`
 
 **Note** : `recreate: always` force la recreation à chaque deploy même si rien n'a changé. Acceptable pour un handler (ne se déclenche que sur `changed`). Pour les autres services, préférer `state: present` sans `recreate: always` (Docker Compose détecte les changements d'env automatiquement).
+
+### 11.19 Heartbeat + Cron — Non Supportes en v2026.2.22
+
+**Symptome** : Les sections `heartbeat` et `cron` (array) dans `openclaw.json` sont ignorees silencieusement ou provoquent une erreur de validation au demarrage.
+
+**Cause** : OpenClaw v2026.2.22 n'implemente pas encore les fonctionnalites heartbeat et cron planifie. Ces champs existent dans la documentation mais ne sont pas supportes par le runtime.
+
+**Workaround** : Utiliser n8n cron comme alternative (ex: `kaneo-agents-sync` cron daily 6h).
+
+**Fichier** : `roles/openclaw/templates/openclaw.json.j2` (commentaire ligne 490)
+
+---
+
+### 11.20 Kaneo API — Status Slug = Nom de Colonne Slugifie
+
+**Symptome** : `PUT /api/task/status/<id>` avec `{"status":"todo"}` retourne 400 ou ne deplace pas la tache.
+
+**Cause** : Kaneo v2.2.1 utilise le **slug** de la colonne comme valeur de `status`. Le slug est genere automatiquement a partir du nom de la colonne (slugification).
+
+**Mapping par defaut** :
+| Nom colonne | Slug (valeur status) |
+|---|---|
+| Backlog | `backlog` |
+| In Progress | `in-progress` |
+| Review | `review` |
+| Done | `done` |
+| Draft | `draft` |
+| Approved | `approved` |
+| Rejected | `rejected` |
+
+**Regle** : Le slug est le nom en minuscules avec espaces remplaces par des tirets. "To Do" → `to-do`, "In Review" → `in-review`.
+
+**Impact** : Toute operation `create_task` (champ `status`) et `update_status` doit utiliser le slug exact de la colonne cible.
+
+---
+
+### 11.21 Kaneo API — external-link = Read-Only (GitHub Integrations)
+
+**Symptome** : `POST /api/external-link` retourne 404 ou "Method not allowed".
+
+**Cause** : L'API `external-link` de Kaneo v2.2.1 est **read-only**. Seul `GET /api/external-link/task/:taskId` existe, pour lire les liens GitHub generes automatiquement par les integrations.
+
+Il n'y a PAS de `POST` pour creer des liens manuellement.
+
+**Workaround V1** (actif) : Stocker les livrables comme commentaires structures :
+```
+POST /api/activity/comment
+{"taskId":"<id>","comment":"[DELIVERABLE] <titre> — <url>"}
+```
+Lire avec `GET /api/activity?taskId=<id>` et filtrer les commentaires `[DELIVERABLE]`.
+
+**V2 (fork)** : Ajouter `POST /api/external-link` au fork Mobutoo/kaneo :
+- Fichier : `apps/api/src/external-link/index.ts` (ajouter route POST)
+- Controller : `apps/api/src/external-link/controllers/create-external-link.ts`
+- Schema : table `external_link` a deja `taskId`, `url`, `title`, `integrationId` (nullable)
+- Retirer contrainte FK `integrationId NOT NULL` si presente (liens manuels sans integration)
+
+---
+
+### 11.22 Kaneo API — Comment Field = `comment` pas `content`
+
+**Symptome** : `POST /api/activity/comment` avec `{"taskId":"...","content":"..."}` retourne 400 ou cree un commentaire vide.
+
+**Cause** : L'endpoint attend le champ `comment`, pas `content`.
+
+**Correct** :
+```json
+{"taskId":"<id>","comment":"<texte>"}
+```
+
+**Fichiers impactes** : IDENTITY messenger, workflows n8n (code-review, error-to-task).
 
 ---
 

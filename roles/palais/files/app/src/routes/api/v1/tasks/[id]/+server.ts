@@ -35,8 +35,14 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 		}
 	}
 
+	// Drizzle requires Date objects for timestamp columns — convert ISO strings
+	const updatePayload = { ...body, updatedAt: new Date() };
+	if (body.startDate) updatePayload.startDate = new Date(body.startDate);
+	if (body.endDate) updatePayload.endDate = new Date(body.endDate);
+	if (body.dueDate) updatePayload.dueDate = new Date(body.dueDate);
+
 	const [updated] = await db.update(tasks)
-		.set({ ...body, updatedAt: new Date() })
+		.set(updatePayload)
 		.where(eq(tasks.id, taskId))
 		.returning();
 

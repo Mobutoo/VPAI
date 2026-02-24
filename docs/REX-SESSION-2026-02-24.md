@@ -168,6 +168,7 @@ Tous les agents utilisent `openai/gpt-4o-mini` (OpenAI direct, bypass LiteLLM).
 | Vérification Kaneo task tracking | 🔄 En cours |
 | Credit error alerting (LiteLLM webhook + IDENTITY.md) | ✅ Livré — commit `cf88df9` |
 | Palais Phase 3 — Kanban board complet | ✅ Livré — commits `85f8c16` + fixes deploy |
+| Palais Phase 4 — Dependencies + Critical Path + Gantt | ✅ Livré — commit `5c1cee0` |
 
 ---
 
@@ -243,9 +244,35 @@ openclaw_default_model: "openai/gpt-4o-mini"
 
 ---
 
+## Phase 4 Palais — Dependencies + Critical Path + Gantt (session continuation)
+
+### Ce qui a été livré (commit 5c1cee0)
+
+- **`src/lib/server/utils/graph.ts`** — DFS cycle detection (`hasCycle(taskId, dependsOnId)`) — O(V+E)
+- **`src/lib/server/utils/critical-path.ts`** — `computeCriticalPath(taskNodes[])` — tri topologique + plus long chemin
+- **`src/routes/api/v1/tasks/[id]/dependencies/+server.ts`** — GET/POST/DELETE avec rejet cycle (400) + auto-self-reference
+- **`src/routes/api/v1/projects/[id]/critical-path/+server.ts`** — Retourne les IDs des tâches sur le chemin critique
+- **`src/routes/api/v1/tasks/[id]/+server.ts`** — Auto-blocking (409 si deps non résolues) + cascade recalcul dates
+- **`src/lib/components/timeline/GanttChart.svelte`** — SVG Gantt avec d3-scale : barres gold/rouge, flèches cyan, zoom jour/semaine/mois, drag-to-resize
+- **`src/routes/projects/[id]/timeline/+page.svelte`** — Page Timeline avec stats bar (criticalPath, deps, tasks with dates)
+- **`src/routes/projects/[id]/timeline/+page.server.ts`** — Load tasks + deps + critical path côté serveur
+- Navigation ⏱ Timeline ajoutée dans Board view et List view
+
+### Architecture cascade recalculation
+
+Récursive via `cascadeDates(taskId, deltaMs, visited)` :
+```
+endDate change → find taskDependencies.dependsOnTaskId = taskId
+→ pour chaque dépendant : shift startDate + endDate + deltaMs
+→ cascade récursive (guard visited pour éviter cycles)
+```
+
+---
+
 ## Commits Session 11 (complets)
 
 ```
+5c1cee0 feat(palais): Phase 4 — dependencies, critical path, Gantt timeline
 9d8e798 fix(palais): synchronize sans sudo — répertoire owned par prod_user avant rsync
 83d5e2c fix(palais): synchronize avec dest_port explicite + --rsync-path=sudo rsync
 17e6f89 fix(palais): synchronize --exclude node_modules (.svelte-kit, build) — copie 400KB au lieu de 204MB

@@ -384,9 +384,11 @@
     path: "{{ openclaw_config_dir }}/build/openclaw-sandbox/Dockerfile"
     marker: "# {mark} ANSIBLE MANAGED — extra sandbox packages"
     block: |
+      USER root
       RUN apt-get update && apt-get install -y --no-install-recommends \
           {{ openclaw_sandbox_extra_packages | join(' ') }} \
        && rm -rf /var/lib/apt/lists/*
+      USER sandbox
   become: true
   when:
     - openclaw_sandbox_mode | default('non-main') != 'off'

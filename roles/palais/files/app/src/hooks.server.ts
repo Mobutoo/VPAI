@@ -2,11 +2,13 @@ import type { Handle } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { building } from '$app/environment';
 import { connectOpenClaw } from '$lib/server/ws/openclaw';
+import { startBudgetCron } from '$lib/server/budget/cron';
 
 const API_KEY = env.PALAIS_API_KEY || 'dev-key';
 
 if (!building) {
 	connectOpenClaw();
+	startBudgetCron();
 }
 
 export const handle: Handle = async ({ event, resolve }) => {

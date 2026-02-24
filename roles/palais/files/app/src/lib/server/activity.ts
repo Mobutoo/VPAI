@@ -1,5 +1,6 @@
 import { db } from '$lib/server/db';
 import { activityLog } from '$lib/server/db/schema';
+import { ingestActivityAsMemory } from './memory/ingest';
 
 export async function logActivity(params: {
 	entityType: string;
@@ -23,4 +24,14 @@ export async function logActivity(params: {
 	} catch {
 		// Non-blocking — log failure silently to avoid breaking the main request
 	}
+
+	// Auto-ingest important events as episodic memory nodes (non-blocking)
+	ingestActivityAsMemory({
+		entityType: params.entityType,
+		entityId: params.entityId,
+		action: params.action,
+		actorAgentId: params.actorAgentId,
+		oldValue: params.oldValue,
+		newValue: params.newValue
+	}).catch(() => {});
 }

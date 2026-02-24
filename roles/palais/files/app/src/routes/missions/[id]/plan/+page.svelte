@@ -26,6 +26,7 @@
 	let generating = $state(false);
 	let saving = $state(false);
 	let saved = $state(false);
+	let dispatching = $state(false);
 	let draggingIndex = $state<number | null>(null);
 	let dragOverIndex = $state<number | null>(null);
 
@@ -105,6 +106,21 @@
 		});
 		if (res.ok) mission = { ...mission, status: 'approved', totalEstimatedCost: totalCost };
 	}
+
+	async function dispatch() {
+		if (!confirm(`Dispatch "${mission.title}" → create project + ${plan.tasks.length} tasks?`)) return;
+		dispatching = true;
+		const res = await fetch(`/api/v1/missions/${mission.id}/dispatch`, { method: 'POST' });
+		if (res.ok) {
+			const result = await res.json();
+			mission = { ...mission, status: 'executing' };
+			alert(`✓ ${result.message}\nNavigate to Projects to see the new project.`);
+		} else {
+			const err = await res.json();
+			alert(`Dispatch failed: ${err.error}`);
+		}
+		dispatching = false;
+	}
 </script>
 
 <div class="flex flex-col h-[calc(100vh-6rem)] gap-4">
@@ -149,6 +165,13 @@
 					class="px-3 py-1.5 rounded-lg text-xs font-medium"
 					style="background: #22c55e; color: #0A0A0F;">
 					✓ Approve Plan
+				</button>
+			{/if}
+			{#if mission.status === 'approved' && plan.tasks.length > 0}
+				<button onclick={dispatch} disabled={dispatching}
+					class="px-3 py-1.5 rounded-lg text-xs font-medium disabled:opacity-50"
+					style="background: var(--palais-red); color: #fff;">
+					{dispatching ? '🚀 Dispatching…' : '🚀 Dispatch'}
 				</button>
 			{/if}
 		</div>

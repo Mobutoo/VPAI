@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { tick } from 'svelte';
+	import { tick, onMount } from 'svelte';
 
 	let { data }: { data: PageData } = $props();
 
@@ -28,7 +28,32 @@
 	let messages = $state([...data.conversation]);
 	let newMessage = $state('');
 	let sending = $state(false);
+	let initializing = $state(false);
 	let chatEl: HTMLDivElement;
+
+	// Auto-trigger AI analysis of the brief if no conversation yet
+	onMount(async () => {
+		if (messages.length === 0 && ['briefing', 'brainstorming'].includes(mission.status)) {
+			initializing = true;
+			await scrollToBottom();
+			try {
+				const res = await fetch(`/api/v1/missions/${mission.id}/chat`, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ init: true })
+				});
+				if (res.ok) {
+					const reply = await res.json();
+					messages = [reply];
+					mission = { ...mission, status: 'brainstorming' };
+				}
+			} catch (e) {
+				console.error('Init chat error:', e);
+			}
+			initializing = false;
+			await scrollToBottom();
+		}
+	});
 
 	// Auto-scroll to bottom
 	async function scrollToBottom() {
@@ -111,23 +136,27 @@
 			</span>
 		</div>
 
-		<!-- Brief (if set) -->
-		{#if mission.briefText && messages.length === 0}
-			<div class="mx-4 my-3 p-3 rounded-lg text-xs flex-shrink-0"
-				style="background: var(--palais-bg); border: 1px solid var(--palais-border); color: var(--palais-text-muted);">
-				<span class="font-medium" style="color: var(--palais-text);">Brief: </span>{mission.briefText}
-			</div>
-		{/if}
-
 		<!-- Messages -->
 		<div bind:this={chatEl} class="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
 			{#if messages.length === 0}
 				<div class="flex flex-col items-center justify-center flex-1 gap-3 text-center">
-					<p class="text-2xl">🤖</p>
-					<p class="text-sm" style="color: var(--palais-text-muted);">
-						Start the brainstorming session.<br>
-						<span class="text-xs">The AI will help clarify your mission one question at a time.</span>
-					</p>
+					{#if initializing}
+						<p class="text-2xl">🤖</p>
+						<p class="text-sm" style="color: var(--palais-cyan);">
+							Analyse du brief en cours…
+						</p>
+						<div class="flex gap-1">
+							{#each [0,1,2] as i}
+								<div class="w-2 h-2 rounded-full animate-bounce"
+									style="background: var(--palais-cyan); animation-delay: {i * 150}ms;"></div>
+							{/each}
+						</div>
+					{:else}
+						<p class="text-2xl">🤖</p>
+						<p class="text-sm" style="color: var(--palais-text-muted);">
+							Initialisation du brainstorming…
+						</p>
+					{/if}
 				</div>
 			{:else}
 				{#each messages as msg}
@@ -149,11 +178,11 @@
 						</div>
 					</div>
 				{/each}
-				{#if sending}
+				{#if sending || initializing}
 					<div class="flex justify-start">
 						<div class="rounded-xl px-4 py-2.5"
 							style="background: var(--palais-bg); border: 1px solid var(--palais-border);">
-							<span class="text-xs" style="color: var(--palais-text-muted);">🤖 thinking…</span>
+							<span class="text-xs" style="color: var(--palais-text-muted);">🤖 {initializing ? 'analyse le brief…' : 'thinking…'}</span>
 						</div>
 					</div>
 				{/if}
@@ -174,11 +203,11 @@
 			></textarea>
 			<button
 				onclick={sendMessage}
-				disabled={sending || !newMessage.trim()}
+				disabled={sending || initializing || !newMessage.trim()}
 				class="px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 self-end"
 				style="background: var(--palais-gold); color: #0A0A0F; white-space: nowrap;"
 			>
-				{sending ? '…' : 'Send'}
+				{sending || initializing ? '…' : 'Send'}
 			</button>
 		</div>
 	</div>

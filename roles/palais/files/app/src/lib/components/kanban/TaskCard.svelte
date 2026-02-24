@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onDestroy } from 'svelte';
 
 	let {
 		task
@@ -8,6 +8,7 @@
 			id: number; columnId: number; title: string; priority: string | null;
 			assigneeAgentId: string | null; confidenceScore: number | null;
 			estimatedCost: number | null; actualCost: number | null; position: number | null;
+			status: string | null;
 		};
 	} = $props();
 
@@ -33,6 +34,55 @@
 
 	let priorityColor = $derived(priorityColors[task.priority ?? 'none'] ?? priorityColors.none);
 	let badge = $derived(confidenceBadge(task.confidenceScore));
+
+	// ── Timer ─────────────────────────────────────────────────────────────────
+	let timerRunning = $state(false);
+	let timerStartedAt: Date | null = null;
+	let elapsedSeconds = $state(0);
+	let interval: ReturnType<typeof setInterval> | null = null;
+
+	function formatElapsed(s: number): string {
+		const h = Math.floor(s / 3600);
+		const m = Math.floor((s % 3600) / 60);
+		const sec = s % 60;
+		if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+		return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+	}
+
+	async function toggleTimer(e: MouseEvent) {
+		e.stopPropagation();
+		if (timerRunning) {
+			// Stop
+			await fetch(`/api/v1/tasks/${task.id}/timer`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'stop' })
+			});
+			if (interval) { clearInterval(interval); interval = null; }
+			timerRunning = false;
+			elapsedSeconds = 0;
+		} else {
+			// Start
+			const res = await fetch(`/api/v1/tasks/${task.id}/timer`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'start' })
+			});
+			if (res.ok) {
+				const entry = await res.json();
+				timerStartedAt = new Date(entry.startedAt);
+				timerRunning = true;
+				elapsedSeconds = 0;
+				interval = setInterval(() => {
+					elapsedSeconds = Math.round(
+						(Date.now() - (timerStartedAt?.getTime() ?? Date.now())) / 1000
+					);
+				}, 1000);
+			}
+		}
+	}
+
+	onDestroy(() => { if (interval) clearInterval(interval); });
 
 	function onDragStart(e: DragEvent) {
 		e.dataTransfer?.setData('taskId', String(task.id));
@@ -83,10 +133,32 @@
 		{/if}
 
 		{#if task.assigneeAgentId}
-			<span class="text-xs px-1 py-0.5 rounded ml-auto"
+			<span class="text-xs px-1 py-0.5 rounded"
 				style="background: var(--palais-surface); color: var(--palais-text-muted); font-size: 0.65rem; font-family: 'JetBrains Mono', monospace;">
 				@{task.assigneeAgentId.split('-')[0]}
 			</span>
 		{/if}
+
+		<!-- Timer control -->
+		<div class="ml-auto flex items-center gap-1">
+			{#if timerRunning}
+				<span class="text-xs font-mono" style="color: var(--palais-cyan); font-size: 0.65rem;">
+					{formatElapsed(elapsedSeconds)}
+				</span>
+			{/if}
+			<!-- svelte-ignore a11y_consider_explicit_label -->
+			<button
+				onclick={toggleTimer}
+				title={timerRunning ? 'Stop timer' : 'Start timer'}
+				class="rounded p-0.5 transition-colors"
+				style="
+					background: {timerRunning ? 'color-mix(in srgb, var(--palais-red) 15%, transparent)' : 'transparent'};
+					color: {timerRunning ? 'var(--palais-red)' : 'var(--palais-border)'};
+					border: none; cursor: pointer; font-size: 0.7rem; line-height: 1;
+				"
+			>
+				{timerRunning ? '⏹' : '⏱'}
+			</button>
+		</div>
 	</div>
 </div>

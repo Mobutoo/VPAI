@@ -19,7 +19,8 @@
 	},
 	"dependencies": {
 		"drizzle-orm": "^0.44.2",
-		"postgres": "^3.4.7"
+		"postgres": "^3.4.7",
+		"ws": "^8.18.2"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-node": "^5.2.12",
@@ -27,6 +28,7 @@
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
 		"@tailwindcss/vite": "^4.1.11",
 		"@types/node": "^22.15.29",
+		"@types/ws": "^8.5.14",
 		"bits-ui": "^1.4.5",
 		"clsx": "^2.1.1",
 		"drizzle-kit": "^0.31.1",

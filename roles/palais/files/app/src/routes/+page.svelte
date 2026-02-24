@@ -19,7 +19,7 @@
 			Agents
 		</h2>
 		<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-			{#each data.agents as agent}
+			{#each data.agents as agent (agent.id)}
 				<div class="p-4 rounded-lg transition-all hover:scale-[1.02]"
 					style="background: var(--palais-surface); border: 1px solid var(--palais-border);"
 					style:box-shadow={agent.status === 'busy' ? 'var(--palais-glow-md)' : 'none'}

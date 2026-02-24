@@ -26,10 +26,10 @@
 		<span class="text-lg font-bold" style="font-family: 'Orbitron', sans-serif;">P</span>
 	</div>
 
-	{#each nav as item}
+	{#each nav as item (item.href)}
 		{@const active = currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href))}
-		<a
-			href={item.href}
+		<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+		<a href={item.href}
 			class="w-10 h-10 flex items-center justify-center rounded-lg transition-all group relative"
 			style:background={active ? 'var(--palais-gold-glow)' : 'transparent'}
 			style:color={active ? 'var(--palais-gold)' : 'var(--palais-text-muted)'}

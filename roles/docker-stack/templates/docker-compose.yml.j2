@@ -273,6 +273,48 @@ services:
       retries: 3
       start_period: 60s
 
+  # === PALAIS ===
+  palais:
+    build:
+      context: /opt/{{ project_name }}/palais-app
+      dockerfile: Dockerfile
+    container_name: {{ project_name }}_palais
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - {{ palais_config_dir }}/palais.env
+    networks:
+      - frontend
+      - backend
+    volumes:
+      - {{ palais_data_dir }}/deliverables:/data/deliverables
+      - {{ palais_data_dir }}/avatars:/data/avatars
+    deploy:
+      resources:
+        limits:
+          memory: {{ palais_memory_limit }}
+          cpus: "{{ palais_cpu_limit }}"
+        reservations:
+          memory: {{ palais_memory_reservation }}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:{{ palais_port }}/api/health').then(r=>{if(!r.ok)throw 1})"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # === MONITORING LAYER ===
   cadvisor:
     image: {{ cadvisor_image }}

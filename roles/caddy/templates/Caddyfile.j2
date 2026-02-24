@@ -269,6 +269,15 @@ BOOTSTRAP 200
 }
 {% endif %}
 
+# === Palais — Cockpit IA Afrofuturiste ===
+{{ caddy_palais_domain }} {
+    import vpn_only
+    import vpn_error_page
+    import security_headers
+
+    reverse_proxy palais:{{ palais_port | default(3300) }}
+}
+
 # === Sure (personal finance) — dedicated subdomain (nzimbu) ===
 {% if sure_subdomain | default('') | length > 0 %}
 {{ caddy_sure_domain }} {

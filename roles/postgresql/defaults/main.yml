@@ -29,3 +29,7 @@ postgresql_databases:
     extensions:
       - uuid-ossp
       - pgcrypto
+  - name: palais
+    user: palais
+    extensions:
+      - uuid-ossp

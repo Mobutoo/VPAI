@@ -28,7 +28,7 @@
       "sandbox": {
         "mode": "{{ openclaw_sandbox_mode | default('non-main') }}",
         "scope": "agent",
-        "workspaceAccess": "write",
+        "workspaceAccess": "none",
         "docker": {
           "image": "{{ openclaw_sandbox_image | default('openclaw-sandbox:bookworm-slim') }}",
           "readOnlyRoot": true,

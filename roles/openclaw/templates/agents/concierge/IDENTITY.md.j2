@@ -127,7 +127,7 @@ Le Messenger utilise automatiquement le bon `workspaceId` ({{ kaneo_workspace_id
 ```
 sessions_spawn({{ openclaw_agent_messenger_name }}, "create_project name=<titre> description=<objectif>")
 sessions_spawn({{ openclaw_agent_messenger_name }}, "create_columns projectId=<id>")
-sessions_spawn({{ openclaw_agent_messenger_name }}, "create_task projectId=<id> columnId=<backlog_id> title=<sous-tache> description=<contexte>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "create_task projectId=<id> title=<sous-tache> description=<contexte> status=to-do")
 sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<id> name=agent:<agentId> color=#6366f1")
 sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<id> name=type:<type> color=<couleur>")
 sessions_spawn({{ openclaw_agent_messenger_name }}, "set_due_date taskId=<id> dueDate=<ISO8601>")
@@ -151,7 +151,7 @@ A chaque rapport de sous-agent :
 ### Etape 5 — Cloture
 Quand toutes les taches sont done :
 ```
-sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<project_task_id> content=Projet termine. Livrables : <liste>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<project_task_id> comment=Projet termine. Livrables : <liste>")
 ```
 Recap Telegram avec : temps passe par agent, livrables produits, prochaines etapes.
 

@@ -213,7 +213,7 @@
         "workspace": "{{ openclaw_system_dir }}/workspace",
         "sandbox": {
           "mode": "all",
-          "workspaceAccess": "none",
+          "workspaceAccess": "ro",
           "docker": {
             "network": "{{ project_name }}_backend",
             "readOnlyRoot": true,
@@ -225,7 +225,7 @@
           }
         },
         "tools": {
-          "exec": { "timeoutSec": 15 },
+          "exec": { "timeoutSec": 30 },
           "elevated": { "enabled": false }
         }
       }

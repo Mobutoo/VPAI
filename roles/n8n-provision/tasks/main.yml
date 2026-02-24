@@ -175,6 +175,7 @@
     - budget-control
     - github-autofix
     - kaneo-agents-sync
+    - kaneo-sync
     - stack-health
     - asset-register
     - opencut-control
@@ -220,6 +221,7 @@
     - {file: "budget-control", name: "Budget Control"}
     - {file: "github-autofix", name: "GitHub Auto-Fix"}
     - {file: "kaneo-agents-sync", name: "Kaneo Agents Sync"}
+    - {file: "kaneo-sync", name: "Kaneo Sync Safety Net"}
     - {file: "stack-health", name: "Stack Health Check"}
     - {file: "creative-pipeline", name: "Creative Pipeline"}
     - {file: "asset-register", name: "Asset Register"}

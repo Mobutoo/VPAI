@@ -66,6 +66,7 @@
 	// ── Period-aware gauge data ───────────────────────────────────────────────
 	const PERIOD_LABELS: Record<Period, string> = { day: 'JOURNALIER', week: 'HEBDOMADAIRE', month: 'MENSUEL' };
 	const PERIOD_MULTIPLIERS: Record<Period, number> = { day: 1, week: 7, month: 30 };
+	const PERIOD_SUFFIXES: Record<Period, string> = { day: '/jour', week: '/sem', month: '/mois' };
 
 	let periodSpend = $derived((() => {
 		if (!data) return 0;
@@ -221,7 +222,7 @@
 						{PERIOD_LABELS[period]}
 					</p>
 					<p class="text-xs mt-0.5" style="color: var(--palais-text-muted); font-size: 0.65rem;">
-						Limite : {fmtCost(data.today.dailyLimit)}/jour
+						Limite : {fmtCost(periodLimit)}{PERIOD_SUFFIXES[period]}
 					</p>
 				</div>
 			</div>

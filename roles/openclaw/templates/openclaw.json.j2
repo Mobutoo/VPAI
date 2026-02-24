@@ -20,7 +20,7 @@
   },
   "agents": {
     "defaults": {
-      "workspace": "/home/node/.openclaw/workspace",
+      "workspace": "{{ openclaw_system_dir }}/workspace",
       "userTimezone": "{{ timezone }}",
       "model": {
         "primary": "{{ openclaw_default_model }}"
@@ -60,7 +60,7 @@
         "model": {
           "primary": "{{ openclaw_concierge_model }}"
         },
-        "workspace": "/home/node/.openclaw/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace",
         "subagents": {
           "allowAgents": [
             "{{ openclaw_agent_builder_name }}",
@@ -84,7 +84,7 @@
         "model": {
           "primary": "{{ openclaw_builder_model }}"
         },
-        "workspace": "/home/node/.openclaw/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace",
         "subagents": {
           "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
         },
@@ -102,7 +102,7 @@
         "model": {
           "primary": "{{ openclaw_writer_model }}"
         },
-        "workspace": "/home/node/.openclaw/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace",
         "subagents": {
           "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
         },
@@ -116,7 +116,7 @@
         "model": {
           "primary": "{{ openclaw_artist_model }}"
         },
-        "workspace": "/home/node/.openclaw/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace",
         "subagents": {
           "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
         },
@@ -130,7 +130,7 @@
         "model": {
           "primary": "{{ openclaw_tutor_model }}"
         },
-        "workspace": "/home/node/.openclaw/workspace/tutor",
+        "workspace": "{{ openclaw_system_dir }}/workspace/tutor",
         "subagents": {
           "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
         },
@@ -144,7 +144,7 @@
         "model": {
           "primary": "{{ openclaw_explorer_model }}"
         },
-        "workspace": "/home/node/.openclaw/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace",
         "sandbox": {
           "mode": "all",
           "docker": {
@@ -164,7 +164,7 @@
         "model": {
           "primary": "{{ openclaw_marketer_model }}"
         },
-        "workspace": "/home/node/.openclaw/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace",
         "subagents": {
           "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
         },
@@ -178,7 +178,7 @@
         "model": {
           "primary": "{{ openclaw_cfo_model }}"
         },
-        "workspace": "/home/node/.openclaw/workspace/finance",
+        "workspace": "{{ openclaw_system_dir }}/workspace/finance",
         "subagents": {
           "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
         },
@@ -192,7 +192,7 @@
         "model": {
           "primary": "{{ openclaw_maintainer_model }}"
         },
-        "workspace": "/home/node/.openclaw/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace",
         "subagents": {
           "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
         },
@@ -210,7 +210,7 @@
         "model": {
           "primary": "{{ openclaw_messenger_model }}"
         },
-        "workspace": "/home/node/.openclaw/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace",
         "sandbox": {
           "mode": "all",
           "workspaceAccess": "none",

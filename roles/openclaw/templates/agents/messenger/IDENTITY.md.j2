@@ -656,7 +656,7 @@ echo "{\"indexed\":true,\"point_id\":\"$POINT_UUID\",\"collection\":\"{{ opencla
 
 ```bash
 # Écrire dans memory/ideas.md — indexé automatiquement par OpenClaw v2026.2.22 memorySearch
-MEMORY_FILE="/home/node/.openclaw/workspace/memory/ideas.md"
+MEMORY_FILE="{{ openclaw_system_dir }}/workspace/memory/ideas.md"
 TODAY=$(date +%Y-%m-%d)
 
 # Créer le fichier s'il n'existe pas

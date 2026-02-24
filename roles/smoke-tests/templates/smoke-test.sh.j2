@@ -313,7 +313,7 @@ echo ""
 # === VOLUME ISOLATION ===
 echo "--- OpenClaw Volume Isolation ---"
 # Test agents directory is persistent (mounted as volume)
-AGENT_DIR=$(docker exec "${PROJECT}_openclaw" ls /home/node/.openclaw/agents/concierge/IDENTITY.md 2>&1) && AGENT_OK=1 || AGENT_OK=0
+AGENT_DIR=$(docker exec "${PROJECT}_openclaw" ls {{ openclaw_system_dir }}/agents/concierge/IDENTITY.md 2>&1) && AGENT_OK=1 || AGENT_OK=0
 if [ "${AGENT_OK}" -eq 1 ]; then
   echo "PASS  OpenClaw agents directory mounted (concierge/IDENTITY.md exists)"
 else
@@ -321,9 +321,9 @@ else
 fi
 
 # Test workspace is writable
-TOUCH_WS=$(docker exec "${PROJECT}_openclaw" touch /home/node/.openclaw/workspace/test_rw 2>&1) && WS_OK=1 || WS_OK=0
+TOUCH_WS=$(docker exec "${PROJECT}_openclaw" touch {{ openclaw_system_dir }}/workspace/test_rw 2>&1) && WS_OK=1 || WS_OK=0
 if [ "${WS_OK}" -eq 1 ]; then
-  docker exec "${PROJECT}_openclaw" rm -f /home/node/.openclaw/workspace/test_rw 2>/dev/null || true
+  docker exec "${PROJECT}_openclaw" rm -f {{ openclaw_system_dir }}/workspace/test_rw 2>/dev/null || true
   echo "PASS  OpenClaw workspace directory is writable"
 else
   echo "FAIL  OpenClaw workspace directory is not writable"

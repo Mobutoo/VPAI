@@ -19,7 +19,7 @@
 8. [Grafana](#8-grafana)
 9. [n8n 2.0+](#9-n8n-20)
 10. [LiteLLM](#10-litellm)
-11. [OpenClaw](#11-openclaw) — 11.16 workspaceAccess · 11.17 provider openai direct · 11.18 handler recreate · 11.19 heartbeat/cron · 11.20 status slugs · 11.21 external-link read-only · 11.22 comment field
+11. [OpenClaw](#11-openclaw) — 11.16 workspaceAccess · 11.17 provider openai direct · 11.18 handler recreate · 11.19 heartbeat/cron · 11.20 status slugs · 11.21 external-link read-only · 11.22 comment field · 11.23 sandbox DinD ENOENT
 12. [Reseau & VPN](#12-reseau--vpn)
 13. [Systeme & Debian 13](#13-systeme--debian-13)
 
@@ -1069,6 +1069,36 @@ Lire avec `GET /api/activity?taskId=<id>` et filtrer les commentaires `[DELIVERA
 ```
 
 **Fichiers impactes** : IDENTITY messenger, workflows n8n (code-review, error-to-task).
+
+---
+
+### 11.23 Sandbox DinD — AGENTS.md/TOOLS.md/BOOTSTRAP.md ENOENT
+
+**Symptome** : Sub-agents (messenger, builder, etc.) ne peuvent pas lire `AGENTS.md`, `TOOLS.md`, `BOOTSTRAP.md` dans leur sandbox. Logs :
+```
+[tools] read failed: Sandbox FS error (ENOENT): /home/node/.openclaw/sandboxes/agent-messenger-XXXX/AGENTS.md
+```
+
+**Cause** : Docker-in-Docker (DooD) path mismatch. Le Gateway OpenClaw ecrit les fichiers sandbox dans son filesystem containerise (`/home/node/.openclaw/sandboxes/`). Quand il spawn le sandbox container avec `-v /home/node/.openclaw/sandboxes/agent-X:/workspace`, Docker daemon resout ce path sur le **HOST** — ou il n'existe pas (le vrai path host est `/opt/<project>/data/openclaw/system/sandboxes/agent-X`).
+
+**Fix** : Monter le volume OpenClaw en "identity mount" — le path container = le path host :
+```yaml
+# docker-compose.yml — avant (broken)
+- /opt/javisi/data/openclaw/system:/home/node/.openclaw
+
+# docker-compose.yml — apres (fixed)
+- /opt/javisi/data/openclaw/system:/opt/javisi/data/openclaw/system
+```
+Et adapter `OPENCLAW_STATE_DIR` dans `openclaw.env` pour pointer vers le path host (`/opt/<project>/data/openclaw/system`).
+
+**Fichiers modifies** : `docker-compose.yml.j2`, `openclaw.env.j2`, `openclaw.json.j2` (workspace paths).
+
+**Verification** :
+```bash
+# Dans le sandbox, les fichiers doivent etre visibles
+docker exec openclaw-sbx-agent-messenger-XXXX ls /workspace/AGENTS.md
+# Attendu : /workspace/AGENTS.md (pas ENOENT)
+```
 
 ---
 

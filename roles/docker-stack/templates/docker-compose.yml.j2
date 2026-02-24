@@ -94,14 +94,17 @@ services:
       - /opt/{{ project_name }}/configs/openclaw/openclaw.env
     volumes:
 {% if openclaw_volume_isolation | default(false) %}
-      # Volume isolation: system dir as base (rw — OpenClaw writes .tmp files)
-      # Workspace and state subdirs override specific paths from host
-      - {{ openclaw_system_dir }}:/home/node/.openclaw
-      - {{ openclaw_workspace_dir }}:/home/node/.openclaw/workspace
-      - {{ openclaw_state_dir }}/sessions:/home/node/.openclaw/sessions
-      - {{ openclaw_state_dir }}/canvas:/home/node/.openclaw/canvas
-      - {{ openclaw_state_dir }}/cron:/home/node/.openclaw/cron
-      - {{ openclaw_state_dir }}/memory:/home/node/.openclaw/memory
+      # Volume isolation with Docker-in-Docker (DooD) path identity.
+      # OpenClaw spawns sandbox containers via Docker socket. Sandbox bind-mount
+      # paths use OPENCLAW_STATE_DIR as base. Docker daemon resolves these on the
+      # HOST — so container paths MUST equal host paths for mounts to work.
+      # The system dir is mounted at its own host path (identity mount).
+      - {{ openclaw_system_dir }}:{{ openclaw_system_dir }}
+      - {{ openclaw_workspace_dir }}:{{ openclaw_system_dir }}/workspace
+      - {{ openclaw_state_dir }}/sessions:{{ openclaw_system_dir }}/sessions
+      - {{ openclaw_state_dir }}/canvas:{{ openclaw_system_dir }}/canvas
+      - {{ openclaw_state_dir }}/cron:{{ openclaw_system_dir }}/cron
+      - {{ openclaw_state_dir }}/memory:{{ openclaw_system_dir }}/memory
 {% else %}
       - /opt/{{ project_name }}/data/openclaw:/home/node/.openclaw
 {% endif %}

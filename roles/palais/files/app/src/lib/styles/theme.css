@@ -1,0 +1,37 @@
+/*
+ * Palais Design System — Afrofuturist Theme
+ * Inspired by Wakanda HQ, Shuri's Lab, Kuba patterns
+ */
+
+:root {
+	/* Core palette */
+	--palais-bg: #0A0A0F;
+	--palais-surface: #111118;
+	--palais-surface-hover: #1A1A24;
+	--palais-border: #2A2A3A;
+
+	/* Accent colors */
+	--palais-gold: #D4A843;
+	--palais-gold-glow: rgba(212, 168, 67, 0.2);
+	--palais-amber: #E8833A;
+	--palais-cyan: #4FC3F7;
+	--palais-green: #4CAF50;
+	--palais-red: #E53935;
+
+	/* Text */
+	--palais-text: #E8E6E3;
+	--palais-text-muted: #8A8A9A;
+
+	/* Shadows */
+	--palais-glow-sm: 0 0 8px rgba(212, 168, 67, 0.15);
+	--palais-glow-md: 0 0 16px rgba(212, 168, 67, 0.2);
+	--palais-glow-lg: 0 0 32px rgba(212, 168, 67, 0.25);
+
+	/* Radii */
+	--palais-radius-sm: 6px;
+	--palais-radius-md: 10px;
+	--palais-radius-lg: 16px;
+
+	/* Transitions */
+	--palais-transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}

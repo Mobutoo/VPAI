@@ -15,7 +15,8 @@
 		"db:seed": "tsx scripts/seed-agents.ts",
 		"db:push": "drizzle-kit push",
 		"db:generate": "drizzle-kit generate",
-		"db:migrate": "drizzle-kit migrate"
+		"db:migrate": "drizzle-kit migrate",
+		"test:mcp": "tsx scripts/test-mcp.ts"
 	},
 	"dependencies": {
 		"@tiptap/core": "^3.20.0",

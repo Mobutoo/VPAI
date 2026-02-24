@@ -351,3 +351,11 @@ general_settings:
   # Perplexity Sonar Pro seul a coûté $11.64 en 16h (1488 health checks à $0.01/check).
   # Désactivé globalement — pannes détectées via fallbacks et métriques Prometheus.
   health_check_interval: 0
+  # Credit error alerting — webhook → n8n → Telegram (monitoring bot)
+  # alert_types limite au strict nécessaire : llm_exceptions (402/RateLimit) + budget_alerts
+  # Le workflow n8n filtre en plus les patterns crédit avant d'envoyer (double filtre).
+  alerting: ["webhook"]
+  alerting_webhook_url: "http://n8n:5678/webhook/litellm-credit-alert"
+  alert_types:
+    - "llm_exceptions"
+    - "budget_alerts"

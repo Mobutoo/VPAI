@@ -1,0 +1,117 @@
+{
+  "name": "litellm-credit-alert",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "litellm-credit-alert",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ca-0001-0000-0000-0000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "litellm-credit-alert"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-credit",
+              "leftValue": "={{ $json.body.event_message ?? '' }}",
+              "rightValue": "credit|quota|402|budget|RateLimit|rate_limit|insufficient|AuthenticationError",
+              "operator": {
+                "type": "string",
+                "operation": "regex"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "ca-0001-0000-0000-0000-000000000002",
+      "name": "Est erreur credit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst msg = body.event_message || '';\nconst alertType = body.alert_type || 'unknown';\nconst model = body.model || 'N/A';\nconst ts = body.time_stamp ? new Date(body.time_stamp).toLocaleString('fr-FR', {timeZone: 'Europe/Paris'}) : new Date().toLocaleString('fr-FR', {timeZone: 'Europe/Paris'});\n\n// Detecter le provider depuis le message\nlet provider = 'Unknown';\nif (msg.toLowerCase().includes('anthropic')) provider = 'Anthropic';\nelse if (msg.toLowerCase().includes('openrouter')) provider = 'OpenRouter';\nelse if (msg.toLowerCase().includes('openai')) provider = 'OpenAI';\nelse if (msg.toLowerCase().includes('budget')) provider = 'LiteLLM (budget global)';\nelse if (alertType === 'budget_alerts') provider = 'LiteLLM (budget global)';\n\n// Tronquer le message\nconst msgShort = msg.length > 200 ? msg.substring(0, 200) + '...' : msg;\n\n// Construire le message Telegram\nconst text = `\u26a0\ufe0f <b>ALERTE CREDIT PROVIDER</b>\\n\\n` +\n  `<b>Provider</b> : ${provider}\\n` +\n  `<b>Type</b>    : ${alertType}\\n` +\n  `<b>Modele</b>  : ${model}\\n` +\n  `<b>Erreur</b>  : <code>${msgShort}</code>\\n` +\n  `<b>Heure</b>   : ${ts}\\n\\n` +\n  `-> Verifier le dashboard provider et recharger si necessaire`;\n\nreturn [{ json: { text } }];\n"
+      },
+      "id": "ca-0001-0000-0000-0000-000000000003",
+      "name": "Formater alerte",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text",    "value": "={{ $json.text }}" },
+            { "name": "parse_mode", "value": "HTML" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ca-0001-0000-0000-0000-000000000004",
+      "name": "Telegram Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"ok\": true }"
+      },
+      "id": "ca-0001-0000-0000-0000-000000000005",
+      "name": "HTTP Response OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [700, 420]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Est erreur credit?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Est erreur credit?": {
+      "main": [
+        [{ "node": "Formater alerte",  "type": "main", "index": 0 }],
+        [{ "node": "HTTP Response OK", "type": "main", "index": 0 }]
+      ]
+    },
+    "Formater alerte": {
+      "main": [
+        [{ "node": "Telegram Alert",   "type": "main", "index": 0 }]
+      ]
+    },
+    "Telegram Alert": {
+      "main": [
+        [{ "node": "HTTP Response OK", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "tags": [{ "name": "monitoring" }],
+  "triggerCount": 0,
+  "versionId": "ca-0001-0000-0000-0000-000000000000"
+}

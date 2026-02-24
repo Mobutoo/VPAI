@@ -182,6 +182,7 @@
     - code-review
     - error-to-task
     - project-status
+    - litellm-credit-alert
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Check workflow update status (checksum comparison)
@@ -230,6 +231,7 @@
     - {file: "error-to-task", name: "OpenClaw Error to Task"}
     - {file: "project-status", name: "OpenClaw Project Status"}
     - {file: "plan-dispatch", name: "OpenClaw Plan Dispatch"}
+    - {file: "litellm-credit-alert", name: "LiteLLM Credit Alert"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -410,6 +412,7 @@
     - {file: "error-to-task", name: "OpenClaw Error to Task"}
     - {file: "project-status", name: "OpenClaw Project Status"}
     - {file: "plan-dispatch", name: "OpenClaw Plan Dispatch"}
+    - {file: "litellm-credit-alert", name: "LiteLLM Credit Alert"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0

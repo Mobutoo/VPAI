@@ -28,7 +28,7 @@
       "sandbox": {
         "mode": "{{ openclaw_sandbox_mode | default('non-main') }}",
         "scope": "agent",
-        "workspaceAccess": "none",
+        "workspaceAccess": "rw",
         "docker": {
           "image": "{{ openclaw_sandbox_image | default('openclaw-sandbox:bookworm-slim') }}",
           "readOnlyRoot": true,
@@ -213,6 +213,7 @@
         "workspace": "/home/node/.openclaw/workspace",
         "sandbox": {
           "mode": "all",
+          "workspaceAccess": "none",
           "docker": {
             "network": "{{ project_name }}_backend",
             "readOnlyRoot": true,

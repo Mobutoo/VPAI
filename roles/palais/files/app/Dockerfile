@@ -7,6 +7,9 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
+# DATABASE_URL required by SvelteKit SSR analysis at build time (lazy postgres pool, no actual connection)
+ARG DATABASE_URL=postgresql://build:build@localhost:5432/build
+ENV DATABASE_URL=$DATABASE_URL
 RUN npm run build
 RUN npm prune --omit=dev
 

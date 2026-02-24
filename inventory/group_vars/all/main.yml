@@ -210,6 +210,9 @@ kaneo_agents_password: "{{ vault_kaneo_agents_password | default('') }}"
 # Find via: docker exec <pg> psql -U kaneo -d kaneo -t -c "SELECT id FROM workspace LIMIT 1;"
 kaneo_workspace_id: "{{ vault_kaneo_workspace_id | default('') }}"
 
+# === PALAIS ===
+palais_subdomain: "palais"
+
 # Sure (personal finance)
 sure_subdomain: "nzimbu"
 

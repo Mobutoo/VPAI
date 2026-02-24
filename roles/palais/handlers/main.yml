@@ -1,0 +1,22 @@
+---
+- name: Check palais service is in compose file
+  ansible.builtin.command:
+    cmd: "grep -q palais /opt/{{ project_name }}/docker-compose.yml"
+  register: _palais_in_compose
+  failed_when: false
+  changed_when: false
+  listen: Restart palais
+
+- name: Restart palais container
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - palais
+    state: restarted
+  become: true
+  when:
+    - not ansible_check_mode
+    - _palais_in_compose.rc | default(1) == 0
+  listen: Restart palais

@@ -12,6 +12,7 @@ caddy_litellm_domain: "{{ litellm_subdomain | default('') }}.{{ domain_name }}"
 caddy_qdrant_domain: "{{ qdrant_subdomain | default('') }}.{{ domain_name }}"
 caddy_kaneo_domain: "{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}"
 caddy_sure_domain: "{{ sure_subdomain | default('nzimbu') }}.{{ domain_name }}"
+caddy_palais_domain: "{{ palais_subdomain | default('palais') }}.{{ domain_name }}"
 caddy_vpn_cidr: "{{ vpn_network_cidr }}"
 # REX: Docker bridge frontend (172.20.1.0/24) — gateway utilisé par DNAT pour HTTP/3 (QUIC/UDP).
 # Connexions Tailscale via HTTP/3 arrivent avec client_ip=172.20.1.1 (gateway Docker).

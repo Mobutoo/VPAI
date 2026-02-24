@@ -1,0 +1,46 @@
+---
+# Palais — Defaults (overridable)
+
+# Directories
+palais_config_dir: "/opt/{{ project_name }}/configs/palais"
+palais_data_dir: "/opt/{{ project_name }}/data/palais"
+palais_app_dir: "{{ role_path }}/files/app"
+
+# Network
+palais_port: 3300
+palais_subdomain: "palais"
+
+# Database
+palais_db_name: "palais"
+palais_db_user: "palais"
+palais_db_password: "{{ vault_palais_db_password | default(postgresql_password) }}"
+
+# Qdrant
+palais_qdrant_collection: "palais_memory"
+palais_qdrant_vector_size: 1536
+
+# Auth
+palais_api_key: "{{ vault_palais_api_key | default('changeme') }}"
+palais_admin_password: "{{ vault_palais_admin_password | default('admin') }}"
+palais_session_secret: "{{ vault_palais_session_secret | default('changeme') }}"
+
+# Resources
+palais_memory_limit: "192M"
+palais_memory_reservation: "128M"
+palais_cpu_limit: "0.75"
+
+# Standup
+palais_standup_hour: "08"
+
+# Agents (same as OpenClaw)
+palais_agents:
+  - { id: "concierge", name: "Mobutoo", persona: "Chef d'orchestre" }
+  - { id: "builder", name: "Imhotep", persona: "Architecte & Ingenieur" }
+  - { id: "writer", name: "Thot", persona: "Redacteur & Scribe" }
+  - { id: "artist", name: "Basquiat", persona: "Directeur Artistique" }
+  - { id: "tutor", name: "Piccolo", persona: "Tuteur & Formateur" }
+  - { id: "explorer", name: "R2D2", persona: "Explorateur & Recherche" }
+  - { id: "marketer", name: "Marketer", persona: "Marketing & Growth" }
+  - { id: "cfo", name: "CFO", persona: "Directeur Financier" }
+  - { id: "maintainer", name: "Maintainer", persona: "DevOps & Maintenance" }
+  - { id: "messenger", name: "Hermes", persona: "Pont inter-systemes" }

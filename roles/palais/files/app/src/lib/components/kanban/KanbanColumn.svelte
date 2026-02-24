@@ -11,6 +11,7 @@
 			id: number; columnId: number; title: string; priority: string | null;
 			assigneeAgentId: string | null; confidenceScore: number | null;
 			estimatedCost: number | null; actualCost: number | null; position: number | null;
+			status: string | null; agentStatus: string | null;
 		}>;
 	} = $props();
 

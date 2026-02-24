@@ -6,7 +6,7 @@
 		id: number; columnId: number; title: string; priority: string | null;
 		assigneeAgentId: string | null; confidenceScore: number | null;
 		estimatedCost: number | null; actualCost: number | null; position: number | null;
-		description?: string | null; status?: string | null;
+		description?: string | null; status?: string | null; agentStatus?: string | null;
 	};
 
 	let { task }: { task: Task } = $props();

@@ -8,7 +8,7 @@
 			id: number; columnId: number; title: string; priority: string | null;
 			assigneeAgentId: string | null; confidenceScore: number | null;
 			estimatedCost: number | null; actualCost: number | null; position: number | null;
-			status: string | null;
+			status: string | null; agentStatus: string | null;
 		};
 	} = $props();
 
@@ -163,8 +163,15 @@
 		{/if}
 
 		{#if task.assigneeAgentId}
-			<span class="text-xs px-1 py-0.5 rounded"
-				style="background: var(--palais-surface); color: var(--palais-text-muted); font-size: 0.65rem; font-family: 'JetBrains Mono', monospace;">
+			{@const presenceColor = task.agentStatus === 'busy' ? 'var(--palais-green)'
+				: task.agentStatus === 'idle' ? 'var(--palais-cyan)'
+				: task.agentStatus === 'error' ? 'var(--palais-red)'
+				: 'var(--palais-border)'}
+			<span class="flex items-center gap-1 px-1 py-0.5 rounded"
+				style="background: var(--palais-surface); color: var(--palais-text-muted); font-size: 0.65rem; font-family: 'JetBrains Mono', monospace;"
+				title="Agent: {task.agentStatus ?? 'offline'}"
+			>
+				<span style="width: 5px; height: 5px; border-radius: 50%; background: {presenceColor}; display: inline-block; flex-shrink: 0; {task.agentStatus === 'busy' ? 'box-shadow: 0 0 4px ' + presenceColor + ';' : ''}"></span>
 				@{task.assigneeAgentId.split('-')[0]}
 			</span>
 		{/if}

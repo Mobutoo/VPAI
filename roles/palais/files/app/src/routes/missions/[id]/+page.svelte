@@ -141,7 +141,7 @@
 			{#if messages.length === 0}
 				<div class="flex flex-col items-center justify-center flex-1 gap-3 text-center">
 					{#if initializing}
-						<p class="text-2xl">🤖</p>
+						<p class="text-2xl">🧠</p>
 						<p class="text-sm" style="color: var(--palais-cyan);">
 							Analyse du brief en cours…
 						</p>
@@ -152,7 +152,7 @@
 							{/each}
 						</div>
 					{:else}
-						<p class="text-2xl">🤖</p>
+						<p class="text-2xl">🧠</p>
 						<p class="text-sm" style="color: var(--palais-text-muted);">
 							Initialisation du brainstorming…
 						</p>
@@ -169,7 +169,7 @@
 							"
 						>
 							{#if msg.role === 'assistant'}
-								<span class="text-xs font-medium block mb-1" style="color: var(--palais-cyan);">🤖 Planificateur</span>
+								<span class="text-xs font-medium block mb-1" style="color: var(--palais-cyan);">🧠 Mobutoo</span>
 							{/if}
 							<p style="white-space: pre-wrap; line-height: 1.5;">{msg.content}</p>
 							<p class="text-xs mt-1" style="color: var(--palais-text-muted);">
@@ -182,7 +182,7 @@
 					<div class="flex justify-start">
 						<div class="rounded-xl px-4 py-2.5"
 							style="background: var(--palais-bg); border: 1px solid var(--palais-border);">
-							<span class="text-xs" style="color: var(--palais-text-muted);">🤖 {initializing ? 'analyse le brief…' : 'thinking…'}</span>
+							<span class="text-xs" style="color: var(--palais-text-muted);">🧠 {initializing ? 'analyse le brief…' : 'thinking…'}</span>
 						</div>
 					</div>
 				{/if}

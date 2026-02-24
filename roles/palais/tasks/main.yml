@@ -1,0 +1,50 @@
+---
+# Palais — Main tasks
+
+- name: Create palais config directory
+  ansible.builtin.file:
+    path: "{{ palais_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  become: true
+  tags: [palais]
+
+- name: Create palais data directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0750"
+  become: true
+  loop:
+    - "{{ palais_data_dir }}"
+    - "{{ palais_data_dir }}/deliverables"
+    - "{{ palais_data_dir }}/avatars"
+  tags: [palais]
+
+- name: Deploy palais environment file
+  ansible.builtin.template:
+    src: palais.env.j2
+    dest: "{{ palais_config_dir }}/palais.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0640"
+  become: true
+  notify: Restart palais
+  tags: [palais]
+
+- name: Copy palais application source
+  ansible.posix.synchronize:
+    src: "{{ palais_app_dir }}/"
+    dest: "/opt/{{ project_name }}/palais-app/"
+    delete: true
+    rsync_opts:
+      - "--exclude=node_modules"
+      - "--exclude=.svelte-kit"
+      - "--exclude=build"
+  become: true
+  notify: Restart palais
+  tags: [palais]

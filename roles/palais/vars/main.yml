@@ -1,0 +1,3 @@
+---
+# Palais — Fixed vars (not overridable)
+palais_container_name: "{{ project_name }}_palais"

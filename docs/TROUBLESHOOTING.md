@@ -1298,6 +1298,103 @@ dans le `handle_errors` du site.
 
 ---
 
+## 14. Palais (SvelteKit Dashboard)
+
+### 14.1 Deploy bloqué — ansible.builtin.copy copie node_modules (204MB)
+
+**Symptome** : `make deploy-role ROLE=palais` bloqué 10+ minutes sur `TASK [palais : Copy palais application source]`, aucune sortie.
+
+**Cause** : `ansible.builtin.copy` avec `src: "{{ palais_app_dir }}/"` copie TOUT le répertoire y compris `node_modules` (204MB, ~40 000 fichiers). Ansible calcule un checksum pour chaque fichier via SSH → extrêmement lent. Or le Dockerfile fait `npm ci` lui-même, donc copier `node_modules` est inutile.
+
+**Fix** : Remplacer `ansible.builtin.copy` par `ansible.posix.synchronize` avec exclusions :
+
+```yaml
+- name: Ensure palais app directory is writable by deploy user
+  ansible.builtin.file:
+    path: "/opt/{{ project_name }}/palais-app"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [palais]
+
+- name: Sync palais application source
+  ansible.posix.synchronize:
+    src: "{{ palais_app_dir }}/"
+    dest: "/opt/{{ project_name }}/palais-app/"
+    rsync_opts:
+      - "--exclude=node_modules"
+      - "--exclude=.svelte-kit"
+      - "--exclude=build"
+    delete: true
+    dest_port: "{{ prod_ssh_port | int }}"
+  notify: Restart palais
+  tags: [palais]
+```
+
+**Résultat** : Copie 400KB de sources au lieu de 204MB → deploy en ~5s au lieu de timeout.
+
+**Règle** : Pour tout rôle avec un `Dockerfile` qui fait `npm ci`, ne jamais copier `node_modules` via Ansible.
+
+---
+
+### 14.2 ansible.posix.synchronize — dest_port non résolu (Jinja2 template dans ansible_port)
+
+**Symptome** :
+```
+argument 'dest_port' is of type str and we were unable to convert to int:
+"'{{ ansible_port_override | default(prod_ssh_port) }}'" cannot be converted to an int
+```
+
+**Cause** : `ansible_port` dans `inventory/hosts.yml` est défini comme template Jinja2 (`{{ ansible_port_override | default(prod_ssh_port) }}`). Le module `synchronize` lit cette valeur avant résolution complète → reçoit la chaîne brute.
+
+**Fix** : Spécifier `dest_port` explicitement avec la variable source résolue en entier :
+
+```yaml
+ansible.posix.synchronize:
+  dest_port: "{{ prod_ssh_port | int }}"  # Pas ansible_port, mais prod_ssh_port directement
+```
+
+---
+
+### 14.3 ansible.posix.synchronize + --rsync-path=sudo rsync — echec sudo
+
+**Symptome** :
+```
+sudo: unrecognized option '--server'
+rsync error: error in rsync protocol data stream (code 12)
+```
+
+**Cause** : `--rsync-path=sudo rsync` passe `sudo rsync --server ...` au shell remote. Certaines versions de sudo interprètent `--server` comme une option sudo au lieu de l'argument de la commande `rsync`.
+
+**Fix** : Ne pas utiliser `--rsync-path=sudo rsync`. Créer le répertoire destination owned par `prod_user` (avec `become: true`) AVANT le sync, puis lancer `synchronize` sans `become` ni `--rsync-path`. Le rsync remote s'exécute en tant que `prod_user` qui a les droits en écriture.
+
+---
+
+### 14.4 SvelteKit + Drizzle ORM — position: number | null dans les composants
+
+**Symptome** :
+```
+Type 'number | null' is not assignable to type 'number'.
+Type 'null' is not assignable to type 'number'.
+```
+Au niveau du passage de `data.tasks` (Drizzle) → `<KanbanBoard tasks={data.tasks}>`.
+
+**Cause** : Drizzle ORM retourne `position: number | null` (colonne nullable en DB), mais les types locaux des composants Svelte déclaraient `position: number`.
+
+**Fix** : Mettre `position: number | null` dans TOUS les types de composants qui reçoivent des tasks (KanbanBoard, KanbanColumn, TaskCard, TaskDetail). Adapter les tris :
+
+```typescript
+// Avant (crash TypeScript)
+.sort((a, b) => a.position - b.position)
+
+// Après
+.sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+```
+
+---
+
 ## Commandes de Diagnostic Rapide
 
 ```bash

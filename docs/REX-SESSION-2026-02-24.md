@@ -166,7 +166,8 @@ Tous les agents utilisent `openai/gpt-4o-mini` (OpenAI direct, bypass LiteLLM).
 |---|---|
 | Test spawn end-to-end via Telegram | 🔄 En cours |
 | Vérification Kaneo task tracking | 🔄 En cours |
-| Credit error alerting (LiteLLM webhook + IDENTITY.md) | 📋 Planifié — `docs/plans/2026-02-24-credit-error-alerting.md` |
+| Credit error alerting (LiteLLM webhook + IDENTITY.md) | ✅ Livré — commit `cf88df9` |
+| Palais Phase 3 — Kanban board complet | ✅ Livré — commits `85f8c16` + fixes deploy |
 
 ---
 
@@ -187,9 +188,69 @@ openclaw_default_model: "openai/gpt-4o-mini"
 
 ---
 
-## Commits Session 11
+---
+
+## Phase 3 Palais — Kanban Board (session continuation)
+
+### REX-55 — Deploy palais bloqué : ansible.builtin.copy + node_modules 204MB
+
+**Symptôme** : `make deploy-role ROLE=palais` bloqué 10+ minutes sans sortie.
+
+**Cause** : `ansible.builtin.copy src="{{ palais_app_dir }}/"` copie tout y compris `node_modules` (204MB). Ansible calcule un checksum SSH par fichier → timeout. Le Dockerfile fait `npm ci` lui-même — copier `node_modules` est inutile.
+
+**Fix** : `ansible.posix.synchronize` avec `--exclude=node_modules --exclude=.svelte-kit --exclude=build`. Voir `TROUBLESHOOTING.md §14.1`.
+
+---
+
+### REX-56 — ansible.posix.synchronize : dest_port Jinja2 non résolu
+
+**Symptôme** : `argument 'dest_port' is of type str and we were unable to convert to int`.
+
+**Cause** : `ansible_port` dans hosts.yml est un template Jinja2 — `synchronize` le lit avant résolution.
+
+**Fix** : `dest_port: "{{ prod_ssh_port | int }}"` (variable source directe, pas alias). Voir `TROUBLESHOOTING.md §14.2`.
+
+---
+
+### REX-57 — --rsync-path=sudo rsync : sudo interprète --server comme option
+
+**Symptôme** : `sudo: unrecognized option '--server'`.
+
+**Cause** : Rsync envoie `sudo rsync --server ...` mais sudo interprète `--server` comme son propre argument dans certaines configs.
+
+**Fix** : Créer le répertoire destination owned par `prod_user` (`ansible.builtin.file` + `become: true`) avant le sync. Synchronize sans `become` ni `--rsync-path`. Voir `TROUBLESHOOTING.md §14.3`.
+
+---
+
+### REX-58 — SvelteKit/Drizzle ORM : position: number | null vs number
+
+**Symptôme** : `Type 'number | null' is not assignable to type 'number'` dans KanbanBoard, KanbanColumn, TaskCard, TaskDetail.
+
+**Cause** : Drizzle retourne `position: number | null` (colonne nullable) mais les composants déclaraient `position: number`.
+
+**Fix** : Mettre `position: number | null` partout + `(a.position ?? 0) - (b.position ?? 0)`. Voir `TROUBLESHOOTING.md §14.4`.
+
+---
+
+## Alerting Crédit Provider (session continuation)
+
+### Ce qui a été livré (commit cf88df9)
+
+- **`roles/litellm/templates/litellm_config.yaml.j2`** — Ajout `alerting: ["webhook"]`, `alerting_webhook_url: "http://n8n:5678/webhook/litellm-credit-alert"`, `alert_types: [llm_exceptions, budget_alerts]`
+- **`roles/openclaw/templates/agents/concierge/IDENTITY.md.j2`** — Section "Alerte Provider Credit" : patterns `402`, `credit balance too low`, `RouterRateLimitError`, `budget_limit_exceeded`
+- **`roles/n8n-provision/files/workflows/litellm-credit-alert.json`** — Workflow n8n : Webhook → IF credit pattern → Telegram
+- **`roles/n8n-provision/tasks/main.yml`** — Ajout `litellm-credit-alert` aux 3 boucles (copy, check, checksum)
+
+---
+
+## Commits Session 11 (complets)
 
 ```
+9d8e798 fix(palais): synchronize sans sudo — répertoire owned par prod_user avant rsync
+83d5e2c fix(palais): synchronize avec dest_port explicite + --rsync-path=sudo rsync
+17e6f89 fix(palais): synchronize --exclude node_modules (.svelte-kit, build) — copie 400KB au lieu de 204MB
+85f8c16 feat(palais): Phase 3 — Kanban board, TipTap, comments, activity, list view
+cf88df9 feat(monitoring): alerting crédit provider — LiteLLM webhook + n8n + IDENTITY.md
 cc53a7a fix(openclaw): workspaceAccess rw + routing marketer + messenger none
 e0e7aa4 revert(openclaw): workspaceAccess none — "write" est invalide
 a2fdb21 fix(openclaw): workspaceAccess write — (revert car invalide)

@@ -7,14 +7,16 @@
   changed_when: false
   listen: Restart palais
 
-- name: Restart palais container
+- name: Rebuild and restart palais container
   community.docker.docker_compose_v2:
     project_src: "/opt/{{ project_name }}"
     files:
       - docker-compose.yml
     services:
       - palais
-    state: restarted
+    state: present
+    recreate: always
+    build: always
   become: true
   when:
     - not ansible_check_mode

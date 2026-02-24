@@ -31,6 +31,16 @@
 				style="background: var(--palais-surface-hover); color: var(--palais-text-muted); border: 1px solid var(--palais-border);">
 				⏱ Timeline
 			</a>
+			<a href="/projects/{data.project.id}/analytics"
+				class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+				style="background: var(--palais-surface-hover); color: var(--palais-text-muted); border: 1px solid var(--palais-border);">
+				📊 Analytics
+			</a>
+			<a href="/projects/{data.project.id}/deliverables"
+				class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+				style="background: var(--palais-surface-hover); color: var(--palais-text-muted); border: 1px solid var(--palais-border);">
+				📎 Livrables
+			</a>
 			<button
 				class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
 				style="background: var(--palais-gold); color: #0A0A0F;">

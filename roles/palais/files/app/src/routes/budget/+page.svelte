@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { env } from '$env/dynamic/private';
 
 	// ── Data types ────────────────────────────────────────────────────────────
 	interface BudgetData {
@@ -96,6 +95,15 @@
 		anthropic: 'var(--palais-gold)',
 		unknown: 'var(--palais-border)'
 	};
+
+	// ── Derived chart data ────────────────────────────────────────────────────
+	let provEntries = $derived(
+		data ? Object.entries(data.byProvider).sort((a, b) => b[1] - a[1]) : []
+	);
+	let maxProv = $derived(Math.max(0.0001, ...provEntries.map(([, v]) => v)));
+	let topModels = $derived(
+		data ? [...data.byModel].sort((a, b) => b.spend - a.spend).slice(0, 5) : []
+	);
 
 	// History chart: simple SVG line
 	function historyPath(history: Array<{ date: string; spend: number }>, maxVal: number): string {
@@ -204,9 +212,7 @@
 					style="color: var(--palais-gold); font-family: 'Orbitron', sans-serif; letter-spacing: 0.06em;">
 					PAR PROVIDER
 				</p>
-				{@const provEntries = Object.entries(data.byProvider).sort((a, b) => b[1] - a[1])}
-				{@const maxProv = Math.max(0.0001, ...provEntries.map(([,v]) => v))}
-				<div class="flex flex-col gap-2">
+						<div class="flex flex-col gap-2">
 					{#each provEntries as [prov, spend]}
 						<div class="flex flex-col gap-1">
 							<div class="flex justify-between text-xs">
@@ -232,8 +238,7 @@
 					style="color: var(--palais-gold); font-family: 'Orbitron', sans-serif; letter-spacing: 0.06em;">
 					TOP MODÈLES
 				</p>
-				{@const topModels = [...data.byModel].sort((a, b) => b.spend - a.spend).slice(0, 5)}
-				<div class="flex flex-col gap-2">
+					<div class="flex flex-col gap-2">
 					{#each topModels as m}
 						<div class="flex items-center gap-2 text-xs">
 							<span class="w-2 h-2 rounded-full flex-shrink-0"

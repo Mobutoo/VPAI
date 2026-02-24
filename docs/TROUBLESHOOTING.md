@@ -19,7 +19,7 @@
 8. [Grafana](#8-grafana)
 9. [n8n 2.0+](#9-n8n-20)
 10. [LiteLLM](#10-litellm)
-11. [OpenClaw](#11-openclaw)
+11. [OpenClaw](#11-openclaw) — 11.16 workspaceAccess · 11.17 provider openai direct · 11.18 handler recreate
 12. [Reseau & VPN](#12-reseau--vpn)
 13. [Systeme & Debian 13](#13-systeme--debian-13)
 
@@ -924,6 +924,80 @@ docker exec <project>_postgresql psql -U kaneo -d kaneo -t -c \
 ```
 
 **Fix permanent** : Supprimer la tâche `Add OpenClaw agents to workspace` de `roles/kaneo/tasks/main.yml` (la déléguer uniquement au workflow n8n `kaneo-agents-sync`).
+
+---
+
+### 11.16 workspaceAccess — Valeurs Valides et Écriture Sandbox
+
+**Symptôme** : `write failed: Sandbox path is read-only; cannot create directories: /workspace`
+Les sous-agents (writer, builder) ne peuvent pas créer de fichiers dans le sandbox.
+
+**Cause** : `workspaceAccess: "none"` + `readOnlyRoot: true` = `/workspace` inaccessible en écriture.
+
+**Valeurs valides** (schéma Zod OpenClaw v2026.2.22 — enum z.union z.literal) :
+```
+"none"  → pas d'accès workspace (défaut)
+"ro"    → workspace monté en lecture seule
+"rw"    → workspace monté en lecture/écriture
+```
+**⚠️ Piège** : `"write"`, `"read"`, `"readwrite"` → `Invalid input` (erreur config, container refuse de démarrer).
+
+**Config correcte** :
+```json
+// defaults sandbox (agents qui écrivent: writer, builder, artist, explorer)
+"workspaceAccess": "rw"
+
+// override pour Messenger (API calls only, pas de FS)
+"workspaceAccess": "none"
+```
+
+**Fichier** : `roles/openclaw/templates/openclaw.json.j2`
+
+---
+
+### 11.17 Provider openai Direct — OPENAI_API_KEY Requise dans le Container
+
+**Symptôme** : `MissingEnvVarError: Missing env var "OPENAI_API_KEY" referenced at config path: models.providers.openai.apiKey`
+Le container refuse de démarrer après l'ajout du provider `openai` dans `openclaw.json`.
+
+**Cause** : Le provider `openai` dans `openclaw.json.j2` référence `${OPENAI_API_KEY}` mais cette variable n'était pas dans `openclaw.env.j2`.
+
+**Architecture** :
+- `custom-litellm/xxx` → via proxy LiteLLM → n'a besoin que de `LITELLM_API_KEY`
+- `openai/xxx` → appel direct OpenAI → nécessite `OPENAI_API_KEY` dans l'env OpenClaw
+
+**Fix** : Ajouter dans `openclaw.env.j2` :
+```
+OPENAI_API_KEY={{ openai_api_key }}
+```
+Variable `openai_api_key` déjà présente dans les secrets (utilisée par LiteLLM).
+
+**Avantage** : Bypass LiteLLM = pas de dépendance aux crédits OpenRouter/Anthropic pour les appels OpenAI.
+**Inconvénient** : Budget tracking LiteLLM inactif pour ces appels — surveiller dashboard OpenAI directement.
+
+---
+
+### 11.18 Handler `state: restarted` ne Relit pas env_file
+
+**Symptôme** : Env file mis à jour (ex: `OPENAI_API_KEY` ajouté), handler déclenché, mais le container repart avec l'ancien environnement → `MissingEnvVarError`.
+
+**Cause** : `state: restarted` = `docker compose restart` — commande qui redémarre le processus DANS le container existant. Le container existant garde son environnement initial. **Les `env_file` ne sont PAS relus.**
+
+Pour relire un `env_file`, il faut recréer le container = `docker compose up -d`.
+
+**Fix dans le handler** :
+```yaml
+# INCORRECT (ne relit pas env_file)
+state: restarted
+
+# CORRECT (force recreation, relit env_file)
+state: present
+recreate: always
+```
+
+**Fichier** : `roles/openclaw/handlers/main.yml`
+
+**Note** : `recreate: always` force la recreation à chaque deploy même si rien n'a changé. Acceptable pour un handler (ne se déclenche que sur `changed`). Pour les autres services, préférer `state: present` sans `recreate: always` (Docker Compose détecte les changements d'env automatiquement).
 
 ---
 

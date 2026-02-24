@@ -799,31 +799,68 @@ docker exec javisi_openclaw sh -c \
 
 **Symptome** : Logs `Error: spawn docker EACCES` dans les lanes `subagent` et `session:agent:<name>:subagent:*`. Le Concierge rapporte "Subagent writer failed" sans detail. Aucun sous-agent ne peut demarrer.
 
-**Cause** : Le container OpenClaw tourne avec le user `node:1000`. Le socket Docker `/var/run/docker.sock` appartient au groupe `docker` (GID variable selon la distro, ex: 989 sur Debian). Le container ne peut pas acceder au socket sans etre dans ce groupe.
+**Il y a 2 causes racines independantes — les deux doivent etre corrigees.**
+
+#### Cause #1 — group_add manquant (socket inaccessible)
+
+Le container OpenClaw tourne avec le user `node:1000`. Le socket Docker `/var/run/docker.sock` appartient au groupe `docker` (GID variable selon la distro, ex: 989 sur Debian). Sans `group_add`, le container ne peut pas acceder au socket.
 
 **Diagnostic** :
 ```bash
-# Verifier le GID du groupe docker sur le host
+# GID du groupe docker sur le host
 getent group docker
-# Verifier les permissions du socket
-ls -la /var/run/docker.sock
-# Output attendu : srw-rw---- 1 root docker 0 ... /var/run/docker.sock
+ls -la /var/run/docker.sock  # srw-rw---- 1 root docker ...
 
-# Verifier les groupes du container
+# Groupes du container
 docker exec javisi_openclaw id
-# AVANT fix : uid=1000(node) gid=1000(node) groups=1000(node)  ← pas de groupe docker
-# APRES fix  : uid=1000(node) gid=1000(node) groups=1000(node),989(docker)
+# AVANT : uid=1000(node) gid=1000(node) groups=1000(node)        ← PAS de groupe docker
+# APRES : uid=1000(node) gid=1000(node) groups=1000(node),989    ← OK
 ```
 
-**Fix** : La directive `group_add` dans `docker-compose.yml.j2` ajoute le groupe docker au container. Le GID est detecte dynamiquement par le role `docker-stack` (tache "Detect docker socket GID") :
+**Fix** : `group_add` dans `docker-compose.yml.j2`. Le GID est detecte dynamiquement par le role `docker-stack` ("Detect docker socket GID") :
 ```yaml
 group_add:
   - "{{ docker_socket_gid | default('989') }}"
 ```
+Redeploiement : `make deploy-role ROLE=docker-stack ENV=prod`
 
-**Redeploiement** : `make deploy-role ROLE=docker-stack ENV=prod`
+#### Cause #2 — Image `openclaw-sandbox:bookworm-slim` absente (CAUSE PRINCIPALE)
 
-**Pourquoi le Concierge ne voit pas l'erreur** : Les erreurs de spawn sont dans la lane `diagnostic`, pas propagees au contexte de la session principale. Normal — le Concierge doit poller l'etat des sous-agents via `sessions_get`. Si le sous-agent echoue immediatement (< 2s), la fenetre de poll est manquee.
+OpenClaw utilise `dockerode` (SDK Node.js) pour creer les containers sandbox via HTTP REST sur `/var/run/docker.sock`. Il ne fait PAS appel au binaire `docker` CLI. Quand il essaie de creer un sandbox, il cherche l'image `openclaw-sandbox:bookworm-slim` — si elle n'existe pas, la creation echoue avec `EACCES` (erreur generique de dockerode sur image not found).
+
+L'image sandbox est embarquee dans l'image principale OpenClaw (`/app/Dockerfile.sandbox`) mais n'est PAS disponible en pull direct sur ghcr.io — elle doit etre construite localement sur le host.
+
+**Note sur le PATH** : L'image OpenClaw inclut `/root/.bun/bin` dans le PATH (mode 700, inaccessible a node:1000). Si OpenClaw appelait `child_process.spawn("docker")`, le systeme retournerait EACCES lors du parcours du PATH. Mais OpenClaw utilise `dockerode` et non le CLI `docker`, donc cet EACCES PATH n'est PAS la cause du probleme de spawn des sous-agents.
+
+**Diagnostic** :
+```bash
+# Verifier si l'image est presente
+docker images | grep openclaw-sandbox
+# Si absent → cause confirmee
+
+# Verifier les logs pour les erreurs sandbox
+docker logs javisi_openclaw 2>&1 | grep -i 'spawn\|sandbox\|EACCES'
+```
+
+**Fix** : Le role `openclaw` extrait maintenant `Dockerfile.sandbox` de l'image principale et construit l'image sandbox automatiquement. Redeploiement :
+```bash
+make deploy-role ROLE=openclaw ENV=prod
+```
+Les taches Ansible ajoutees (`roles/openclaw/tasks/main.yml`) :
+1. `Check if openclaw-sandbox image already exists` — skip si deja construite (idempotent)
+2. `Create openclaw-sandbox build directory` — `{{ openclaw_config_dir }}/build/openclaw-sandbox/`
+3. `Extract Dockerfile.sandbox from openclaw image` — `docker run --rm --entrypoint cat`
+4. `Write Dockerfile.sandbox to build directory`
+5. `Build openclaw-sandbox image from embedded Dockerfile` — `community.docker.docker_image`
+
+**Force rebuild apres upgrade OpenClaw** :
+```bash
+# Supprimer l'image pour forcer le rebuild au prochain deploy
+docker rmi openclaw-sandbox:bookworm-slim
+make deploy-role ROLE=openclaw ENV=prod
+```
+
+**Pourquoi le Concierge ne voit pas l'erreur** : Les erreurs de spawn sont dans la lane `diagnostic`, pas propagees au contexte de la session principale. Normal — si le sous-agent echoue immediatement (< 2s), la fenetre de poll `sessions_get` est manquee.
 
 ---
 

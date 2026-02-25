@@ -79,6 +79,24 @@ async function handleMessage(data: string) {
 			}
 		}
 
+		if (event.type === 'agent.registered') {
+			// UPDATE only — never INSERT ghost agents (agent must exist in OpenClaw)
+			const fields: Partial<typeof agents.$inferInsert> = {};
+			if (event.name !== undefined) fields.name = event.name;
+			if (event.persona !== undefined) fields.persona = event.persona;
+			if (event.bio !== undefined) fields.bio = event.bio;
+			if (event.model !== undefined) fields.model = event.model;
+			if (event.avatarUrl !== undefined) fields.avatar_url = event.avatarUrl;
+			fields.lastSeenAt = new Date();
+
+			if (Object.keys(fields).length > 0) {
+				await db
+					.update(agents)
+					.set(fields)
+					.where(eq(agents.id, event.agentId));
+			}
+		}
+
 		// ── span.* events ───────────────────────────────────────────────────────
 		if ((event.type === 'span.started' || event.type === 'span.completed') && event.span) {
 			const span = event.span;

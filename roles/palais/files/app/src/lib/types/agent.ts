@@ -10,6 +10,11 @@ export type AgentEvent = {
 	tokens?: number;
 	cost?: number;
 	summary?: string;
+	// agent.registered fields
+	name?: string;
+	persona?: string;
+	bio?: string;
+	avatarUrl?: string;
 	// span.* events
 	span?: {
 		id: string;           // external span ID (from OpenClaw)

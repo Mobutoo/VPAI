@@ -591,7 +591,7 @@
   changed_when: false
   failed_when: false
   become: true
-  tags: [n8n-nuke]
+  tags: [n8n-nuke, never]
 
 - name: "[nuke] Delete ALL n8n workflows (deactivate → archive → delete each)"
   ansible.builtin.shell:
@@ -661,13 +661,13 @@
     'FATAL:' in (n8n_nuke_result.stdout | default(''))
   no_log: true
   become: true
-  tags: [n8n-nuke]
+  tags: [n8n-nuke, never]
   when: n8n_nuke_container_check.stdout | default('') | length > 0
 
 - name: "[nuke] Display results"
   ansible.builtin.debug:
     msg: "{{ n8n_nuke_result.stdout_lines | default(['skipped']) }}"
-  tags: [n8n-nuke]
+  tags: [n8n-nuke, never]
   when: n8n_nuke_container_check.stdout | default('') | length > 0
 
 - name: "[nuke] Reset workflow checksums (force full reimport on next deploy)"
@@ -675,7 +675,7 @@
     path: "/opt/{{ project_name }}/configs/n8n/workflow-checksums"
     state: absent
   become: true
-  tags: [n8n-nuke]
+  tags: [n8n-nuke, never]
   when: n8n_nuke_container_check.stdout | default('') | length > 0
 
 - name: "[nuke] Recreate empty checksum directory"
@@ -684,5 +684,5 @@
     state: directory
     mode: "0755"
   become: true
-  tags: [n8n-nuke]
+  tags: [n8n-nuke, never]
   when: n8n_nuke_container_check.stdout | default('') | length > 0

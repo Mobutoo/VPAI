@@ -105,6 +105,29 @@
 
 	onDestroy(() => { if (interval) clearInterval(interval); });
 
+	// ── Launch Claude Code ───────────────────────────────────────────────────
+	let launching = $state(false);
+	let launchFeedback = $state<'ok' | 'error' | null>(null);
+
+	async function launchClaude(e: MouseEvent) {
+		e.stopPropagation();
+		launching = true;
+		launchFeedback = null;
+		try {
+			const res = await fetch(`/api/v1/tasks/${task.id}/launch-claude`, { method: 'POST' });
+			launchFeedback = res.ok ? 'ok' : 'error';
+		} catch {
+			launchFeedback = 'error';
+		} finally {
+			launching = false;
+			setTimeout(() => { launchFeedback = null; }, 3000);
+		}
+	}
+
+	let canLaunch = $derived(
+		task.status !== 'done' && task.status !== 'in-progress'
+	);
+
 	function onDragStart(e: DragEvent) {
 		e.dataTransfer?.setData('taskId', String(task.id));
 		dispatch('dragStart', e);
@@ -174,6 +197,28 @@
 				<span style="width: 5px; height: 5px; border-radius: 50%; background: {presenceColor}; display: inline-block; flex-shrink: 0; {task.agentStatus === 'busy' ? 'box-shadow: 0 0 4px ' + presenceColor + ';' : ''}"></span>
 				@{task.assigneeAgentId.split('-')[0]}
 			</span>
+		{/if}
+
+		<!-- Launch Claude Code -->
+		{#if canLaunch}
+			<!-- svelte-ignore a11y_consider_explicit_label -->
+			<button
+				onclick={launchClaude}
+				disabled={launching}
+				title="Lancer Claude Code sur cette tâche"
+				class="rounded p-0.5 transition-colors disabled:opacity-40"
+				style="
+					background: {launchFeedback === 'ok' ? 'color-mix(in srgb, var(--palais-green) 15%, transparent)'
+					           : launchFeedback === 'error' ? 'color-mix(in srgb, var(--palais-red) 15%, transparent)'
+					           : 'transparent'};
+					color: {launchFeedback === 'ok' ? 'var(--palais-green)'
+					       : launchFeedback === 'error' ? 'var(--palais-red)'
+					       : 'var(--palais-text-muted)'};
+					border: none; cursor: pointer; font-size: 0.7rem; line-height: 1;
+				"
+			>
+				{launching ? '⏳' : launchFeedback === 'ok' ? '✓' : launchFeedback === 'error' ? '✗' : '⚡'}
+			</button>
 		{/if}
 
 		<!-- Timer control -->

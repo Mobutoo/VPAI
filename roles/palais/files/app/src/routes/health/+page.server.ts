@@ -1,19 +1,52 @@
 import { db } from '$lib/server/db';
 import { nodes, healthChecks, backupStatus } from '$lib/server/db/schema';
 import { fetchVPNTopology } from '$lib/server/health/headscale';
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
+	// 1. Fetch VPN topology from Headscale
+	const { nodes: vpnNodes, error: headscaleError } = await fetchVPNTopology();
+	const headscaleOk = !headscaleError;
+
+	// 2. Sync statuses to DB
+	const allCurrentNodes = await db.select().from(nodes);
+
+	for (const node of allCurrentNodes) {
+		if (headscaleError) {
+			// Headscale unreachable → mark degraded (only if not busy)
+			if (node.status !== 'busy') {
+				await db.update(nodes).set({ status: 'degraded' }).where(eq(nodes.id, node.id));
+			}
+		} else if (node.tailscaleIp) {
+			// Match by Tailscale IP
+			const vpnMatch = vpnNodes.find((v) => v.ip === node.tailscaleIp);
+			if (vpnMatch) {
+				if (vpnMatch.online && node.status !== 'busy') {
+					await db.update(nodes).set({
+						status: 'online',
+						lastSeenAt: vpnMatch.lastSeen ? new Date(vpnMatch.lastSeen) : new Date()
+					}).where(eq(nodes.id, node.id));
+				} else if (!vpnMatch.online && node.status !== 'busy') {
+					await db.update(nodes).set({ status: 'offline' }).where(eq(nodes.id, node.id));
+				}
+			} else if (node.status !== 'busy') {
+				// Node has Tailscale IP but not found in Headscale
+				await db.update(nodes).set({ status: 'offline' }).where(eq(nodes.id, node.id));
+			}
+		}
+	}
+
+	// 3. Re-fetch nodes after sync
 	const allNodes = await db.select().from(nodes).orderBy(nodes.name);
 
+	// 4. Health checks (latest per node+service)
 	const recentChecks = await db
 		.select()
 		.from(healthChecks)
 		.orderBy(desc(healthChecks.checkedAt))
 		.limit(500);
 
-	// Latest check per node+service
 	const latestByNodeService = new Map<string, typeof recentChecks[0]>();
 	for (const check of recentChecks) {
 		const key = `${check.nodeId}:${check.serviceName}`;
@@ -22,6 +55,7 @@ export const load: PageServerLoad = async () => {
 		}
 	}
 
+	// 5. Backup status
 	const backups = await db.select().from(backupStatus).orderBy(desc(backupStatus.id));
 	const latestBackupByNode = new Map<number, typeof backups[0]>();
 	for (const b of backups) {
@@ -36,8 +70,5 @@ export const load: PageServerLoad = async () => {
 		backup: latestBackupByNode.get(node.id) ?? null
 	}));
 
-	// VPN topology (non-blocking — empty array on failure)
-	const vpnTopology = await fetchVPNTopology();
-
-	return { nodes: nodesWithHealth, vpnTopology };
+	return { nodes: nodesWithHealth, vpnTopology: vpnNodes, headscaleOk };
 };

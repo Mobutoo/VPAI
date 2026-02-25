@@ -1,5 +1,5 @@
 {
-  "name": "OpenClaw — Code Review (SSH Pi → LiteLLM → Kaneo)",
+  "name": "OpenClaw — Code Review (SSH Pi → LiteLLM → Palais)",
   "nodes": [
     {
       "parameters": {
@@ -57,7 +57,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse review result from SSH output\nconst raw = $input.first().json.stdout || '';\nconst exitCode = $input.first().json.exitCode ?? 0;\n\n// Detect PASS/FAIL in output\nconst pass = raw.toUpperCase().includes('PASS') || raw.includes('✅');\nconst fail = raw.toUpperCase().includes('FAIL') || raw.includes('❌');\n\nconst status = pass ? 'PASS' : (fail ? 'FAIL' : 'UNKNOWN');\nconst success = exitCode === 0 && status === 'PASS';\n\n// Truncate output for Kaneo comment (max 2000 chars)\nconst report = raw.slice(0, 2000);\n\nconst ctx = $('Validate payload').first().json;\n\nreturn [{ json: {\n  ...ctx,\n  review_status: status,\n  review_success: success,\n  review_report: report,\n  exit_code: exitCode\n}}];"
+        "jsCode": "// Parse review result from SSH output\nconst raw = $input.first().json.stdout || '';\nconst exitCode = $input.first().json.exitCode ?? 0;\n\n// Detect PASS/FAIL in output\nconst pass = raw.toUpperCase().includes('PASS') || raw.includes('✅');\nconst fail = raw.toUpperCase().includes('FAIL') || raw.includes('❌');\n\nconst status = pass ? 'PASS' : (fail ? 'FAIL' : 'UNKNOWN');\nconst success = exitCode === 0 && status === 'PASS';\n\n// Truncate output for Palais comment (max 2000 chars)\nconst report = raw.slice(0, 2000);\n\nconst ctx = $('Validate payload').first().json;\n\nreturn [{ json: {\n  ...ctx,\n  review_status: status,\n  review_success: success,\n  review_report: report,\n  exit_code: exitCode\n}}];"
       },
       "id": "cr-0001-0000-0000-0000-000000000006",
       "name": "Parse review result",
@@ -68,55 +68,17 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://kaneo-api:1337/api/auth/sign-in/email",
+        "url": "=http://palais:3300/api/v1/tasks/{{ $json.task_id }}/comments",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
+            { "name": "X-API-Key",    "value": "={{ $env.PALAIS_API_KEY }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"email\": \"{{ $env.KANEO_AGENT_EMAIL }}\", \"password\": \"{{ $env.KANEO_AGENT_PASSWORD }}\" }",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "responseFormat": "json"
-            }
-          }
-        }
-      },
-      "id": "cr-0001-0000-0000-0000-000000000007",
-      "name": "Auth Kaneo",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1360, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "const response = $input.first().json;\nconst headers = response.headers || {};\nconst setCookie = headers['set-cookie'] || [];\nlet cookie = '';\nif (Array.isArray(setCookie)) {\n  cookie = setCookie.map(c => c.split(';')[0]).join('; ');\n} else if (typeof setCookie === 'string') {\n  cookie = setCookie.split(';')[0];\n}\nif (!cookie) throw new Error('Kaneo auth failed');\nconst ctx = $('Parse review result').first().json;\nreturn [{ json: { ...ctx, cookie } }];"
-      },
-      "id": "cr-0001-0000-0000-0000-000000000008",
-      "name": "Extract cookie",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1580, 300]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=http://kaneo-api:1337/api/activity/comment",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "Cookie",       "value": "={{ $json.cookie }}" },
-            { "name": "Content-Type", "value": "application/json" }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"taskId\": \"{{ $json.task_id }}\",\n  \"comment\": \"## Code Review — {{ $json.branch }}\\n**Statut** : {{ $json.review_status === 'PASS' ? '✅ PASS' : '❌ FAIL' }}\\n\\n{{ $json.review_report }}\"\n}",
+        "jsonBody": "={\n  \"content\": \"## Code Review — {{ $json.branch }}\\n**Statut** : {{ $json.review_status === 'PASS' ? '✅ PASS' : '❌ FAIL' }}\\n\\n{{ $json.review_report }}\"\n}",
         "options": {},
         "continueOnFail": true
       },
@@ -124,22 +86,22 @@
       "name": "Post review comment",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1800, 260]
+      "position": [1360, 260]
     },
     {
       "parameters": {
         "method": "PUT",
-        "url": "=http://kaneo-api:1337/api/task/status/{{ $json.task_id }}",
+        "url": "=http://palais:3300/api/v1/tasks/{{ $json.task_id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie",       "value": "={{ $json.cookie }}" },
+            { "name": "X-API-Key",    "value": "={{ $env.PALAIS_API_KEY }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"{{ $json.review_success ? 'done' : 'to-do' }}\" }",
+        "jsonBody": "={ \"status\": \"{{ $json.review_success ? 'done' : 'todo' }}\" }",
         "options": {},
         "continueOnFail": true
       },
@@ -147,7 +109,7 @@
       "name": "Update task status",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1800, 360]
+      "position": [1360, 360]
     },
     {
       "parameters": {
@@ -169,30 +131,7 @@
       "name": "Review failed?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [2020, 300]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "=http://kaneo-api:1337/api/label",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "Cookie",       "value": "={{ $json.cookie }}" },
-            { "name": "Content-Type", "value": "application/json" }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"taskId\": \"{{ $json.task_id }}\",\n  \"name\": \"correction\",\n  \"color\": \"#ef4444\",\n  \"workspaceId\": \"{{ $env.KANEO_WORKSPACE_ID }}\"\n}",
-        "options": {},
-        "continueOnFail": true
-      },
-      "id": "cr-0001-0000-0000-0000-000000000012",
-      "name": "Add correction label",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [2240, 200]
+      "position": [1580, 300]
     },
     {
       "parameters": {
@@ -212,7 +151,7 @@
       "name": "Telegram notify",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2240, 400]
+      "position": [1800, 300]
     }
   ],
   "connections": {
@@ -225,9 +164,7 @@
     },
     "Encode review data": { "main": [[{ "node": "SSH Pi: Run Review", "type": "main", "index": 0 }]] },
     "SSH Pi: Run Review": { "main": [[{ "node": "Parse review result", "type": "main", "index": 0 }]] },
-    "Parse review result": { "main": [[{ "node": "Auth Kaneo", "type": "main", "index": 0 }]] },
-    "Auth Kaneo": { "main": [[{ "node": "Extract cookie", "type": "main", "index": 0 }]] },
-    "Extract cookie": {
+    "Parse review result": {
       "main": [[
         { "node": "Post review comment", "type": "main", "index": 0 },
         { "node": "Update task status", "type": "main", "index": 0 }
@@ -237,11 +174,10 @@
     "Update task status": { "main": [[{ "node": "Review failed?", "type": "main", "index": 0 }]] },
     "Review failed?": {
       "main": [
-        [{ "node": "Add correction label", "type": "main", "index": 0 }],
+        [{ "node": "Telegram notify", "type": "main", "index": 0 }],
         [{ "node": "Telegram notify", "type": "main", "index": 0 }]
       ]
-    },
-    "Add correction label": { "main": [[{ "node": "Telegram notify", "type": "main", "index": 0 }]] }
+    }
   },
   "settings": {
     "executionOrder": "v1",
@@ -252,8 +188,8 @@
     "errorWorkflow": ""
   },
   "staticData": null,
-  "tags": [{ "name": "kaneo" }, { "name": "code-review" }, { "name": "openclaw" }],
+  "tags": [{ "name": "palais" }, { "name": "code-review" }, { "name": "openclaw" }],
   "triggerCount": 1,
-  "updatedAt": "2026-02-23T00:00:00.000Z",
-  "versionId": "1"
+  "updatedAt": "2026-02-25T00:00:00.000Z",
+  "versionId": "2"
 }

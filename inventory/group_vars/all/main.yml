@@ -185,6 +185,7 @@ ovh_consumer_key: "{{ vault_ovh_consumer_key | default('') }}"
 webhook_subdomain: "hook"
 webhook_relay_domain: "{{ webhook_subdomain }}.{{ domain_name }}"
 vpn_server_public_ip: "{{ vault_vpn_server_public_ip | default('') }}"
+vpn_server_ip: "{{ vault_vpn_server_ip | default(vpn_server_public_ip) }}"
 vps_tailscale_ip: "{{ vault_vps_tailscale_ip | default('') }}"
 
 # --- Workstation Pi (RPi5 16GB) ---
@@ -193,6 +194,7 @@ workstation_pi_user: "mobuone"
 workstation_pi_ip: "{{ vault_workstation_pi_ip | default('127.0.0.1') }}"
 # Tailscale IP — used by n8n (on VPS) to reach RPi via mesh VPN for SSH autofix
 workstation_pi_tailscale_ip: "{{ vault_workstation_pi_tailscale_ip | default('') }}"
+workstation_pi_local_ip: "{{ vault_workstation_pi_local_ip | default(workstation_pi_ip) }}"
 workstation_pi_become_pass: "{{ vault_workstation_become_pass }}"
 workstation_pi_ram_gb: 16
 workstation_pi_disk_gb: 256

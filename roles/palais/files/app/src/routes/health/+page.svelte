@@ -1,12 +1,13 @@
 <script lang="ts">
 	let { data } = $props();
 
-	// Node layout for VPN SVG map (fixed positions)
-	const NODE_POSITIONS: Record<string, { x: number; y: number; label: string }> = {
-		'sese-ai':  { x: 200, y: 80,  label: 'Sese-AI (VPS)' },
-		'rpi5':     { x: 50,  y: 200, label: 'RPi5 (Local)' },
-		'seko-vpn': { x: 350, y: 200, label: 'Seko-VPN (Hub)' }
-	};
+	// Dynamic positions — derived from DB node order, up to 4 nodes
+	const POSITION_SLOTS = [
+		{ x: 200, y: 80  },
+		{ x: 50,  y: 200 },
+		{ x: 350, y: 200 },
+		{ x: 200, y: 300 }
+	];
 
 	// VPN links between nodes
 	const VPN_LINKS = [
@@ -15,8 +16,11 @@
 		{ from: 'sese-ai', to: 'rpi5' }
 	];
 
-	function nodePos(name: string) {
-		return NODE_POSITIONS[name] ?? { x: 200, y: 140 };
+	function nodePos(name: string): { x: number; y: number; label: string } {
+		const idx = data.nodes.findIndex((n) => n.name === name);
+		const slot = POSITION_SLOTS[idx] ?? { x: 200, y: 140 };
+		const node = data.nodes.find((n) => n.name === name);
+		return { ...slot, label: node?.description ?? name };
 	}
 
 	function statusColor(status: string) {
@@ -99,7 +103,7 @@
 						</text>
 						<!-- Label -->
 						<text text-anchor="middle" y="30" font-size="8" fill="var(--palais-text-muted)" font-family="Inter, sans-serif">
-							{NODE_POSITIONS[node.name]?.label ?? node.name}
+							{nodePos(node.name).label}
 						</text>
 						<!-- VPN online dot -->
 						{#if vpn?.online}
@@ -145,16 +149,17 @@
 							{#if node.description}
 								<p class="text-xs mt-0.5 leading-snug" style="color: var(--palais-cyan);">{node.description}</p>
 							{/if}
+							<!-- IPs -->
 							<div class="flex flex-col gap-0.5 mt-1">
 								{#if node.localIp}
-									<p class="text-xs font-mono flex items-center gap-1" style="color: var(--palais-text-muted);">
-										<span class="text-xs opacity-50">LAN</span>{node.localIp}
-									</p>
+									<span class="text-xs font-mono" style="color: var(--palais-text-muted);">
+										LAN: {node.localIp}
+									</span>
 								{/if}
 								{#if node.tailscaleIp}
-									<p class="text-xs font-mono flex items-center gap-1" style="color: var(--palais-text-muted);">
-										<span class="text-xs opacity-50">VPN</span>{node.tailscaleIp}
-									</p>
+									<span class="text-xs font-mono" style="color: var(--palais-cyan);">
+										VPN: {node.tailscaleIp}
+									</span>
 								{/if}
 							</div>
 						</div>

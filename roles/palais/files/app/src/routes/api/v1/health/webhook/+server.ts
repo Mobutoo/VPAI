@@ -18,6 +18,7 @@ interface HealthPayload {
 	ram_percent?: number;
 	disk_percent?: number;
 	temperature?: number;
+	local_ip?: string;
 }
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -45,7 +46,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			cpuPercent: body.cpu_percent ?? null,
 			ramPercent: body.ram_percent ?? null,
 			diskPercent: body.disk_percent ?? null,
-			temperature: body.temperature ?? null
+			temperature: body.temperature ?? null,
+			...(body.local_ip !== undefined ? { localIp: body.local_ip } : {})
 		})
 		.where(eq(nodes.id, node.id));
 

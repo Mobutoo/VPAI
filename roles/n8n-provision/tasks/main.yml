@@ -484,6 +484,7 @@
       md5sum "$FILE" | cut -d' ' -f1 > "$CHECKSUM_DIR/{{ item.file }}.md5"
   become: true
   changed_when: false
+  failed_when: false  # /tmp files may not exist on partial/diagnostic runs — safe to skip
   loop:
     - {file: "ai-translate", name: "AI Translate"}
     - {file: "ai-summarize", name: "AI Summarize"}

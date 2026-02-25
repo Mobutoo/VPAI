@@ -65,7 +65,7 @@
 	{#if data.nodes.length > 0}
 	<section>
 		<h2 class="text-xs font-semibold uppercase tracking-widest mb-3" style="color: var(--palais-text-muted);">
-			Réseau VPN
+			Réseau Singa (VPN)
 		</h2>
 		<div class="rounded-xl p-4" style="background: var(--palais-surface); border: 1px solid var(--palais-border);">
 			<svg viewBox="0 0 420 280" class="w-full max-w-lg mx-auto" style="height: 200px;">
@@ -118,7 +118,7 @@
 					<span class="w-2 h-2 rounded-full inline-block" style="background: var(--palais-red);"></span>Offline
 				</span>
 				<span class="flex items-center gap-1 text-xs" style="color: var(--palais-text-muted);">
-					<span class="w-2 h-2 rounded-full inline-block" style="background: var(--palais-green); opacity: 0.5;"></span>VPN actif
+					<span class="w-2 h-2 rounded-full inline-block" style="background: var(--palais-green); opacity: 0.5;"></span>Singa actif
 				</span>
 			</div>
 		</div>
@@ -139,14 +139,26 @@
 					style:border-color={node.status === 'online' ? 'var(--palais-border)' : 'rgba(239,68,68,0.4)'}
 				>
 					<!-- Node header -->
-					<div class="flex items-center justify-between">
-						<div>
+					<div class="flex items-start justify-between gap-2">
+						<div class="flex-1 min-w-0">
 							<h3 class="font-semibold text-sm font-mono" style="color: var(--palais-text);">{node.name}</h3>
-							{#if node.tailscaleIp}
-								<p class="text-xs font-mono mt-0.5" style="color: var(--palais-text-muted);">{node.tailscaleIp}</p>
+							{#if node.description}
+								<p class="text-xs mt-0.5 leading-snug" style="color: var(--palais-cyan);">{node.description}</p>
 							{/if}
+							<div class="flex flex-col gap-0.5 mt-1">
+								{#if node.localIp}
+									<p class="text-xs font-mono flex items-center gap-1" style="color: var(--palais-text-muted);">
+										<span class="text-xs opacity-50">LAN</span>{node.localIp}
+									</p>
+								{/if}
+								{#if node.tailscaleIp}
+									<p class="text-xs font-mono flex items-center gap-1" style="color: var(--palais-text-muted);">
+										<span class="text-xs opacity-50">VPN</span>{node.tailscaleIp}
+									</p>
+								{/if}
+							</div>
 						</div>
-						<span class="text-xs font-semibold capitalize px-2 py-0.5 rounded"
+						<span class="text-xs font-semibold capitalize px-2 py-0.5 rounded flex-shrink-0"
 							style:background={node.status === 'online' ? 'rgba(74,222,128,0.1)' : 'rgba(239,68,68,0.1)'}
 							style:color={statusColor(node.status)}
 						>

@@ -1,7 +1,64 @@
 <script lang="ts">
+	import { invalidateAll } from '$app/navigation';
+
 	let { data } = $props();
 
-	// Dynamic positions — derived from DB node order, up to 4 nodes
+	// ─── Edit modal state ────────────────────────────────────────────
+	interface EditState {
+		name: string;
+		description: string;
+		tailscaleIp: string;
+		localIp: string;
+	}
+
+	let editNode = $state<EditState | null>(null);
+	let saving = $state(false);
+	let saveError = $state('');
+
+	function openEdit(node: typeof data.nodes[0]) {
+		editNode = {
+			name: node.name,
+			description: node.description ?? '',
+			tailscaleIp: node.tailscaleIp ?? '',
+			localIp: node.localIp ?? ''
+		};
+		saveError = '';
+	}
+
+	function closeEdit() {
+		editNode = null;
+		saveError = '';
+	}
+
+	async function saveEdit() {
+		if (!editNode) return;
+		saving = true;
+		saveError = '';
+		try {
+			const res = await fetch(`/api/v1/health/nodes/${encodeURIComponent(editNode.name)}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					description: editNode.description,
+					tailscaleIp: editNode.tailscaleIp,
+					localIp: editNode.localIp
+				})
+			});
+			if (!res.ok) {
+				const err = await res.json().catch(() => ({ message: 'Erreur inconnue' }));
+				saveError = err.message ?? `HTTP ${res.status}`;
+			} else {
+				closeEdit();
+				await invalidateAll();
+			}
+		} catch (e) {
+			saveError = 'Erreur réseau';
+		} finally {
+			saving = false;
+		}
+	}
+
+	// ─── Topology positions ──────────────────────────────────────────
 	const POSITION_SLOTS = [
 		{ x: 200, y: 80  },
 		{ x: 50,  y: 200 },
@@ -9,7 +66,6 @@
 		{ x: 200, y: 300 }
 	];
 
-	// VPN links between nodes
 	const VPN_LINKS = [
 		{ from: 'sese-ai', to: 'seko-vpn' },
 		{ from: 'rpi5',    to: 'seko-vpn' },
@@ -24,21 +80,24 @@
 	}
 
 	function statusColor(status: string) {
-		return status === 'online'  ? 'var(--palais-green)'  :
-		       status === 'offline' ? 'var(--palais-red)'    :
-		       status === 'busy'    ? 'var(--palais-gold)'   : 'var(--palais-text-muted)';
+		return status === 'online'   ? 'var(--palais-green)'      :
+		       status === 'offline'  ? 'var(--palais-red)'        :
+		       status === 'busy'     ? 'var(--palais-gold)'       :
+		       status === 'degraded' ? 'var(--palais-amber)'      : 'var(--palais-text-muted)';
 	}
 
 	function statusGlow(status: string) {
-		return status === 'online'  ? '0 0 12px 2px rgba(0,255,136,0.4)'  :
-		       status === 'busy'    ? '0 0 12px 2px rgba(212,168,67,0.4)' :
-		       status === 'offline' ? '0 0 8px 2px rgba(255,60,60,0.3)'   : 'none';
+		return status === 'online'   ? '0 0 12px 2px rgba(0,255,136,0.4)'   :
+		       status === 'busy'     ? '0 0 12px 2px rgba(212,168,67,0.4)'  :
+		       status === 'offline'  ? '0 0 8px 2px rgba(255,60,60,0.3)'    :
+		       status === 'degraded' ? '0 0 12px 2px rgba(255,165,0,0.35)'  : 'none';
 	}
 
 	function cardGlow(status: string) {
-		return status === 'online'  ? '0 4px 32px 0 rgba(0,255,136,0.07), 0 1px 0 0 rgba(76,175,80,0.18)'  :
-		       status === 'busy'    ? '0 4px 32px 0 rgba(212,168,67,0.09), 0 1px 0 0 rgba(212,168,67,0.22)' :
-		       status === 'offline' ? '0 4px 32px 0 rgba(255,60,60,0.08), 0 1px 0 0 rgba(229,57,53,0.2)'    : 'none';
+		return status === 'online'   ? '0 4px 32px 0 rgba(0,255,136,0.07), 0 1px 0 0 rgba(76,175,80,0.18)'    :
+		       status === 'busy'     ? '0 4px 32px 0 rgba(212,168,67,0.09), 0 1px 0 0 rgba(212,168,67,0.22)'  :
+		       status === 'offline'  ? '0 4px 32px 0 rgba(255,60,60,0.08), 0 1px 0 0 rgba(229,57,53,0.2)'     :
+		       status === 'degraded' ? '0 4px 32px 0 rgba(255,165,0,0.09), 0 1px 0 0 rgba(255,165,0,0.22)'    : 'none';
 	}
 
 	function serviceColor(status: string) {
@@ -58,16 +117,16 @@
 		return ms > 24 * 60 * 60 * 1000;
 	}
 
-	// Match VPN topology nodes to our DB nodes by tailscale IP
 	function vpnNode(tailscaleIp: string | null) {
 		if (!tailscaleIp) return null;
 		return data.vpnTopology.find((v) => v.ip === tailscaleIp) ?? null;
 	}
 
-	// Status summary counts
-	const onlineCount  = $derived(data.nodes.filter((n) => n.status === 'online').length);
-	const busyCount    = $derived(data.nodes.filter((n) => n.status === 'busy').length);
-	const offlineCount = $derived(data.nodes.filter((n) => n.status === 'offline').length);
+	// Status counts
+	const onlineCount   = $derived(data.nodes.filter((n) => n.status === 'online').length);
+	const busyCount     = $derived(data.nodes.filter((n) => n.status === 'busy').length);
+	const offlineCount  = $derived(data.nodes.filter((n) => n.status === 'offline').length);
+	const degradedCount = $derived(data.nodes.filter((n) => n.status === 'degraded').length);
 </script>
 
 <svelte:head><title>Palais — Health</title></svelte:head>
@@ -87,6 +146,17 @@
 
 			<!-- Status summary pills -->
 			<div class="flex items-center gap-2 flex-wrap">
+				{#if !data.headscaleOk}
+					<span class="px-3 py-1 rounded-full text-xs font-semibold tracking-wider"
+						style="background: rgba(255,165,0,0.15); color: var(--palais-amber); border: 1px solid rgba(255,165,0,0.4); font-family: 'Orbitron', sans-serif; animation: pulseGold 1.5s ease-in-out infinite;">
+						⚠ VPN UNREACHABLE
+					</span>
+				{:else}
+					<span class="px-2 py-0.5 rounded text-xs tracking-wider"
+						style="background: rgba(0,255,136,0.06); color: rgba(0,255,136,0.4); border: 1px solid rgba(0,255,136,0.15); font-family: 'JetBrains Mono', monospace; font-size: 0.6rem;">
+						● HEADSCALE SYNC
+					</span>
+				{/if}
 				{#if onlineCount > 0}
 					<span class="px-3 py-1 rounded-full text-xs font-semibold tracking-wider"
 						style="background: rgba(76,175,80,0.13); color: var(--palais-green); border: 1px solid rgba(76,175,80,0.3); font-family: 'Orbitron', sans-serif;">
@@ -97,6 +167,12 @@
 					<span class="px-3 py-1 rounded-full text-xs font-semibold tracking-wider"
 						style="background: rgba(212,168,67,0.13); color: var(--palais-gold); border: 1px solid rgba(212,168,67,0.3); font-family: 'Orbitron', sans-serif;">
 						{busyCount} BUSY
+					</span>
+				{/if}
+				{#if degradedCount > 0}
+					<span class="px-3 py-1 rounded-full text-xs font-semibold tracking-wider"
+						style="background: rgba(255,165,0,0.13); color: var(--palais-amber); border: 1px solid rgba(255,165,0,0.3); font-family: 'Orbitron', sans-serif;">
+						{degradedCount} DEGRADED
 					</span>
 				{/if}
 				{#if offlineCount > 0}
@@ -148,20 +224,20 @@
 						<g transform={`translate(${pos.x}, ${pos.y})`}>
 							<!-- Ambient outer glow ring -->
 							<circle r="26" fill="none"
-								stroke={statusColor(node.status)}
+								stroke={statusColor(node.status ?? 'offline')}
 								stroke-width="0.8"
 								opacity="0.25"
 							/>
 							<!-- Mid ring -->
 							<circle r="21" fill="none"
-								stroke={statusColor(node.status)}
+								stroke={statusColor(node.status ?? 'offline')}
 								stroke-width="1"
 								opacity="0.45"
 							/>
 							<!-- Node core -->
 							<circle r="17"
 								fill="var(--palais-surface)"
-								stroke={statusColor(node.status)}
+								stroke={statusColor(node.status ?? 'offline')}
 								stroke-width="2"
 							/>
 							<!-- Node initials -->
@@ -170,7 +246,7 @@
 								dominant-baseline="middle"
 								font-size="10"
 								font-weight="bold"
-								fill={statusColor(node.status)}
+								fill={statusColor(node.status ?? 'offline')}
 								font-family="JetBrains Mono, monospace"
 							>
 								{node.name.substring(0, 2).toUpperCase()}
@@ -237,13 +313,14 @@
 				{#each data.nodes as node, i (node.id)}
 					{@const backup = node.backup}
 					{@const stale  = isBackupStale(backup?.lastBackupAt ?? null)}
+					{@const nodeStatus = node.status ?? 'offline'}
 
 					<!-- Node card: glass-panel + hud-bracket -->
 					<div
 						class="glass-panel hud-bracket rounded-xl p-5 space-y-4"
 						style="
 							border: 1px solid rgba(212,168,67,0.18);
-							box-shadow: {cardGlow(node.status)};
+							box-shadow: {cardGlow(nodeStatus)};
 							animation: cardReveal 0.4s ease-out both;
 							animation-delay: {i * 80}ms;
 						"
@@ -287,31 +364,50 @@
 									</div>
 								</div>
 
-								<!-- Status badge + glow ring dot -->
+								<!-- Droite: bouton éditer + badge status + dot -->
 								<div class="flex flex-col items-end gap-2 flex-shrink-0">
+									<!-- Edit button — SVG pencil icon -->
+									<button
+										onclick={() => openEdit(node)}
+										title="Éditer {node.name}"
+										style="
+											background: none; border: none; cursor: pointer; padding: 4px;
+											color: var(--palais-gold); opacity: 0.45;
+											transition: opacity 0.2s, filter 0.2s;
+										"
+										onmouseenter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; (e.currentTarget as HTMLElement).style.filter = 'drop-shadow(0 0 6px rgba(212,168,67,0.6))'; }}
+										onmouseleave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.45'; (e.currentTarget as HTMLElement).style.filter = 'none'; }}
+									>
+										<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+											stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+											<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+											<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+										</svg>
+									</button>
+									<!-- Status badge — handles 'degraded' -->
 									<span class="text-xs font-semibold capitalize px-2 py-0.5 rounded tracking-wider"
 										style="
-											background: {node.status === 'online'  ? 'rgba(76,175,80,0.12)'  :
-											              node.status === 'busy'    ? 'rgba(212,168,67,0.12)' :
-											                                          'rgba(229,57,53,0.12)'};
-											color: {statusColor(node.status)};
-											border: 1px solid {node.status === 'online'  ? 'rgba(76,175,80,0.25)'  :
-											                    node.status === 'busy'    ? 'rgba(212,168,67,0.25)' :
-											                                               'rgba(229,57,53,0.25)'};
+											background: {nodeStatus === 'online'   ? 'rgba(76,175,80,0.12)'   :
+											              nodeStatus === 'busy'     ? 'rgba(212,168,67,0.12)'  :
+											              nodeStatus === 'degraded' ? 'rgba(255,165,0,0.12)'   : 'rgba(229,57,53,0.12)'};
+											color: {statusColor(nodeStatus)};
+											border: 1px solid {nodeStatus === 'online'   ? 'rgba(76,175,80,0.25)'   :
+											                    nodeStatus === 'busy'     ? 'rgba(212,168,67,0.25)'  :
+											                    nodeStatus === 'degraded' ? 'rgba(255,165,0,0.25)'   : 'rgba(229,57,53,0.25)'};
 											font-family: 'Orbitron', sans-serif;
 											font-size: 0.6rem;
 											letter-spacing: 0.1em;
 										"
 									>
-										{node.status.toUpperCase()}
+										{nodeStatus.toUpperCase()}
 									</span>
 									<!-- Status glow ring dot -->
 									<span
 										class="w-3 h-3 rounded-full inline-block"
 										style="
-											background: {statusColor(node.status)};
-											box-shadow: {statusGlow(node.status)};
-											{(node.status === 'busy') ? 'animation: pulseGold 1.5s ease-in-out infinite;' : ''}
+											background: {statusColor(nodeStatus)};
+											box-shadow: {statusGlow(nodeStatus)};
+											{(nodeStatus === 'busy' || nodeStatus === 'degraded') ? 'animation: pulseGold 1.5s ease-in-out infinite;' : ''}
 										"
 									></span>
 								</div>
@@ -374,7 +470,7 @@
 											{/if}
 											<span
 												class="w-2 h-2 rounded-full inline-block"
-												style="background: {serviceColor(svc.status)}; box-shadow: {serviceColor(svc.status) === 'var(--palais-green)' ? '0 0 6px 1px rgba(0,255,136,0.35)' : 'none'};"
+												style="background: {serviceColor(svc.status ?? 'unknown')}; box-shadow: {serviceColor(svc.status ?? 'unknown') === 'var(--palais-green)' ? '0 0 6px 1px rgba(0,255,136,0.35)' : 'none'};"
 											></span>
 										</div>
 									</div>
@@ -392,9 +488,9 @@
 										Backup Zerobyte
 									</span>
 									<span class="text-xs font-semibold"
-										style="color: {backup.status === 'ok' ? 'var(--palais-green)' :
-										               backup.status === 'failed' ? 'var(--palais-red)' : 'var(--palais-amber)'}; font-family: 'JetBrains Mono', monospace;">
-										{backup.status.toUpperCase()}
+										style="color: {(backup.status ?? '') === 'ok' ? 'var(--palais-green)' :
+										               (backup.status ?? '') === 'failed' ? 'var(--palais-red)' : 'var(--palais-amber)'}; font-family: 'JetBrains Mono', monospace;">
+										{(backup.status ?? 'unknown').toUpperCase()}
 									</span>
 								</div>
 								{#if backup.lastBackupAt}
@@ -429,4 +525,144 @@
 			</div>
 		{/if}
 	</section>
+
+	<!-- ══════════════════════════════════════════ EDIT NODE MODAL ═══ -->
+	{#if editNode}
+		<!-- Backdrop -->
+		<div
+			style="position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.72); backdrop-filter: blur(4px);"
+			onclick={closeEdit}
+			role="presentation"
+		></div>
+
+		<!-- Modal panel -->
+		<div
+			class="glass-panel hud-bracket rounded-xl"
+			style="
+				position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+				z-index: 101; width: min(480px, 95vw); padding: 1.5rem;
+				border: 1px solid rgba(212,168,67,0.3);
+				box-shadow: 0 8px 64px 0 rgba(0,0,0,0.6), 0 0 0 1px rgba(212,168,67,0.1);
+			"
+			role="dialog"
+			aria-label="Éditer le node"
+		>
+			<span class="hud-bracket-bottom" style="display: block;">
+				<!-- Modal header -->
+				<div class="flex items-center justify-between mb-5">
+					<h2 style="color: var(--palais-gold); font-family: 'Orbitron', sans-serif; font-size: 0.85rem; letter-spacing: 0.15em; text-transform: uppercase;">
+						Éditer — {editNode.name.toUpperCase()}
+					</h2>
+					<button
+						onclick={closeEdit}
+						style="background: none; border: none; cursor: pointer; color: rgba(212,168,67,0.4); font-size: 1.2rem; line-height: 1; padding: 2px 6px;"
+					>×</button>
+				</div>
+
+				<!-- Fields -->
+				<div class="space-y-4">
+					<!-- Description -->
+					<div>
+						<label style="display: block; font-family: 'Orbitron', sans-serif; font-size: 0.6rem; letter-spacing: 0.2em; color: rgba(212,168,67,0.55); text-transform: uppercase; margin-bottom: 6px;">
+							Description
+						</label>
+						<input
+							type="text"
+							bind:value={editNode.description}
+							placeholder="ex: OVH VPS 8 Go — Cerveau IA"
+							style="
+								width: 100%; padding: 8px 10px;
+								background: rgba(0,0,0,0.35); border-radius: 6px;
+								border: 1px solid rgba(212,168,67,0.2);
+								color: var(--palais-text); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem;
+								outline: none; transition: border-color 0.2s;
+							"
+							onfocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(212,168,67,0.5)'; }}
+							onblur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(212,168,67,0.2)'; }}
+						/>
+					</div>
+
+					<!-- Tailscale IP -->
+					<div>
+						<label style="display: block; font-family: 'Orbitron', sans-serif; font-size: 0.6rem; letter-spacing: 0.2em; color: rgba(212,168,67,0.55); text-transform: uppercase; margin-bottom: 6px;">
+							IP Tailscale / VPN Singa
+						</label>
+						<input
+							type="text"
+							bind:value={editNode.tailscaleIp}
+							placeholder="100.x.x.x"
+							style="
+								width: 100%; padding: 8px 10px;
+								background: rgba(0,0,0,0.35); border-radius: 6px;
+								border: 1px solid rgba(0,212,255,0.2);
+								color: var(--palais-cyan); font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
+								outline: none; transition: border-color 0.2s;
+							"
+							onfocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,212,255,0.5)'; }}
+							onblur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,212,255,0.2)'; }}
+						/>
+					</div>
+
+					<!-- Local IP -->
+					<div>
+						<label style="display: block; font-family: 'Orbitron', sans-serif; font-size: 0.6rem; letter-spacing: 0.2em; color: rgba(212,168,67,0.55); text-transform: uppercase; margin-bottom: 6px;">
+							IP Locale / LAN
+						</label>
+						<input
+							type="text"
+							bind:value={editNode.localIp}
+							placeholder="192.168.x.x"
+							style="
+								width: 100%; padding: 8px 10px;
+								background: rgba(0,0,0,0.35); border-radius: 6px;
+								border: 1px solid rgba(0,212,255,0.2);
+								color: var(--palais-cyan); font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;
+								outline: none; transition: border-color 0.2s;
+							"
+							onfocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,212,255,0.5)'; }}
+							onblur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(0,212,255,0.2)'; }}
+						/>
+					</div>
+				</div>
+
+				<!-- Error message -->
+				{#if saveError}
+					<p style="color: var(--palais-red); font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; margin-top: 10px;">
+						✗ {saveError}
+					</p>
+				{/if}
+
+				<!-- Buttons -->
+				<div class="flex gap-3 justify-end mt-6">
+					<button
+						onclick={closeEdit}
+						disabled={saving}
+						style="
+							padding: 8px 18px; border-radius: 6px; cursor: pointer;
+							background: transparent; color: rgba(212,168,67,0.6);
+							border: 1px solid rgba(212,168,67,0.25);
+							font-family: 'Orbitron', sans-serif; font-size: 0.65rem; letter-spacing: 0.12em;
+							transition: all 0.2s;
+						"
+					>
+						ANNULER
+					</button>
+					<button
+						onclick={saveEdit}
+						disabled={saving}
+						style="
+							padding: 8px 18px; border-radius: 6px; cursor: pointer;
+							background: rgba(212,168,67,0.15); color: var(--palais-gold);
+							border: 1px solid rgba(212,168,67,0.4);
+							font-family: 'Orbitron', sans-serif; font-size: 0.65rem; letter-spacing: 0.12em;
+							transition: all 0.2s;
+							{saving ? 'opacity: 0.5; cursor: not-allowed;' : ''}
+						"
+					>
+						{saving ? 'ENREGISTREMENT…' : 'ENREGISTRER'}
+					</button>
+				</div>
+			</span>
+		</div>
+	{/if}
 </div>

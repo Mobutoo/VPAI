@@ -1,5 +1,13 @@
 import { env } from '$env/dynamic/private';
 
+interface HeadscaleMachine {
+	givenName?: string;
+	name?: string;
+	ipAddresses?: string[];
+	online?: boolean;
+	lastSeen?: string | null;
+}
+
 export interface VPNNode {
 	name: string;
 	ip: string | null;
@@ -7,13 +15,18 @@ export interface VPNNode {
 	lastSeen: string | null;
 }
 
-export async function fetchVPNTopology(): Promise<VPNNode[]> {
+export interface VPNTopologyResult {
+	nodes: VPNNode[];
+	error: boolean;
+}
+
+export async function fetchVPNTopology(): Promise<VPNTopologyResult> {
 	const url = env.HEADSCALE_URL;
 	const apiKey = env.HEADSCALE_API_KEY;
 
 	if (!url || !apiKey) {
 		console.warn('[headscale] HEADSCALE_URL or HEADSCALE_API_KEY not configured');
-		return [];
+		return { nodes: [], error: false };
 	}
 
 	try {
@@ -24,20 +37,23 @@ export async function fetchVPNTopology(): Promise<VPNNode[]> {
 
 		if (!res.ok) {
 			console.error(`[headscale] API error: ${res.status} ${res.statusText}`);
-			return [];
+			return { nodes: [], error: true };
 		}
 
 		const data = await res.json();
-		const machines: unknown[] = data.machines ?? [];
+		const machines: HeadscaleMachine[] = Array.isArray(data.machines) ? data.machines : [];
 
-		return machines.map((m: any) => ({
-			name: m.givenName ?? m.name ?? 'unknown',
-			ip: m.ipAddresses?.[0] ?? null,
-			online: Boolean(m.online),
-			lastSeen: m.lastSeen ?? null
-		}));
+		return {
+			nodes: machines.map((m) => ({
+				name: m.givenName ?? m.name ?? 'unknown',
+				ip: m.ipAddresses?.[0] ?? null,
+				online: Boolean(m.online),
+				lastSeen: m.lastSeen ?? null
+			})),
+			error: false
+		};
 	} catch (err) {
 		console.error('[headscale] fetch failed:', err);
-		return [];
+		return { nodes: [], error: true };
 	}
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import { Fawohodie } from '$lib/components/icons';
 
 	let { data }: { data: PageData } = $props();
 
@@ -91,8 +92,8 @@
 <div class="flex flex-col h-[calc(100vh-6rem)]">
 	<!-- Header -->
 	<div class="flex items-center justify-between mb-6 flex-shrink-0">
-		<h1 class="text-xl font-bold" style="font-family: 'Orbitron', sans-serif; color: var(--palais-text);">
-			💡 Ideas
+		<h1 class="text-xl font-bold flex items-center gap-2" style="font-family: 'Orbitron', sans-serif; color: var(--palais-text);">
+			<Fawohodie size={20} /> Ideas
 		</h1>
 		<button
 			onclick={() => (showNew = !showNew)}

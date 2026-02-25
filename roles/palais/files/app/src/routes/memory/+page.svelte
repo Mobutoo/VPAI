@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import * as d3 from 'd3-force';
+	import { Sankofa } from '$lib/components/icons';
 
 	// ── Types ──────────────────────────────────────────────────────────────────
 	interface MemoryNode {
@@ -176,8 +177,8 @@
 
 	<!-- Header -->
 	<div class="flex items-center justify-between">
-		<h1 class="text-xl font-bold" style="font-family: 'Orbitron', sans-serif; color: var(--palais-text);">
-			🧠 Knowledge Graph
+		<h1 class="text-xl font-bold flex items-center gap-2" style="font-family: 'Orbitron', sans-serif; color: var(--palais-text);">
+			<Sankofa size={20} /> Knowledge Graph
 		</h1>
 		<span class="text-xs" style="color: var(--palais-text-muted);">
 			{recentNodes.length} noeuds · Qdrant + PostgreSQL

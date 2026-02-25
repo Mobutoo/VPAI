@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { PageData } from './$types';
+	import { Akoma } from '$lib/components/icons';
 
 	let { data }: { data: PageData } = $props();
 
@@ -53,8 +54,8 @@
 <div class="flex flex-col h-[calc(100vh-6rem)] gap-4">
 	<!-- Header -->
 	<div class="flex items-center justify-between flex-shrink-0">
-		<h1 class="text-xl font-bold" style="font-family: 'Orbitron', sans-serif; color: var(--palais-text);">
-			🚀 Missions
+		<h1 class="text-xl font-bold flex items-center gap-2" style="font-family: 'Orbitron', sans-serif; color: var(--palais-text);">
+			<Akoma size={20} /> Missions
 		</h1>
 		<a
 			href="/missions/new"

@@ -49,3 +49,115 @@
 		font-variant-numeric: tabular-nums;
 	}
 }
+
+/* ======================================================
+   LIQUID GLASS UTILITIES
+   ====================================================== */
+
+.glass-panel {
+	background: var(--palais-glass-bg);
+	backdrop-filter: blur(var(--palais-glass-blur)) saturate(160%);
+	-webkit-backdrop-filter: blur(var(--palais-glass-blur)) saturate(160%);
+	border: 1px solid var(--palais-glass-border);
+	box-shadow: var(--palais-glass-shadow);
+}
+
+.glass-panel-heavy {
+	background: var(--palais-glass-bg-heavy);
+	backdrop-filter: blur(28px) saturate(180%);
+	-webkit-backdrop-filter: blur(28px) saturate(180%);
+	border: 1px solid var(--palais-glass-border);
+	box-shadow: var(--palais-glass-shadow), var(--palais-glass-glow-gold);
+}
+
+/* ======================================================
+   HUD CORNER BRACKETS
+   ====================================================== */
+
+/* Top brackets */
+.hud-bracket {
+	position: relative;
+}
+.hud-bracket::before,
+.hud-bracket::after {
+	content: '';
+	position: absolute;
+	width: var(--palais-hud-bracket-size);
+	height: var(--palais-hud-bracket-size);
+	border-color: var(--palais-gold);
+	border-style: solid;
+	opacity: 0.55;
+	pointer-events: none;
+	z-index: 10;
+}
+.hud-bracket::before {
+	top: 4px;
+	left: 4px;
+	border-width: var(--palais-hud-bracket-thickness) 0 0 var(--palais-hud-bracket-thickness);
+}
+.hud-bracket::after {
+	top: 4px;
+	right: 4px;
+	border-width: var(--palais-hud-bracket-thickness) var(--palais-hud-bracket-thickness) 0 0;
+}
+
+/* Bottom brackets — use as a SIBLING/CHILD inside .hud-bracket wrapper */
+.hud-bracket-bottom::before,
+.hud-bracket-bottom::after {
+	content: '';
+	position: absolute;
+	width: var(--palais-hud-bracket-size);
+	height: var(--palais-hud-bracket-size);
+	border-color: var(--palais-gold);
+	border-style: solid;
+	opacity: 0.55;
+	pointer-events: none;
+	z-index: 10;
+}
+.hud-bracket-bottom::before {
+	bottom: 4px;
+	left: 4px;
+	border-width: 0 0 var(--palais-hud-bracket-thickness) var(--palais-hud-bracket-thickness);
+}
+.hud-bracket-bottom::after {
+	bottom: 4px;
+	right: 4px;
+	border-width: 0 var(--palais-hud-bracket-thickness) var(--palais-hud-bracket-thickness) 0;
+}
+
+/* ======================================================
+   KEYFRAME ANIMATIONS
+   ====================================================== */
+
+@keyframes scanLine {
+	0%   { transform: translateY(-100%); opacity: 0; }
+	5%   { opacity: 1; }
+	95%  { opacity: 1; }
+	100% { transform: translateY(100%); opacity: 0; }
+}
+
+@keyframes pulseGold {
+	0%, 100% { opacity: 0.3; }
+	50%       { opacity: 0.7; }
+}
+
+@keyframes goldShimmer {
+	0%   { background-position: -200% center; }
+	100% { background-position: 200% center; }
+}
+
+/* ======================================================
+   BACKGROUND PATTERNS
+   ====================================================== */
+
+/* Hexagonal grid filigrane — used on dashboard */
+.hex-grid-bg {
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='64'%3E%3Cpath d='M28 2 L52 16 L52 48 L28 62 L4 48 L4 16 Z' fill='none' stroke='rgba(212%2C168%2C67%2C0.07)' stroke-width='0.8'/%3E%3C/svg%3E");
+	background-size: 56px 64px;
+}
+
+/* Kuba geometric pattern — used for avatar fallbacks */
+.kuba-pattern-bg {
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Crect width='32' height='32' fill='%23111118'/%3E%3Crect x='0' y='0' width='16' height='16' fill='none' stroke='rgba(212%2C168%2C67%2C0.25)' stroke-width='0.6'/%3E%3Crect x='16' y='16' width='16' height='16' fill='none' stroke='rgba(212%2C168%2C67%2C0.25)' stroke-width='0.6'/%3E%3Cline x1='0' y1='16' x2='16' y2='0' stroke='rgba(212%2C168%2C67%2C0.15)' stroke-width='0.5'/%3E%3Cline x1='16' y1='32' x2='32' y2='16' stroke='rgba(212%2C168%2C67%2C0.15)' stroke-width='0.5'/%3E%3Ccircle cx='8' cy='8' r='2' fill='none' stroke='rgba(212%2C168%2C67%2C0.2)' stroke-width='0.5'/%3E%3Ccircle cx='24' cy='24' r='2' fill='none' stroke='rgba(212%2C168%2C67%2C0.2)' stroke-width='0.5'/%3E%3C/svg%3E");
+	background-size: 32px 32px;
+}

@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private';
 
-interface HeadscaleMachine {
+interface HeadscaleNode {
 	givenName?: string;
 	name?: string;
 	ipAddresses?: string[];
@@ -30,7 +30,7 @@ export async function fetchVPNTopology(): Promise<VPNTopologyResult> {
 	}
 
 	try {
-		const res = await fetch(`${url}/api/v1/machine`, {
+		const res = await fetch(`${url}/api/v1/node`, {
 			headers: { Authorization: `Bearer ${apiKey}` },
 			signal: AbortSignal.timeout(5000)
 		});
@@ -41,7 +41,8 @@ export async function fetchVPNTopology(): Promise<VPNTopologyResult> {
 		}
 
 		const data = await res.json();
-		const machines: HeadscaleMachine[] = Array.isArray(data.machines) ? data.machines : [];
+		// Headscale 0.23+ uses /api/v1/node with response key "nodes" (was "machines" in older versions)
+		const machines: HeadscaleNode[] = Array.isArray(data.nodes) ? data.nodes : [];
 
 		return {
 			nodes: machines.map((m) => ({

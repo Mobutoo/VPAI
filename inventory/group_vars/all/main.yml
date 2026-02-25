@@ -43,6 +43,9 @@ vpn_provider: "ionos"
 vpn_hostname: "{{ vault_vpn_hostname | default('seko-vpn') }}"
 vpn_headscale_url: "{{ vault_vpn_headscale_url | default('https://vpn.example.com') }}"
 vpn_headscale_ip: "{{ vault_vpn_headscale_ip | default('127.0.0.1') }}"
+# vpn_tailscale_ip: Tailscale mesh IP of the VPN server (100.64.x.x range)
+# NOTE: different from vpn_headscale_ip which is the public SSH IP of the Ionos server
+vpn_tailscale_ip: "{{ vault_vpn_tailscale_ip | default('') }}"
 vpn_network_cidr: "100.64.0.0/10"
 
 # --- Pre-production (Hetzner Cloud) ---

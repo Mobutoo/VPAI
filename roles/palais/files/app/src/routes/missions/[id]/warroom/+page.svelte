@@ -31,7 +31,7 @@
 		previewUrl?: string;
 	};
 	let events     = $state<FeedEvent[]>([]);
-	let feedEl     = $state<HTMLDivElement | undefined>(undefined);
+	let feedEl     = $state<HTMLElement | undefined>(undefined);
 	let userScrolled = $state(false);
 
 	// Modals
@@ -688,7 +688,7 @@
 	>
 		<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 		<div
-			onclick|stopPropagation
+			onclick={(e) => e.stopPropagation()}
 			style="
 				background: var(--palais-surface); border: 1px solid var(--palais-border);
 				border-radius: 10px; padding: 1.5rem; min-width: 320px;

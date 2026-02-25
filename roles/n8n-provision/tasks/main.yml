@@ -293,6 +293,8 @@
       if [ -f "$CHECKSUM_DIR/{{ item.file }}.md5" ]; then
         OLD_MD5=$(cat "$CHECKSUM_DIR/{{ item.file }}.md5")
       fi
+      # Store checksum now — file is guaranteed to exist (md5sum would have failed otherwise)
+      echo "$NEW_MD5" > "$CHECKSUM_DIR/{{ item.file }}.md5"
       if [ "$NEW_MD5" = "$OLD_MD5" ]; then
         echo "UNCHANGED"
       else

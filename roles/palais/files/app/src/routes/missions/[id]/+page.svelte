@@ -116,6 +116,37 @@
 	}
 </script>
 
+<!-- War Room suggestion banner -->
+{#if data.suggestWarRoom}
+	<div style="
+		display: flex; align-items: center; justify-content: space-between;
+		padding: 0.6rem 1rem; margin-bottom: 1rem;
+		background: color-mix(in srgb, var(--palais-amber) 10%, var(--palais-surface));
+		border: 1px solid var(--palais-amber);
+		border-radius: 8px;
+	">
+		<div style="display: flex; align-items: center; gap: 0.6rem;">
+			<span style="font-size: 1rem;">⚡</span>
+			<span style="font-size: 0.82rem; color: var(--palais-text);">
+				<strong style="color: var(--palais-amber);">Mission complexe détectée</strong>
+				— {data.parallelTasks} tâches en parallèle
+			</span>
+		</div>
+		<a
+			href="/missions/{data.mission.id}/warroom"
+			style="
+				padding: 0.3rem 0.9rem; font-size: 0.75rem; font-weight: 600;
+				font-family: var(--font-display, Orbitron, sans-serif);
+				letter-spacing: 0.06em;
+				background: color-mix(in srgb, var(--palais-amber) 15%, transparent);
+				color: var(--palais-amber); border: 1px solid var(--palais-amber);
+				border-radius: 5px; text-decoration: none;
+				transition: background 0.2s;
+			"
+		>Ouvrir War Room →</a>
+	</div>
+{/if}
+
 <div class="flex h-[calc(100vh-6rem)] gap-4">
 	<!-- Left: Chat panel -->
 	<div class="flex flex-col flex-1 min-w-0 rounded-xl overflow-hidden"

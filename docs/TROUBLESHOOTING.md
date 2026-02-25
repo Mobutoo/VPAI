@@ -864,7 +864,7 @@ make deploy-role ROLE=openclaw ENV=prod
 
 ---
 
-### 11.14 Kaneo — Endpoint d'Auth BetterAuth (Route Correcte)
+### 11.14 Kaneo — Endpoint d'Auth BetterAuth (Route Correcte) ⚠️ ARCHIVÉ — Kaneo remplacé par Palais
 
 **Symptome** : Messenger Hermes ne crée rien dans Kaneo. Aucune tâche, aucun projet. Pas d'erreur visible (curl avec `-sf` masque les 404).
 
@@ -902,7 +902,7 @@ docker exec javisi_openclaw curl -s -o /dev/null -w '%{http_code}' \
 
 ---
 
-### 11.15 Kaneo — Doublons workspace_member (Double Provisioning)
+### 11.15 Kaneo — Doublons workspace_member (Double Provisioning) ⚠️ ARCHIVÉ
 
 **Symptome** : Chaque agent apparait deux fois dans la liste des membres de l'espace de travail Kaneo.
 
@@ -1011,7 +1011,7 @@ recreate: always
 
 ---
 
-### 11.20 Kaneo API — Status Slug = Nom de Colonne Slugifie
+### 11.20 Kaneo API — Status Slug = Nom de Colonne Slugifie ⚠️ ARCHIVÉ
 
 **Symptome** : `PUT /api/task/status/<id>` avec `{"status":"todo"}` retourne 400 ou ne deplace pas la tache.
 
@@ -1034,7 +1034,7 @@ recreate: always
 
 ---
 
-### 11.21 Kaneo API — external-link = Read-Only (GitHub Integrations)
+### 11.21 Kaneo API — external-link = Read-Only (GitHub Integrations) ⚠️ ARCHIVÉ
 
 **Symptome** : `POST /api/external-link` retourne 404 ou "Method not allowed".
 
@@ -1057,7 +1057,7 @@ Lire avec `GET /api/activity?taskId=<id>` et filtrer les commentaires `[DELIVERA
 
 ---
 
-### 11.22 Kaneo API — Comment Field = `comment` pas `content`
+### 11.22 Kaneo API — Comment Field = `comment` pas `content` ⚠️ ARCHIVÉ
 
 **Symptome** : `POST /api/activity/comment` avec `{"taskId":"...","content":"..."}` retourne 400 ou cree un commentaire vide.
 
@@ -1518,4 +1518,84 @@ Le playbook `vpn-toggle.yml` inclut un dead man switch :
 > **Ne jamais activer** `hardening_vpn_only_mode=true` manuellement sans le playbook
 > `vpn-toggle.yml` — utiliser `make vpn-on` qui inclut les safety checks.
 
-*Derniere mise a jour : 2026-02-23 — Session 9 (Creative Stack Pi, OpenCut on-demand, VPN error pages, subdomain swap)*
+*Derniere mise a jour : 2026-02-25 — Session 11 (Phase 16 : Kaneo archivé, section Palais ajoutée)*
+
+---
+
+## 40. Palais (Cockpit IA — Remplace Kaneo)
+
+> Palais est déployé sur `https://{{ palais_subdomain }}.{{ domain_name }}` (VPN-only).
+> Container : `palais`, DB : `palais` (PostgreSQL partagé), Port interne : 3300.
+
+### 40.1 Healthcheck
+
+```bash
+curl -sf https://palais.<domain>/api/health
+# → {"status":"ok","db":"ok","version":"..."}
+```
+
+### 40.2 Logs
+
+```bash
+docker logs palais --tail 50 --follow
+```
+
+### 40.3 Base de données
+
+```bash
+# Compter les tâches
+docker exec postgresql psql -U palais -d palais -c 'SELECT count(*) FROM tasks;'
+
+# Lister les projets
+docker exec postgresql psql -U palais -d palais -c 'SELECT id, name, slug FROM projects;'
+
+# Réinitialiser une tâche bloquée en in-progress
+docker exec postgresql psql -U palais -d palais -c \
+  "UPDATE tasks SET status='backlog' WHERE id=<id>;"
+```
+
+### 40.4 Redémarrage
+
+```bash
+docker restart palais
+# Vérifier la santé après restart
+sleep 5 && curl -sf https://palais.<domain>/api/health
+```
+
+### 40.5 Migration Kaneo → Palais (one-shot)
+
+```bash
+# Dry run d'abord
+cd /opt/<project>/palais/app
+KANEO_DATABASE_URL="postgresql://kaneo:...@localhost:5432/kaneo" \
+DATABASE_URL="postgresql://palais:...@localhost:5432/palais" \
+npx tsx scripts/migrate-kaneo.ts --dry-run --verbose
+
+# Migration réelle
+npx tsx scripts/migrate-kaneo.ts --verbose
+```
+
+### 40.6 Rebuild image Palais (si code modifié)
+
+```bash
+# Via Ansible
+ansible-playbook playbooks/site.yml --tags palais
+
+# Manuel (urgence)
+cd /opt/<project>/palais
+docker build -t palais-local . && docker restart palais
+```
+
+---
+
+## 99. Archive — Kaneo (remplacé par Palais en Phase 16, 2026-02-25)
+
+> Les sections 11.14, 11.15, 11.20, 11.21, 11.22 du chapitre OpenClaw/Kaneo sont marquées
+> **⚠️ ARCHIVÉ** et conservées pour référence historique.
+>
+> Kaneo (usekaneo/kaneo fork Mobutoo) a été utilisé du 2026-02-15 au 2026-02-25 comme PM tool.
+> Il est remplacé par **Palais** (SvelteKit dashboard custom) déployé en Phase 1-16 VPAI.
+>
+> Le rôle Ansible `roles/kaneo/` est conservé en archive mais désactivé dans `playbooks/site.yml`.
+> La DB Kaneo est conservée en lecture seule (`docker exec postgresql psql -U kaneo -d kaneo`).
+> Un backup final est disponible dans le répertoire backup Zerobyte.

@@ -16,11 +16,19 @@
 		now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 	);
 
+	const dateString = $derived(
+		now.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+	);
+
 	// ── Agent stats ──
 	const totalAgents  = $derived(data.agents.length);
 	const activeAgents = $derived(data.agents.filter((a: Record<string, unknown>) => a.status === 'idle' || a.status === 'busy').length);
 	const busyAgents   = $derived(data.agents.filter((a: Record<string, unknown>) => a.status === 'busy').length);
 	const errorAgents  = $derived(data.agents.filter((a: Record<string, unknown>) => a.status === 'error').length);
+
+	// ── Insight lists ──
+	const criticalInsights    = $derived((data.insights ?? []).filter((i: Record<string, unknown>) => i.severity === 'critical'));
+	const nonCriticalInsights = $derived((data.insights ?? []).filter((i: Record<string, unknown>) => i.severity !== 'critical'));
 </script>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -29,7 +37,7 @@
 <div class="fixed inset-0 pointer-events-none overflow-hidden z-0" aria-hidden="true">
 	<div
 		class="absolute w-full h-[2px] bg-gradient-to-r from-transparent via-[var(--palais-gold)] to-transparent"
-		style="animation-name: scanLine; animation-duration: 8s; animation-timing-function: ease-in-out; animation-iteration-count: infinite; opacity: 0.06;"
+		style="animation: scanLine 8s ease-in-out infinite; opacity: 0.06;"
 	/>
 </div>
 
@@ -98,18 +106,18 @@
 				class="uppercase tracking-[0.2em] mt-0.5"
 				style="color: var(--palais-text-muted); font-family: 'Orbitron', sans-serif; font-size: 0.45rem;"
 			>
-				{new Date().toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+				{dateString}
 			</span>
 		</div>
 	</header>
 
 	<!-- ── CRITICAL INSIGHT BANNERS ─────────────────────────── -->
-	{#if data.insights.filter((i: Record<string, unknown>) => i.severity === 'critical').length > 0}
+	{#if criticalInsights.length > 0}
 		<div
 			class="space-y-2"
 			style="animation: fadeSlideUp 0.5s ease-out both; animation-delay: 80ms;"
 		>
-			{#each data.insights.filter((i: Record<string, unknown>) => i.severity === 'critical') as insight (insight.id)}
+			{#each criticalInsights as insight (insight.id)}
 				<InsightBanner {insight} />
 			{/each}
 		</div>
@@ -183,7 +191,7 @@
 	</section>
 
 	<!-- ── INSIGHTS ─────────────────────────────────────────── -->
-	{#if data.insights.filter((i: Record<string, unknown>) => i.severity !== 'critical').length > 0}
+	{#if nonCriticalInsights.length > 0}
 		<section
 			style="animation: fadeSlideUp 0.5s ease-out both; animation-delay: 320ms;"
 		>
@@ -203,7 +211,7 @@
 				<span style="flex: 1; height: 1px; background: linear-gradient(to right, rgba(212,168,67,0.3), transparent); display: inline-block;"></span>
 			</h2>
 			<div class="space-y-2">
-				{#each data.insights.filter((i: Record<string, unknown>) => i.severity !== 'critical') as insight (insight.id)}
+				{#each nonCriticalInsights as insight (insight.id)}
 					<InsightBanner {insight} />
 				{/each}
 			</div>

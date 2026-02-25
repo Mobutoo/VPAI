@@ -1,0 +1,88 @@
+{
+  "name": "Palais — Daily Standup Briefing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "sd-0001-0000-0000-0000-000000000001",
+      "name": "Cron 8h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://palais:3300/api/v1/standup/latest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Key", "value": "={{ $env.PALAIS_API_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sd-0001-0000-0000-0000-000000000002",
+      "name": "Get standup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const standup = $input.first().json;\n\nif (!standup || !standup.title) {\n  return [{ json: { message: '🏛️ *Briefing Palais*\\n\\nAucun briefing disponible ce matin.' } }];\n}\n\n// Format the standup description for Telegram (strip markdown headers to plain text)\nconst description = (standup.description || '').slice(0, 3000);\n\nconst message = [\n  '🏛️ *Briefing Matinal — Palais*',\n  '',\n  description\n].join('\\n');\n\nreturn [{ json: { message } }];"
+      },
+      "id": "sd-0001-0000-0000-0000-000000000003",
+      "name": "Format briefing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id",    "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text",       "value": "={{ $json.message }}" },
+            { "name": "parse_mode", "value": "Markdown" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sd-0001-0000-0000-0000-000000000004",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300]
+    }
+  ],
+  "connections": {
+    "Cron 8h": { "main": [[{ "node": "Get standup", "type": "main", "index": 0 }]] },
+    "Get standup": { "main": [[{ "node": "Format briefing", "type": "main", "index": 0 }]] },
+    "Format briefing": { "main": [[{ "node": "Send to Telegram", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "palais" }, { "name": "standup" }, { "name": "telegram" }],
+  "triggerCount": 0,
+  "updatedAt": "2026-02-25T00:00:00.000Z",
+  "versionId": "1"
+}

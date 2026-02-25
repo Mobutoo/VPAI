@@ -26,68 +26,30 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "http://kaneo-api:1337/api/auth/sign-in/email",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={ \"email\": \"{{ $env.KANEO_AGENT_EMAIL }}\", \"password\": \"{{ $env.KANEO_AGENT_PASSWORD }}\" }",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "responseFormat": "json"
-            }
-          }
-        }
-      },
-      "id": "ps-0001-0000-0000-0000-000000000003",
-      "name": "Auth Kaneo",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [700, 300]
-    },
-    {
-      "parameters": {
-        "jsCode": "const response = $input.first().json;\nconst headers = response.headers || {};\nconst setCookie = headers['set-cookie'] || [];\nlet cookie = '';\nif (Array.isArray(setCookie)) {\n  cookie = setCookie.map(c => c.split(';')[0]).join('; ');\n} else if (typeof setCookie === 'string') {\n  cookie = setCookie.split(';')[0];\n}\nif (!cookie) throw new Error('Kaneo auth failed');\nconst ctx = $('Validate payload').first().json;\nreturn [{ json: { ...ctx, cookie } }];"
-      },
-      "id": "ps-0001-0000-0000-0000-000000000004",
-      "name": "Extract cookie",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [920, 300]
-    },
-    {
-      "parameters": {
         "method": "GET",
-        "url": "=http://kaneo-api:1337/api/project/{{ $json.project_id }}",
+        "url": "http://palais:3300/api/v1/projects",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $json.cookie }}" }
+            { "name": "X-API-Key", "value": "={{ $env.PALAIS_API_KEY }}" }
           ]
         },
         "options": {}
       },
       "id": "ps-0001-0000-0000-0000-000000000005",
-      "name": "Get project info",
+      "name": "Get all projects",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1140, 200]
+      "position": [700, 180]
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "=http://kaneo-api:1337/api/task/tasks/{{ $json.project_id }}",
+        "url": "=http://palais:3300/api/v1/projects/{{ $('Validate payload').first().json.project_id }}/tasks",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $json.cookie }}" }
+            { "name": "X-API-Key", "value": "={{ $env.PALAIS_API_KEY }}" }
           ]
         },
         "options": {}
@@ -96,42 +58,60 @@
       "name": "Get all tasks",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1140, 400]
+      "position": [700, 300]
     },
     {
       "parameters": {
-        "jsCode": "// Build comprehensive project status report\nconst projectRaw = $('Get project info').first().json;\nconst tasksRaw = $('Get all tasks').first().json;\nconst ctx = $('Extract cookie').first().json;\n\nconst project = projectRaw.project || projectRaw.data || projectRaw || {};\nconst tasks = Array.isArray(tasksRaw) ? tasksRaw\n  : (tasksRaw.tasks || tasksRaw.data || []);\n\n// Count by status\nconst statusCounts = { done: 0, 'in-progress': 0, todo: 0, total: tasks.length };\nconst byAgent = {};\nconst blockedTasks = [];\nconst inProgressTasks = [];\n\nfor (const task of tasks) {\n  const status = (task.status || 'todo').toLowerCase();\n  statusCounts[status] = (statusCounts[status] || 0) + 1;\n\n  // Parse labels\n  const labels = task.labels || [];\n  for (const label of labels) {\n    const name = label.name || label || '';\n    if (name.startsWith('agent:')) {\n      const agentId = name.replace('agent:', '');\n      byAgent[agentId] = (byAgent[agentId] || 0) + 1;\n    }\n    if (name === 'blocked') blockedTasks.push(task.title || task.id);\n  }\n\n  if (status === 'in-progress') inProgressTasks.push(task.title || task.id);\n}\n\nconst completion = tasks.length > 0\n  ? Math.round((statusCounts.done / tasks.length) * 100)\n  : 0;\n\n// Format agent breakdown\nconst agentLines = Object.entries(byAgent)\n  .map(([id, count]) => `  - ${id}: ${count} taches`)\n  .join('\\n');\n\n// Build report\nconst report = [\n  `## Statut Projet : ${project.name || ctx.project_id}`,\n  ``,\n  `**Avancement** : ${completion}% (${statusCounts.done}/${tasks.length} done)`,\n  `**En cours** : ${statusCounts['in-progress']}`,\n  `**Backlog** : ${statusCounts.todo || 0}`,\n  ``,\n  `### Par agent`,\n  agentLines || '  Aucun agent assigne',\n  ``,\n  `### Taches en cours`,\n  inProgressTasks.length > 0 ? inProgressTasks.map(t => `  - ${t}`).join('\\n') : '  Aucune',\n  ``,\n  `### Taches bloquees`,\n  blockedTasks.length > 0 ? blockedTasks.map(t => `  - ${t}`).join('\\n') : '  Aucune'\n].join('\\n');\n\nreturn [{ json: {\n  project_id: ctx.project_id,\n  project_name: project.name || ctx.project_id,\n  total: tasks.length,\n  done: statusCounts.done,\n  in_progress: statusCounts['in-progress'],\n  todo: statusCounts.todo || 0,\n  completion_pct: completion,\n  blocked_count: blockedTasks.length,\n  by_agent: byAgent,\n  report,\n  cookie: ctx.cookie\n}}];"
+        "method": "GET",
+        "url": "http://palais:3300/api/v1/budget",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Key", "value": "={{ $env.PALAIS_API_KEY }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ps-0001-0000-0000-0000-000000000017",
+      "name": "Get budget",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build comprehensive project status report using Palais data\nconst allProjectsRaw = $('Get all projects').first().json;\nconst tasksRaw = $('Get all tasks').first().json;\nconst budgetRaw = $('Get budget').first().json;\nconst ctx = $('Validate payload').first().json;\n\n// Find matching project from list\nconst projects = Array.isArray(allProjectsRaw) ? allProjectsRaw : [];\nconst project = projects.find(p => String(p.id) === String(ctx.project_id)) || { name: ctx.project_id };\n\nconst tasks = Array.isArray(tasksRaw) ? tasksRaw : (tasksRaw.tasks || tasksRaw.data || []);\n\n// Count by status (Palais uses 'todo', 'in-progress', 'done')\nconst statusCounts = { done: 0, 'in-progress': 0, todo: 0, total: tasks.length };\nconst byAgent = {};\nconst blockedTasks = [];\nconst inProgressTasks = [];\n\nfor (const task of tasks) {\n  const status = (task.status || 'todo').toLowerCase();\n  statusCounts[status] = (statusCounts[status] || 0) + 1;\n\n  // Palais uses assigneeAgentId directly\n  if (task.assigneeAgentId) {\n    byAgent[task.assigneeAgentId] = (byAgent[task.assigneeAgentId] || 0) + 1;\n  }\n\n  if (status === 'blocked') blockedTasks.push(task.title || task.id);\n  if (status === 'in-progress') inProgressTasks.push(task.title || task.id);\n}\n\nconst completion = tasks.length > 0\n  ? Math.round((statusCounts.done / tasks.length) * 100)\n  : 0;\n\n// Budget data\nconst spent = budgetRaw?.spent ?? budgetRaw?.totalSpent ?? 0;\nconst remaining = budgetRaw?.remaining ?? 0;\n\n// Format agent breakdown\nconst agentLines = Object.entries(byAgent)\n  .map(([id, count]) => `  - ${id}: ${count} tache(s)`)\n  .join('\\n');\n\n// Build report\nconst report = [\n  `## Statut Projet : ${project.name || ctx.project_id}`,\n  ``,\n  `**Avancement** : ${completion}% (${statusCounts.done}/${tasks.length} done)`,\n  `**En cours** : ${statusCounts['in-progress']}`,\n  `**Backlog** : ${statusCounts.todo || 0}`,\n  ``,\n  `**Budget** : $${Number(spent).toFixed(2)} depense | $${Number(remaining).toFixed(2)} restant`,\n  ``,\n  `### Par agent`,\n  agentLines || '  Aucun agent assigne',\n  ``,\n  `### Taches en cours`,\n  inProgressTasks.length > 0 ? inProgressTasks.map(t => `  - ${t}`).join('\\n') : '  Aucune',\n  ``,\n  `### Taches bloquees`,\n  blockedTasks.length > 0 ? blockedTasks.map(t => `  - ${t}`).join('\\n') : '  Aucune'\n].join('\\n');\n\nreturn [{ json: {\n  project_id: ctx.project_id,\n  project_name: project.name || ctx.project_id,\n  total: tasks.length,\n  done: statusCounts.done,\n  in_progress: statusCounts['in-progress'],\n  todo: statusCounts.todo || 0,\n  completion_pct: completion,\n  blocked_count: blockedTasks.length,\n  by_agent: byAgent,\n  budget_spent: spent,\n  budget_remaining: remaining,\n  report\n}}];"
       },
       "id": "ps-0001-0000-0000-0000-000000000007",
       "name": "Build status report",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 300]
+      "position": [920, 300]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', project_id: $json.project_id, project_name: $json.project_name, total: $json.total, done: $json.done, in_progress: $json.in_progress, completion_pct: $json.completion_pct, by_agent: $json.by_agent, report: $json.report } }}"
+        "responseBody": "={{ { status: 'ok', project_id: $json.project_id, project_name: $json.project_name, total: $json.total, done: $json.done, in_progress: $json.in_progress, completion_pct: $json.completion_pct, by_agent: $json.by_agent, budget_spent: $json.budget_spent, budget_remaining: $json.budget_remaining, report: $json.report } }}"
       },
       "id": "ps-0001-0000-0000-0000-000000000008",
       "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1580, 300]
+      "position": [1140, 300]
     }
   ],
   "connections": {
     "Webhook Trigger": { "main": [[{ "node": "Validate payload", "type": "main", "index": 0 }]] },
-    "Validate payload": { "main": [[{ "node": "Auth Kaneo", "type": "main", "index": 0 }]] },
-    "Auth Kaneo": { "main": [[{ "node": "Extract cookie", "type": "main", "index": 0 }]] },
-    "Extract cookie": {
+    "Validate payload": {
       "main": [[
-        { "node": "Get project info", "type": "main", "index": 0 },
-        { "node": "Get all tasks", "type": "main", "index": 0 }
+        { "node": "Get all projects", "type": "main", "index": 0 },
+        { "node": "Get all tasks", "type": "main", "index": 0 },
+        { "node": "Get budget", "type": "main", "index": 0 }
       ]]
     },
-    "Get project info": { "main": [[{ "node": "Build status report", "type": "main", "index": 0 }]] },
+    "Get all projects": { "main": [[{ "node": "Build status report", "type": "main", "index": 0 }]] },
     "Get all tasks": { "main": [[{ "node": "Build status report", "type": "main", "index": 0 }]] },
+    "Get budget": { "main": [[{ "node": "Build status report", "type": "main", "index": 0 }]] },
     "Build status report": { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] }
   },
   "settings": {
@@ -143,8 +123,8 @@
     "errorWorkflow": ""
   },
   "staticData": null,
-  "tags": [{ "name": "kaneo" }, { "name": "reporting" }, { "name": "openclaw" }],
+  "tags": [{ "name": "palais" }, { "name": "reporting" }, { "name": "openclaw" }],
   "triggerCount": 1,
-  "updatedAt": "2026-02-23T00:00:00.000Z",
-  "versionId": "1"
+  "updatedAt": "2026-02-25T00:00:00.000Z",
+  "versionId": "2"
 }

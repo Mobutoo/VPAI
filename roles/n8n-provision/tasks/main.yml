@@ -87,6 +87,101 @@
       {% endif %}
 
 # ========================================================================
+# Credential provisioning — PostgreSQL Main (pg-main)
+# Required by Budget Monitor workflow to query litellm_spendlogs.
+# Creates the credential if absent, skips if already present (idempotent).
+# ========================================================================
+
+- name: Provision PostgreSQL Main credential in n8n (pg-main for Budget Monitor)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      cat > /tmp/n8n-cred-pg.js << 'CREDSCRIPT'
+      const http = require('http');
+      const [email, pw, pgPass] = process.argv.slice(2);
+
+      function req(method, path, body, cookie) {
+        return new Promise((resolve, reject) => {
+          const h = { 'Content-Type': 'application/json' };
+          if (cookie) h['Cookie'] = cookie;
+          const opts = { hostname: '127.0.0.1', port: 5678, path, method, headers: h };
+          const r = http.request(opts, (res) => {
+            let d = ''; res.on('data', c => d += c);
+            res.on('end', () => {
+              const sc = res.headers['set-cookie'];
+              resolve({ s: res.statusCode, d, c: sc ? sc[0].split(';')[0] : null });
+            });
+          });
+          r.on('error', reject);
+          if (body) r.write(JSON.stringify(body));
+          r.end();
+        });
+      }
+
+      (async () => {
+        const login = await req('POST', '/rest/login', { emailOrLdapLoginId: email, password: pw });
+        if (login.s !== 200 || !login.c) { console.log('LOGIN_FAILED'); process.exit(1); }
+
+        // Check if credential already exists
+        const list = await req('GET', '/rest/credentials', null, login.c);
+        const creds = JSON.parse(list.d);
+        const existing = (creds.data || []).find(c => c.name === 'PostgreSQL Main');
+        if (existing) { console.log('EXISTS:' + existing.id); process.exit(0); }
+
+        // Create new credential
+        const result = await req('POST', '/rest/credentials', {
+          name: 'PostgreSQL Main',
+          type: 'postgres',
+          data: {
+            host: 'postgresql',
+            port: 5432,
+            database: 'litellm',
+            user: 'litellm',
+            password: pgPass,
+            ssl: 'disable',
+            allowUnauthorizedCerts: false
+          }
+        }, login.c);
+
+        const created = JSON.parse(result.d);
+        if (created.id) {
+          console.log('CREATED:' + created.id);
+        } else {
+          console.log('FAIL:' + result.s + ':' + result.d.substring(0, 200));
+          process.exit(1);
+        }
+      })().catch(e => { console.log('ERROR:' + e.message); process.exit(1); });
+      CREDSCRIPT
+
+      docker cp /tmp/n8n-cred-pg.js {{ project_name }}_n8n:/home/node/n8n-cred-pg.js
+      RESULT=$(docker exec {{ project_name }}_n8n node /home/node/n8n-cred-pg.js \
+        "{{ n8n_owner_email }}" "{{ n8n_owner_password }}" "{{ postgresql_password }}" 2>&1)
+      echo "$RESULT"
+  register: n8n_pg_cred_result
+  changed_when: "'CREATED:' in (n8n_pg_cred_result.stdout | default(''))"
+  failed_when: >-
+    'LOGIN_FAILED' in (n8n_pg_cred_result.stdout | default('')) or
+    'ERROR:' in (n8n_pg_cred_result.stdout | default(''))
+  no_log: true
+  become: true
+  when:
+    - n8n_container_check.stdout | default('') | length > 0
+    - n8n_owner_email | default('') | length > 0
+
+- name: Display PostgreSQL credential provisioning result
+  ansible.builtin.debug:
+    msg: >-
+      {% if 'CREATED:' in (n8n_pg_cred_result.stdout | default('')) %}
+      ✅ n8n credential "PostgreSQL Main" créé (litellm DB).
+      {% elif 'EXISTS:' in (n8n_pg_cred_result.stdout | default('')) %}
+      ℹ️  n8n credential "PostgreSQL Main" déjà présent — skipping.
+      {% else %}
+      ⚠️  Résultat inattendu : {{ n8n_pg_cred_result.stdout | default('skipped') }}
+      {% endif %}
+  when: n8n_container_check.stdout | default('') | length > 0
+
+# ========================================================================
 # AI Workflow Import (OpenClaw -> n8n delegation)
 # Supports both initial import AND updates via checksum comparison.
 # Strategy: compare md5 of local JSON vs stored checksum on server.

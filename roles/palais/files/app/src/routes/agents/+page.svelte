@@ -42,8 +42,8 @@
 
 	<!-- Agent cards grid -->
 	<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-		{#each agentList as agent (agent.id)}
-			<AgentCard {agent} />
+		{#each agentList as agent, i (agent.id)}
+			<AgentCard {agent} index={i} />
 		{/each}
 	</div>
 

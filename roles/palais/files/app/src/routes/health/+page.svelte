@@ -313,7 +313,7 @@
 								font-family="Orbitron, sans-serif"
 								letter-spacing="1"
 							>
-								{nodePos(node.name).label.toUpperCase().substring(0, 12)}
+								{pos.label.toUpperCase().substring(0, 12)}
 							</text>
 
 							<!-- DEGRADED label — flickers -->

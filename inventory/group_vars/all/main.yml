@@ -30,6 +30,7 @@ caddy_vpn_enforce: true
 prod_provider: "ovh"
 prod_hostname: "{{ vault_prod_hostname | default('vps-prod-01') }}"
 prod_ip: "{{ vault_prod_ip | default('127.0.0.1') }}"
+prod_ssh_host: "{{ vault_prod_ssh_host | default(prod_ip) }}"
 prod_os: "debian-13"
 prod_ram_gb: 8
 prod_cpu_cores: 4

@@ -63,7 +63,9 @@
 		animation-delay: {entranceDelay};
 	"
 >
-	<!-- Bottom HUD bracket overlay — sits outside portrait overflow:hidden, covers full card -->
+	<!-- hud-bracket-bottom needs position:absolute with inset:0 here to span the full card area.
+	     The class defines position:relative for standalone use, but we override to absolute
+	     so its ::before/::after bottom brackets position relative to the <a> card wrapper. -->
 	<span class="hud-bracket-bottom" aria-hidden="true" style="position: absolute; inset: 0; pointer-events: none; z-index: 20;" />
 
 	<!-- Portrait area (2:3 aspect ratio) — full stack, no separate info panel below -->
@@ -161,7 +163,7 @@
 		<!-- ── LIQUID GLASS INFO PANEL (absolute, bottom of portrait) ── -->
 		<div
 			class="glass-panel absolute bottom-0 left-0 right-0 px-3 py-2.5"
-			style="border-top: 1px solid rgba(212,168,67,0.15); border-left: none; border-right: none; border-bottom: none; border-radius: 0;"
+			style="border: none; border-top: 1px solid rgba(212,168,67,0.15); border-radius: 0;"
 		>
 			<!-- Agent name — mission dossier style -->
 			<h3
@@ -213,17 +215,6 @@
 	@keyframes ringTrace {
 		from { stroke-dashoffset: 0; }
 		to   { stroke-dashoffset: -488; }
-	}
-
-	@keyframes cardReveal {
-		from {
-			opacity: 0;
-			transform: translateY(8px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
 	}
 
 	/* Smooth hover gold border intensification */

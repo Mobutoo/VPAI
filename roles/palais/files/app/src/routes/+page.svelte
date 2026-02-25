@@ -44,7 +44,7 @@
 <!-- ══════════════════════════════════════════════════════════
      MAIN DASHBOARD WRAPPER — hex grid filigrane
      ══════════════════════════════════════════════════════════ -->
-<div class="hex-grid-bg space-y-7 relative">
+<div class="space-y-7 relative">
 
 	<!-- ── HEADER ROW ────────────────────────────────────────── -->
 	<header

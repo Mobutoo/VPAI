@@ -13,7 +13,7 @@
 
 <div class="min-h-screen" style="background: var(--palais-bg);">
 	<Sidebar />
-	<main class="ml-16 p-6">
+	<main class="ml-16 p-6 hex-grid-bg min-h-screen">
 		{@render children()}
 	</main>
 </div>

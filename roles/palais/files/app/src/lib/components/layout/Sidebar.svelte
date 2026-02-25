@@ -22,7 +22,7 @@
 	let currentPath = $derived($page.url.pathname);
 </script>
 
-<aside class="sidebar-shell fixed left-0 top-0 h-screen w-16 flex flex-col items-center py-4 gap-1 z-50 relative overflow-hidden">
+<aside class="sidebar-shell fixed left-0 top-0 h-screen w-16 flex flex-col items-center py-4 gap-1 z-50">
 
 	<!-- Kuba textile pattern overlay -->
 	<div class="absolute inset-0 kuba-pattern-bg opacity-[0.35] pointer-events-none" aria-hidden="true"></div>

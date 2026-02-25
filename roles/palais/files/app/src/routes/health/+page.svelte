@@ -72,7 +72,7 @@
 
 <svelte:head><title>Palais — Health</title></svelte:head>
 
-<div class="hex-grid-bg" style="min-height: 100vh; padding: 2rem 0;">
+<div style="min-height: 100vh; padding: 2rem 0;">
 	<!-- ═══════════════════════════════════════════ HUD HEADER ═════ -->
 	<header class="flex flex-col gap-3 mb-8">
 		<div class="flex items-start justify-between gap-4 flex-wrap">

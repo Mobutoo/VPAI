@@ -46,6 +46,30 @@
   become: true
   tags: [palais]
 
+# ── Module 13: Claude Code MCP config on Pi ─────────────────────────────────
+
+- name: Ensure Claude config dir exists on Pi
+  ansible.builtin.file:
+    path: "/home/{{ workstation_pi_user }}/.claude/servers"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    mode: "0750"
+  delegate_to: workstation-pi
+  when: workstation_pi_tailscale_ip | default('') != ''
+  tags: [palais, palais-mcp]
+
+- name: Deploy Palais MCP server config to Pi
+  ansible.builtin.template:
+    src: claude-mcp-config.json.j2
+    dest: "/home/{{ workstation_pi_user }}/.claude/servers/palais.json"
+    owner: "{{ workstation_pi_user }}"
+    mode: "0640"
+  delegate_to: workstation-pi
+  when: workstation_pi_tailscale_ip | default('') != ''
+  tags: [palais, palais-mcp]
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 - name: Sync palais application source
   ansible.posix.synchronize:
     src: "{{ palais_app_dir }}/"

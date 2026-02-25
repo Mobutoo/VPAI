@@ -183,6 +183,7 @@
     - litellm-credit-alert
     - palais-standup
     - palais-insight-alert
+    - launch-claude-code
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Check workflow update status (checksum comparison)
@@ -232,6 +233,7 @@
     - {file: "litellm-credit-alert", name: "LiteLLM Credit Alert"}
     - {file: "palais-standup", name: "Palais Daily Standup"}
     - {file: "palais-insight-alert", name: "Palais Insight Alert"}
+    - {file: "launch-claude-code", name: "Palais Launch Claude Code"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -414,6 +416,7 @@
     - {file: "litellm-credit-alert", name: "LiteLLM Credit Alert"}
     - {file: "palais-standup", name: "Palais Daily Standup"}
     - {file: "palais-insight-alert", name: "Palais Insight Alert"}
+    - {file: "launch-claude-code", name: "Palais Launch Claude Code"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -458,6 +461,7 @@
     - plan-dispatch
     - palais-standup
     - palais-insight-alert
+    - launch-claude-code
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Display n8n workflow update results

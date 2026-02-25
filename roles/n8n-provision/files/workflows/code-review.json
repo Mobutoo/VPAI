@@ -91,7 +91,7 @@
     {
       "parameters": {
         "method": "PUT",
-        "url": "=http://palais:3300/api/v1/tasks/{{ $json.task_id }}",
+        "url": "=http://palais:3300/api/v1/tasks/{{ $('Parse review result').first().json.task_id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -101,7 +101,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"{{ $json.review_success ? 'done' : 'todo' }}\" }",
+        "jsonBody": "={ \"status\": \"{{ $('Parse review result').first().json.review_success ? 'done' : 'in-progress' }}\" }",
         "options": {},
         "continueOnFail": true
       },
@@ -118,7 +118,7 @@
           "conditions": [
             {
               "id": "cond-fail",
-              "leftValue": "={{ $json.review_success }}",
+              "leftValue": "={{ $('Parse review result').first().json.review_success }}",
               "rightValue": false,
               "operator": { "type": "boolean", "operation": "equals" }
             }
@@ -141,17 +141,57 @@
         "bodyParameters": {
           "parameters": [
             { "name": "chat_id",    "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
-            { "name": "text",       "value": "={{ $json.review_success ? '✅ Code Review PASS — branche ' + $json.branch : '❌ Code Review FAIL — branche ' + $json.branch + ' — corrections requises' }}" },
+            { "name": "text",       "value": "={{ '❌ Code Review FAIL — branche ' + $('Parse review result').first().json.branch + ' — corrections requises, tâche remise en in-progress' }}" },
             { "name": "parse_mode", "value": "HTML" }
           ]
         },
         "options": {}
       },
       "id": "cr-0001-0000-0000-0000-000000000013",
-      "name": "Telegram notify",
+      "name": "Telegram notify (Fail)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1800, 300]
+      "position": [1800, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// SSH to Pi and merge the PR using gh CLI\nconst { exec } = require('child_process');\nconst ctx = $('Parse review result').first().json;\nconst keyPath = process.env.WORKSTATION_SSH_KEY_PATH || '/home/mobuone/.ssh/seko-vpn-deploy';\nconst piUser = process.env.WORKSTATION_PI_USER || 'mobuone';\nconst piIp = process.env.WORKSTATION_PI_IP;\nconst branch = ctx.branch || '';\n\n// Extract owner/repo from repo_url (handles https and ssh git formats)\nconst repoUrl = ctx.repo_url || '';\nconst parts = repoUrl.replace(/\\.git$/, '').split(/[:/]/);\nconst repoSlug = parts.slice(-2).join('/');\n\nconst cmd = `ssh -i ${keyPath} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 ${piUser}@${piIp} 'gh pr merge --head ${branch} --repo ${repoSlug} --merge --delete-branch --yes 2>&1'`;\n\nconst result = await new Promise((resolve) => {\n  exec(cmd, { timeout: 60000 }, (error, stdout, stderr) => {\n    resolve({ stdout: stdout || '', stderr: stderr || '', exitCode: error ? (error.code || 1) : 0 });\n  });\n});\n\nreturn [{ json: { ...ctx, merge_stdout: result.stdout, merge_exit_code: result.exitCode } }];"
+      },
+      "id": "cr-0001-0000-0000-0000-000000000014",
+      "name": "Merge PR",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Attach review report as text deliverable to the task\nconst ctx = $input.first().json;\nconst report = ($('Parse review result').first().json.review_report || '').trim() || '(rapport vide)';\nconst branch = ctx.branch || 'unknown';\nconst safeBranch = branch.replace(/[^a-zA-Z0-9-]/g, '-');\nconst filename = `review-${safeBranch}-${Date.now()}.txt`;\nconst palaisUrl = process.env.PALAIS_URL || 'http://palais:3300';\nconst apiKey = process.env.PALAIS_API_KEY || '';\n\nlet reportAttached = false;\nlet reportStatus = 0;\n\ntry {\n  const formData = new FormData();\n  const blob = new Blob([report], { type: 'text/plain' });\n  formData.append('file', blob, filename);\n\n  const res = await fetch(`${palaisUrl}/api/v1/tasks/${ctx.task_id}/deliverables`, {\n    method: 'POST',\n    headers: { 'X-API-Key': apiKey },\n    body: formData\n  });\n  reportAttached = res.ok;\n  reportStatus = res.status;\n} catch (e) {\n  // Non-blocking — continue even if upload fails\n}\n\nreturn [{ json: { ...ctx, report_attached: reportAttached, report_status: reportStatus } }];"
+      },
+      "id": "cr-0001-0000-0000-0000-000000000015",
+      "name": "Attach review report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2020, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id",    "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text",       "value": "={{ '✅ Code Review PASS — branche ' + $('Parse review result').first().json.branch + ' — PR mergée, tâche terminée' + ($input.first().json.report_attached ? ' + rapport joint' : '') }}" },
+            { "name": "parse_mode", "value": "HTML" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cr-0001-0000-0000-0000-000000000016",
+      "name": "Telegram notify (Pass)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2240, 400]
     }
   ],
   "connections": {
@@ -167,17 +207,19 @@
     "Parse review result": {
       "main": [[
         { "node": "Post review comment", "type": "main", "index": 0 },
-        { "node": "Update task status", "type": "main", "index": 0 }
+        { "node": "Update task status",  "type": "main", "index": 0 }
       ]]
     },
     "Post review comment": { "main": [[{ "node": "Review failed?", "type": "main", "index": 0 }]] },
-    "Update task status": { "main": [[{ "node": "Review failed?", "type": "main", "index": 0 }]] },
+    "Update task status":  { "main": [[{ "node": "Review failed?", "type": "main", "index": 0 }]] },
     "Review failed?": {
       "main": [
-        [{ "node": "Telegram notify", "type": "main", "index": 0 }],
-        [{ "node": "Telegram notify", "type": "main", "index": 0 }]
+        [{ "node": "Telegram notify (Fail)", "type": "main", "index": 0 }],
+        [{ "node": "Merge PR",              "type": "main", "index": 0 }]
       ]
-    }
+    },
+    "Merge PR":             { "main": [[{ "node": "Attach review report",    "type": "main", "index": 0 }]] },
+    "Attach review report": { "main": [[{ "node": "Telegram notify (Pass)",  "type": "main", "index": 0 }]] }
   },
   "settings": {
     "executionOrder": "v1",
@@ -191,5 +233,5 @@
   "tags": [{ "name": "palais" }, { "name": "code-review" }, { "name": "openclaw" }],
   "triggerCount": 1,
   "updatedAt": "2026-02-25T00:00:00.000Z",
-  "versionId": "2"
+  "versionId": "3"
 }

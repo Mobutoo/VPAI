@@ -1,0 +1,166 @@
+{
+  "name": "Palais — Launch Claude Code on Pi",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "launch-claude-code",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "lcc-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate payload\nconst payload = $input.first().json;\nconst required = ['task_id', 'prompt'];\nfor (const field of required) {\n  if (!payload[field]) throw new Error(`Missing required field: ${field}`);\n}\nreturn [{ json: {\n  task_id: payload.task_id,\n  project_id: payload.project_id || null,\n  priority: payload.priority || 'none',\n  prompt: payload.prompt\n}}];"
+      },
+      "id": "lcc-0001-0000-0000-0000-000000000002",
+      "name": "Validate payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"accepted\", \"task_id\": {{ $json.task_id }} }"
+      },
+      "id": "lcc-0001-0000-0000-0000-000000000003",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 460]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Encode prompt as base64 to avoid shell injection\nconst ctx = $input.first().json;\nconst b64Prompt = Buffer.from(ctx.prompt).toString('base64');\nreturn [{ json: { ...ctx, prompt_b64: b64Prompt } }];"
+      },
+      "id": "lcc-0001-0000-0000-0000-000000000004",
+      "name": "Encode prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { exec } = require('child_process');\nconst ctx = $input.first().json;\n\nconst keyPath = process.env.WORKSTATION_SSH_KEY_PATH || '/home/mobuone/.ssh/seko-vpn-deploy';\nconst piUser = process.env.WORKSTATION_PI_USER || 'mobuone';\nconst piIp = process.env.WORKSTATION_PI_IP;\n\nif (!piIp) throw new Error('WORKSTATION_PI_IP not configured');\n\n// Write prompt to temp file on Pi and run Claude Code\n// claude --print executes non-interactively and exits\nconst sshCmd = `ssh -i ${keyPath} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 ${piUser}@${piIp} \\\n  'PROMPT=$(echo ${ctx.prompt_b64} | base64 -d) && \\\n   cd /home/${piUser}/projects && \\\n   claude --print \"$PROMPT\" 2>&1'`;\n\nconst result = await new Promise((resolve) => {\n  exec(sshCmd, { timeout: 1800000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {\n    resolve({\n      stdout: (stdout || '').slice(0, 8000),\n      stderr: (stderr || '').slice(0, 2000),\n      exitCode: error ? (error.code || 1) : 0\n    });\n  });\n});\n\n// Extract commit SHA and PR URL from output if present\nconst commitMatch = result.stdout.match(/commit ([a-f0-9]{7,40})/i);\nconst prMatch = result.stdout.match(/https:\\/\\/github\\.com\\/[^\\s]+\\/pull\\/\\d+/i);\n\nreturn [{ json: {\n  ...ctx,\n  stdout: result.stdout,\n  stderr: result.stderr,\n  exitCode: result.exitCode,\n  success: result.exitCode === 0,\n  commit_sha: commitMatch ? commitMatch[1] : null,\n  pr_url: prMatch ? prMatch[0] : null\n}}];"
+      },
+      "id": "lcc-0001-0000-0000-0000-000000000005",
+      "name": "SSH Pi: Run Claude Code",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build summary for callback\nconst ctx = $input.first().json;\n\nconst summary = [\n  ctx.success ? '✅ Session Claude Code terminée' : '❌ Session Claude Code échouée',\n  ctx.pr_url ? `PR: ${ctx.pr_url}` : '',\n  ctx.commit_sha ? `Commit: ${ctx.commit_sha}` : '',\n  `Exit code: ${ctx.exitCode}`\n].filter(Boolean).join('\\n');\n\nreturn [{ json: {\n  ...ctx,\n  callback_status: ctx.pr_url ? 'review' : (ctx.success ? 'done' : 'in-progress'),\n  summary\n}}];"
+      },
+      "id": "lcc-0001-0000-0000-0000-000000000006",
+      "name": "Build callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=http://palais:3300/api/v1/tasks/{{ $json.task_id }}/launch-claude",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Key", "value": "={{ $env.PALAIS_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"status\": \"{{ $json.callback_status }}\",\n  \"commit_sha\": {{ $json.commit_sha ? JSON.stringify($json.commit_sha) : 'null' }},\n  \"pr_url\": {{ $json.pr_url ? JSON.stringify($json.pr_url) : 'null' }},\n  \"summary\": {{ JSON.stringify($json.summary) }}\n}",
+        "options": { "continueOnFail": true }
+      },
+      "id": "lcc-0001-0000-0000-0000-000000000007",
+      "name": "Callback Palais",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://palais:3300/api/v1/tasks/{{ $json.task_id }}/comments",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "X-API-Key", "value": "={{ $env.PALAIS_API_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"content\": {{ JSON.stringify($('Build callback').first().json.summary) }}, \"authorAgentId\": \"builder\" }",
+        "options": { "continueOnFail": true }
+      },
+      "id": "lcc-0001-0000-0000-0000-000000000008",
+      "name": "Post result comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1580, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text", "value": "={{ $('Build callback').first().json.success ? '⚡ Claude Code terminé — Tâche #' + $('Build callback').first().json.task_id + ($('Build callback').first().json.pr_url ? '\\nPR: ' + $('Build callback').first().json.pr_url : '') : '❌ Claude Code échoué — Tâche #' + $('Build callback').first().json.task_id }}" },
+            { "name": "parse_mode", "value": "HTML" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "lcc-0001-0000-0000-0000-000000000009",
+      "name": "Telegram notify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1800, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Validate payload", "type": "main", "index": 0 }]] },
+    "Validate payload": {
+      "main": [[
+        { "node": "Webhook Response", "type": "main", "index": 0 },
+        { "node": "Encode prompt", "type": "main", "index": 0 }
+      ]]
+    },
+    "Encode prompt": { "main": [[{ "node": "SSH Pi: Run Claude Code", "type": "main", "index": 0 }]] },
+    "SSH Pi: Run Claude Code": { "main": [[{ "node": "Build callback", "type": "main", "index": 0 }]] },
+    "Build callback": {
+      "main": [[
+        { "node": "Callback Palais", "type": "main", "index": 0 },
+        { "node": "Post result comment", "type": "main", "index": 0 }
+      ]]
+    },
+    "Callback Palais": { "main": [[{ "node": "Telegram notify", "type": "main", "index": 0 }]] },
+    "Post result comment": { "main": [[{ "node": "Telegram notify", "type": "main", "index": 0 }]] }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "palais" }, { "name": "claude-code" }, { "name": "pi" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-02-25T00:00:00.000Z",
+  "versionId": "1"
+}

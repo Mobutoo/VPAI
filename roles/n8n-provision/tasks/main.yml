@@ -578,10 +578,9 @@
     - n8n_container_check.stdout | default('') | length > 0
 
 # ========================================================================
-# WORKFLOW NUKE — delete ALL workflows (use with --tags n8n-nuke)
-# Sequence per workflow: deactivate → archive → delete
-# Also resets checksums so next deploy reimports everything.
-# Usage: ansible-playbook playbooks/site.yml --tags n8n-nuke
+# WORKFLOW NUKE — delete ALL workflows via CLI + PostgreSQL direct DELETE
+# Protected by n8n_nuke_requested variable to avoid accidental execution.
+# Usage: make deploy-role ROLE=n8n-provision ENV=prod EXTRA_VARS="n8n_nuke_requested=true"
 # ========================================================================
 
 - name: "[nuke] Check n8n container exists"
@@ -591,92 +590,72 @@
   changed_when: false
   failed_when: false
   become: true
-  tags: [n8n-nuke, never]
+  tags: [n8n-nuke]
+  when: n8n_nuke_requested | default(false) | bool
 
-- name: "[nuke] Delete ALL n8n workflows (deactivate → archive → delete each)"
+- name: "[nuke] Delete ALL n8n workflows (unpublish + PostgreSQL DELETE cascade)"
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
-      set -o pipefail
-      cat > /tmp/n8n-nuke-all.js << 'NUKESCRIPT'
-      const http = require('http');
-      const [email, pw] = process.argv.slice(2);
+      set -euo pipefail
 
-      function req(method, path, body, cookie) {
-        return new Promise((resolve, reject) => {
-          const h = { 'Content-Type': 'application/json' };
-          if (cookie) h['Cookie'] = cookie;
-          const opts = { hostname: '127.0.0.1', port: 5678, path, method, headers: h };
-          const r = http.request(opts, (res) => {
-            let d = ''; res.on('data', c => d += c);
-            res.on('end', () => {
-              const sc = res.headers['set-cookie'];
-              resolve({ s: res.statusCode, d, c: sc ? sc[0].split(';')[0] : null });
-            });
-          });
-          r.on('error', reject);
-          if (body) r.write(JSON.stringify(body));
-          r.end();
-        });
-      }
+      N8N="{{ project_name }}_n8n"
+      PG="{{ project_name }}_postgresql"
 
-      (async () => {
-        const login = await req('POST', '/rest/login', { emailOrLdapLoginId: email, password: pw });
-        if (login.s !== 200 || !login.c) { console.log('LOGIN_FAILED'); process.exit(1); }
+      # Step 1: Deactivate all workflows via n8n CLI (best-effort)
+      docker exec "$N8N" n8n unpublish:workflow --all 2>&1 || true
 
-        let allWorkflows = [];
-        let skip = 0;
-        while (true) {
-          const res = await req('GET', '/rest/workflows?limit=50&skip=' + skip, null, login.c);
-          const data = JSON.parse(res.d);
-          const items = data.data || [];
-          allWorkflows = allWorkflows.concat(items);
-          if (items.length < 50) break;
-          skip += 50;
-        }
-        console.log('FOUND:' + allWorkflows.length);
+      # Step 2: Count workflows before nuke
+      BEFORE=$(docker exec "$PG" psql -U n8n -d n8n -t -c \
+        "SELECT COUNT(*) FROM workflow_entity;" 2>&1 | tr -d ' \n')
+      echo "BEFORE:${BEFORE}"
 
-        for (const wf of allWorkflows) {
-          try {
-            await req('PATCH', '/rest/workflows/' + wf.id, { active: false }, login.c);
-            await req('POST', '/rest/workflows/' + wf.id + '/archive', null, login.c);
-            const del = await req('DELETE', '/rest/workflows/' + wf.id, null, login.c);
-            console.log(del.s === 200 ? 'DELETED:' + wf.name : 'FAIL:' + del.s + ':' + wf.name);
-          } catch (e) {
-            console.log('ERROR:' + wf.name + ':' + e.message);
-          }
-        }
-        console.log('NUKE_COMPLETE');
-      })().catch(e => { console.log('FATAL:' + e.message); process.exit(1); });
-      NUKESCRIPT
+      # Step 3: Delete all workflow data in FK dependency order
+      docker exec "$PG" psql -U n8n -d n8n -c "
+        DELETE FROM webhook_entity;
+        DELETE FROM workflows_tags;
+        DELETE FROM workflow_statistics;
+        DELETE FROM workflow_history;
+        DELETE FROM workflow_published_version;
+        DELETE FROM workflow_publish_history;
+        DELETE FROM workflow_dependency;
+        DELETE FROM shared_workflow;
+        DELETE FROM execution_annotation_tags;
+        DELETE FROM execution_annotations;
+        DELETE FROM execution_metadata;
+        DELETE FROM execution_data;
+        DELETE FROM execution_entity;
+        DELETE FROM workflow_entity;
+        SELECT COUNT(*) AS remaining FROM workflow_entity;
+      " 2>&1
 
-      docker cp /tmp/n8n-nuke-all.js {{ project_name }}_n8n:/home/node/n8n-nuke-all.js
-      RESULT=$(docker exec {{ project_name }}_n8n node /home/node/n8n-nuke-all.js \
-        "{{ n8n_owner_email }}" "{{ n8n_owner_password }}" 2>&1)
-      echo "$RESULT"
+      echo "NUKE_COMPLETE"
   register: n8n_nuke_result
-  changed_when: "'NUKE_COMPLETE' in (n8n_nuke_result.stdout | default(''))"
-  failed_when: >-
-    'LOGIN_FAILED' in (n8n_nuke_result.stdout | default('')) or
-    'FATAL:' in (n8n_nuke_result.stdout | default(''))
-  no_log: true
+  changed_when: "'NUKE_COMPLETE' in n8n_nuke_result.stdout"
+  failed_when: n8n_nuke_result.rc != 0
   become: true
-  tags: [n8n-nuke, never]
-  when: n8n_nuke_container_check.stdout | default('') | length > 0
+  tags: [n8n-nuke]
+  when:
+    - n8n_nuke_requested | default(false) | bool
+    - n8n_nuke_container_check.stdout | default('') | length > 0
 
 - name: "[nuke] Display results"
   ansible.builtin.debug:
     msg: "{{ n8n_nuke_result.stdout_lines | default(['skipped']) }}"
-  tags: [n8n-nuke, never]
-  when: n8n_nuke_container_check.stdout | default('') | length > 0
+  tags: [n8n-nuke]
+  when:
+    - n8n_nuke_requested | default(false) | bool
+    - n8n_nuke_container_check.stdout | default('') | length > 0
 
 - name: "[nuke] Reset workflow checksums (force full reimport on next deploy)"
   ansible.builtin.file:
     path: "/opt/{{ project_name }}/configs/n8n/workflow-checksums"
     state: absent
   become: true
-  tags: [n8n-nuke, never]
-  when: n8n_nuke_container_check.stdout | default('') | length > 0
+  tags: [n8n-nuke]
+  when:
+    - n8n_nuke_requested | default(false) | bool
+    - n8n_nuke_container_check.stdout | default('') | length > 0
 
 - name: "[nuke] Recreate empty checksum directory"
   ansible.builtin.file:
@@ -684,5 +663,7 @@
     state: directory
     mode: "0755"
   become: true
-  tags: [n8n-nuke, never]
-  when: n8n_nuke_container_check.stdout | default('') | length > 0
+  tags: [n8n-nuke]
+  when:
+    - n8n_nuke_requested | default(false) | bool
+    - n8n_nuke_container_check.stdout | default('') | length > 0

@@ -33,13 +33,9 @@ diun_image: "crazymax/diun:4.31.0"
 # Les webhooks Meta passent maintenant par hook.<domain> (Seko-VPN) -> VPN mesh -> VPS
 # cloudflared_image: "cloudflare/cloudflared:2025.1.0"
 
-# --- Kaneo (PM tool — Mobutoo/kaneo fork) ---
-# Built by CI in Mobutoo/kaneo fork — ci-build.yml workflow
-# Images: ghcr.io/mobutoo/api:<sha> + ghcr.io/mobutoo/web:<sha>
-# Pinned to sha-dfc2451 (2026-02-22) — upstream usekaneo/kaneo@2.2.1 + CI setup
-# TODO: Switch to custom fork images after OpenClaw integration modifications are merged
-kaneo_api_image: "ghcr.io/mobutoo/api:sha-dfc2451"
-kaneo_web_image: "ghcr.io/mobutoo/web:sha-dfc2451"
+# --- Kaneo (supprimé — remplacé par Palais en Phase 16) ---
+# kaneo_api_image: "ghcr.io/mobutoo/api:sha-dfc2451"
+# kaneo_web_image: "ghcr.io/mobutoo/web:sha-dfc2451"
 
 # --- Sure (personal finance — Maybe Finance fork) ---
 # Multi-arch: amd64 + arm64 confirmé sur GHCR

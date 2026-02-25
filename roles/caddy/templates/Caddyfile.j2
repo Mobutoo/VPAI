@@ -242,32 +242,7 @@ BOOTSTRAP 200
 }
 {% endif %}
 
-# === Kaneo - dedicated subdomain (hq) ===
-# PM tool (fork of usekaneo/kaneo) — replaces Mission Control
-{% if kaneo_subdomain_override | default('') | length > 0 %}
-{{ caddy_kaneo_domain }} {
-    import vpn_only
-    import vpn_error_page
-
-    # Kaneo API backend (more specific path first)
-    handle /api/* {
-        reverse_proxy kaneo-api:1337
-    }
-
-    # Kaneo Web frontend (catch-all)
-    # REX: usekaneo/web image uses nginx on port 5173 (not 3000)
-    handle {
-        reverse_proxy kaneo-web:5173
-    }
-
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        -Server
-    }
-}
-{% endif %}
+# Kaneo block supprimé — remplacé par Palais (Phase 16)
 
 # === Palais — Cockpit IA Afrofuturiste ===
 {{ caddy_palais_domain }} {

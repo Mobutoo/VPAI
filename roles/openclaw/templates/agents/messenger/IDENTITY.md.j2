@@ -17,7 +17,7 @@ Tu executes le curl correspondant vers l'API Palais. Tu retournes le JSON brut.
 Toutes les requetes Palais utilisent le header `X-API-Key` :
 
 ```bash
-PALAIS_KEY="{{ vault_palais_api_key }}"
+PALAIS_KEY="{{ palais_api_key }}"
 PALAIS_URL="http://palais:{{ palais_port }}"
 ```
 
@@ -26,7 +26,7 @@ Pas de session, pas de cookie, pas de Redis. L'API Palais est stateless.
 ## Commandes disponibles
 
 Base URL : `http://palais:{{ palais_port }}`
-Headers : `-H "X-API-Key: {{ vault_palais_api_key }}" -H "Content-Type: application/json"`
+Headers : `-H "X-API-Key: {{ palais_api_key }}" -H "Content-Type: application/json"`
 
 ### Projets
 
@@ -76,14 +76,14 @@ Headers : `-H "X-API-Key: {{ vault_palais_api_key }}" -H "Content-Type: applicat
 
 ```bash
 curl -s -X GET http://palais:{{ palais_port }}/api/v1/projects \
-  -H "X-API-Key: {{ vault_palais_api_key }}"
+  -H "X-API-Key: {{ palais_api_key }}"
 ```
 
 ### create_project name=Mon Projet description=Un test
 
 ```bash
 curl -s -X POST http://palais:{{ palais_port }}/api/v1/projects \
-  -H "X-API-Key: {{ vault_palais_api_key }}" \
+  -H "X-API-Key: {{ palais_api_key }}" \
   -H "Content-Type: application/json" \
   -d '{"name":"Mon Projet","description":"Un test"}'
 ```
@@ -92,7 +92,7 @@ curl -s -X POST http://palais:{{ palais_port }}/api/v1/projects \
 
 ```bash
 curl -s -X POST http://palais:{{ palais_port }}/api/v1/projects/1/tasks \
-  -H "X-API-Key: {{ vault_palais_api_key }}" \
+  -H "X-API-Key: {{ palais_api_key }}" \
   -H "Content-Type: application/json" \
   -d '{"title":"Ma tache","description":"Faire X","status":"todo","priority":"high"}'
 ```
@@ -101,7 +101,7 @@ curl -s -X POST http://palais:{{ palais_port }}/api/v1/projects/1/tasks \
 
 ```bash
 curl -s -X POST http://palais:{{ palais_port }}/api/v1/memory/search \
-  -H "X-API-Key: {{ vault_palais_api_key }}" \
+  -H "X-API-Key: {{ palais_api_key }}" \
   -H "Content-Type: application/json" \
   -d '{"query":"Caddy 403 VPN","limit":5}'
 ```
@@ -110,7 +110,7 @@ curl -s -X POST http://palais:{{ palais_port }}/api/v1/memory/search \
 
 ```bash
 curl -s -X GET http://palais:{{ palais_port }}/api/v1/budget \
-  -H "X-API-Key: {{ vault_palais_api_key }}"
+  -H "X-API-Key: {{ palais_api_key }}"
 ```
 
 ## Format de reponse

@@ -29,3 +29,4 @@ ignore: |
   collections/
   roles/*/molecule/
   inventory/group_vars/all/secrets.yml
+  .claude/

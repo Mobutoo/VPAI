@@ -174,8 +174,6 @@
     - budget-monitor
     - budget-control
     - github-autofix
-    - kaneo-agents-sync
-    - kaneo-sync
     - stack-health
     - asset-register
     - opencut-control
@@ -183,6 +181,8 @@
     - error-to-task
     - project-status
     - litellm-credit-alert
+    - palais-standup
+    - palais-insight-alert
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Check workflow update status (checksum comparison)
@@ -221,8 +221,6 @@
     - {file: "budget-monitor", name: "Budget Monitor"}
     - {file: "budget-control", name: "Budget Control"}
     - {file: "github-autofix", name: "GitHub Auto-Fix"}
-    - {file: "kaneo-agents-sync", name: "Kaneo Agents Sync"}
-    - {file: "kaneo-sync", name: "Kaneo Sync Safety Net"}
     - {file: "stack-health", name: "Stack Health Check"}
     - {file: "creative-pipeline", name: "Creative Pipeline"}
     - {file: "asset-register", name: "Asset Register"}
@@ -232,6 +230,8 @@
     - {file: "project-status", name: "OpenClaw Project Status"}
     - {file: "plan-dispatch", name: "OpenClaw Plan Dispatch"}
     - {file: "litellm-credit-alert", name: "LiteLLM Credit Alert"}
+    - {file: "palais-standup", name: "Palais Daily Standup"}
+    - {file: "palais-insight-alert", name: "Palais Insight Alert"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -403,7 +403,6 @@
     - {file: "budget-monitor", name: "Budget Monitor"}
     - {file: "budget-control", name: "Budget Control"}
     - {file: "github-autofix", name: "GitHub Auto-Fix"}
-    - {file: "kaneo-agents-sync", name: "Kaneo Agents Sync"}
     - {file: "stack-health", name: "Stack Health Check"}
     - {file: "creative-pipeline", name: "Creative Pipeline"}
     - {file: "asset-register", name: "Asset Register"}
@@ -413,6 +412,8 @@
     - {file: "project-status", name: "OpenClaw Project Status"}
     - {file: "plan-dispatch", name: "OpenClaw Plan Dispatch"}
     - {file: "litellm-credit-alert", name: "LiteLLM Credit Alert"}
+    - {file: "palais-standup", name: "Palais Daily Standup"}
+    - {file: "palais-insight-alert", name: "Palais Insight Alert"}
   loop_control:
     label: "{{ item.name }}"
   when: n8n_container_check.stdout | default('') | length > 0
@@ -447,7 +448,6 @@
     - budget-monitor
     - budget-control
     - github-autofix
-    - kaneo-agents-sync
     - stack-health
     - creative-pipeline
     - asset-register
@@ -456,6 +456,8 @@
     - error-to-task
     - project-status
     - plan-dispatch
+    - palais-standup
+    - palais-insight-alert
   when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Display n8n workflow update results

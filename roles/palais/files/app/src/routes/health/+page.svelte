@@ -197,60 +197,113 @@
 		</p>
 		<div class="glass-panel hud-bracket rounded-xl p-4" style="border: 1px solid rgba(212,168,67,0.18);">
 			<span class="hud-bracket-bottom" style="display: block;">
-				<svg viewBox="0 0 420 340" class="w-full max-w-lg mx-auto" style="height: 220px;">
-					<!-- Gold topology lines with animated dashoffset -->
+				<svg viewBox="0 0 420 360" class="w-full max-w-lg mx-auto" style="height: 240px;">
+
+					<!-- ── Links ── -->
 					{#each VPN_LINKS as link}
 						{@const from = nodePos(link.from)}
 						{@const to   = nodePos(link.to)}
+						{@const fromNode = data.nodes.find((n) => n.name === link.from)}
+						{@const toNode   = data.nodes.find((n) => n.name === link.to)}
+						{@const bothActive = (fromNode?.status === 'online' || fromNode?.status === 'busy')
+						                  && (toNode?.status   === 'online' || toNode?.status   === 'busy')}
+
+						<!-- Base link line — brighter + animated when both active -->
 						<line
 							x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-							stroke="rgba(212,168,67,0.15)"
-							stroke-width="1.5"
-							stroke-dasharray="4 6"
+							stroke={bothActive ? 'rgba(212,168,67,0.28)' : 'rgba(212,168,67,0.05)'}
+							stroke-width={bothActive ? '1.5' : '0.8'}
+							stroke-dasharray={bothActive ? '4 6' : '2 10'}
 						>
-							<animate
-								attributeName="stroke-dashoffset"
-								values="0;-10"
-								dur="2s"
-								repeatCount="indefinite"
-							/>
+							{#if bothActive}
+								<animate attributeName="stroke-dashoffset" values="0;-10" dur="1.6s" repeatCount="indefinite"/>
+							{/if}
 						</line>
+
+						<!-- Traveling packet — green (aller) — only when both active -->
+						{#if bothActive}
+							<circle r="2.5" fill="var(--palais-green)" opacity="0">
+								<animateMotion
+									dur="2.4s"
+									repeatCount="indefinite"
+									path={`M${from.x},${from.y} L${to.x},${to.y}`}
+								/>
+								<animate attributeName="opacity" values="0;0.9;0.9;0" keyTimes="0;0.08;0.92;1"
+									dur="2.4s" repeatCount="indefinite"/>
+							</circle>
+							<!-- Return packet — gold (retour) — offset 1.2s -->
+							<circle r="2" fill="rgba(212,168,67,0.75)" opacity="0">
+								<animateMotion
+									dur="2.4s"
+									begin="1.2s"
+									repeatCount="indefinite"
+									path={`M${to.x},${to.y} L${from.x},${from.y}`}
+								/>
+								<animate attributeName="opacity" values="0;0.75;0.75;0" keyTimes="0;0.08;0.92;1"
+									begin="1.2s" dur="2.4s" repeatCount="indefinite"/>
+							</circle>
+						{/if}
 					{/each}
 
-					<!-- Nodes -->
+					<!-- ── Nodes ── -->
 					{#each data.nodes as node}
-						{@const pos = nodePos(node.name)}
-						{@const vpn = vpnNode(node.tailscaleIp)}
+						{@const pos       = nodePos(node.name)}
+						{@const vpn       = vpnNode(node.tailscaleIp)}
+						{@const nodeStatus = node.status ?? 'offline'}
+						{@const isActive  = nodeStatus === 'online' || nodeStatus === 'busy'}
+						{@const isBusy    = nodeStatus === 'busy'}
+						{@const isDeg     = nodeStatus === 'degraded'}
+						{@const pulseSpeed = isBusy ? '1.2s' : '2.8s'}
+
 						<g transform={`translate(${pos.x}, ${pos.y})`}>
-							<!-- Ambient outer glow ring -->
+
+							<!-- Outer ambient ring — breathes when active, flickers when degraded -->
 							<circle r="26" fill="none"
-								stroke={statusColor(node.status ?? 'offline')}
-								stroke-width="0.8"
-								opacity="0.25"
-							/>
-							<!-- Mid ring -->
+								stroke={statusColor(nodeStatus)}
+								stroke-width={isActive ? '0.8' : '0.5'}
+								opacity="0.12"
+							>
+								{#if isActive}
+									<animate attributeName="r"       values="26;31;26" dur={pulseSpeed} repeatCount="indefinite"/>
+									<animate attributeName="opacity" values="0.12;0.45;0.12" dur={pulseSpeed} repeatCount="indefinite"/>
+								{:else if isDeg}
+									<animate attributeName="opacity" values="0.15;0.06;0.22;0.04;0.18"
+										keyTimes="0;0.25;0.5;0.75;1" dur="2.8s" repeatCount="indefinite"/>
+								{/if}
+							</circle>
+
+							<!-- Mid ring — synced pulse -->
 							<circle r="21" fill="none"
-								stroke={statusColor(node.status ?? 'offline')}
+								stroke={statusColor(nodeStatus)}
 								stroke-width="1"
-								opacity="0.45"
-							/>
+								opacity={isActive ? '0.4' : '0.12'}
+							>
+								{#if isActive}
+									<animate attributeName="opacity" values="0.25;0.6;0.25" dur={pulseSpeed} repeatCount="indefinite"/>
+								{/if}
+							</circle>
+
 							<!-- Node core -->
 							<circle r="17"
 								fill="var(--palais-surface)"
-								stroke={statusColor(node.status ?? 'offline')}
-								stroke-width="2"
+								stroke={statusColor(nodeStatus)}
+								stroke-width={isActive ? '2' : '1.2'}
+								opacity={isDeg ? '0.6' : isActive ? '1' : '0.5'}
 							/>
+
 							<!-- Node initials -->
 							<text
 								text-anchor="middle"
 								dominant-baseline="middle"
 								font-size="10"
 								font-weight="bold"
-								fill={statusColor(node.status ?? 'offline')}
+								fill={statusColor(nodeStatus)}
 								font-family="JetBrains Mono, monospace"
+								opacity={isActive ? '1' : isDeg ? '0.6' : '0.4'}
 							>
 								{node.name.substring(0, 2).toUpperCase()}
 							</text>
+
 							<!-- Label below -->
 							<text
 								text-anchor="middle"
@@ -262,10 +315,33 @@
 							>
 								{nodePos(node.name).label.toUpperCase().substring(0, 12)}
 							</text>
-							<!-- VPN active dot -->
+
+							<!-- DEGRADED label — flickers -->
+							{#if isDeg}
+								<text
+									text-anchor="middle"
+									y="-28"
+									font-size="5.5"
+									fill="var(--palais-amber)"
+									font-family="Orbitron, sans-serif"
+									letter-spacing="1.5"
+								>
+									<animate attributeName="opacity" values="0.7;0.2;0.8;0.1;0.6" keyTimes="0;0.3;0.5;0.7;1"
+										dur="1.8s" repeatCount="indefinite"/>
+									DEGRADED
+								</text>
+							{/if}
+
+							<!-- VPN active dot — pulsing expand when online in Headscale -->
 							{#if vpn?.online}
-								<circle cx="14" cy="-14" r="4" fill="var(--palais-green)" opacity="0.9"/>
-								<circle cx="14" cy="-14" r="7" fill="none" stroke="var(--palais-green)" stroke-width="0.8" opacity="0.4"/>
+								<circle cx="14" cy="-14" r="4" fill="var(--palais-green)" opacity="0.9">
+									<animate attributeName="r"       values="4;5.5;4"     dur="1.6s" repeatCount="indefinite"/>
+									<animate attributeName="opacity" values="0.9;0.55;0.9" dur="1.6s" repeatCount="indefinite"/>
+								</circle>
+								<circle cx="14" cy="-14" r="7" fill="none" stroke="var(--palais-green)" stroke-width="0.8" opacity="0">
+									<animate attributeName="r"       values="5;12;5"   dur="1.6s" repeatCount="indefinite"/>
+									<animate attributeName="opacity" values="0.5;0;0.5" dur="1.6s" repeatCount="indefinite"/>
+								</circle>
 							{/if}
 						</g>
 					{/each}

@@ -140,71 +140,8 @@ services:
       retries: 5
       start_period: 60s
 
-  kaneo-api:
-    image: {{ kaneo_api_image }}
-    container_name: {{ project_name }}_kaneo_api
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-    env_file:
-      - /opt/{{ project_name }}/configs/kaneo/kaneo.env
-    networks:
-      - backend
-    deploy:
-      resources:
-        limits:
-          memory: {{ kaneo_memory_limit }}
-          cpus: "{{ kaneo_cpu_limit }}"
-        reservations:
-          memory: {{ kaneo_memory_reservation }}
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:1337/api/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  kaneo-web:
-    image: {{ kaneo_web_image }}
-    container_name: {{ project_name }}_kaneo_web
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-    environment:
-      # REX: KANEO_API_URL must be the PUBLIC URL (https://...) — env.sh replaces the literal
-      # "KANEO_API_URL" placeholder in the JS bundle at container start. If set to the internal
-      # Docker hostname (http://kaneo-api:1337), the browser cannot resolve it → "Failed to fetch".
-      KANEO_API_URL: "https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}"
-      KANEO_CLIENT_URL: "https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }}"
-    networks:
-      - frontend
-      - backend
-    deploy:
-      resources:
-        limits:
-          memory: {{ kaneo_memory_limit }}
-          cpus: "{{ kaneo_cpu_limit }}"
-        reservations:
-          memory: {{ kaneo_memory_reservation }}
-    healthcheck:
-      # REX: usekaneo/web image uses nginx on port 5173 (not 3000)
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5173/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+  # kaneo-api et kaneo-web supprimés — remplacés par Palais (Phase 16)
+  # Archives disponibles dans le rôle roles/kaneo/ et docs/TROUBLESHOOTING.md
 
   # === PERSONAL FINANCE ===
   sure-web:

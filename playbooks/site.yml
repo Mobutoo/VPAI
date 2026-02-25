@@ -74,8 +74,8 @@
       tags: [litellm, phase3]
     - role: openclaw
       tags: [openclaw, phase3]
-    - role: kaneo
-      tags: [kaneo, phase3]
+    # - role: kaneo        # Désactivé — remplacé par Palais (Phase 16)
+    #   tags: [kaneo, phase3]
     - role: palais
       tags: [palais, phase3]
     - role: sure

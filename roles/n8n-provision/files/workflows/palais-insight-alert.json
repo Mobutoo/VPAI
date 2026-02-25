@@ -1,0 +1,65 @@
+{
+  "name": "Palais — Insight Alert → Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "palais-insight-alert",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "ia-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate and format insight payload\nconst payload = $input.first().json;\n\nconst type = payload.type || 'unknown';\nconst severity = payload.severity || 'info';\nconst title = payload.title || 'Alerte Palais';\nconst description = (payload.description || '').slice(0, 1000);\nconst timestamp = payload.timestamp || new Date().toISOString();\n\n// Severity emoji\nconst emoji = severity === 'critical' ? '🚨' : (severity === 'warning' ? '⚠️' : 'ℹ️');\n\n// Format suggested actions if present\nlet actionsText = '';\nif (payload.suggested_actions && Array.isArray(payload.suggested_actions) && payload.suggested_actions.length > 0) {\n  actionsText = '\\n\\n*Actions suggérées :*\\n' + payload.suggested_actions.map(a => `• ${a.label || a}`).join('\\n');\n}\n\nconst message = [\n  `${emoji} *Alerte Palais — ${severity.toUpperCase()}*`,\n  ``,\n  `*${title}*`,\n  description,\n  actionsText\n].join('\\n');\n\nreturn [{ json: { message, type, severity, title } }];"
+      },
+      "id": "ia-0001-0000-0000-0000-000000000002",
+      "name": "Format alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id",    "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text",       "value": "={{ $json.message }}" },
+            { "name": "parse_mode", "value": "Markdown" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ia-0001-0000-0000-0000-000000000003",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Format alert", "type": "main", "index": 0 }]] },
+    "Format alert": { "main": [[{ "node": "Send to Telegram", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "palais" }, { "name": "insights" }, { "name": "telegram" }],
+  "triggerCount": 0,
+  "updatedAt": "2026-02-25T00:00:00.000Z",
+  "versionId": "1"
+}

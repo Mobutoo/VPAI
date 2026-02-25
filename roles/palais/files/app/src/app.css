@@ -102,6 +102,9 @@
 }
 
 /* Bottom brackets — use as a SIBLING/CHILD inside .hud-bracket wrapper */
+.hud-bracket-bottom {
+	position: relative;
+}
 .hud-bracket-bottom::before,
 .hud-bracket-bottom::after {
 	content: '';

@@ -68,6 +68,34 @@
   when: workstation_pi_tailscale_ip | default('') != ''
   tags: [palais, palais-mcp]
 
+# ── DB Migration: add columns + extend node_status enum ─────────────────────
+# Idempotent (IF NOT EXISTS) — ALTER TYPE ADD VALUE must run outside a transaction
+
+- name: Palais DB migration — add bio/local_ip/description columns
+  ansible.builtin.command:
+    cmd: >-
+      docker exec {{ project_name }}_postgresql psql -U {{ palais_db_user }} -d {{ palais_db_name }}
+      -c "ALTER TABLE agents ADD COLUMN IF NOT EXISTS bio text;
+          ALTER TABLE nodes ADD COLUMN IF NOT EXISTS local_ip varchar(50);
+          ALTER TABLE nodes ADD COLUMN IF NOT EXISTS description text;"
+  become: true
+  changed_when: false
+  register: _palais_db_migrate
+  failed_when: _palais_db_migrate.rc != 0
+  tags: [palais]
+
+- name: Palais DB migration — extend node_status enum with busy/degraded
+  ansible.builtin.command:
+    cmd: >-
+      docker exec {{ project_name }}_postgresql psql -U {{ palais_db_user }} -d {{ palais_db_name }}
+      -c "ALTER TYPE node_status ADD VALUE IF NOT EXISTS 'busy';
+          ALTER TYPE node_status ADD VALUE IF NOT EXISTS 'degraded';"
+  become: true
+  changed_when: false
+  register: _palais_db_enum
+  failed_when: _palais_db_enum.rc != 0
+  tags: [palais]
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 - name: Sync palais application source

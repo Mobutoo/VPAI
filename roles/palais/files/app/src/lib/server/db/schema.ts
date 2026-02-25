@@ -32,7 +32,7 @@ export const insightTypeEnum = pgEnum('insight_type', [
 export const insightSeverityEnum = pgEnum('insight_severity', ['info', 'warning', 'critical']);
 export const entityTypeEnum = pgEnum('entity_type_generic', ['task', 'project', 'mission']);
 export const timeEntryTypeEnum = pgEnum('time_entry_type', ['auto', 'manual']);
-export const nodeStatusEnum = pgEnum('node_status', ['online', 'offline']);
+export const nodeStatusEnum = pgEnum('node_status', ['online', 'offline', 'busy', 'degraded']);
 export const backupStatusEnum = pgEnum('backup_status_type', ['ok', 'failed', 'running']);
 export const budgetSourceEnum = pgEnum('budget_source', [
 	'litellm', 'openai_direct', 'anthropic_direct', 'openrouter_direct'

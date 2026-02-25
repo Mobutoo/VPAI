@@ -2,7 +2,8 @@
 	import { page } from '$app/stores';
 	import {
 		GyeNyame, Dwennimmen, Nkyinkyim, Sankofa,
-		Aya, Akoma, Fawohodie, AnanseNtontan
+		Aya, Akoma, Fawohodie, AnanseNtontan,
+		Nyame, Bese
 	} from '$lib/components/icons';
 
 	const nav = [
@@ -14,6 +15,8 @@
 		{ href: '/memory', label: 'Memory', icon: Sankofa },
 		{ href: '/budget', label: 'Budget', icon: Aya },
 		{ href: '/insights', label: 'Insights', icon: AnanseNtontan },
+		{ href: '/health', label: 'Health', icon: Nyame },
+		{ href: '/creative', label: 'Creative', icon: Bese },
 	];
 
 	let currentPath = $derived($page.url.pathname);

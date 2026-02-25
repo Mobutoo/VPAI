@@ -32,6 +32,12 @@ palais_cpu_limit: "0.75"
 # Standup
 palais_standup_hour: "08"
 
+# Headscale (VPN topology — Module 11)
+palais_headscale_api_key: "{{ vault_palais_headscale_api_key | default('') }}"
+
+# ComfyUI (Atelier Creatif — Module 12)
+palais_comfyui_port: 8188
+
 # Agents (same as OpenClaw)
 palais_agents:
   - { id: "concierge", name: "Mobutoo", persona: "Chef d'orchestre" }

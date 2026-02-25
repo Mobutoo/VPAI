@@ -6,3 +6,5 @@ export { default as Aya } from './Aya.svelte';
 export { default as Akoma } from './Akoma.svelte';
 export { default as Fawohodie } from './Fawohodie.svelte';
 export { default as AnanseNtontan } from './AnanseNtontan.svelte';
+export { default as Nyame } from './Nyame.svelte';
+export { default as Bese } from './Bese.svelte';

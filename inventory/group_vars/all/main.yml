@@ -133,7 +133,8 @@ sure_db_password: "{{ vault_sure_db_password | default(postgresql_password) }}"
 sure_api_key: "{{ vault_sure_api_key | default('') }}"
 
 # NocoDB (pipeline production IA manga)
-postgresql_nocodb_password: "{{ vault_postgresql_nocodb_password }}"
+# Note: NocoDB utilise postgresql_password (variable partagée) — pas de vault séparé
+# postgresql_nocodb_password supprimé (non-pattern : tous les users PG partagent postgresql_password)
 nocodb_jwt_secret: "{{ vault_nocodb_jwt_secret }}"
 nocodb_api_token: "{{ vault_nocodb_api_token }}"
 

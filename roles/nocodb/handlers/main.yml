@@ -8,7 +8,12 @@
       - docker-compose.yml
     services:
       - nocodb
-    state: restarted
+    state: present
+    # REX: recreate: always est nécessaire pour que les changements d'env_file soient pris en compte.
+    # `state: restarted` = docker compose restart → ne recharge PAS l'env_file (container recycle
+    # sans recréation). `state: present` + `recreate: always` = docker compose up --force-recreate
+    # → le container est recréé et charge la nouvelle valeur depuis le fichier env sur disque.
+    recreate: always
   become: true
   # failed_when: false — convention projet : le container peut ne pas exister au premier deploy
   # (docker-compose.yml pas encore déployé). L'échec du handler ne doit pas bloquer le play.

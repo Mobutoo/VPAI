@@ -137,6 +137,11 @@ sure_api_key: "{{ vault_sure_api_key | default('') }}"
 # postgresql_nocodb_password supprimé (non-pattern : tous les users PG partagent postgresql_password)
 nocodb_jwt_secret: "{{ vault_nocodb_jwt_secret }}"
 nocodb_api_token: "{{ vault_nocodb_api_token }}"
+nocodb_s3_bucket: "{{ s3_bucket_shared }}"  # bucket partagé — NocoDB stocke sous préfixe nc-attachments/
+
+# S3 credentials (Hetzner Object Storage — partagés avec Zerobyte backup)
+s3_access_key: "{{ vault_s3_access_key }}"
+s3_secret_key: "{{ vault_s3_secret_key }}"
 
 # GitHub webhook (auto-fix pipeline)
 github_webhook_secret: "{{ vault_github_webhook_secret | default('') }}"

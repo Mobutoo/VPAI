@@ -19,6 +19,7 @@ grafana_subdomain: "tala"
 n8n_subdomain: "mayi"
 litellm_subdomain: "llm"
 qdrant_subdomain: "qd"
+nocodb_subdomain: "hq"              # → hq.<domain> (remplace Kaneo supprimé)
 subdomain_preprod: "preprod"
 
 # --- VPN Access Control ---
@@ -130,6 +131,11 @@ qdrant_api_key: "{{ vault_qdrant_api_key }}"
 sure_secret_key_base: "{{ vault_sure_secret_key_base }}"
 sure_db_password: "{{ vault_sure_db_password | default(postgresql_password) }}"
 sure_api_key: "{{ vault_sure_api_key | default('') }}"
+
+# NocoDB (pipeline production IA manga)
+postgresql_nocodb_password: "{{ vault_postgresql_nocodb_password }}"
+nocodb_jwt_secret: "{{ vault_nocodb_jwt_secret }}"
+nocodb_api_token: "{{ vault_nocodb_api_token }}"
 
 # GitHub webhook (auto-fix pipeline)
 github_webhook_secret: "{{ vault_github_webhook_secret | default('') }}"

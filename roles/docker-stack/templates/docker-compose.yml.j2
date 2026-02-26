@@ -252,6 +252,44 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # === PRODUCTION PIPELINE ===
+{% if nocodb_subdomain | default('') | length > 0 %}
+  nocodb:
+    image: {{ nocodb_image }}
+    container_name: {{ project_name }}_nocodb
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+      - FOWNER
+    env_file:
+      - /opt/{{ project_name }}/configs/nocodb/nocodb.env
+    volumes:
+      - /opt/{{ project_name }}/data/nocodb:/data
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: {{ nocodb_memory_limit }}
+          cpus: "{{ nocodb_cpu_limit }}"
+        reservations:
+          memory: {{ nocodb_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+{% endif %}
+
   # === MONITORING LAYER ===
   cadvisor:
     image: {{ cadvisor_image }}

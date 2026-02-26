@@ -20,10 +20,10 @@ postgresql_databases:
     user: litellm
     extensions:
       - uuid-ossp
-  - name: kaneo
-    user: kaneo
-    extensions:
-      - uuid-ossp
+  # kaneo supprimé — remplacé par Palais
+  - name: nocodb
+    user: nocodb
+    extensions: []
   - name: sure_production
     user: sure
     extensions:

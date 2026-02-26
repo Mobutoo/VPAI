@@ -1,0 +1,16 @@
+---
+# nocodb — handlers
+
+- name: Restart nocodb stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - nocodb
+    state: restarted
+  become: true
+  # failed_when: false — convention projet : le container peut ne pas exister au premier deploy
+  # (docker-compose.yml pas encore déployé). L'échec du handler ne doit pas bloquer le play.
+  # Le déploiement docker-stack (Phase 4.5) lancera nocodb au premier boot.
+  failed_when: false

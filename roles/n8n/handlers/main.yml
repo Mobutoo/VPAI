@@ -8,6 +8,9 @@
       - docker-compose.yml
     services:
       - n8n
-    state: restarted
+    state: present
+    # REX: recreate: always requis — state: restarted ne relit pas l'env_file.
+    # Voir TROUBLESHOOTING.md section 11.18 + roles/nocodb/handlers/main.yml.
+    recreate: always
   become: true
   failed_when: false  # Ne pas échouer si docker-compose.yml n'existe pas encore

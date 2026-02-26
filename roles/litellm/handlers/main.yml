@@ -8,5 +8,8 @@
       - docker-compose.yml
     services:
       - litellm
-    state: restarted
+    state: present
+    # REX: recreate: always requis — state: restarted ne relit pas l'env_file.
+    # Voir TROUBLESHOOTING.md section 11.18 + roles/nocodb/handlers/main.yml.
+    recreate: always
   become: true

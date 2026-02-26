@@ -260,6 +260,17 @@ deploy-workstation-monitoring: ## Deployer node_exporter + metriques custom sur 
 deploy-vpn-dns: ## Mettre a jour Split DNS Headscale (VPS + workstation Pi)
 	$(ANSIBLE_PLAYBOOK) playbooks/vpn-dns.yml --diff
 
+.PHONY: deploy-obsidian
+deploy-obsidian: ## Deployer CouchDB Obsidian LiveSync sur Seko-VPN
+	@echo "$(GREEN)>>> Deploying Obsidian CouchDB on Seko-VPN...$(NC)"
+	$(ANSIBLE_PLAYBOOK) playbooks/obsidian.yml --diff
+
+.PHONY: deploy-obsidian-collectors
+deploy-obsidian-collectors: ## Deployer les collectors Obsidian (Sese-AI + Pi)
+	@echo "$(GREEN)>>> Deploying Obsidian collectors on Sese-AI + Pi...$(NC)"
+	$(ANSIBLE_PLAYBOOK) playbooks/site.yml --tags obsidian-collector -e "target_env=prod" --diff
+	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags obsidian-collector-pi --diff
+
 # ====================================================================
 # PROD APPS (Hetzner)
 # ====================================================================

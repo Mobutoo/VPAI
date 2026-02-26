@@ -78,3 +78,6 @@
 
     - role: workstation-monitoring
       tags: [workstation-monitoring]
+
+    - role: obsidian-collector-pi
+      tags: [obsidian-collector-pi]

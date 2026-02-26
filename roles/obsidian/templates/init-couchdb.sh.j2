@@ -1,0 +1,49 @@
+#!/bin/bash
+# roles/obsidian/templates/init-couchdb.sh.j2
+# Initialise CouchDB : database + user obsidian — idempotent (safe à ré-exécuter)
+set -euo pipefail
+
+BASE="http://{{ couchdb_admin_user }}:{{ couchdb_admin_password }}@127.0.0.1:{{ couchdb_port }}"
+DB="{{ couchdb_db_name }}"
+OBS_USER="{{ couchdb_obsidian_user }}"
+OBS_PASS="{{ couchdb_obsidian_password }}"
+CHANGED=false
+
+# Créer le système de databases CouchDB si absent
+for sysdb in _users _replicator; do
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/$sysdb")
+    if [ "$STATUS" = "404" ]; then
+        curl -s -X PUT "$BASE/$sysdb" > /dev/null
+        echo "created system db: $sysdb"
+        CHANGED=true
+    fi
+done
+
+# Créer la database du vault si absente
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/$DB")
+if [ "$STATUS" = "404" ]; then
+    curl -s -X PUT "$BASE/$DB" > /dev/null
+    echo "created vault database: $DB"
+    CHANGED=true
+fi
+
+# Créer l'utilisateur obsidian si absent
+USER_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/_users/org.couchdb.user:$OBS_USER")
+if [ "$USER_STATUS" = "404" ]; then
+    curl -s -X PUT "$BASE/_users/org.couchdb.user:$OBS_USER" \
+        -H "Content-Type: application/json" \
+        -d "{\"name\":\"$OBS_USER\",\"password\":\"$OBS_PASS\",\"roles\":[],\"type\":\"user\"}" > /dev/null
+    echo "created obsidian user: $OBS_USER"
+    CHANGED=true
+fi
+
+# Donner accès à la database
+curl -s -X PUT "$BASE/$DB/_security" \
+    -H "Content-Type: application/json" \
+    -d "{\"admins\":{\"names\":[\"{{ couchdb_admin_user }}\"],\"roles\":[]},\"members\":{\"names\":[\"$OBS_USER\"],\"roles\":[]}}" > /dev/null
+
+if [ "$CHANGED" = "true" ]; then
+    echo "created"
+else
+    echo "already initialized"
+fi

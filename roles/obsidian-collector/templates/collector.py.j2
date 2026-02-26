@@ -1,0 +1,323 @@
+#!/usr/bin/env python3
+"""
+roles/obsidian-collector/templates/collector.py.j2
+Collecteurs Sese-AI → CouchDB Obsidian LiveSync
+
+Collecte (cron 03:30 quotidien) :
+  - OpenClaw IDENTITY.md (agents) → OpenClaw/Agents/<agent>.md
+  - OpenClaw SKILL.md (skills)   → OpenClaw/Skills/<skill>.md
+  - OpenClaw sessions (.jsonl)   → OpenClaw/Sessions/YYYY-MM-DD/<agent>/<uuid>.md
+  - n8n workflows export (.json) → n8n/Workflows/<name>.md
+  - Documentation (ARCHITECTURE) → Infrastructure/Architecture.md
+"""
+import base64
+import glob
+import json
+import os
+import sys
+import time
+import urllib.request
+import urllib.error
+from datetime import datetime, timezone
+from pathlib import Path
+
+# === Configuration (générée par Ansible) ===
+COUCHDB_URL = "{{ obsidian_collector_couchdb_url }}"
+DB = "{{ obsidian_collector_couchdb_db }}"
+AUTH = ("{{ obsidian_collector_couchdb_user }}", "{{ obsidian_collector_couchdb_password }}")
+MAX_SESSION_MSGS = {{ obsidian_collector_max_session_messages }}
+
+OPENCLAW_SYSTEM = "{{ obsidian_collector_openclaw_system }}"
+OPENCLAW_SESSIONS = "{{ obsidian_collector_openclaw_sessions }}"
+N8N_BACKUP_DIR = "{{ obsidian_collector_n8n_backup_dir }}"
+DOCS_DIR = "{{ obsidian_collector_docs_dir }}"
+
+# Période incrémentale : ne pusher que les fichiers modifiés dans les 25h
+INCREMENTAL_HOURS = 25
+
+
+# === Utilitaires CouchDB / LiveSync ===
+
+def livesync_id(path: str) -> str:
+    """Génère le _id CouchDB au format LiveSync v2."""
+    return "v2:plain:" + base64.b64encode(path.encode()).decode()
+
+
+def couch_request(method: str, path: str, data: dict | None = None) -> tuple[int, dict]:
+    url = f"{COUCHDB_URL}/{path}"
+    body = json.dumps(data).encode() if data else None
+    creds = base64.b64encode(f"{AUTH[0]}:{AUTH[1]}".encode()).decode()
+    req = urllib.request.Request(url, data=body, method=method)
+    req.add_header("Authorization", f"Basic {creds}")
+    req.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            return resp.status, json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def push_note(vault_path: str, content: str) -> bool:
+    """Pousse une note dans CouchDB au format LiveSync v2."""
+    doc_id = livesync_id(vault_path)
+    now_ms = int(time.time() * 1000)
+
+    # Récupérer le _rev si le document existe (nécessaire pour les updates)
+    status, existing = couch_request("GET", f"{DB}/{doc_id}")
+    rev = existing.get("_rev") if status == 200 else None
+
+    doc = {
+        "_id": doc_id,
+        "data": content,
+        "datatype": "plain",
+        "mtime": now_ms,
+        "ctime": existing.get("ctime", now_ms) if rev else now_ms,
+        "type": "leaf",
+    }
+    if rev:
+        doc["_rev"] = rev
+
+    status, _ = couch_request("PUT", f"{DB}/{doc_id}", doc)
+    return status in (200, 201)
+
+
+def is_recent(filepath: str) -> bool:
+    """Vérifie si le fichier a été modifié dans les INCREMENTAL_HOURS dernières heures."""
+    try:
+        mtime = os.path.getmtime(filepath)
+        age_hours = (time.time() - mtime) / 3600
+        return age_hours <= INCREMENTAL_HOURS
+    except OSError:
+        return False
+
+
+def add_frontmatter(content: str, extra: dict) -> str:
+    """Ajoute un frontmatter YAML si absent."""
+    if content.startswith("---\n"):
+        return content
+    fm_lines = ["---"]
+    for k, v in extra.items():
+        if isinstance(v, list):
+            fm_lines.append(f"{k}: [{', '.join(str(x) for x in v)}]")
+        else:
+            fm_lines.append(f"{k}: {v}")
+    fm_lines.append("---\n")
+    return "\n".join(fm_lines) + "\n" + content
+
+
+# === Collectors ===
+
+def collect_openclaw_agents() -> int:
+    """Copie les IDENTITY.md des agents → OpenClaw/Agents/<agent>.md"""
+    pushed = 0
+    pattern = os.path.join(OPENCLAW_SYSTEM, "agents", "*", "IDENTITY.md")
+    for filepath in glob.glob(pattern):
+        agent_name = os.path.basename(os.path.dirname(filepath))
+        vault_path = f"OpenClaw/Agents/{agent_name}.md"
+        try:
+            content = Path(filepath).read_text(encoding="utf-8")
+            content = add_frontmatter(content, {
+                "agent": agent_name,
+                "tags": ["openclaw", "agent", "identity"],
+                "source": "auto-generated",
+            })
+            if push_note(vault_path, content):
+                pushed += 1
+        except OSError as e:
+            print(f"  [agents] ERROR {filepath}: {e}", file=sys.stderr)
+    return pushed
+
+
+def collect_openclaw_skills() -> int:
+    """Copie les SKILL.md des skills → OpenClaw/Skills/<skill>.md"""
+    pushed = 0
+    pattern = os.path.join(OPENCLAW_SYSTEM, "skills", "*", "SKILL.md")
+    for filepath in glob.glob(pattern):
+        skill_name = os.path.basename(os.path.dirname(filepath))
+        vault_path = f"OpenClaw/Skills/{skill_name}.md"
+        try:
+            content = Path(filepath).read_text(encoding="utf-8")
+            content = add_frontmatter(content, {
+                "skill": skill_name,
+                "tags": ["openclaw", "skill"],
+                "source": "auto-generated",
+            })
+            if push_note(vault_path, content):
+                pushed += 1
+        except OSError as e:
+            print(f"  [skills] ERROR {filepath}: {e}", file=sys.stderr)
+    return pushed
+
+
+def collect_openclaw_sessions() -> int:
+    """Parse les sessions .jsonl → OpenClaw/Sessions/YYYY-MM-DD/<agent>/<uuid>.md"""
+    pushed = 0
+    pattern = os.path.join(OPENCLAW_SESSIONS, "**", "*.jsonl")
+    for filepath in glob.glob(pattern, recursive=True):
+        if not is_recent(filepath):
+            continue
+        try:
+            parts = Path(filepath).parts
+            # Trouver l'agent (dossier parent du fichier)
+            agent_name = parts[-2] if len(parts) >= 2 else "unknown"
+            session_uuid = Path(filepath).stem
+
+            # Parser les messages JSONL
+            messages = []
+            with open(filepath, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        msg = json.loads(line)
+                        role = msg.get("role", "")
+                        content = msg.get("content", "")
+                        if role in ("user", "assistant") and content:
+                            ts = msg.get("timestamp", "")
+                            messages.append((role, str(content)[:500], ts))
+                    except json.JSONDecodeError:
+                        continue
+
+            if not messages:
+                continue
+
+            # Prendre les MAX_SESSION_MSGS derniers messages
+            messages = messages[-MAX_SESSION_MSGS:]
+            date_str = datetime.fromtimestamp(
+                os.path.getmtime(filepath), tz=timezone.utc
+            ).strftime("%Y-%m-%d")
+
+            # Générer le Markdown
+            md_lines = [
+                f"---",
+                f"agent: {agent_name}",
+                f"date: {date_str}",
+                f"uuid: {session_uuid}",
+                f"tags: [openclaw, session, {agent_name}]",
+                f"source: auto-generated",
+                f"---",
+                f"",
+                f"# Session — {agent_name.capitalize()} — {date_str}",
+                f"",
+                f"## Messages ({len(messages)} derniers)",
+                f"",
+            ]
+            for role, content, ts in messages:
+                icon = "👤 User" if role == "user" else "🤖 Agent"
+                time_str = f" *({ts[:16]})*" if ts else ""
+                md_lines.append(f"**{icon}**{time_str}")
+                md_lines.append(f"{content}")
+                md_lines.append("")
+
+            vault_path = f"OpenClaw/Sessions/{date_str}/{agent_name}/{session_uuid}.md"
+            if push_note(vault_path, "\n".join(md_lines)):
+                pushed += 1
+        except OSError as e:
+            print(f"  [sessions] ERROR {filepath}: {e}", file=sys.stderr)
+    return pushed
+
+
+def collect_n8n_workflows() -> int:
+    """Parse le dernier export n8n workflows.json → n8n/Workflows/<name>.md"""
+    pushed = 0
+    pattern = os.path.join(N8N_BACKUP_DIR, "workflows-*.json")
+    files = sorted(glob.glob(pattern))
+    if not files:
+        return 0
+
+    latest = files[-1]
+    try:
+        with open(latest, encoding="utf-8") as f:
+            data = json.load(f)
+
+        workflows = data if isinstance(data, list) else data.get("data", [])
+        for wf in workflows:
+            name = wf.get("name", "unknown")
+            active = wf.get("active", False)
+            updated = wf.get("updatedAt", "")[:10]
+            nodes = wf.get("nodes", [])
+            node_count = len(nodes)
+            node_names = [n.get("type", "").split(".")[-1] for n in nodes[:10]]
+
+            vault_path = f"n8n/Workflows/{name}.md"
+            content = "\n".join([
+                f"---",
+                f"workflow: {name}",
+                f"active: {str(active).lower()}",
+                f"updated: {updated}",
+                f"nodes: {node_count}",
+                f"tags: [n8n, workflow, automation]",
+                f"source: auto-generated",
+                f"---",
+                f"",
+                f"# Workflow: {name}",
+                f"",
+                f"| Propriété | Valeur |",
+                f"|---|---|",
+                f"| Statut | {'✅ Actif' if active else '⏸ Inactif'} |",
+                f"| Dernière MAJ | {updated} |",
+                f"| Nombre de nodes | {node_count} |",
+                f"",
+                f"## Nodes ({node_count})",
+                f"",
+                "\n".join(f"- `{n}`" for n in node_names),
+            ])
+            if push_note(vault_path, content):
+                pushed += 1
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"  [n8n] ERROR {latest}: {e}", file=sys.stderr)
+    return pushed
+
+
+def collect_docs() -> int:
+    """Copie les docs infrastructure → Infrastructure/*.md"""
+    pushed = 0
+    docs_map = {
+        os.path.join(DOCS_DIR, "ARCHITECTURE.md"): "Infrastructure/Architecture.md",
+        os.path.join(os.path.dirname(DOCS_DIR), "RUNBOOK.md"): "Infrastructure/Runbook.md",
+    }
+    for src, vault_path in docs_map.items():
+        if not os.path.exists(src):
+            continue
+        try:
+            content = Path(src).read_text(encoding="utf-8")
+            content = add_frontmatter(content, {
+                "tags": ["infrastructure", "documentation"],
+                "source": "auto-generated",
+            })
+            if push_note(vault_path, content):
+                pushed += 1
+        except OSError as e:
+            print(f"  [docs] ERROR {src}: {e}", file=sys.stderr)
+    return pushed
+
+
+# === Main ===
+
+def main():
+    print(f"[obsidian-collector] Start — {datetime.now().isoformat()}")
+    print(f"  CouchDB: {COUCHDB_URL}/{DB}")
+
+    # Vérifier la connexion CouchDB
+    status, _ = couch_request("GET", f"{DB}")
+    if status != 200:
+        print(f"[obsidian-collector] ERROR: Cannot reach CouchDB ({status})", file=sys.stderr)
+        sys.exit(1)
+
+    results = {
+        "agents": collect_openclaw_agents(),
+        "skills": collect_openclaw_skills(),
+        "sessions": collect_openclaw_sessions(),
+        "n8n": collect_n8n_workflows(),
+        "docs": collect_docs(),
+    }
+
+    total = sum(results.values())
+    print(f"[obsidian-collector] Done — {total} notes pushed")
+    for k, v in results.items():
+        print(f"  {k}: {v}")
+
+
+if __name__ == "__main__":
+    main()

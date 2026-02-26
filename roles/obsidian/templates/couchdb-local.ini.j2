@@ -1,0 +1,25 @@
+# roles/obsidian/templates/couchdb-local.ini.j2
+# CouchDB local config — CORS requis pour obsidian-livesync (cross-origin depuis app mobile/desktop)
+
+[chttpd]
+bind_address = 0.0.0.0
+port = 5984
+
+[httpd]
+enable_cors = true
+
+[cors]
+# origins = * requis car obsidian-livesync fait des requêtes cross-origin
+# (app Obsidian iOS/PC → couch.{{ domain_name }})
+origins = *
+methods = GET, PUT, POST, HEAD, DELETE
+credentials = true
+headers = accept, authorization, content-type, origin, referer, x-csrf-token
+
+[couch_httpd_auth]
+# Timeout de session (24h — session persistante pour l'usage Obsidian)
+timeout = 86400
+
+[compactions]
+# Compaction automatique la nuit (après le git snapshot)
+_default = [{db_fragmentation, "70%"}, {view_fragmentation, "60%"}, {from, "03:30"}, {to, "04:30"}]

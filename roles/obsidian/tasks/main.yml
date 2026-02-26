@@ -1,0 +1,109 @@
+---
+# roles/obsidian/tasks/main.yml — Déploiement CouchDB + Obsidian Vault sur Seko-VPN
+
+- name: Obsidian | Create directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  loop:
+    - "{{ couchdb_data_dir }}"
+    - "{{ couchdb_config_dir }}"
+    - "{{ couchdb_scripts_dir }}"
+    - "{{ obsidian_vault_dir }}"
+  become: true
+
+- name: Obsidian | Deploy CouchDB Docker Compose
+  ansible.builtin.template:
+    src: docker-compose-couchdb.yml.j2
+    dest: "{{ couchdb_config_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0640"
+  become: true
+  notify: Restart CouchDB
+
+- name: Obsidian | Deploy CouchDB local config (CORS + bind)
+  ansible.builtin.template:
+    src: couchdb-local.ini.j2
+    dest: "{{ couchdb_config_dir }}/local.ini"
+    owner: 5984
+    group: 5984
+    mode: "0640"
+  become: true
+  notify: Restart CouchDB
+
+- name: Obsidian | Deploy init script
+  ansible.builtin.template:
+    src: init-couchdb.sh.j2
+    dest: "{{ couchdb_scripts_dir }}/init-couchdb.sh"
+    owner: root
+    group: root
+    mode: "0750"
+  become: true
+
+- name: Obsidian | Start CouchDB
+  community.docker.docker_compose_v2:
+    project_src: "{{ couchdb_config_dir }}"
+    state: present
+  become: true
+
+- name: Obsidian | Wait for CouchDB to be ready
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ couchdb_port }}"
+    timeout: 60
+  become: true
+
+- name: Obsidian | Initialize CouchDB (database + user) — idempotent
+  ansible.builtin.shell:
+    cmd: bash {{ couchdb_scripts_dir }}/init-couchdb.sh
+    executable: /bin/bash
+  become: true
+  register: _couchdb_init
+  changed_when: "'created' in _couchdb_init.stdout"
+  failed_when: _couchdb_init.rc != 0
+
+- name: Obsidian | Deploy vault dump script
+  ansible.builtin.template:
+    src: dump-vault.py.j2
+    dest: "{{ couchdb_scripts_dir }}/dump-vault.py"
+    owner: root
+    group: root
+    mode: "0750"
+  become: true
+
+- name: Obsidian | Initialize git repo for vault versioning
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      if [ ! -d "{{ obsidian_vault_dir }}/.git" ]; then
+        cd "{{ obsidian_vault_dir }}"
+        git init
+        git remote add origin "{{ obsidian_git_repo }}"
+        echo "initialized"
+      else
+        echo "already initialized"
+      fi
+    executable: /bin/bash
+  become: true
+  register: _git_init
+  changed_when: "'initialized' in _git_init.stdout and 'already' not in _git_init.stdout"
+  failed_when: _git_init.rc != 0
+
+- name: Obsidian | Schedule nightly vault snapshot (git)
+  ansible.posix.cron:
+    name: "obsidian-vault-snapshot"
+    hour: "{{ obsidian_git_cron_hour }}"
+    minute: "{{ obsidian_git_cron_minute }}"
+    job: >-
+      python3 {{ couchdb_scripts_dir }}/dump-vault.py &&
+      cd {{ obsidian_vault_dir }} &&
+      git add -A &&
+      git diff --cached --quiet ||
+      (git commit -m "vault-snapshot $(date +%Y-%m-%d)" && git push origin main)
+    user: root
+    state: present
+  become: true

@@ -29,6 +29,7 @@
 | `cut.ewutelo.cloud` | 100.64.0.1 | Workstation Pi (Tailscale) → Remotion :3200 | VPN uniquement |
 | `oc.ewutelo.cloud` | 100.64.0.1 | Workstation Pi (Tailscale) → OpenCode :3456 | VPN uniquement |
 | `hq.ewutelo.cloud` | 100.64.0.14 | VPS Sese-AI (Tailscale) → Kaneo :3000 | VPN uniquement |
+| `couch.ewutelo.cloud` | 137.74.114.167 | Sese-AI Caddy → Seko-VPN:5984 (Tailscale) | **Public** (auth CouchDB) |
 | `singa.ewutelo.cloud` | 87.106.30.160 | Seko-VPN | Public (Headscale control plane) |
 
 > Tous les records ci-dessus sont définis dans `extra_records` de la config Headscale sur Seko-VPN :
@@ -510,12 +511,13 @@ graph TD
 
 #### Seko-VPN — Ionos (hub VPN)
 
-| Service | Version | Rôle |
-|---|---|---|
-| Headscale | — | Serveur coordination VPN mesh |
-| Zerobyte | v0.16 | Orchestrateur backups (pull VPN → S3) |
-| Uptime Kuma | — | Monitoring uptime externes |
-| webhook-relay | — | Relay webhooks entrants |
+| Service | Version | Port | Rôle |
+|---|---|---|---|
+| Headscale | — | — | Serveur coordination VPN mesh |
+| Zerobyte | v0.16 | — | Orchestrateur backups (pull VPN → S3) |
+| Uptime Kuma | — | — | Monitoring uptime externes |
+| webhook-relay | — | — | Relay webhooks entrants |
+| **CouchDB** | **3.3.3** | **5984** | **Backend sync Obsidian LiveSync** |
 
 ### 8.2 Schéma ASCII — Vue Globale
 
@@ -533,10 +535,12 @@ graph TD
 ║  │ (coord. mesh)   │  │ (backup orchestrator)  │  │ (monitoring uptime)  │    ║
 ║  └────────┬────────┘  └───────────┬───────────┘  └──────────────────────┘    ║
 ║           │ split DNS             │ VPN pull                                   ║
-║  ┌────────▼──────────┐    ┌───────▼─────────────┐                             ║
-║  │  extra_records    │    │  webhook-relay       │                             ║
-║  │  (DNS VPN local)  │    │  (webhooks entrants) │                             ║
-║  └───────────────────┘    └─────────────────────┘                             ║
+║  ┌────────▼──────────┐    ┌───────▼─────────────┐  ┌──────────────────────┐  ║
+║  │  extra_records    │    │  webhook-relay       │  │  CouchDB 3.3.3       │  ║
+║  │  (DNS VPN local)  │    │  (webhooks entrants) │  │  :5984 (Docker)      │  ║
+║  └───────────────────┘    └─────────────────────┘  │  Obsidian LiveSync   │  ║
+║                                                     │  public HTTPS (auth) │  ║
+║                                                     └──────────────────────┘  ║
 ╚═══════════════════════════════════════════════════════════════════════════════╝
            │ Tailscale mesh                    │ S3 API
            │                        ╔══════════▼═══════════════╗
@@ -639,3 +643,55 @@ graph TD
 - **BytePlus/Seedance** : $5/mois séparé (vidéo cloud, via n8n creative pipeline)
 - **Éco mode** : auto à 100% — `qwen3-coder:free` + `deepseek-v3:free` toujours actifs
 - **Contrôle Telegram** : `/budget`, `/budget eco on`, `/budget eco off`
+
+### 8.5 Obsidian Vault Sync (CouchDB + LiveSync)
+
+**Architecture** : CouchDB sur Seko-VPN ← Sese-AI Caddy proxy → obsidian-livesync (iOS + PC)
+
+```
+iPhone 13 (iOS)                    PC Windows (VPN)
+  Obsidian App                       Obsidian App
+  livesync plugin                    livesync plugin
+       │ HTTPS :443                       │ HTTPS (VPN)
+       ▼                                  ▼
+couch.ewutelo.cloud ◄──── Caddy (Sese-AI) ────►
+(Public — auth CouchDB)    reverse_proxy
+                           vpn_tailscale_ip:5984
+                                  │ Tailscale mesh
+                                  ▼
+                     Seko-VPN — CouchDB 3.3.3 :5984
+                     /opt/vpn/data/couchdb/
+                     DB: obsidian_vault
+                     User: obsidian (lecture/écriture vault)
+                          │
+                     cron 02:00 (nightly)
+                          │
+                     dump-vault.py → /opt/vpn/data/obsidian-vault/
+                          │
+                     git commit → github-seko:Mobutoo/obsidian-vault.git
+```
+
+**Collectors** (push Markdown → CouchDB via Tailscale) :
+
+| Collector | Serveur | Cron | Sources | Destination Vault |
+|---|---|---|---|---|
+| `obsidian-collector` | Sese-AI | 03:30 | OpenClaw agents/skills/sessions, n8n workflows, docs | `OpenClaw/`, `n8n/`, `Infrastructure/` |
+| `obsidian-collector-pi` | Workstation Pi | 04:00 | ComfyUI renders, Remotion renders | `Pi/ComfyUI/`, `Pi/Remotion/` |
+
+**Format documents CouchDB (LiveSync v2)** :
+```
+_id   : "v2:plain:" + base64(vault/path/to/note.md)
+data  : contenu Markdown complet
+type  : "leaf"
+mtime : timestamp ms (mis à jour à chaque push)
+```
+
+**Accès mobile** :
+- iOS : `couch.ewutelo.cloud` public HTTPS, user/password dans plugin LiveSync
+- PC Windows : idem (VPN ou non — TLS + auth CouchDB suffisent)
+
+**Basculer en VPN-only** (si WireGuard iOS configuré) :
+```yaml
+# inventory/group_vars/all/main.yml
+couchdb_vpn_enforce: true   # puis: make deploy-role ROLE=caddy ENV=prod
+```

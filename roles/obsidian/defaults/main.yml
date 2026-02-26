@@ -1,0 +1,35 @@
+---
+# roles/obsidian/defaults/main.yml — CouchDB + Obsidian LiveSync (Seko-VPN)
+
+# Docker image (pinned dans versions.yml)
+couchdb_image: "{{ couchdb_image }}"
+couchdb_port: 5984
+
+# Répertoires
+couchdb_data_dir: "/opt/vpn/data/couchdb"
+couchdb_config_dir: "/opt/vpn/configs/couchdb"
+couchdb_scripts_dir: "/opt/vpn/scripts"
+obsidian_vault_dir: "/opt/vpn/data/obsidian-vault"
+
+# Database
+couchdb_db_name: "obsidian_vault"
+couchdb_admin_user: "{{ vault_couchdb_admin_user }}"
+couchdb_admin_password: "{{ vault_couchdb_admin_password }}"
+couchdb_obsidian_user: "obsidian"
+couchdb_obsidian_password: "{{ vault_couchdb_obsidian_password }}"
+
+# Ressources (Ionos VPS — conservateur)
+couchdb_memory_limit: "512M"
+couchdb_memory_reservation: "256M"
+couchdb_cpu_limit: "0.5"
+
+# Subdomain Caddy (exposé publiquement — pas de VPN restriction)
+obsidian_subdomain: "couch"
+
+# Git versioning nightly (02:00 chaque nuit)
+obsidian_git_repo: "git@github-seko:Mobutoo/obsidian-vault.git"
+obsidian_git_cron_hour: "2"
+obsidian_git_cron_minute: "0"
+
+# Basculer à true pour VPN-only (nécessite WireGuard iOS configuré)
+couchdb_vpn_enforce: false

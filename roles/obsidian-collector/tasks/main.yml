@@ -1,0 +1,47 @@
+---
+# roles/obsidian-collector/tasks/main.yml — Collectors Sese-AI → CouchDB Obsidian
+
+- name: Obsidian Collector | Ensure script directory exists
+  ansible.builtin.file:
+    path: "{{ obsidian_collector_script_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  become: true
+
+- name: Obsidian Collector | Install Python3 requests (required for collector)
+  ansible.builtin.package:
+    name: python3-requests
+    state: present
+  become: true
+
+- name: Obsidian Collector | Deploy collector script
+  ansible.builtin.template:
+    src: collector.py.j2
+    dest: "{{ obsidian_collector_script_dir }}/obsidian-collector.py"
+    owner: root
+    group: root
+    mode: "0750"
+  become: true
+
+- name: Obsidian Collector | Schedule cron (03:30 daily)
+  ansible.posix.cron:
+    name: "obsidian-collector"
+    hour: "{{ obsidian_collector_cron_hour }}"
+    minute: "{{ obsidian_collector_cron_minute }}"
+    job: "python3 {{ obsidian_collector_script_dir }}/obsidian-collector.py >> /var/log/obsidian-collector.log 2>&1"
+    user: root
+    state: present
+  become: true
+
+- name: Obsidian Collector | Create log file
+  ansible.builtin.file:
+    path: /var/log/obsidian-collector.log
+    state: touch
+    owner: root
+    group: root
+    mode: "0640"
+    modification_time: preserve
+    access_time: preserve
+  become: true

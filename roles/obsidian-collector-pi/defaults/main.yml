@@ -1,0 +1,19 @@
+---
+# roles/obsidian-collector-pi/defaults/main.yml — Collectors Pi → CouchDB Obsidian
+
+# CouchDB cible (Seko-VPN, accessible via Tailscale mesh)
+obsidian_pi_couchdb_url: "http://{{ vpn_tailscale_ip }}:5984"
+obsidian_pi_couchdb_user: "{{ couchdb_obsidian_user | default('obsidian') }}"
+obsidian_pi_couchdb_password: "{{ vault_couchdb_obsidian_password }}"
+obsidian_pi_couchdb_db: "{{ couchdb_db_name | default('obsidian_vault') }}"
+
+# Cron — 04:00 (après collector Sese-AI à 03:30)
+obsidian_pi_collector_cron_hour: "4"
+obsidian_pi_collector_cron_minute: "0"
+
+# Répertoires sources (Raspberry Pi)
+obsidian_pi_comfyui_output: "/opt/workstation/data/comfyui/output"
+obsidian_pi_remotion_output: "/opt/workstation/data/remotion/output"
+
+# Script
+obsidian_pi_script_dir: "/opt/workstation/scripts"

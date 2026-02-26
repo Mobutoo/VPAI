@@ -86,6 +86,8 @@
       tags: [monitoring, phase4]
     - role: diun
       tags: [diun, phase4]
+    - role: obsidian-collector
+      tags: [obsidian-collector, phase4]
 
     # Phase 4.5 — Déploiement de la stack Docker
     - role: docker-stack

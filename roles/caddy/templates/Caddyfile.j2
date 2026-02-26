@@ -268,3 +268,30 @@ BOOTSTRAP 200
     }
 }
 {% endif %}
+
+# === CouchDB (Obsidian LiveSync) — Public HTTPS, auth CouchDB ===
+# REX: CORS origins=* obligatoire pour obsidian-livesync (cross-origin depuis l'app iOS/PC)
+# Pas d'import vpn_only — CouchDB est intentionnellement public pour sync iOS sans VPN.
+# L'auth est gérée par CouchDB natif (user/password configuré dans le plugin Obsidian).
+# Pour basculer en VPN-only : couchdb_vpn_enforce: true dans group_vars/all/main.yml
+# CouchDB tourne sur Seko-VPN, accessible depuis Sese-AI via le mesh Tailscale (vpn_tailscale_ip).
+{% if obsidian_subdomain | default('') | length > 0 %}
+{{ obsidian_subdomain }}.{{ domain_name }} {
+{% if couchdb_vpn_enforce | default(false) | bool %}
+    # Mode VPN-only : restreindre aux IPs Tailscale + gateway Docker (HTTP/3 QUIC)
+    @blocked_couch not client_ip {{ caddy_vpn_cidr }} {{ caddy_docker_frontend_cidr }}
+    error @blocked_couch 403
+{% endif %}
+    reverse_proxy {{ vpn_tailscale_ip }}:{{ couchdb_port | default(5984) }} {
+        header_up Host {host}
+    }
+    header {
+        Access-Control-Allow-Origin *
+        Access-Control-Allow-Methods "GET, PUT, POST, HEAD, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "accept, authorization, content-type, origin, referer, x-csrf-token"
+        Access-Control-Allow-Credentials true
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        -Server
+    }
+}
+{% endif %}

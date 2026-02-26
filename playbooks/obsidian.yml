@@ -1,0 +1,39 @@
+---
+# playbooks/obsidian.yml — Déploiement Obsidian Vault sur Seko-VPN
+#
+# Usage:
+#   make deploy-obsidian
+#   ansible-playbook playbooks/obsidian.yml
+#   ansible-playbook playbooks/obsidian.yml --tags obsidian  # CouchDB seulement
+#
+# Prérequis :
+#   - secrets.yml : vault_couchdb_admin_user, vault_couchdb_admin_password, vault_couchdb_obsidian_password
+#   - repo git obsidian-vault créé sur GitHub (git@github-seko:Mobutoo/obsidian-vault.git)
+#
+# Note : Docker est installé sur Seko-VPN par ce playbook (via rôle docker)
+#        — Seko-VPN utilise actuellement uniquement Caddy apt (webhook-relay)
+
+- name: Deploy Obsidian Sync Stack (CouchDB + LiveSync)
+  hosts: vpn
+  gather_facts: true
+
+  pre_tasks:
+    - name: Display deployment info
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Obsidian Vault — Seko-VPN
+          Host: {{ inventory_hostname }}
+          CouchDB: {{ obsidian_subdomain }}.{{ domain_name }}
+          VPN enforce: {{ couchdb_vpn_enforce | default(false) }}
+          ========================================
+      tags: [always]
+
+  roles:
+    # Docker requis pour CouchDB — n'était pas déployé sur Seko-VPN avant
+    - role: docker
+      tags: [docker, obsidian-prereq]
+
+    # CouchDB + init database + dump nightly + git versioning
+    - role: obsidian
+      tags: [obsidian]

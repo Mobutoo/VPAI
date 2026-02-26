@@ -239,6 +239,21 @@ app_prod_server_type: "cx22"
 app_prod_os_image: "ubuntu-24.04"
 app_prod_ip: "{{ vault_app_prod_ip | default('127.0.0.1') }}"
 
+# === OBSIDIAN VAULT ===
+# CouchDB backend pour obsidian-livesync (sync iOS + PC en temps réel)
+# CouchDB exposé publiquement via HTTPS (pas de VPN restriction) pour sync iOS sans Tailscale
+obsidian_subdomain: "couch"
+couchdb_db_name: "obsidian_vault"
+couchdb_obsidian_user: "obsidian"
+couchdb_memory_limit: "512M"
+# Repo git pour versioning nightly (dump CouchDB → filesystem → git commit)
+obsidian_git_repo: "git@github-seko:Mobutoo/obsidian-vault.git"
+# Limite de messages parsés par session .jsonl → note Obsidian
+obsidian_collector_max_session_messages: 20
+# Passer à true pour basculer CouchDB en VPN-only (nécessite WireGuard iOS)
+# Voir ARCHITECTURE.md section "Basculer en VPN-only" pour la procédure
+couchdb_vpn_enforce: false
+
 # --- Cle SSH deploy (utilisee par provision-hetzner) ---
 deploy_ssh_key_name: "{{ project_name }}-deploy"
 deploy_ssh_key_pub_path: "~/.ssh/id_ed25519.pub"

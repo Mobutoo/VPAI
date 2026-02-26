@@ -1,0 +1,43 @@
+---
+# roles/obsidian/templates/docker-compose-couchdb.yml.j2
+# CouchDB — Backend Obsidian LiveSync (Seko-VPN)
+
+services:
+  couchdb:
+    image: "{{ couchdb_image }}"
+    container_name: "{{ project_name }}_couchdb"
+    restart: unless-stopped
+    volumes:
+      - "{{ couchdb_data_dir }}:/opt/couchdb/data"
+      - "{{ couchdb_config_dir }}/local.ini:/opt/couchdb/etc/local.d/local.ini:ro"
+    environment:
+      COUCHDB_USER: "{{ couchdb_admin_user }}"
+      COUCHDB_PASSWORD: "{{ couchdb_admin_password }}"
+    ports:
+      - "127.0.0.1:{{ couchdb_port }}:5984"
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    deploy:
+      resources:
+        limits:
+          memory: "{{ couchdb_memory_limit }}"
+          cpus: "{{ couchdb_cpu_limit }}"
+        reservations:
+          memory: "{{ couchdb_memory_reservation }}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5984/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

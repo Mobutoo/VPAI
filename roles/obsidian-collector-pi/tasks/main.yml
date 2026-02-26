@@ -1,0 +1,47 @@
+---
+# roles/obsidian-collector-pi/tasks/main.yml — Collectors Raspberry Pi → CouchDB Obsidian
+
+- name: Obsidian Pi Collector | Ensure script directory exists
+  ansible.builtin.file:
+    path: "{{ obsidian_pi_script_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  become: true
+
+- name: Obsidian Pi Collector | Install Python3 requests
+  ansible.builtin.package:
+    name: python3-requests
+    state: present
+  become: true
+
+- name: Obsidian Pi Collector | Deploy pi-collector script
+  ansible.builtin.template:
+    src: pi-collector.py.j2
+    dest: "{{ obsidian_pi_script_dir }}/obsidian-pi-collector.py"
+    owner: root
+    group: root
+    mode: "0750"
+  become: true
+
+- name: Obsidian Pi Collector | Schedule cron (04:00 daily)
+  ansible.posix.cron:
+    name: "obsidian-pi-collector"
+    hour: "{{ obsidian_pi_collector_cron_hour }}"
+    minute: "{{ obsidian_pi_collector_cron_minute }}"
+    job: "python3 {{ obsidian_pi_script_dir }}/obsidian-pi-collector.py >> /var/log/obsidian-pi-collector.log 2>&1"
+    user: root
+    state: present
+  become: true
+
+- name: Obsidian Pi Collector | Create log file
+  ansible.builtin.file:
+    path: /var/log/obsidian-pi-collector.log
+    state: touch
+    owner: root
+    group: root
+    mode: "0640"
+    modification_time: preserve
+    access_time: preserve
+  become: true

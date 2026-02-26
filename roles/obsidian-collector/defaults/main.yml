@@ -1,0 +1,24 @@
+---
+# roles/obsidian-collector/defaults/main.yml — Collecteurs Sese-AI → CouchDB
+
+# CouchDB cible (Seko-VPN, accessible via Tailscale mesh)
+obsidian_collector_couchdb_url: "http://{{ vpn_tailscale_ip }}:5984"
+obsidian_collector_couchdb_user: "{{ couchdb_obsidian_user | default('obsidian') }}"
+obsidian_collector_couchdb_password: "{{ vault_couchdb_obsidian_password }}"
+obsidian_collector_couchdb_db: "{{ couchdb_db_name | default('obsidian_vault') }}"
+
+# Cron — 03:30 (après pre-backup.sh à 02:55, avant git dump à 02:00 du jour suivant)
+obsidian_collector_cron_hour: "3"
+obsidian_collector_cron_minute: "30"
+
+# Répertoires sources (Sese-AI)
+obsidian_collector_openclaw_system: "/opt/{{ project_name }}/data/openclaw/system"
+obsidian_collector_openclaw_sessions: "/opt/{{ project_name }}/data/openclaw/state/sessions"
+obsidian_collector_n8n_backup_dir: "/opt/{{ project_name }}/backups/n8n"
+obsidian_collector_docs_dir: "/opt/{{ project_name }}/repo/docs"
+
+# Script
+obsidian_collector_script_dir: "/opt/{{ project_name }}/scripts"
+
+# Limite de messages parsés par session .jsonl (évite des notes trop longues)
+obsidian_collector_max_session_messages: "{{ obsidian_collector_max_session_messages | default(20) }}"

@@ -1,0 +1,9 @@
+---
+# roles/obsidian/handlers/main.yml
+
+- name: Restart CouchDB
+  community.docker.docker_compose_v2:
+    project_src: "{{ couchdb_config_dir }}"
+    state: present
+    recreate: always
+  become: true

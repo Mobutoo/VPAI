@@ -29,7 +29,7 @@
 | `cut.ewutelo.cloud` | 100.64.0.1 | Workstation Pi (Tailscale) → Remotion :3200 | VPN uniquement |
 | `oc.ewutelo.cloud` | 100.64.0.1 | Workstation Pi (Tailscale) → OpenCode :3456 | VPN uniquement |
 | `hq.ewutelo.cloud` | 100.64.0.14 | VPS Sese-AI (Tailscale) → Kaneo :3000 | VPN uniquement |
-| `couch.ewutelo.cloud` | 137.74.114.167 | Sese-AI Caddy → Seko-VPN:5984 (Tailscale) | **Public** (auth CouchDB) |
+| `biki.ewutelo.cloud` | 137.74.114.167 | Sese-AI Caddy → Seko-VPN:5984 (Tailscale) | **Public** (auth CouchDB) |
 | `singa.ewutelo.cloud` | 87.106.30.160 | Seko-VPN | Public (Headscale control plane) |
 
 > Tous les records ci-dessus sont définis dans `extra_records` de la config Headscale sur Seko-VPN :
@@ -654,7 +654,7 @@ iPhone 13 (iOS)                    PC Windows (VPN)
   livesync plugin                    livesync plugin
        │ HTTPS :443                       │ HTTPS (VPN)
        ▼                                  ▼
-couch.ewutelo.cloud ◄──── Caddy (Sese-AI) ────►
+biki.ewutelo.cloud ◄──── Caddy (Sese-AI) ────►
 (Public — auth CouchDB)    reverse_proxy
                            vpn_tailscale_ip:5984
                                   │ Tailscale mesh
@@ -687,7 +687,7 @@ mtime : timestamp ms (mis à jour à chaque push)
 ```
 
 **Accès mobile** :
-- iOS : `couch.ewutelo.cloud` public HTTPS, user/password dans plugin LiveSync
+- iOS : `biki.ewutelo.cloud` public HTTPS, user/password dans plugin LiveSync
 - PC Windows : idem (VPN ou non — TLS + auth CouchDB suffisent)
 
 **Basculer en VPN-only** (si WireGuard iOS configuré) :

@@ -242,7 +242,7 @@ app_prod_ip: "{{ vault_app_prod_ip | default('127.0.0.1') }}"
 # === OBSIDIAN VAULT ===
 # CouchDB backend pour obsidian-livesync (sync iOS + PC en temps réel)
 # CouchDB exposé publiquement via HTTPS (pas de VPN restriction) pour sync iOS sans Tailscale
-obsidian_subdomain: "couch"
+obsidian_subdomain: "biki"
 couchdb_db_name: "obsidian_vault"
 couchdb_obsidian_user: "obsidian"
 couchdb_memory_limit: "512M"

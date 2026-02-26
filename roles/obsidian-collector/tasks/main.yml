@@ -26,7 +26,7 @@
   become: true
 
 - name: Obsidian Collector | Schedule cron (03:30 daily)
-  ansible.posix.cron:
+  ansible.builtin.cron:
     name: "obsidian-collector"
     hour: "{{ obsidian_collector_cron_hour }}"
     minute: "{{ obsidian_collector_cron_minute }}"

@@ -269,6 +269,23 @@ BOOTSTRAP 200
 }
 {% endif %}
 
+# === NocoDB — pipeline production IA manga (hq.<domain>) ===
+{% if nocodb_subdomain | default('') | length > 0 %}
+{{ caddy_nocodb_domain }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy nocodb:8080
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+{% endif %}
+
 # === CouchDB (Obsidian LiveSync) — Public HTTPS, auth CouchDB ===
 # REX: CORS origins=* obligatoire pour obsidian-livesync (cross-origin depuis l'app iOS/PC)
 # Pas d'import vpn_only — CouchDB est intentionnellement public pour sync iOS sans VPN.

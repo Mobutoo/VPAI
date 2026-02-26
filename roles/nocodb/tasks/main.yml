@@ -1,0 +1,32 @@
+---
+# nocodb — tasks
+
+- name: Create nocodb config directory
+  ansible.builtin.file:
+    path: "{{ nocodb_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [nocodb]
+
+- name: Create nocodb data directory
+  ansible.builtin.file:
+    path: "{{ nocodb_data_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  tags: [nocodb]
+
+- name: Deploy nocodb environment file
+  ansible.builtin.template:
+    src: nocodb.env.j2
+    dest: "{{ nocodb_config_dir }}/nocodb.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  notify: Restart nocodb stack
+  tags: [nocodb]

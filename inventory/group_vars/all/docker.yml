@@ -82,6 +82,11 @@ kaneo_memory_limit: "{{ '384M' if target_env == 'prod' else '256M' }}"
 kaneo_memory_reservation: "128M"
 kaneo_cpu_limit: "0.5"
 
+# NocoDB (Airtable-like — pipeline production IA manga)
+nocodb_memory_limit: "{{ '384M' if target_env == 'prod' else '256M' }}"
+nocodb_memory_reservation: "128M"
+nocodb_cpu_limit: "0.5"
+
 # DIUN
 diun_memory_limit: "128M"
 diun_memory_reservation: "32M"

@@ -283,7 +283,8 @@ ssh -i ~/.ssh/seko-vpn-deploy -p <SSH_PORT> <SSH_USER>@<VPS_IP> \
   'docker ps | grep nocodb && docker logs <project>_nocodb --tail 50'
 
 # Tester l'accès (depuis VPN)
-curl -s https://noco.<domain>/api/v1/health
+# nocodb_subdomain = "hq" (remplace Kaneo supprimé)
+curl -s https://hq.<domain>/api/v1/health
 
 # Vérifier la DB PostgreSQL
 ssh [...] 'docker exec <project>_postgresql psql -U postgres -c "\l" | grep nocodb'

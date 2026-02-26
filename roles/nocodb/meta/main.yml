@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: nocodb
+  author: VPAI
+  description: NocoDB project management — Airtable alternative on PostgreSQL
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions: [bookworm, trixie]
+
+dependencies:
+  - role: docker
+  - role: postgresql

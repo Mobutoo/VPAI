@@ -1,0 +1,5 @@
+---
+# nocodb — defaults
+
+nocodb_config_dir: "/opt/{{ project_name }}/configs/nocodb"
+nocodb_data_dir: "/opt/{{ project_name }}/data/nocodb"

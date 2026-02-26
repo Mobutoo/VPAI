@@ -1588,6 +1588,94 @@ docker build -t palais-local . && docker restart palais
 
 ---
 
+## 41. NocoDB (Pipeline Production IA)
+
+### 41.1 NocoDB crash-loop : password authentication failed for user "nocodb"
+
+**Symptôme** : Container NocoDB en restart loop, logs :
+```
+ERROR [ExceptionHandler] error: password authentication failed for user "nocodb"
+```
+
+**Cause** : NocoDB utilisait une variable de mot de passe DIFFÉRENTE de celle avec laquelle
+l'user PostgreSQL a été créé. Le projet utilise **un seul mot de passe partagé** pour tous
+les users DB (`postgresql_password`), mais le template `nocodb.env.j2` référençait
+`postgresql_nocodb_password` (variable distincte introduite par erreur).
+
+**Règle** : Tous les users PostgreSQL (n8n, litellm, nocodb, etc.) utilisent `{{ postgresql_password }}`.
+Ne jamais créer une variable `postgresql_xxx_password` séparée — `init.sql.j2` et
+`provision-postgresql.sh.j2` créent tous les users avec `{{ postgresql_password }}`.
+
+**Fix** :
+```bash
+# Dans roles/nocodb/templates/nocodb.env.j2
+# AVANT (FAUX) :
+NC_DB=pg://postgresql:5432?u=nocodb&p={{ postgresql_nocodb_password }}&d=nocodb
+# APRÈS (CORRECT) :
+NC_DB=pg://postgresql:5432?u=nocodb&p={{ postgresql_password }}&d=nocodb
+```
+
+**Vérifier le container actif** (le handler restart ne relit pas l'env_file — voir 11.18) :
+```bash
+docker inspect javisi_nocodb | python3 -c \
+  'import sys,json; [print(e) for e in json.load(sys.stdin)[0]["Config"]["Env"] if "NC_DB" in e]'
+# Si l'ancienne valeur apparaît → force recreate :
+cd /opt/javisi && docker compose -f docker-compose.yml up -d --force-recreate nocodb
+```
+
+---
+
+### 41.2 env_file non-rechargé après deploy (NocoDB ou autre service)
+
+**Symptôme** : Le deploy Ansible montre `changed` sur le fichier env, le handler tourne,
+mais le container utilise encore l'ancienne valeur d'env (`docker inspect` le confirme).
+
+**Cause** : `state: restarted` = `docker compose restart` = recycle le processus SANS
+recréer le container. L'env_file n'est relue qu'à la **création** du container.
+
+**Fix handler** (voir aussi section 11.18) :
+```yaml
+# FAUX
+state: restarted
+
+# CORRECT
+state: present
+recreate: always  # force docker compose up --force-recreate
+```
+
+**Fix d'urgence manuel** :
+```bash
+cd /opt/javisi && docker compose -f docker-compose.yml up -d --force-recreate <service>
+```
+
+---
+
+### 41.3 403 sur hq.ewutelo.cloud (comportement normal)
+
+`hq.ewutelo.cloud` est VPN-only (`import vpn_only` dans Caddyfile).
+La 403 est le comportement ATTENDU si tu n'es pas connecté à Tailscale.
+
+**Checklist accès** :
+1. Tailscale connecté sur le client
+2. Split DNS actif (headscale `override_local_dns: true`)
+3. `hq.ewutelo.cloud` doit résoudre vers l'IP Tailscale du VPS (100.x.x.x), pas l'IP publique
+
+---
+
+### 41.4 Provisioning NC_API_TOKEN
+
+Voir `docs/GUIDE-NOCODB-TOKEN-AUTOMATION.md` pour les options d'automatisation.
+
+Procédure manuelle :
+```bash
+# 1. UI : hq.ewutelo.cloud → Team & Auth → API Tokens → New Token → copier
+# 2. ansible-vault edit inventory/group_vars/all/secrets.yml
+#    → vault_nocodb_api_token: "valeur-réelle"
+# 3. make deploy-role ROLE=nocodb ENV=prod
+```
+
+---
+
 ## 99. Archive — Kaneo (remplacé par Palais en Phase 16, 2026-02-25)
 
 > Les sections 11.14, 11.15, 11.20, 11.21, 11.22 du chapitre OpenClaw/Kaneo sont marquées

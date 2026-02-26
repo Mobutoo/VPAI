@@ -463,3 +463,179 @@ graph TD
 
 > **Note** : OpenClaw est un agent IA Gateway WebSocket (port 18789), file-based.
 > Il ne depend PAS de PostgreSQL, Redis ou Qdrant. Il utilise LiteLLM comme proxy LLM.
+
+---
+
+## 8. État Opérationnel — 2026-02-26
+
+> Section générée en session 10 — mis à jour à chaque session
+
+### 8.1 Inventaire Complet par Serveur
+
+#### Sese-AI — OVH VPS 8GB (prod)
+
+| Catégorie | Service | Version | Port | Accès |
+|---|---|---|---|---|
+| **Reverse Proxy** | Caddy | xcaddy custom | 80/443 | Public |
+| **Workflow** | n8n | 2.7.3 | 5678 | VPN only |
+| **LLM Proxy** | LiteLLM | v1.81.3 | 4000 | VPN + API key |
+| **Agent IA** | OpenClaw | v2026.2.22 | 8080 | VPN only |
+| **Dashboard** | Palais | custom | 3300 | VPN only |
+| **Finance** | Sure (Maybe fork) | — | 3000 | VPN only (`nzimbu`) |
+| **Base de données** | PostgreSQL | 18.1 | 5432 | interne |
+| **Cache** | Redis | 8.0 | 6379 | interne |
+| **Vector DB** | Qdrant | v1.16.3 | 6333 | interne |
+| **Métriques** | VictoriaMetrics | v1.135.0 | 8428 | interne |
+| **Logs** | Loki | 3.6.5 | 3100 | interne |
+| **Collecteur** | Grafana Alloy | v1.13.0 | — | interne |
+| **Dashboards** | Grafana | 12.3.2 | 3000 | VPN only |
+| **Container stats** | cAdvisor | v0.55.1 | — | interne |
+| **Image updates** | DIUN | 4.31.0 | — | système |
+| **Firewall** | UFW + Fail2ban + CrowdSec | — | — | système |
+
+#### Workstation — Raspberry Pi 5 16GB (local LAN / VPN)
+
+| Catégorie | Service | Version | Port | Accès |
+|---|---|---|---|---|
+| **Reverse Proxy** | Caddy Workstation | xcaddy + OVH DNS-01 | 80/443 | VPN only |
+| **Génération image** | ComfyUI | v0.3.27 ARM64 | 8188 | VPN → `studio.*` |
+| **Rendu vidéo** | Remotion API | v4.0.259 | 3200 | VPN → `re.*` |
+| **Éditeur vidéo** | OpenCut (Next.js) | on-demand | 3456 | VPN → `cut.*` |
+| **OpenCut DB** | PostgreSQL (dédié) | — | 5432 | interne Pi |
+| **OpenCut Cache** | Valkey + serverless-redis-http | — | — | interne Pi |
+| **Code assistant** | OpenCode | — | — | local CLI |
+| **Code assistant** | Claude Code CLI | — | — | local CLI |
+| **VPN** | Tailscale node | — | — | mesh VPN |
+| **Monitoring** | workstation-monitoring | — | — | → Sese-AI |
+
+#### Seko-VPN — Ionos (hub VPN)
+
+| Service | Version | Rôle |
+|---|---|---|
+| Headscale | — | Serveur coordination VPN mesh |
+| Zerobyte | v0.16 | Orchestrateur backups (pull VPN → S3) |
+| Uptime Kuma | — | Monitoring uptime externes |
+| webhook-relay | — | Relay webhooks entrants |
+
+### 8.2 Schéma ASCII — Vue Globale
+
+```
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║                         INTERNET / CLIENTS                                       ║
+║   Browser VPN  ·  Telegram  ·  OpenRouter  ·  Anthropic  ·  OpenAI  ·  BytePlus ║
+╚══════╤═════════════════════════════╤════════════════════════════════════════════╝
+       │ HTTPS :443 (public)         │ VPN Tailscale mesh (100.64.0.0/10)
+       │                             │
+╔══════▼═════════════════════════════▼══════════════════════════════════════════╗
+║  SEKO-VPN — Ionos (Hub VPN)                                                   ║
+║  ┌─────────────────┐  ┌───────────────────────┐  ┌──────────────────────┐    ║
+║  │   Headscale     │  │   Zerobyte v0.16       │  │   Uptime Kuma        │    ║
+║  │ (coord. mesh)   │  │ (backup orchestrator)  │  │ (monitoring uptime)  │    ║
+║  └────────┬────────┘  └───────────┬───────────┘  └──────────────────────┘    ║
+║           │ split DNS             │ VPN pull                                   ║
+║  ┌────────▼──────────┐    ┌───────▼─────────────┐                             ║
+║  │  extra_records    │    │  webhook-relay       │                             ║
+║  │  (DNS VPN local)  │    │  (webhooks entrants) │                             ║
+║  └───────────────────┘    └─────────────────────┘                             ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+           │ Tailscale mesh                    │ S3 API
+           │                        ╔══════════▼═══════════════╗
+           │                        ║  Hetzner S3              ║
+           │                        ║  vpai-backups (Restic)   ║
+           │                        ║  GFS: 7j/4s/6m/2a        ║
+           │                        ╚══════════════════════════╝
+           │
+╔══════════▼════════════════════════════════════════════════════════════════════╗
+║  SESE-AI — OVH VPS 8GB   (prod)                                                ║
+║                                                                                ║
+║  ┌──────────────────────────────────────────────────────────────────────────┐ ║
+║  │  CADDY  :80/:443  (TLS auto, ACL VPN)                                    │ ║
+║  │  Public: /health, /litellm/*                                              │ ║
+║  │  VPN-only: n8n, grafana, openclaw, qdrant, palais, sure, litellm-ui      │ ║
+║  └────────────────────────────────┬─────────────────────────────────────────┘ ║
+║              network: frontend (172.20.1.0/24)                                 ║
+║  ┌───────────────────────────────────────────────────────────────────────────┐ ║
+║  │  APPLICATIONS   network: backend (172.20.2.0/24, internal)                │ ║
+║  │                                                                            │ ║
+║  │  ┌──────────────┐  ┌──────────────┐  ┌────────────────┐  ┌─────────────┐ │ ║
+║  │  │     n8n      │  │   LiteLLM    │  │   OpenClaw     │  │   Palais    │ │ ║
+║  │  │   v2.7.3     │  │  v1.81.3     │  │  v2026.2.22    │  │  (custom)   │ │ ║
+║  │  │  :5678       │  │  :4000       │  │  :8080         │  │  :3300      │ │ ║
+║  │  │ Workflows    │  │ LLM Proxy    │  │ Agent IA       │  │ Dashboard   │ │ ║
+║  │  │ Automation   │  │ OpenRouter   │  │ Bot Telegram   │  │ Topology    │ │ ║
+║  │  │ Creative     │  │ Anthropic    │  │ 10 agents      │  │ VPN / Ops   │ │ ║
+║  │  │ Pipeline     │  │ OpenAI       │  │ @WazaBangaBot  │  │ Standup 8h  │ │ ║
+║  │  └──────┬───────┘  └──────┬───────┘  └───────┬────────┘  └─────────────┘ │ ║
+║  │         │                 │                   │                            │ ║
+║  │  ┌──────▼─────────────────▼───────────────────▼──────────────────────┐   │ ║
+║  │  │  Sure (Maybe Finance fork) :3000                                   │   │ ║
+║  │  └───────────────────────────────────────────────────────────────────┘   │ ║
+║  └───────────────────────────────────────────────────────────────────────────┘ ║
+║                                                                                ║
+║  ┌───────────────────────────────────────────────────────────────────────────┐ ║
+║  │  DONNÉES    network: backend (172.20.2.0/24, internal)                    │ ║
+║  │  ┌───────────────┐  ┌───────────┐  ┌─────────────────────────────────┐   │ ║
+║  │  │  PostgreSQL   │  │   Redis   │  │           Qdrant                │   │ ║
+║  │  │    18.1       │  │    8.0    │  │          v1.16.3                │   │ ║
+║  │  │  n8n | sure   │  │  cache    │  │        Vector DB                │   │ ║
+║  │  │  litellm      │  │  litellm  │  │     (mémoire agents)            │   │ ║
+║  │  │  palais       │  │  sessions │  └─────────────────────────────────┘   │ ║
+║  │  └───────────────┘  └───────────┘                                        │ ║
+║  └───────────────────────────────────────────────────────────────────────────┘ ║
+║                                                                                ║
+║  ┌───────────────────────────────────────────────────────────────────────────┐ ║
+║  │  OBSERVABILITÉ   network: monitoring (172.20.3.0/24, internal)            │ ║
+║  │  ┌────────────────┐  ┌──────────────────┐  ┌──────────┐  ┌────────────┐  │ ║
+║  │  │    Grafana     │  │  VictoriaMetrics  │  │   Loki   │  │   Alloy   │  │ ║
+║  │  │   12.3.2       │  │   v1.135.0        │  │  3.6.5   │  │  v1.13.0  │  │ ║
+║  │  └────────────────┘  └──────────────────┘  └──────────┘  └────────────┘  │ ║
+║  │  + DIUN 4.31.0 (image update notifier)                                    │ ║
+║  └───────────────────────────────────────────────────────────────────────────┘ ║
+║  ┌───────────────────────────────────────────────────────────────────────────┐ ║
+║  │  SÉCURITÉ : UFW · Fail2ban · CrowdSec                                     │ ║
+║  └───────────────────────────────────────────────────────────────────────────┘ ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+           │ Tailscale VPN
+╔══════════▼════════════════════════════════════════════════════════════════════╗
+║  WORKSTATION — Raspberry Pi 5 16GB (local LAN / VPN)                          ║
+║                                                                                ║
+║  ┌──────────────────────────────────────────────────────────────────────────┐ ║
+║  │  CADDY Workstation  (xcaddy + OVH DNS-01 TLS, VPN ACL 100.64.0.0/10)   │ ║
+║  │  studio.*→ComfyUI  ·  re.*→Remotion  ·  cut.*→OpenCut (on-demand)       │ ║
+║  └──────────────┬────────────────────────┬──────────────────────────────────┘ ║
+║                 │                        │                                     ║
+║  ┌──────────────▼──────┐  ┌─────────────▼──────────┐  ┌─────────────────────┐║
+║  │     ComfyUI         │  │    Remotion API         │  │  OpenCut (on-demand)║║
+║  │   v0.3.27 ARM64     │  │    v4.0.259             │  │  Next.js :3456      ║║
+║  │   Génération image  │  │    Rendu vidéo           │  │  + PG + Valkey      ║║
+║  │   4096M / 3.0 CPU   │  │    512M / 2.0 CPU       │  │  /opencut start|stop║║
+║  └─────────────────────┘  └─────────────────────────┘  └─────────────────────┘║
+║                                                                                ║
+║  CLI (host) : OpenCode  ·  Claude Code CLI                                     ║
+║  workstation-monitoring → VictoriaMetrics Sese-AI                              ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+```
+
+### 8.3 Réseaux Docker (Sese-AI)
+
+| Réseau | Subnet | Internal | Services principaux |
+|---|---|---|---|
+| `frontend` | 172.20.1.0/24 | Non | Caddy, Grafana |
+| `backend` | 172.20.2.0/24 | Oui | PG, Redis, Qdrant, n8n, LiteLLM, OpenClaw, Caddy, Alloy, Grafana |
+| `monitoring` | 172.20.3.0/24 | Oui | VictoriaMetrics, Loki, Alloy, Grafana, cAdvisor |
+| `egress` | 172.20.4.0/24 | Non | n8n, LiteLLM, OpenClaw (sortie internet) |
+| `sandbox` | 172.20.5.0/24 | Oui | OpenClaw sous-agents isolés |
+
+### 8.4 Budget IA
+
+| Provider | Part | Modèles utilisés |
+|---|---|---|
+| OpenRouter | 65% | deepseek-v3:free, qwen3-coder:free, deepseek-r1:free… |
+| Anthropic | 15% | Claude Sonnet, Haiku |
+| OpenAI | 10% | GPT-4o |
+| zAI | 5% | Réserve |
+
+- **Budget global** : $5/jour (hard cap LiteLLM `max_budget`)
+- **BytePlus/Seedance** : $5/mois séparé (vidéo cloud, via n8n creative pipeline)
+- **Éco mode** : auto à 100% — `qwen3-coder:free` + `deepseek-v3:free` toujours actifs
+- **Contrôle Telegram** : `/budget`, `/budget eco on`, `/budget eco off`

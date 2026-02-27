@@ -1,0 +1,5 @@
+{
+  "_managed_by": "Ansible — do not edit manually (roles/gemini-cli/templates/settings.json.j2)",
+  "model": "{{ gemini_cli_default_model }}",
+  "sandbox": {{ gemini_cli_sandbox_enabled | ternary('true', 'false') }}
+}

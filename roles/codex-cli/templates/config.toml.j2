@@ -1,0 +1,12 @@
+# Codex CLI configuration — managed by Ansible
+# Authentication: run `codex login --device-auth` after deploy
+
+[auth]
+credential_storage = "{{ codex_cli_credential_storage }}"
+
+[model]
+default = "{{ codex_cli_default_model }}"
+
+[history]
+persistence = {{ codex_cli_history_persistence | ternary('true', 'false') }}
+save_path = "{{ codex_cli_config_dir }}/history"

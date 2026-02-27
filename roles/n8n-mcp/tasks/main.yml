@@ -1,0 +1,69 @@
+---
+# n8n-mcp — tasks
+# Deploys n8n-mcp as a persistent HTTP/SSE Docker container on the RPi workstation.
+# Documentation-only mode: 1,084 n8n nodes, local SQLite, zero web requests.
+
+- name: Assert n8n-mcp auth token is defined
+  ansible.builtin.assert:
+    that:
+      - n8n_mcp_auth_token is defined
+      - n8n_mcp_auth_token | length > 0
+    fail_msg: >
+      vault_n8n_mcp_auth_token is undefined or empty.
+      Add it to inventory/group_vars/all/secrets.yml (Ansible Vault).
+  tags: [n8n-mcp]
+
+- name: Pull n8n-mcp Docker image
+  community.docker.docker_image:
+    name: "{{ n8n_mcp_image }}"
+    tag: "{{ n8n_mcp_image_version }}"
+    source: pull
+    force_source: false
+  become: true
+  tags: [n8n-mcp]
+
+- name: Run n8n-mcp container
+  community.docker.docker_container:
+    name: n8n-mcp
+    image: "{{ n8n_mcp_image }}:{{ n8n_mcp_image_version }}"
+    state: started
+    restart_policy: unless-stopped
+    ports:
+      - "{{ n8n_mcp_port }}:3000"
+    env:
+      MCP_MODE: "http"
+      AUTH_TOKEN: "{{ n8n_mcp_auth_token }}"
+      PORT: "3000"
+      LOG_LEVEL: "{{ n8n_mcp_log_level }}"
+      NODE_ENV: "production"
+    cap_drop:
+      - ALL
+    memory: "{{ n8n_mcp_memory_limit }}"
+    cpus: "{{ n8n_mcp_cpu_limit }}"
+    log_driver: json-file
+    log_options:
+      max-size: "10m"
+      max-file: "3"
+  become: true
+  tags: [n8n-mcp]
+
+- name: Wait for n8n-mcp health endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ n8n_mcp_port }}/health"
+    headers:
+      Authorization: "Bearer {{ n8n_mcp_auth_token }}"
+    status_code: 200
+  register: n8n_mcp_health
+  retries: 10
+  delay: 3
+  until: n8n_mcp_health.status == 200
+  changed_when: false
+  tags: [n8n-mcp]
+
+- name: Display n8n-mcp access URLs
+  ansible.builtin.debug:
+    msg: >-
+      n8n-mcp OK —
+      Pi: http://localhost:{{ n8n_mcp_port }}/mcp |
+      Windows: http://{{ workstation_pi_tailscale_ip | default('100.64.0.1') }}:{{ n8n_mcp_port }}/mcp
+  tags: [n8n-mcp]

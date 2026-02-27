@@ -244,6 +244,11 @@ deploy-codex-cli: ## Deployer Codex CLI (OpenAI) sur RPi
 deploy-gemini-cli: ## Deployer Gemini CLI (Google) sur RPi
 	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "gemini-cli" --diff
 
+.PHONY: deploy-n8n-mcp
+deploy-n8n-mcp: ## Deployer n8n-MCP doc server sur RPi (port 3001) + client mcp.json Windows
+	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "n8n-mcp,windows-client" --diff
+	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "claude-code" --diff
+
 .PHONY: deploy-kaneo
 deploy-kaneo: ## Deployer Kaneo (PM tool) uniquement
 	$(ANSIBLE_PLAYBOOK) playbooks/site.yml --tags "kaneo" --diff

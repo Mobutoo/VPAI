@@ -6,7 +6,7 @@
       "command": "{{ claude_code_npm_prefix }}/bin/context7-mcp",
       "args": [],
       "env": {}
-    }{{ ',' if claude_code_mcp_filesystem_enabled | default(false) or claude_code_mcp_kaneo_enabled | default(false) or claude_code_mcp_n8n_enabled | default(false) or claude_code_mcp_sure_enabled | default(false) else '' }}
+    }{{ ',' if claude_code_mcp_filesystem_enabled | default(false) or claude_code_mcp_kaneo_enabled | default(false) or claude_code_mcp_n8n_enabled | default(false) or claude_code_mcp_sure_enabled | default(false) or claude_code_mcp_n8ndocs_enabled | default(false) else '' }}
 {% endif %}
 {% if claude_code_mcp_filesystem_enabled | default(false) %}
     "filesystem": {
@@ -14,7 +14,7 @@
       "command": "{{ claude_code_npm_prefix }}/bin/mcp-server-filesystem",
       "args": ["{{ claude_code_mcp_filesystem_workspace }}"],
       "env": {}
-    }{{ ',' if claude_code_mcp_kaneo_enabled | default(false) or claude_code_mcp_n8n_enabled | default(false) or claude_code_mcp_sure_enabled | default(false) else '' }}
+    }{{ ',' if claude_code_mcp_kaneo_enabled | default(false) or claude_code_mcp_n8n_enabled | default(false) or claude_code_mcp_sure_enabled | default(false) or claude_code_mcp_n8ndocs_enabled | default(false) else '' }}
 {% endif %}
 {% if claude_code_mcp_kaneo_enabled | default(false) %}
     "kaneo": {
@@ -23,7 +23,7 @@
       "headers": {
         "Authorization": "Bearer ${KANEO_API_KEY}"
       }
-    }{{ ',' if claude_code_mcp_n8n_enabled | default(false) or claude_code_mcp_sure_enabled | default(false) else '' }}
+    }{{ ',' if claude_code_mcp_n8n_enabled | default(false) or claude_code_mcp_sure_enabled | default(false) or claude_code_mcp_n8ndocs_enabled | default(false) else '' }}
 {% endif %}
 {% if claude_code_mcp_n8n_enabled | default(false) %}
     "n8n": {
@@ -32,7 +32,7 @@
       "headers": {
         "Authorization": "Bearer ${N8N_API_KEY}"
       }
-    }{{ ',' if claude_code_mcp_sure_enabled | default(false) else '' }}
+    }{{ ',' if claude_code_mcp_sure_enabled | default(false) or claude_code_mcp_n8ndocs_enabled | default(false) else '' }}
 {% endif %}
 {% if claude_code_mcp_sure_enabled | default(false) %}
     "sure": {
@@ -43,6 +43,15 @@
         "SURE_API_URL": "{{ claude_code_mcp_sure_api_url }}",
         "SURE_API_KEY": "{{ sure_api_key }}",
         "SURE_VERIFY_SSL": "true"
+      }
+    }{{ ',' if claude_code_mcp_n8ndocs_enabled | default(false) else '' }}
+{% endif %}
+{% if claude_code_mcp_n8ndocs_enabled | default(false) %}
+    "n8n-docs": {
+      "type": "sse",
+      "url": "http://localhost:{{ n8n_mcp_port }}/mcp",
+      "headers": {
+        "Authorization": "Bearer {{ n8n_mcp_auth_token }}"
       }
     }
 {% endif %}

@@ -63,6 +63,9 @@
     - role: opencode
       tags: [opencode]
 
+    - role: n8n-mcp
+      tags: [n8n-mcp]
+
     - role: claude-code
       tags: [claude-code]
 
@@ -89,3 +92,12 @@
 
     - role: obsidian-collector-pi
       tags: [obsidian-collector-pi]
+
+  post_tasks:
+    - name: Deploy Windows Claude Code mcp.json (n8n-docs via Tailscale)
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../roles/n8n-mcp/templates/windows-mcp.json.j2"
+        dest: "/mnt/c/Users/mmomb/.claude/mcp.json"
+        mode: "0600"
+      delegate_to: localhost
+      tags: [n8n-mcp, windows-client]

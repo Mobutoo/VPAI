@@ -65,3 +65,10 @@ codex_cli_npm_version_pinned: "0.106.0"  # pinned 2026-02-27
 # Gemini CLI (Google) : pinne apres premier deploy valide
 # gemini_cli_npm_version dans roles/gemini-cli/defaults/main.yml
 gemini_cli_npm_version_pinned: "0.30.0"  # updated 2026-02-27
+
+# --- MCP Servers Pi (Docker HTTP/SSE persistants) ---
+# Convention : un port dédié par service MCP, documenté ici
+# 3001 → n8n-mcp (documentation n8n nodes, SQLite embarqué, docs-only)
+# 3002 → réservé futur MCP server
+n8n_mcp_image_version_pinned: "2.35.5"  # pinned 2026-02-27 (sans v — Docker metadata semver pattern)
+n8n_mcp_port_pi: 3001

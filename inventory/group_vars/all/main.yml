@@ -266,6 +266,11 @@ obsidian_collector_max_session_messages: 20
 # Voir ARCHITECTURE.md section "Basculer en VPN-only" pour la procédure
 couchdb_vpn_enforce: false
 
+# === n8n-MCP Documentation Server (RPi, Docker HTTP/SSE) ===
+# Docs-only mode : SQLite embarqué, zéro requête web, zéro N8N_API_URL
+# Accessible : Pi localhost:3001, Windows via Tailscale workstation_pi_tailscale_ip:3001
+n8n_mcp_auth_token: "{{ vault_n8n_mcp_auth_token }}"
+
 # --- Cle SSH deploy (utilisee par provision-hetzner) ---
 deploy_ssh_key_name: "{{ project_name }}-deploy"
 deploy_ssh_key_pub_path: "~/.ssh/id_ed25519.pub"

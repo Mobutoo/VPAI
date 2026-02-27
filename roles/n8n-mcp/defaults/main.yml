@@ -1,0 +1,25 @@
+---
+# n8n-mcp — defaults
+# MCP Documentation server for n8n nodes (HTTP/SSE persistent, Docker)
+# Accessible from Pi (localhost:3001) and Windows Claude via Tailscale (100.64.0.1:3001)
+
+# User context
+n8n_mcp_user: "{{ workstation_pi_user | default('mobuone') }}"
+
+# Docker image — pinned, never :latest
+n8n_mcp_image: "ghcr.io/czlonkowski/n8n-mcp"
+n8n_mcp_image_version: "{{ n8n_mcp_image_version_pinned | default('2.35.5') }}"
+
+# Port hôte — registre dans versions.yml (3001 = n8n-mcp)
+# Bind sur toutes interfaces pour accès Tailscale depuis Windows
+n8n_mcp_port: "{{ n8n_mcp_port_pi | default(3001) }}"
+
+# Logging
+n8n_mcp_log_level: "error"
+
+# Auth token — depuis vault (vault_n8n_mcp_auth_token)
+n8n_mcp_auth_token: "{{ vault_n8n_mcp_auth_token }}"
+
+# Resource limits (RPi 16GB — MCP doc server léger)
+n8n_mcp_memory_limit: "256m"
+n8n_mcp_cpu_limit: "0.5"

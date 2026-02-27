@@ -14,7 +14,7 @@ gemini_cli_npm_prefix: "/usr"
 
 # Pinned version — update after first validated deploy
 # Check: https://www.npmjs.com/package/@google/gemini-cli
-gemini_cli_npm_version: "0.1.17"
+gemini_cli_npm_version: "0.30.0"
 
 # API key from vault
 gemini_cli_api_key: "{{ vault_google_gemini_api_key | default('') }}"

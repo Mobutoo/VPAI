@@ -52,11 +52,11 @@ sure_image: "ghcr.io/we-promise/sure:nightly"
 workstation_caddy_image: "caddy:2.10.2-alpine"  # reference version prod
 # OpenCode : pinne apres premier deploy valide
 # opencode_npm_version dans roles/opencode/defaults/main.yml
-opencode_npm_version_pinned: "1.2.8"  # version installee — a jour 2026-02-20
+opencode_npm_version_pinned: "1.2.15"  # updated 2026-02-27
 
 # Claude Code CLI : pinne apres premier deploy valide
 # claude_code_npm_version dans roles/claude-code/defaults/main.yml
-claude_code_npm_version_pinned: "2.1.50"  # pinned 2026-02-22
+claude_code_npm_version_pinned: "2.1.62"  # updated 2026-02-27
 
 # Codex CLI (OpenAI) : pinne apres premier deploy valide
 # codex_cli_npm_version dans roles/codex-cli/defaults/main.yml
@@ -64,4 +64,4 @@ codex_cli_npm_version_pinned: "0.106.0"  # pinned 2026-02-27
 
 # Gemini CLI (Google) : pinne apres premier deploy valide
 # gemini_cli_npm_version dans roles/gemini-cli/defaults/main.yml
-gemini_cli_npm_version_pinned: "0.1.17"  # pinned 2026-02-27
+gemini_cli_npm_version_pinned: "0.30.0"  # updated 2026-02-27

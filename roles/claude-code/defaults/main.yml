@@ -14,7 +14,7 @@ claude_code_npm_prefix: "/usr"
 
 # Pinned version — update after first validated deploy
 # Check: https://www.npmjs.com/package/@anthropic-ai/claude-code
-claude_code_npm_version: "2.1.50"
+claude_code_npm_version: "2.1.62"
 
 # Claude API key (from vault)
 # vault_claude_api_key defined in inventory/group_vars/all/secrets.yml

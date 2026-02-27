@@ -1,9 +1,7 @@
 # Codex CLI configuration — managed by Ansible
 # Authentication: run `codex login --device-auth` after deploy
+# Schema reference: codex-rs/core/config.schema.json (flat TOML, no sections)
 
-[auth]
-credential_storage = "{{ codex_cli_credential_storage }}"
-
-[model]
-default = "{{ codex_cli_default_model }}"
+model = "{{ codex_cli_default_model }}"
+cli_auth_credentials_store = "{{ codex_cli_credential_storage }}"
 

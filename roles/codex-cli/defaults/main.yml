@@ -17,8 +17,8 @@ codex_cli_npm_prefix: "/usr"
 codex_cli_npm_version: "0.106.0"
 
 # Credential storage : file (stocke dans ~/.codex/auth.json)
+# Valeurs valides : file | keyring | auto (schema: cli_auth_credentials_store)
 codex_cli_credential_storage: "file"
 
 # Modèle par défaut (via ChatGPT Plus)
 codex_cli_default_model: "o4-mini"
-

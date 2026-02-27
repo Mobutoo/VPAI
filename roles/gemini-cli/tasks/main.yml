@@ -3,6 +3,15 @@
 # Installs Google Gemini CLI globally via npm and deploys config
 # Pattern: same as claude-code / codex-cli (npm global, community.general.npm)
 
+# --- Vault key assertion ---
+- name: Assert Gemini API key is defined
+  ansible.builtin.assert:
+    that:
+      - gemini_cli_api_key | length > 0
+    fail_msg: >-
+      vault_gemini_api_key is not set.
+      Define it in inventory/group_vars/all/secrets.yml (Ansible Vault).
+
 # --- Config directory ---
 - name: Create Gemini CLI config directory
   ansible.builtin.file:
@@ -21,6 +30,14 @@
     global: true
     state: present
   become: true
+
+# --- Stat healthcheck after install ---
+- name: Check Gemini CLI binary is accessible
+  ansible.builtin.stat:
+    path: "{{ gemini_cli_npm_prefix }}/bin/gemini"
+  register: gemini_cli_bin
+  failed_when: not gemini_cli_bin.stat.exists
+  changed_when: false
 
 # --- Verify installation ---
 - name: Verify Gemini CLI installation

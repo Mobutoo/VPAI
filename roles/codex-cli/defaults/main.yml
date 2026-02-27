@@ -14,7 +14,7 @@ codex_cli_npm_prefix: "/usr"
 
 # Pinned version — update after first validated deploy
 # Check: https://www.npmjs.com/package/@openai/codex
-codex_cli_npm_version: "0.1.2504302102"
+codex_cli_npm_version: "0.106.0"
 
 # Credential storage : file (stocke dans ~/.codex/auth.json)
 codex_cli_credential_storage: "file"

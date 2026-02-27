@@ -21,3 +21,6 @@ codex_cli_credential_storage: "file"
 
 # Modèle par défaut (via ChatGPT Plus)
 codex_cli_default_model: "o4-mini"
+
+# History persistence (set to false to disable history storage)
+codex_cli_history_persistence: true

@@ -8,5 +8,5 @@ credential_storage = "{{ codex_cli_credential_storage }}"
 default = "{{ codex_cli_default_model }}"
 
 [history]
-persistence = true
+persistence = {{ codex_cli_history_persistence | lower }}
 save_path = "{{ codex_cli_config_dir }}/history"

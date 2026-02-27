@@ -1,0 +1,65 @@
+---
+# gemini-cli — tasks
+# Installs Google Gemini CLI globally via npm and deploys config
+# Pattern: same as claude-code / codex-cli (npm global, community.general.npm)
+
+# --- Config directory ---
+- name: Create Gemini CLI config directory
+  ansible.builtin.file:
+    path: "{{ gemini_cli_config_dir }}"
+    state: directory
+    owner: "{{ gemini_cli_user }}"
+    group: "{{ gemini_cli_user }}"
+    mode: "0700"
+  become: true
+
+# --- Install Gemini CLI via npm global ---
+- name: Install Google Gemini CLI via npm global
+  community.general.npm:
+    name: "@google/gemini-cli"
+    version: "{{ gemini_cli_npm_version }}"
+    global: true
+    state: present
+  become: true
+
+# --- Verify installation ---
+- name: Verify Gemini CLI installation
+  ansible.builtin.command:
+    cmd: "{{ gemini_cli_npm_prefix }}/bin/gemini --version"
+  changed_when: false
+  register: gemini_cli_version
+  failed_when: gemini_cli_version.rc != 0
+
+- name: Display Gemini CLI version
+  ansible.builtin.debug:
+    msg: "Google Gemini CLI: {{ gemini_cli_version.stdout }}"
+
+# --- Deploy .env (API key — mode 0600) ---
+- name: Deploy Gemini CLI environment file (.env)
+  ansible.builtin.template:
+    src: .env.j2
+    dest: "{{ gemini_cli_config_dir }}/.env"
+    owner: "{{ gemini_cli_user }}"
+    group: "{{ gemini_cli_user }}"
+    mode: "0600"
+  become: true
+
+# --- Deploy settings.json ---
+- name: Deploy Gemini CLI settings (settings.json)
+  ansible.builtin.template:
+    src: settings.json.j2
+    dest: "{{ gemini_cli_config_dir }}/settings.json"
+    owner: "{{ gemini_cli_user }}"
+    group: "{{ gemini_cli_user }}"
+    mode: "0644"
+  become: true
+
+# --- Deploy GEMINI.md project context ---
+- name: Deploy Gemini CLI project context (GEMINI.md)
+  ansible.builtin.template:
+    src: GEMINI.md.j2
+    dest: "{{ gemini_cli_config_dir }}/GEMINI.md"
+    owner: "{{ gemini_cli_user }}"
+    group: "{{ gemini_cli_user }}"
+    mode: "0644"
+  become: true

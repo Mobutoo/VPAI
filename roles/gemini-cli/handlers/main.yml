@@ -1,0 +1,9 @@
+---
+# gemini-cli — handlers
+# Gemini CLI is a CLI tool (not a daemon), no service to restart.
+# Handlers are here as placeholders for future extensions.
+
+- name: Reload gemini-cli config
+  ansible.builtin.debug:
+    msg: "Gemini CLI config updated — no restart needed (stateless CLI)."
+  changed_when: false

@@ -1,0 +1,26 @@
+---
+# gemini-cli — defaults
+# Google Gemini CLI on Workstation Pi (ARM64)
+# Installed as npm global package
+
+# User who runs gemini-cli
+gemini_cli_user: "{{ workstation_pi_user | default('pi') }}"
+
+# Config directory (stores .env, settings.json, GEMINI.md)
+gemini_cli_config_dir: "/home/{{ gemini_cli_user }}/.gemini"
+
+# npm global prefix (NodeSource on Ubuntu 24.04 ARM64 → /usr)
+gemini_cli_npm_prefix: "/usr"
+
+# Pinned version — update after first validated deploy
+# Check: https://www.npmjs.com/package/@google/gemini-cli
+gemini_cli_npm_version: "0.1.17"
+
+# API key from vault
+gemini_cli_api_key: "{{ vault_gemini_api_key | default('') }}"
+
+# Modèle par défaut
+gemini_cli_default_model: "gemini-2.5-pro"
+
+# Sandbox désactivé sur ARM64 (Docker sandbox amd64-only, broken sur RPi)
+gemini_cli_sandbox_enabled: false

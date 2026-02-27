@@ -1,0 +1,25 @@
+# Gemini CLI — Workstation Pi ({{ workstation_pi_hostname | default(rpi5) }})
+
+## Contexte
+
+Tu operes sur la **Workstation Pi** (RPi5 16GB, ARM64) de la stack {{ project_name }}.
+Acces VPN uniquement via Tailscale mesh (Headscale).
+
+## Stack disponible via VPN (Tailscale)
+
+| Service | URL VPN | Role |
+|---|---|---|
+| LiteLLM | https://{{ litellm_subdomain }}.{{ domain_name }}/v1 | Modeles IA |
+| n8n | https://{{ n8n_subdomain }}.{{ domain_name }} | Workflows |
+| Grafana | https://{{ grafana_subdomain }}.{{ domain_name }} | Monitoring |
+
+## Conventions de code
+
+- FQCN Ansible obligatoire (`ansible.builtin.file`, pas `file`)
+- `changed_when` / `failed_when` explicites sur `command` et `shell`
+- Images Docker : jamais `:latest` — pinned dans `inventory/group_vars/all/versions.yml`
+- Secrets : jamais en clair — Ansible Vault uniquement
+
+## Workspace
+
+Tes fichiers de travail : `/home/{{ gemini_cli_user }}/projects/`

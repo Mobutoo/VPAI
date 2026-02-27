@@ -215,6 +215,9 @@ workstation_pi_become_pass: "{{ vault_workstation_become_pass }}"
 workstation_pi_ram_gb: 16
 workstation_pi_disk_gb: 256
 
+# Gemini CLI API key (from vault)
+gemini_api_key: "{{ vault_gemini_api_key | default('') }}"
+
 # Kaneo supprimé — variables archivées (Phase 16, remplacé par Palais)
 # kaneo_subdomain_override, kaneo_agent_email, kaneo_agents_password, kaneo_workspace_id
 

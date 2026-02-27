@@ -5,6 +5,8 @@
 #   ansible-playbook playbooks/workstation.yml
 #   ansible-playbook playbooks/workstation.yml --tags "opencode"
 #   ansible-playbook playbooks/workstation.yml --tags "claude-code"
+#   ansible-playbook playbooks/workstation.yml --tags "codex-cli"
+#   ansible-playbook playbooks/workstation.yml --tags "gemini-cli"
 #   ansible-playbook playbooks/workstation.yml --tags "comfyui"
 #   ansible-playbook playbooks/workstation.yml --tags "remotion"
 #   ansible-playbook playbooks/workstation.yml --tags "opencut"
@@ -63,6 +65,12 @@
 
     - role: claude-code
       tags: [claude-code]
+
+    - role: codex-cli
+      tags: [codex-cli]
+
+    - role: gemini-cli
+      tags: [gemini-cli]
 
     - role: comfyui
       tags: [comfyui]

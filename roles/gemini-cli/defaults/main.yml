@@ -17,7 +17,7 @@ gemini_cli_npm_prefix: "/usr"
 gemini_cli_npm_version: "0.1.17"
 
 # API key from vault
-gemini_cli_api_key: "{{ vault_gemini_api_key | default('') }}"
+gemini_cli_api_key: "{{ vault_google_gemini_api_key | default('') }}"
 
 # Modèle par défaut
 gemini_cli_default_model: "gemini-2.5-pro"

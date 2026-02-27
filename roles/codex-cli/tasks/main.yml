@@ -1,0 +1,67 @@
+---
+# codex-cli — tasks
+# Installs OpenAI Codex CLI globally via npm and deploys config
+# Pattern: same as claude-code (npm global, community.general.npm)
+
+# --- Config directory ---
+- name: Create Codex CLI config directory
+  ansible.builtin.file:
+    path: "{{ codex_cli_config_dir }}"
+    state: directory
+    owner: "{{ codex_cli_user }}"
+    group: "{{ codex_cli_user }}"
+    mode: "0700"
+  become: true
+  tags: [codex-cli]
+
+# --- Install Codex CLI via npm global ---
+- name: Install OpenAI Codex CLI via npm global
+  community.general.npm:
+    name: "@openai/codex"
+    version: "{{ codex_cli_npm_version }}"
+    global: true
+    state: present
+  become: true
+  tags: [codex-cli]
+
+# --- Verify installation ---
+- name: Verify Codex CLI installation
+  ansible.builtin.command:
+    cmd: "{{ codex_cli_npm_prefix }}/bin/codex --version"
+  changed_when: false
+  register: codex_cli_version
+  failed_when: codex_cli_version.rc != 0
+  tags: [codex-cli]
+
+- name: Display Codex CLI version
+  ansible.builtin.debug:
+    msg: "OpenAI Codex CLI: {{ codex_cli_version.stdout }}"
+  tags: [codex-cli]
+
+# --- Deploy config.toml ---
+- name: Deploy Codex CLI config (config.toml)
+  ansible.builtin.template:
+    src: config.toml.j2
+    dest: "{{ codex_cli_config_dir }}/config.toml"
+    owner: "{{ codex_cli_user }}"
+    group: "{{ codex_cli_user }}"
+    mode: "0600"
+  become: true
+  tags: [codex-cli]
+
+# --- Healthcheck ---
+- name: Check Codex CLI binary is accessible
+  ansible.builtin.stat:
+    path: "{{ codex_cli_npm_prefix }}/bin/codex"
+  register: codex_cli_bin
+  failed_when: not codex_cli_bin.stat.exists
+  changed_when: false
+  tags: [codex-cli]
+
+# --- Post-deploy instructions ---
+- name: Post-deploy authentication reminder
+  ansible.builtin.debug:
+    msg: >-
+      Codex CLI installed. To authenticate with ChatGPT Plus, run as {{ codex_cli_user }}:
+      codex login --device-auth
+  tags: [codex-cli]

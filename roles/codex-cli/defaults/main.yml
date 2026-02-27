@@ -1,0 +1,23 @@
+---
+# codex-cli — defaults
+# OpenAI Codex CLI on Workstation Pi (ARM64)
+# Installed as npm global package
+
+# User who runs codex-cli
+codex_cli_user: "{{ workstation_pi_user | default('pi') }}"
+
+# Config directory (stores config.toml, history)
+codex_cli_config_dir: "/home/{{ codex_cli_user }}/.codex"
+
+# npm global prefix (NodeSource on Ubuntu 24.04 ARM64 → /usr)
+codex_cli_npm_prefix: "/usr"
+
+# Pinned version — update after first validated deploy
+# Check: https://www.npmjs.com/package/@openai/codex
+codex_cli_npm_version: "0.1.2504302102"
+
+# Credential storage : file (stocke dans ~/.codex/auth.json)
+codex_cli_credential_storage: "file"
+
+# Modèle par défaut (via ChatGPT Plus)
+codex_cli_default_model: "o4-mini"

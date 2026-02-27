@@ -1,0 +1,7 @@
+---
+- name: Restart n8n-mcp
+  community.docker.docker_container:
+    name: n8n-mcp
+    state: started
+    recreate: true
+  become: true

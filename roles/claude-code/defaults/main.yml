@@ -46,6 +46,10 @@ claude_code_mcp_n8n_url: "http://{{ vps_tailscale_ip | default('100.64.0.1') }}:
 claude_code_mcp_sure_enabled: true
 claude_code_mcp_sure_api_url: "https://{{ sure_subdomain | default('nzimbu') }}.{{ domain_name }}"
 
+# n8n-docs MCP — documentation n8n nodes (HTTP/SSE local Docker, port 3001)
+# 1 084 nodes + schémas + 2 709 templates, SQLite embarqué, zéro web
+claude_code_mcp_n8ndocs_enabled: true
+
 # Auto-fix pipeline
 claude_code_auto_fix_enabled: true
 claude_code_auto_fix_workspace: "{{ autofix_workspace | default('/home/' + claude_code_user + '/projects/autofix') }}"

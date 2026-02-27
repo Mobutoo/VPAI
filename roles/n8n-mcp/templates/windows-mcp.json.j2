@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "n8n-docs": {
+      "type": "sse",
+      "url": "http://{{ workstation_pi_tailscale_ip | default('100.64.0.1') }}:{{ n8n_mcp_port }}/mcp",
+      "headers": {
+        "Authorization": "Bearer {{ n8n_mcp_auth_token }}"
+      }
+    }
+  }
+}

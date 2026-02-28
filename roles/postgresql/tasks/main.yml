@@ -121,10 +121,10 @@
       EOF
       docker exec -i {{ project_name }}_postgresql psql -U postgres -d plane_production -c 'GRANT ALL ON SCHEMA public TO plane;'
   become: true
-  register: plane_db_create
-  changed_when: "'CREATE DATABASE' in plane_db_create.stdout"
+  register: postgresql_plane_db_result
+  changed_when: "'CREATE DATABASE' in postgresql_plane_db_result.stdout"
   failed_when:
-    - plane_db_create.rc != 0
-    - "'already exists' not in (plane_db_create.stderr | default(''))"
-    - "'No such container' not in (plane_db_create.stderr | default(''))"
+    - postgresql_plane_db_result.rc != 0
+    - "'already exists' not in (postgresql_plane_db_result.stderr | default(''))"
+    - "'No such container' not in (postgresql_plane_db_result.stderr | default(''))"
   tags: [postgresql, plane]

@@ -290,6 +290,102 @@ services:
       start_period: 60s
 {% endif %}
 
+  # === PROJECT MANAGEMENT ===
+  plane-web:
+    image: {{ plane_web_image }}
+    container_name: {{ project_name }}_plane_web
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - {{ plane_config_dir }}/plane.env
+    volumes:
+      - {{ plane_data_dir }}/uploads:/plane/media
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: {{ plane_web_memory_limit }}
+          cpus: "{{ plane_web_cpu_limit }}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  plane-api:
+    image: {{ plane_api_image }}
+    container_name: {{ project_name }}_plane_api
+    restart: unless-stopped
+    command: ["gunicorn", "plane.wsgi", "--workers", "2", "--bind", "0.0.0.0:8000"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - {{ plane_config_dir }}/plane.env
+    volumes:
+      - {{ plane_data_dir }}/uploads:/plane/media
+    networks:
+      - backend
+      - egress
+    deploy:
+      resources:
+        limits:
+          memory: {{ plane_api_memory_limit }}
+          cpus: "{{ plane_api_cpu_limit }}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  plane-worker:
+    image: {{ plane_worker_image }}
+    container_name: {{ project_name }}_plane_worker
+    restart: unless-stopped
+    command: ["celery", "-A", "plane", "worker", "--loglevel=info"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - {{ plane_config_dir }}/plane.env
+    volumes:
+      - {{ plane_data_dir }}/uploads:/plane/media
+    networks:
+      - backend
+      - egress
+    deploy:
+      resources:
+        limits:
+          memory: {{ plane_worker_memory_limit }}
+          cpus: "{{ plane_worker_cpu_limit }}"
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A plane inspect ping || exit 1"]
+      interval: 60s
+      timeout: 20s
+      retries: 3
+      start_period: 120s
+
   # === MONITORING LAYER ===
   cadvisor:
     image: {{ cadvisor_image }}

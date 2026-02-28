@@ -1,0 +1,22 @@
+---
+# roles/plane/defaults/main.yml — Plane defaults
+
+# Directories
+plane_config_dir: "/opt/{{ project_name }}/configs/plane"
+plane_data_dir: "/opt/{{ project_name }}/data/plane"
+
+# Resource limits
+plane_web_memory_limit: "256m"
+plane_web_cpu_limit: "0.25"
+plane_api_memory_limit: "384m"
+plane_api_cpu_limit: "0.5"
+plane_worker_memory_limit: "256m"
+plane_worker_cpu_limit: "0.25"
+
+# Ports
+plane_web_port: 3000
+plane_api_port: 8000
+
+# Database
+plane_db_name: "plane_production"
+plane_db_user: "plane"

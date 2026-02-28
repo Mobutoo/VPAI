@@ -1,0 +1,30 @@
+---
+# roles/plane/tasks/main.yml — Plane deployment tasks
+
+- name: Create Plane config directory
+  ansible.builtin.file:
+    path: "{{ plane_config_dir }}"
+    state: directory
+    mode: "0755"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+  tags: [plane]
+
+- name: Create Plane data directory for uploads
+  ansible.builtin.file:
+    path: "{{ plane_data_dir }}/uploads"
+    state: directory
+    mode: "0755"
+    owner: "1000"
+    group: "1000"
+  tags: [plane]
+
+- name: Deploy Plane environment configuration
+  ansible.builtin.template:
+    src: plane.env.j2
+    dest: "{{ plane_config_dir }}/plane.env"
+    mode: "0640"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+  notify: Restart plane stack
+  tags: [plane]

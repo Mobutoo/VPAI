@@ -1,0 +1,9 @@
+---
+# roles/plane/handlers/main.yml — Plane handlers
+
+- name: Restart plane stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    state: present
+    recreate: always
+  tags: [plane]

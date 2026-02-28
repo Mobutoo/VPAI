@@ -286,6 +286,37 @@ BOOTSTRAP 200
 }
 {% endif %}
 
+# === Plane — Operational Intelligence Hub (work.<domain>) ===
+# CRITICAL: Public webhook endpoint for n8n integration (INFRA-04)
+# Handle ordering: /webhooks/plane MUST appear BEFORE VPN matcher to avoid 403
+work.{{ domain_name }} {
+    # CRITICAL: Public webhook endpoint for n8n integration (INFRA-04)
+    # Must be BEFORE VPN-only block to avoid 403 on webhook delivery
+    handle /webhooks/plane {
+        reverse_proxy n8n:5678
+    }
+
+    # VPN-only access with 2-CIDR rule (CRITICAL: both VPN and Docker frontend)
+    @blocked_plane {
+        not client_ip {{ caddy_vpn_cidr }} {{ caddy_docker_frontend_cidr }}
+    }
+    handle @blocked_plane {
+        import vpn_error_page
+    }
+
+    # Plane web UI (VPN-only)
+    handle {
+        reverse_proxy plane-web:3000
+    }
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        -Server
+    }
+}
+
 # === CouchDB (Obsidian LiveSync) — Public HTTPS, auth CouchDB ===
 # REX: CORS origins=* obligatoire pour obsidian-livesync (cross-origin depuis l'app iOS/PC)
 # Pas d'import vpn_only — CouchDB est intentionnellement public pour sync iOS sans VPN.

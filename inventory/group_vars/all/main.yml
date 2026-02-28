@@ -205,7 +205,7 @@ vpn_server_ip: "{{ vault_vpn_server_ip | default(vpn_server_public_ip) }}"
 vps_tailscale_ip: "{{ vault_vps_tailscale_ip | default('') }}"
 
 # --- Workstation Pi (RPi5 16GB) ---
-workstation_pi_hostname: "workstation-pi"
+workstation_pi_hostname: "waza"
 workstation_pi_user: "mobuone"
 workstation_pi_ip: "{{ vault_workstation_pi_ip | default('127.0.0.1') }}"
 # Tailscale IP — used by n8n (on VPS) to reach RPi via mesh VPN for SSH autofix

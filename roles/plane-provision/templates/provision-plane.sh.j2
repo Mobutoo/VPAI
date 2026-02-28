@@ -1,0 +1,225 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Plane API provisioning script
+# Provisions workspace, user accounts, API tokens, projects, and custom fields
+
+set -euo pipefail
+
+# === Configuration ===
+API_URL="{{ plane_api_url }}"
+ADMIN_TOKEN="{{ vault_plane_admin_api_token }}"
+WORKSPACE="{{ plane_workspace_slug }}"
+CONCIERGE_EMAIL="{{ plane_concierge_email }}"
+CONCIERGE_PASSWORD="{{ plane_concierge_password }}"
+
+# === Helper Functions ===
+
+# Check if resource exists via API
+check_exists() {
+  local endpoint="$1"
+  local search_field="${2:-}"
+  local search_value="${3:-}"
+
+  response=$(curl -s -X GET "${API_URL}${endpoint}" \
+    -H "X-API-Key: ${ADMIN_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --max-time 30)
+
+  if [ -n "$search_field" ] && [ -n "$search_value" ]; then
+    # Search for specific field value in JSON array
+    echo "$response" | grep -q "\"${search_field}\":\"${search_value}\"" && return 0 || return 1
+  else
+    # Check if response is non-empty
+    [ -n "$response" ] && return 0 || return 1
+  fi
+}
+
+# Create Plane user account (AUTH-01)
+create_user_account() {
+  local email="$1"
+  local password="$2"
+
+  echo "Creating user account: ${email}"
+
+  # Check if user exists
+  if check_exists "/api/v1/users/?email=${email}" "email" "$email"; then
+    echo "  User ${email} already exists, skipping"
+    return 0
+  fi
+
+  # Create user account via instance admin API
+  response=$(curl -s -X POST "${API_URL}/api/v1/users/" \
+    -H "X-API-Key: ${ADMIN_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data "{\"email\":\"${email}\",\"password\":\"${password}\",\"role\":\"member\"}" \
+    --fail-with-body --max-time 30 2>&1) || {
+    echo "  WARNING: Failed to create user ${email}: ${response}"
+    return 1
+  }
+
+  echo "  Created user: ${email}"
+  return 0
+}
+
+# Create API token for agent
+create_api_token() {
+  local agent_name="$1"
+
+  echo "Creating API token for agent: ${agent_name}"
+
+  # Check if token exists (by label)
+  if check_exists "/api/v1/api-tokens/" "label" "$agent_name"; then
+    echo "  Token for ${agent_name} already exists, skipping"
+    return 0
+  fi
+
+  # Create API token
+  response=$(curl -s -X POST "${API_URL}/api/v1/api-tokens/" \
+    -H "X-API-Key: ${ADMIN_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data "{\"label\":\"${agent_name}\",\"workspace\":\"${WORKSPACE}\"}" \
+    --fail-with-body --max-time 30 2>&1) || {
+    echo "  WARNING: Failed to create token for ${agent_name}: ${response}"
+    return 1
+  }
+
+  token=$(echo "$response" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+  echo "  Created token for ${agent_name}: ${token:0:16}..."
+  return 0
+}
+
+# Create custom field (PROV-04)
+create_custom_field() {
+  local field_name="$1"
+  local field_type="$2"
+  local project_id="$3"
+  local type_id="$4"
+
+  echo "Creating custom field: ${field_name} (${field_type})"
+
+  # Check if field exists
+  if check_exists "/api/v1/workspaces/${WORKSPACE}/projects/${project_id}/work-item-types/${type_id}/work-item-properties/" "name" "$field_name"; then
+    echo "  Field ${field_name} already exists, skipping"
+    return 0
+  fi
+
+  # Create custom field
+  response=$(curl -s -X POST "${API_URL}/api/v1/workspaces/${WORKSPACE}/projects/${project_id}/work-item-types/${type_id}/work-item-properties/" \
+    -H "X-API-Key: ${ADMIN_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data "{\"name\":\"${field_name}\",\"type\":\"${field_type}\"}" \
+    --fail-with-body --max-time 30 2>&1) || {
+    echo "  WARNING: Failed to create field ${field_name}: ${response}"
+    return 1
+  }
+
+  echo "  Created field: ${field_name}"
+  return 0
+}
+
+# === Main Logic ===
+
+echo "========================================="
+echo "Plane Provisioning Script"
+echo "Workspace: ${WORKSPACE}"
+echo "========================================="
+
+# Counters
+users_created=0
+tokens_created=0
+projects_created=0
+fields_created=0
+
+# Step 1: Create Concierge user account (AUTH-01)
+echo ""
+echo "[1/5] Creating Concierge user account"
+if create_user_account "$CONCIERGE_EMAIL" "$CONCIERGE_PASSWORD"; then
+  ((users_created++))
+fi
+
+# Step 2: Check/Create Onboarding project (PROV-04)
+echo ""
+echo "[2/5] Checking Onboarding project"
+PROJECT_ID=""
+project_response=$(curl -s -X GET "${API_URL}/api/v1/workspaces/${WORKSPACE}/projects/" \
+  -H "X-API-Key: ${ADMIN_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --max-time 30 2>&1) || {
+  echo "  WARNING: Failed to query projects: ${project_response}"
+}
+
+if echo "$project_response" | grep -q '"identifier":"ONBOARD"'; then
+  echo "  Onboarding project already exists"
+  PROJECT_ID=$(echo "$project_response" | grep -o '"id":"[^"]*","identifier":"ONBOARD"' | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+else
+  echo "  Creating Onboarding project"
+  create_response=$(curl -s -X POST "${API_URL}/api/v1/workspaces/${WORKSPACE}/projects/" \
+    -H "X-API-Key: ${ADMIN_TOKEN}" \
+    -H "Content-Type: application/json" \
+    --data '{"name":"Onboarding","identifier":"ONBOARD","description":"Initial project for agent onboarding and custom field setup"}' \
+    --fail-with-body --max-time 30 2>&1) || {
+    echo "  ERROR: Failed to create Onboarding project: ${create_response}"
+    exit 1
+  }
+
+  PROJECT_ID=$(echo "$create_response" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+  ((projects_created++))
+fi
+
+echo "  Project ID: ${PROJECT_ID}"
+
+# Step 3: Create API tokens for agents
+echo ""
+echo "[3/5] Creating API tokens for agents"
+{% for agent in plane_agent_names %}
+if create_api_token "{{ agent }}"; then
+  ((tokens_created++))
+fi
+{% endfor %}
+
+# Step 4: Get work item type ID for "Issue"
+echo ""
+echo "[4/5] Getting work item type ID"
+TYPE_ID=""
+type_response=$(curl -s -X GET "${API_URL}/api/v1/workspaces/${WORKSPACE}/work-item-types/" \
+  -H "X-API-Key: ${ADMIN_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --max-time 30 2>&1) || {
+  echo "  WARNING: Failed to query work item types: ${type_response}"
+}
+
+if echo "$type_response" | grep -q '"name":"Issue"'; then
+  TYPE_ID=$(echo "$type_response" | grep -o '"id":"[^"]*","name":"Issue"' | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+  echo "  Issue type ID: ${TYPE_ID}"
+else
+  echo "  WARNING: Issue work item type not found, skipping custom fields"
+  TYPE_ID=""
+fi
+
+# Step 5: Create custom fields (PROV-04 - using captured PROJECT_ID)
+echo ""
+echo "[5/5] Creating custom fields"
+if [ -n "$PROJECT_ID" ] && [ -n "$TYPE_ID" ]; then
+{% for field in plane_custom_fields %}
+  if create_custom_field "{{ field.name }}" "{{ field.type }}" "$PROJECT_ID" "$TYPE_ID"; then
+    ((fields_created++))
+  fi
+{% endfor %}
+else
+  echo "  Skipping custom fields (missing PROJECT_ID or TYPE_ID)"
+fi
+
+# === Summary ===
+echo ""
+echo "========================================="
+echo "Provisioning Summary"
+echo "========================================="
+echo "User accounts created: ${users_created}"
+echo "API tokens created: ${tokens_created}"
+echo "Projects created: ${projects_created}"
+echo "Custom fields created: ${fields_created}"
+echo ""
+echo "Provisioning complete!"
+
+# Create completion marker
+touch "{{ plane_config_dir }}/.provision-complete"

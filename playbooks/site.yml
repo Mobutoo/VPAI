@@ -100,6 +100,8 @@
     # Phase 4.6 — Provisioning post-déploiement
     - role: n8n-provision
       tags: [n8n-provision, phase4]
+    - role: plane-provision
+      tags: [plane-provision, phase4]
 
     # Phase 5 — Résilience
     - role: backup-config

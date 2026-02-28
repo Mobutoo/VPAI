@@ -104,3 +104,27 @@
       and 'No such container' not in (postgresql_migration_result.stdout | default(''))
   loop:
     - 001_asset_provenance.sql
+
+# --- Plane Database Provisioning (on existing container) ---
+# CRITICAL: init.sql.j2 only executes on FIRST PostgreSQL container initialization.
+# On existing containers (like Sese-AI production), this task provisions the database.
+- name: Create Plane database on existing PostgreSQL container
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      docker exec -i {{ project_name }}_postgresql psql -U postgres << 'EOF'
+      SELECT 'CREATE DATABASE plane_production' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'plane_production')\gexec
+      DO $$ BEGIN CREATE USER plane WITH PASSWORD '{{ postgresql_password }}'; EXCEPTION WHEN duplicate_object THEN null; END $$;
+      GRANT ALL PRIVILEGES ON DATABASE plane_production TO plane;
+      ALTER DATABASE plane_production OWNER TO plane;
+      EOF
+      docker exec -i {{ project_name }}_postgresql psql -U postgres -d plane_production -c 'GRANT ALL ON SCHEMA public TO plane;'
+  become: true
+  register: plane_db_create
+  changed_when: "'CREATE DATABASE' in plane_db_create.stdout"
+  failed_when:
+    - plane_db_create.rc != 0
+    - "'already exists' not in (plane_db_create.stderr | default(''))"
+    - "'No such container' not in (plane_db_create.stderr | default(''))"
+  tags: [postgresql, plane]

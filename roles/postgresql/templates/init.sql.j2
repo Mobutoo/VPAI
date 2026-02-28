@@ -14,3 +14,12 @@ CREATE EXTENSION IF NOT EXISTS "{{ ext }}";
 GRANT ALL ON SCHEMA public TO {{ db.user }};
 
 {% endfor %}
+
+-- Plane production database (for fresh PostgreSQL deployments only)
+-- On existing containers, this is provisioned via docker exec task
+CREATE DATABASE plane_production;
+CREATE USER plane WITH ENCRYPTED PASSWORD '{{ postgresql_password }}';
+GRANT ALL PRIVILEGES ON DATABASE plane_production TO plane;
+ALTER DATABASE plane_production OWNER TO plane;
+\c plane_production
+GRANT ALL ON SCHEMA public TO plane;

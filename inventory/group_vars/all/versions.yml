@@ -13,6 +13,9 @@ openclaw_image: "ghcr.io/openclaw/openclaw:2026.2.23"
 n8n_image: "docker.n8n.io/n8nio/n8n:2.7.3"
 litellm_image: "ghcr.io/berriai/litellm:v1.81.3-stable"
 nocodb_image: "nocodb/nocodb:0.301.2"
+plane_web_image: "makeplane/plane-frontend:v1.2.2"
+plane_api_image: "makeplane/plane-backend:v1.2.2"
+plane_worker_image: "makeplane/plane-backend:v1.2.2"
 
 # --- Reverse Proxy ---
 caddy_image: "caddy:2.10.2-alpine"

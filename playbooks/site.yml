@@ -74,6 +74,8 @@
       tags: [litellm, phase3]
     - role: nocodb
       tags: [nocodb, phase3]
+    - role: plane
+      tags: [plane, phase3]
     - role: openclaw
       tags: [openclaw, phase3]
     # - role: kaneo        # Désactivé — remplacé par Palais (Phase 16)

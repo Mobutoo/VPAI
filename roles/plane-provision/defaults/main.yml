@@ -1,0 +1,40 @@
+---
+# roles/plane-provision/defaults/main.yml — Plane provisioning defaults
+
+# Workspace configuration
+plane_workspace_slug: "javisi"
+plane_workspace_name: "javisi"
+
+# User accounts
+plane_admin_email: "{{ admin_email | default('admin@example.com') }}"
+plane_concierge_email: "concierge@javisi.local"
+plane_concierge_password: "{{ vault_plane_concierge_password }}"
+
+# Agent names for API token creation
+plane_agent_names:
+  - "concierge"
+  - "imhotep"
+  - "thot"
+  - "basquiat"
+  - "r2d2"
+  - "shuri"
+  - "piccolo"
+  - "cfo"
+  - "maintainer"
+  - "hermes"
+
+# Custom fields for work items (PROV-04)
+plane_custom_fields:
+  - name: "agent_id"
+    type: "text"
+  - name: "cost_estimate"
+    type: "number"
+  - name: "confidence_score"
+    type: "number"
+  - name: "session_id"
+    type: "text"
+
+# API configuration
+plane_api_url: "https://work.{{ domain_name }}"
+plane_api_health_retries: 12
+plane_api_health_delay: 10

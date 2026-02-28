@@ -1,0 +1,84 @@
+---
+# roles/plane-provision/tasks/main.yml — Plane provisioning tasks
+
+- name: Wait for Plane API health check
+  ansible.builtin.uri:
+    url: "{{ plane_api_url }}/api/health"
+    method: GET
+    status_code: 200
+    timeout: 10
+  register: plane_health
+  retries: "{{ plane_api_health_retries }}"
+  delay: "{{ plane_api_health_delay }}"
+  until: plane_health.status == 200
+  tags: [plane-provision]
+
+- name: Check if workspace javisi exists
+  ansible.builtin.uri:
+    url: "{{ plane_api_url }}/api/v1/workspaces/"
+    method: GET
+    headers:
+      X-API-Key: "{{ vault_plane_admin_api_token }}"
+      Content-Type: "application/json"
+    return_content: true
+    status_code: [200, 401, 403]
+  register: plane_workspace_check
+  tags: [plane-provision]
+
+- name: Create workspace javisi if not exists
+  ansible.builtin.uri:
+    url: "{{ plane_api_url }}/api/v1/workspaces/"
+    method: POST
+    headers:
+      X-API-Key: "{{ vault_plane_admin_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      name: "{{ plane_workspace_name }}"
+      slug: "{{ plane_workspace_slug }}"
+    status_code: [201, 409]
+  register: plane_workspace_create
+  when:
+    - plane_workspace_check.status == 200
+    - plane_workspace_check.json is defined
+    - (plane_workspace_check.json | selectattr('slug', 'equalto', plane_workspace_slug) | list | length) == 0
+  tags: [plane-provision]
+
+- name: Get default work item type ID for Issue
+  ansible.builtin.uri:
+    url: "{{ plane_api_url }}/api/v1/workspaces/{{ plane_workspace_slug }}/work-item-types/"
+    method: GET
+    headers:
+      X-API-Key: "{{ vault_plane_admin_api_token }}"
+      Content-Type: "application/json"
+    return_content: true
+    status_code: [200, 404]
+  register: plane_work_item_types
+  tags: [plane-provision]
+
+- name: Deploy provision script template
+  ansible.builtin.template:
+    src: provision-plane.sh.j2
+    dest: "{{ plane_config_dir }}/provision-plane.sh"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  become: true
+  tags: [plane-provision]
+
+- name: Execute provision script
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: "{{ plane_config_dir }}/provision-plane.sh"
+    creates: "{{ plane_config_dir }}/.provision-complete"
+  become: true
+  register: plane_provision_result
+  changed_when: plane_provision_result.rc == 0
+  failed_when: plane_provision_result.rc != 0
+  tags: [plane-provision]
+
+- name: Display provision summary
+  ansible.builtin.debug:
+    msg: "{{ plane_provision_result.stdout_lines }}"
+  when: plane_provision_result.stdout_lines is defined
+  tags: [plane-provision]

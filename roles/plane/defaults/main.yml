@@ -12,6 +12,8 @@ plane_api_memory_limit: "1024m"  # 1GB for migrations
 plane_api_cpu_limit: "0.5"
 plane_worker_memory_limit: "512m"  # Increased for Celery tasks
 plane_worker_cpu_limit: "0.25"
+plane_beat_memory_limit: "128m"
+plane_beat_cpu_limit: "0.1"
 
 # Ports
 plane_web_port: 3000

@@ -291,6 +291,39 @@ services:
 {% endif %}
 
   # === PROJECT MANAGEMENT ===
+  plane-minio:
+    image: {{ plane_minio_image }}
+    container_name: {{ project_name }}_plane_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    environment:
+      MINIO_ROOT_USER: "{{ plane_minio_access_key }}"
+      MINIO_ROOT_PASSWORD: "{{ plane_minio_secret_key }}"
+    volumes:
+      - {{ plane_data_dir }}/minio:/data
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ plane_minio_memory_limit }}
+          cpus: "{{ plane_minio_cpu_limit }}"
+    healthcheck:
+      test: ["CMD-SHELL", "mc alias set local http://localhost:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD --quiet 2>/dev/null && mc ready local 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
   plane-web:
     image: {{ plane_web_image }}
     container_name: {{ project_name }}_plane_web
@@ -327,6 +360,9 @@ services:
     container_name: {{ project_name }}_plane_api
     restart: unless-stopped
     command: ["gunicorn", "plane.wsgi", "--workers", "2", "--bind", "0.0.0.0:8000"]
+    depends_on:
+      plane-minio:
+        condition: service_healthy
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -359,6 +395,9 @@ services:
     container_name: {{ project_name }}_plane_worker
     restart: unless-stopped
     command: ["celery", "-A", "plane", "worker", "--loglevel=info"]
+    depends_on:
+      plane-minio:
+        condition: service_healthy
     security_opt:
       - no-new-privileges:true
     cap_drop:

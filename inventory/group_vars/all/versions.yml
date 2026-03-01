@@ -16,6 +16,7 @@ nocodb_image: "nocodb/nocodb:0.301.2"
 plane_web_image: "makeplane/plane-frontend:v1.2.2"
 plane_api_image: "makeplane/plane-backend:v1.2.2"
 plane_worker_image: "makeplane/plane-backend:v1.2.2"
+plane_minio_image: "minio/minio:RELEASE.2024-11-07T00-52-20Z"
 
 # --- Reverse Proxy ---
 caddy_image: "caddy:2.10.2-alpine"

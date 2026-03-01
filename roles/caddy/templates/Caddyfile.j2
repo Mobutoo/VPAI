@@ -309,6 +309,20 @@ work.{{ domain_name }} {
         reverse_proxy plane-api:8000
     }
 
+    # MinIO file uploads — presigned POST URLs (REX 2026-03-01)
+    # Plane génère des URLs presignées pointant vers /plane/... (bucket dans le path)
+    # endpoint_url = https://work.ewutelo.cloud → URL = https://work.ewutelo.cloud/plane
+    # Caddy doit router /plane/* directement vers MinIO sans strip_prefix
+    handle /plane* {
+        reverse_proxy plane-minio:9000
+    }
+
+    # Legacy /uploads/* handler (rétrocompatibilité si des liens anciens existent)
+    handle /uploads/* {
+        uri strip_prefix /uploads
+        reverse_proxy plane-minio:9000
+    }
+
     # Plane web UI - catch-all (VPN-only)
     handle {
         reverse_proxy plane-web:3000

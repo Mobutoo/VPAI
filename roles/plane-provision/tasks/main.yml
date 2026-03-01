@@ -1,16 +1,51 @@
 ---
 # roles/plane-provision/tasks/main.yml — Plane provisioning tasks
 
-- name: Wait for Plane API health check
-  ansible.builtin.uri:
-    url: "{{ plane_api_url }}/api/health"
-    method: GET
-    status_code: 200
-    timeout: 10
+- name: Wait for MinIO container to be healthy
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format={{ '{{' }}.State.Health.Status{{ '}}' }}
+      {{ project_name }}_plane_minio
+  register: minio_health
+  retries: 24
+  delay: 5
+  until: minio_health.stdout | default('') == 'healthy'
+  changed_when: false
+  become: true
+  tags: [plane-provision]
+
+- name: Deploy MinIO bucket provisioning script
+  ansible.builtin.template:
+    src: provision-minio.sh.j2
+    dest: "{{ plane_config_dir }}/provision-minio.sh"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  become: true
+  tags: [plane-provision]
+
+- name: Create MinIO bucket for Plane
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: "{{ plane_config_dir }}/provision-minio.sh"
+    creates: "{{ plane_config_dir }}/.minio-provision-complete"
+  become: true
+  register: minio_provision_result
+  changed_when: minio_provision_result.rc == 0
+  failed_when: minio_provision_result.rc != 0
+  tags: [plane-provision]
+
+- name: Wait for Plane API container to be healthy
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format={{ '{{' }}.State.Health.Status{{ '}}' }}
+      {{ project_name }}_plane_api
   register: plane_health
   retries: "{{ plane_api_health_retries }}"
   delay: "{{ plane_api_health_delay }}"
-  until: plane_health.status == 200
+  until: plane_health.stdout | default('') == 'healthy'
+  changed_when: false
+  become: true
   tags: [plane-provision]
 
 - name: Check if workspace javisi exists

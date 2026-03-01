@@ -20,6 +20,16 @@
   become: true
   tags: [plane]
 
+- name: Create Plane MinIO data directory
+  ansible.builtin.file:
+    path: "{{ plane_data_dir }}/minio"
+    state: directory
+    mode: "0755"
+    owner: "1000"
+    group: "1000"
+  become: true
+  tags: [plane]
+
 - name: Deploy Plane environment configuration
   ansible.builtin.template:
     src: plane.env.j2

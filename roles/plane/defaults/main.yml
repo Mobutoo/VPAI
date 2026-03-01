@@ -21,6 +21,14 @@ plane_api_port: 8000
 plane_db_name: "plane_production"
 plane_db_user: "plane"
 
+# MinIO (file storage)
+plane_minio_bucket: "plane"
+plane_minio_api_port: 9000
+plane_minio_memory_limit: "256m"
+plane_minio_cpu_limit: "0.25"
+plane_minio_access_key: "{{ vault_plane_minio_access_key }}"
+plane_minio_secret_key: "{{ vault_plane_minio_secret_key }}"
+
 # Redis namespace isolation
 # Plane does NOT support REDIS_KEY_PREFIX configuration (as of v1.2.2).
 # Shared Redis instance with n8n, LiteLLM. Collision risk is LOW:

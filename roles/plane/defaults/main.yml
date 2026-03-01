@@ -8,9 +8,9 @@ plane_data_dir: "/opt/{{ project_name }}/data/plane"
 # Resource limits
 plane_web_memory_limit: "256m"
 plane_web_cpu_limit: "0.25"
-plane_api_memory_limit: "384m"
+plane_api_memory_limit: "1024m"  # 1GB for migrations
 plane_api_cpu_limit: "0.5"
-plane_worker_memory_limit: "256m"
+plane_worker_memory_limit: "512m"  # Increased for Celery tasks
 plane_worker_cpu_limit: "0.25"
 
 # Ports

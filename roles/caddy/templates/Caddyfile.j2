@@ -117,11 +117,7 @@
     }
 
 {% if caddy_vpn_enforce | default(true) | bool %}
-    handle_errors {
-        root * /srv
-        rewrite * /restricted-zone.html
-        file_server
-    }
+    import vpn_error_page
 {% endif %}
 
     header {
@@ -301,13 +297,15 @@ work.{{ domain_name }} {
         not client_ip {{ caddy_vpn_cidr }} {{ caddy_docker_frontend_cidr }}
     }
     handle @blocked_plane {
-        import vpn_error_page
+        error 403
     }
 
     # Plane web UI (VPN-only)
     handle {
         reverse_proxy plane-web:3000
     }
+
+    import vpn_error_page
 
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"

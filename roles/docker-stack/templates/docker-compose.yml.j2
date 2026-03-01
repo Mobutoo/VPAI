@@ -316,7 +316,7 @@ services:
           memory: {{ plane_web_memory_limit }}
           cpus: "{{ plane_web_cpu_limit }}"
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:3000/ || exit 1"]
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3000/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -348,7 +348,7 @@ services:
           memory: {{ plane_api_memory_limit }}
           cpus: "{{ plane_api_cpu_limit }}"
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8000/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

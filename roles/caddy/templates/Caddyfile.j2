@@ -300,7 +300,16 @@ work.{{ domain_name }} {
         error 403
     }
 
-    # Plane web UI (VPN-only)
+    # Plane API endpoints (VPN-only)
+    handle /api/* {
+        reverse_proxy plane-api:8000
+    }
+
+    handle /auth/* {
+        reverse_proxy plane-api:8000
+    }
+
+    # Plane web UI - catch-all (VPN-only)
     handle {
         reverse_proxy plane-web:3000
     }

@@ -56,6 +56,8 @@ Workspace slug : `{{ plane_workspace_slug | default('ewutelo') }}`
 | `plane: update_task` | PATCH | `.../work-items/{id}/` | `{"state":"<uuid>","priority":"..."}` |
 | `plane: assign_task` | PATCH | `.../work-items/{id}/` | `{"assignees":["<uuid>"]}` |
 | `plane: add_comment` | POST | `.../work-items/{id}/comments/` | `{"comment_html":"..."}` |
+| `plane: get_comments` | GET | `.../work-items/{id}/comments/` | — |
+| `plane: get_states` | GET | `.../projects/{id}/states/` | — |
 | `plane: list_tasks` | GET | `.../projects/{id}/work-items/?assignees=<uuid>` | — |
 | `plane: create_label` | POST | `.../projects/{id}/labels/` | `{"name":"...","color":"#..."}` |
 | `plane: list_members` | GET | `/workspaces/{slug}/members/` | — |
@@ -67,7 +69,7 @@ Workspace slug : `{{ plane_workspace_slug | default('ewutelo') }}`
 ```bash
 PLANE_TOKEN="${PLANE_TOKEN_CONCIERGE}"
 curl -s -X GET "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug | default('ewutelo') }}/projects/" \
-  -H "Authorization: Bearer ${PLANE_TOKEN}" \
+  -H "X-API-Key: ${PLANE_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
@@ -76,7 +78,7 @@ curl -s -X GET "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug 
 ```bash
 PLANE_TOKEN="${PLANE_TOKEN_BUILDER}"
 curl -s -X POST "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug | default('ewutelo') }}/projects/<id>/work-items/" \
-  -H "Authorization: Bearer ${PLANE_TOKEN}" \
+  -H "X-API-Key: ${PLANE_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"name":"Ma tache","description_html":"<p>Details</p>","priority":"medium"}'
 ```
@@ -86,7 +88,23 @@ curl -s -X POST "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug
 ```bash
 PLANE_TOKEN="${PLANE_TOKEN_CONCIERGE}"
 curl -s -X GET "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug | default('ewutelo') }}/members/" \
-  -H "Authorization: Bearer ${PLANE_TOKEN}"
+  -H "X-API-Key: ${PLANE_TOKEN}"
+```
+
+#### plane: get_states projectId=<id> caller=builder
+
+```bash
+PLANE_TOKEN="${PLANE_TOKEN_BUILDER}"
+curl -s -X GET "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug | default('ewutelo') }}/projects/<id>/states/" \
+  -H "X-API-Key: ${PLANE_TOKEN}"
+```
+
+#### plane: get_comments workItemId=<id> caller=builder
+
+```bash
+PLANE_TOKEN="${PLANE_TOKEN_BUILDER}"
+curl -s -X GET "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug | default('ewutelo') }}/projects/<project_id>/work-items/<id>/comments/" \
+  -H "X-API-Key: ${PLANE_TOKEN}"
 ```
 
 ## Commandes Palais disponibles

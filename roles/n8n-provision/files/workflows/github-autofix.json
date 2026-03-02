@@ -54,7 +54,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const payload = $input.first().json;\n\n// Repo-to-agent routing (mirrors autofix_repos Ansible variable)\nconst REPO_ROUTING = [\n  { name: 'VPAI',       repo_pattern: 'Mobutoo/VPAI',       url: 'git@github-seko:Mobutoo/VPAI.git',       agent: 'builder' },\n  { name: 'plane-vpai', repo_pattern: 'Mobutoo/plane-vpai', url: 'git@github-seko:Mobutoo/plane-vpai.git', agent: 'builder' }\n];\n\nconst repoFull = payload.repository?.full_name || '';\nconst issueId  = payload.issue?.number || 0;\nconst title    = payload.issue?.title   || '';\nconst body     = (payload.issue?.body   || '').slice(0, 2000);\nconst labels   = (payload.issue?.labels || []).map(l => l.name);\n\n// SECURITY: Reject issues with security label\nif (labels.includes('security')) {\n  throw new Error('Security-tagged issues cannot be auto-fixed. Manual intervention required.');\n}\n\nconst route = REPO_ROUTING.find(r => repoFull.includes(r.repo_pattern)) || {\n  name: repoFull,\n  url: `git@github-seko:${repoFull}.git`,\n  agent: 'builder'\n};\n\nreturn [{ json: {\n  repo: repoFull,\n  repo_url: route.url,\n  issue_id: issueId,\n  issue_title: title,\n  issue_body: body,\n  labels,\n  agent: route.agent,\n  plane_api_key: process.env.PLANE_TOKEN_CONCIERGE || ''\n}}];"
+        "jsCode": "const payload = $input.first().json;\n\n// Repo-to-agent routing (mirrors autofix_repos Ansible variable)\nconst REPO_ROUTING = [\n  { name: 'VPAI',       repo_pattern: 'Mobutoo/VPAI',       url: 'git@github-seko:Mobutoo/VPAI.git',       agent: 'builder' },\n  { name: 'plane-vpai', repo_pattern: 'Mobutoo/plane-vpai', url: 'git@github-seko:Mobutoo/plane-vpai.git', agent: 'builder' }\n];\n\nconst repoFull = payload.repository?.full_name || '';\nconst issueId  = payload.issue?.number || 0;\nconst title    = payload.issue?.title   || '';\nconst body     = (payload.issue?.body   || '').slice(0, 2000);\nconst labels   = (payload.issue?.labels || []).map(l => l.name);\n\n// SECURITY: Reject issues with security label\nif (labels.includes('security')) {\n  throw new Error('Security-tagged issues cannot be auto-fixed. Manual intervention required.');\n}\n\nconst route = REPO_ROUTING.find(r => repoFull.includes(r.repo_pattern)) || {\n  name: repoFull,\n  url: `git@github-seko:${repoFull}.git`,\n  agent: 'builder'\n};\n\nreturn [{ json: {\n  repo: repoFull,\n  repo_url: route.url,\n  issue_id: issueId,\n  issue_title: title,\n  issue_body: body,\n  labels,\n  agent: route.agent\n}}];"
       },
       "id": "gha-0001-0000-0000-0000-000000000004",
       "name": "Parse issue + route agent",
@@ -69,7 +69,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-API-Key", "value": "={{ $json.plane_api_key }}" }
+            { "name": "X-API-Key", "value": "={{ $env.PLANE_TOKEN_CONCIERGE }}" }
           ]
         },
         "options": {}
@@ -97,7 +97,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-API-Key",    "value": "={{ $json.plane_api_key }}" },
+            { "name": "X-API-Key",    "value": "={{ $env.PLANE_TOKEN_CONCIERGE }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
@@ -144,7 +144,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract PR URL from SSH command output\nconst raw = $input.first().json.stdout || '';\nconst exitCode = $input.first().json.exitCode ?? 0;\n\n// PR URL pattern: https://github.com/...\nconst match = raw.match(/https:\\/\\/github\\.com\\/[^\\s]+\\/pull\\/\\d+/);\nconst prUrl = match ? match[0] : null;\nconst success = exitCode === 0 && prUrl !== null;\n\nreturn [{ json: {\n  success,\n  pr_url: prUrl,\n  raw_output: raw.slice(0, 500),\n  exit_code: exitCode,\n  plane_work_item_id: $('Merge context').first().json.plane_work_item_id,\n  issue_id: $('Merge context').first().json.issue_id,\n  issue_title: $('Merge context').first().json.issue_title,\n  repo: $('Merge context').first().json.repo,\n  project_id: $('Merge context').first().json.project_id,\n  plane_api_key: $('Merge context').first().json.plane_api_key\n}}];"
+        "jsCode": "// Extract PR URL from SSH command output\nconst raw = $input.first().json.stdout || '';\nconst exitCode = $input.first().json.exitCode ?? 0;\n\n// PR URL pattern: https://github.com/...\nconst match = raw.match(/https:\\/\\/github\\.com\\/[^\\s]+\\/pull\\/\\d+/);\nconst prUrl = match ? match[0] : null;\nconst success = exitCode === 0 && prUrl !== null;\n\nreturn [{ json: {\n  success,\n  pr_url: prUrl,\n  raw_output: raw.slice(0, 500),\n  exit_code: exitCode,\n  plane_work_item_id: $('Merge context').first().json.plane_work_item_id,\n  issue_id: $('Merge context').first().json.issue_id,\n  issue_title: $('Merge context').first().json.issue_title,\n  repo: $('Merge context').first().json.repo,\n  project_id: $('Merge context').first().json.project_id\n}}];"
       },
       "id": "gha-0001-0000-0000-0000-000000000008",
       "name": "Parse SSH result",
@@ -159,7 +159,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-API-Key",    "value": "={{ $json.plane_api_key }}" },
+            { "name": "X-API-Key",    "value": "={{ $env.PLANE_TOKEN_CONCIERGE }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
@@ -182,7 +182,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-API-Key",    "value": "={{ $json.plane_api_key }}" },
+            { "name": "X-API-Key",    "value": "={{ $env.PLANE_TOKEN_CONCIERGE }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
@@ -205,7 +205,7 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "X-API-Key",    "value": "={{ $json.plane_api_key }}" },
+            { "name": "X-API-Key",    "value": "={{ $env.PLANE_TOKEN_CONCIERGE }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },

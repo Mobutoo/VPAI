@@ -4,8 +4,9 @@
 # Workspace configuration
 plane_workspace_slug: "ewutelo"
 plane_workspace_name: "Ewutelo"
-# Project used by asset-register n8n workflow (Jarvis project UUID)
-plane_assets_project_id: "71de60ae-4218-4581-bacb-057b1436effb"
+# NOTE: asset-register.json has UUID hardcoded (static file, not j2 template).
+# Jarvis project UUID: 71de60ae-4218-4581-bacb-057b1436effb
+# If project is recreated, update roles/n8n-provision/files/workflows/asset-register.json L40.
 
 # User accounts
 plane_admin_email: "{{ admin_email | default('admin@example.com') }}"

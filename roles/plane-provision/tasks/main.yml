@@ -48,7 +48,7 @@
   become: true
   tags: [plane-provision]
 
-- name: Check if workspace javisi exists
+- name: Check if workspace ewutelo exists
   ansible.builtin.uri:
     url: "{{ plane_api_url }}/api/v1/workspaces/"
     method: GET
@@ -60,7 +60,7 @@
   register: plane_workspace_check
   tags: [plane-provision]
 
-- name: Create workspace javisi if not exists
+- name: Create workspace ewutelo if not exists
   ansible.builtin.uri:
     url: "{{ plane_api_url }}/api/v1/workspaces/"
     method: POST

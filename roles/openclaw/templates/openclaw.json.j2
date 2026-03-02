@@ -450,7 +450,11 @@
       "reactionLevel": "minimal",
 {% if telegram_openclaw_chat_id | default('') | length > 0 %}
       "dmPolicy": "allowlist",
-      "allowFrom": ["{{ telegram_openclaw_chat_id }}"]
+      "allowFrom": ["{{ telegram_openclaw_chat_id }}"],
+      "direct": {
+        "allowFrom": ["{{ telegram_openclaw_chat_id }}"],
+        "requireTopic": false
+      }
 {% else %}
       "dmPolicy": "pairing"
 {% endif %}
@@ -487,7 +491,13 @@
 {% endif %}
     }
   },
-{# NOTE: heartbeat + cron (array) non supportes en v2026.2.22 — suppression preventive. #}
+{% if openclaw_heartbeat_enabled | default(true) %}
+  "heartbeat": {
+    "enabled": true,
+    "lightContext": {{ openclaw_heartbeat_light_context | default(true) | lower }},
+    "intervalMinutes": 60
+  },
+{% endif %}
   "logging": {
     "level": "info"
   }

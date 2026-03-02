@@ -1,91 +1,47 @@
-# Heartbeat — Instructions periodiques pour Mobutoo
+# Heartbeat — Infrastructure Health Check
 
-Ce document est lu par le Concierge a chaque activation du heartbeat (toutes les 30 minutes, 8h-22h).
-
----
-
-## Verification de sante
-
-### Services critiques a sondrer (si pas d'alerte recente)
-- Verifier si Maintainer a signale des incidents recemment
-- Si aucune alerte depuis plus de 2h : `sessions_spawn({{ openclaw_agent_maintainer_name }}, "/stack status")`
-- Si un service est DOWN : notifier Telegram immediatement
+Tu es le concierge de la stack {{ project_name }}. Ceci est un heartbeat automatique (v2026.3.1 lightContext).
 
 ---
 
-## Suivi projets Kaneo
+## Verifications obligatoires (dans l'ordre)
 
-### 1. Recuperer l'etat des projets actifs
-```
-sessions_spawn({{ openclaw_agent_messenger_name }}, "get_project")
-```
-Hermes retourne la liste de tous les projets. Identifier ceux avec des taches actives.
+### 1. Sante des containers Docker
+Verifie que tous les services critiques sont "healthy" :
+- `docker ps --filter health=unhealthy --format "table {% raw %}{{.Names}}\t{{.Status}}{% endraw %}"`
+- Services critiques : postgresql, redis, qdrant, litellm, n8n, caddy, openclaw
+- Si un service est unhealthy : note-le et verifie ses logs (`docker logs <name> --tail 10`)
 
-### 2. Analyser les taches en cours
-Pour chaque projet avec taches `in-progress` :
-```
-sessions_spawn({{ openclaw_agent_messenger_name }}, "get_tasks projectId=<id>")
-```
+### 2. Espace disque
+- `df -h /opt/{{ project_name }}`
+- ALERTE si usage > 85%
+- CRITIQUE si usage > 95%
 
-### 3. Detecter les anomalies
+### 3. Memoire disponible
+- `free -m | grep Mem`
+- ALERTE si available < 512MB
+- CRITIQUE si available < 256MB
 
-**Taches bloquees** (label `blocked`) :
-- Identifier l'agent bloque et la raison
-- Si besoin de deblocage : escalader au Concierge principal (toi)
-- Notifier Telegram : "Tache bloquee : <titre> (agent : <agentId>)"
-
-**Taches sans progres** (in-progress depuis > 2h sans commentaire recent) :
-- Verifier si le sous-agent est toujours actif
-- Si inactif : reprendre la tache (re-spawner le sous-agent avec le meme contexte)
-- Notifier Telegram : "Tache inactive > 2h : <titre>"
-
-**Projets termines non notifies** (toutes taches done mais pas de recap) :
-```
-sessions_spawn({{ openclaw_agent_messenger_name }}, "add_comment taskId=<project_main_task> content=Projet complete. Toutes les taches sont done.")
-```
-Envoyer recap Telegram : temps total, livrables produits.
-
-**Compteurs de corrections depassés** (`kaneo:corrections:<task_id>` > 2 dans Redis) :
-- Escalader au Concierge : "BOUCLE DE CORRECTIONS DETECTEE sur tache <id>"
-- Notifier Telegram avec le detail
-
-### 4. Max 3 projets actifs simultanes
-Si plus de 3 projets en cours : "Attention — {{ "{{" }} nb {{ "}}" }} projets actifs. Prioritiser avec l'utilisateur."
+### 4. Budget IA (si n8n accessible)
+- Delegue a n8n via le skill budget-monitor
+- Verifie le spend 24h via LiteLLM `/global/spend`
 
 ---
 
-## Digest quotidien (cron 9h)
+## Format de rapport
 
-Le cron `project-digest` a 9h declenche automatiquement un message :
-"Fais le point sur tous les projets Kaneo actifs via le messenger. Resume par projet : taches done/total, temps passe, livrables produits, blocages. Envoie le resume sur Telegram."
-
----
-
----
-
-## Idées en attente de validation
-
-### Rappel automatique (si idée en review depuis > 4h)
-
-Vérifier si `memory/ideas.md` contient des idées avec statut "In Review" :
-- Si oui, et si la dernière modification date de > 4h :
-  - Vérifier la clé Redis : `idea:{task_id}:reminded` (TTL 1h)
-  - Si clé absente ou expirée : envoyer sur Telegram :
-    > "💡 Tu as une idée en attente de validation depuis +4h : **<titre>** [<domain>]. Réponds 'approuve', 'modifie : <feedback>' ou 'refuse'."
-  - `redis-cli -h redis SETEX idea:{task_id}:reminded 3600 true`
-  - Max 1 rappel par heure par idée
-
-### Mise à jour de memory/ideas.md
-
-Le Messenger écrit dans ce fichier à chaque `create_idea_plan`, `update_idea`, `approve_idea`, `reject_idea`.
-OpenClaw (v2026.2.22) indexe automatiquement ce fichier via `memorySearch` → recall sémantique natif.
+Resume en 3 lignes maximum :
+- Ligne 1 : etat global (OK / WARNING / CRITICAL)
+- Ligne 2 : services unhealthy (si aucun : skip)
+- Ligne 3 : metriques cles (disk, RAM, budget 24h)
 
 ---
 
 ## Regles du heartbeat
 
-- **Ne spawner Messenger que si necessaire** (eviter les appels redondants)
-- **Pas d'action destructrice** depuis le heartbeat — uniquement lecture + alertes
-- **Max 2 sous-agents** spawnes par cycle de heartbeat
+- **Pas d'appels API externes** (pas de Kaneo, pas de Plane — Phase 2)
+- **Pas d'action destructrice** — uniquement lecture + alertes
+- **Max 2 sous-agents** spawnes par cycle
 - **Si tout va bien** : pas de notification (silence = OK)
 - **Si anomalie** : 1 message Telegram concis, clair, actionnable
+- **Duree max** : 2 minutes

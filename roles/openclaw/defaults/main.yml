@@ -214,3 +214,8 @@ openclaw_budget_commands:
 
 # --- WhatsApp (Tutor channel — child tablet) ---
 # whatsapp_tutor_enabled and phone set in main.yml
+
+# --- Heartbeat (v2026.3.1 native support — REX 11.19 resolved) ---
+# lightContext: true = only HEARTBEAT.md injected (saves tokens, no full bootstrap)
+openclaw_heartbeat_enabled: true
+openclaw_heartbeat_light_context: true

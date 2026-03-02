@@ -2,8 +2,81 @@
 - name: Converge
   hosts: all
   vars:
-    # Stub values for site-wide variables (defined in inventory/group_vars/all, not in role defaults)
+    # ============================================================
+    # Stub values for site-wide inventory variables
+    # (inventory/group_vars/all — not defined in role defaults)
+    # ============================================================
+    # Identity
     prod_user: molecule
     project_name: molecule-test
+    domain_name: molecule.example.com
+    # Locale/timezone
+    locale: en_US.UTF-8
+    timezone: UTC
+    # Prod server
+    prod_hostname: molecule-test
+    prod_ip: 127.0.0.1
+    prod_ssh_port: 22
+    # VPN/Headscale
+    vpn_headscale_ip: 127.0.0.1
+    vpn_hostname: molecule-headscale
+    vpn_headscale_url: https://headscale.example.com
+    vpn_tailscale_ip: ""
+    vpn_network_cidr: 100.64.0.0/10
+    vps_tailscale_ip: ""
+    vpn_server_public_ip: ""
+    # Caddy ACL — no VPN in molecule tests
+    caddy_vpn_enforce: false
+    caddy_vpn_cidr: 100.64.0.0/10
+    # Database passwords (stub)
+    postgresql_password: molecule-stub-db-pass
+    redis_password: molecule-stub-redis-pass
+    # Secrets / API keys (stub)
+    litellm_master_key: molecule-stub-llm-key
+    litellm_salt_key: molecule-stub-salt-key
+    openclaw_api_key: molecule-stub-openclaw-key
+    openclaw_gateway_token: molecule-stub-gateway-token
+    qdrant_api_key: molecule-stub-qdrant-key
+    grafana_admin_password: molecule-stub-grafana-pass
+    n8n_encryption_key: molecule-stub-n8n-key
+    n8n_owner_password: molecule-stub-n8n-owner
+    n8n_webhook_secret: ""
+    nocodb_jwt_secret: molecule-stub-nocodb-jwt
+    nocodb_api_token: molecule-stub-nocodb-token
+    anthropic_api_key: molecule-stub-anthropic-key
+    openai_api_key: molecule-stub-openai-key
+    openrouter_api_key: ""
+    google_gemini_api_key: ""
+    byteplus_api_key: ""
+    brave_search_api_key: ""
+    github_webhook_secret: ""
+    # S3 / Object Storage
+    s3_access_key: molecule-stub-s3-key
+    s3_secret_key: molecule-stub-s3-secret
+    s3_bucket_backups: molecule-test-backups
+    s3_bucket_shared: molecule-test-shared
+    # Grafana admin
+    grafana_admin_user: admin
+    # NocoDB
+    nocodb_s3_bucket: molecule-test-shared
+    # Workstation Pi
+    workstation_pi_become_pass: molecule-stub-pass
+    workstation_pi_ip: 127.0.0.1
+    # CouchDB / Obsidian
+    couchdb_obsidian_user: obsidian
+    # Backup heartbeat
+    backup_heartbeat_url: ""
+    # n8n MCP
+    n8n_mcp_auth_token: molecule-stub-mcp-token
+    # Subdomains
+    n8n_subdomain: mayi
+    litellm_subdomain: llm
+    grafana_subdomain: tala
+    qdrant_subdomain: qd
+    nocodb_subdomain: hq
+    admin_subdomain: javisi
+    obsidian_subdomain: biki
+    palais_subdomain: palais
+    sure_subdomain: nzimbu
   roles:
     - role: caddy

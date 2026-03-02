@@ -12,7 +12,9 @@ enable_list:
   - yaml
 
 skip_list:
-  - galaxy[no-changelog]   # Pas de changelog pour les rôles internes
+  - galaxy[no-changelog]        # Pas de changelog pour les rôles internes
+  - var-naming[no-role-prefix]  # monitoring role gère plusieurs services (Loki, Grafana, VictoriaMetrics, Alloy)
+                                # — variables préfixées par service par design (loki_*, grafana_*, etc.)
 
 warn_list:
   - experimental

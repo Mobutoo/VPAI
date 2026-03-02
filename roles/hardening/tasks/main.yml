@@ -97,6 +97,7 @@
     state: started
     enabled: true
   become: true
+  when: not (common_molecule_mode | default(false))
 
 # === CROWDSEC ===
 - name: Create keyrings directory
@@ -151,6 +152,7 @@
     state: started
     enabled: true
   become: true
+  when: not (common_molecule_mode | default(false))
 
 # === UFW FIREWALL ===
 - name: UFW — Reset to defaults
@@ -266,3 +268,4 @@
     state: started
     enabled: true
   become: true
+  when: not (common_molecule_mode | default(false))

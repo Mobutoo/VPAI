@@ -7,3 +7,4 @@
     state: restarted
   become: true
   listen: Restart docker stack
+  when: not (common_molecule_mode | default(false))

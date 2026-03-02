@@ -13,3 +13,4 @@
     # Voir TROUBLESHOOTING.md section 11.18 + roles/nocodb/handlers/main.yml.
     recreate: always
   become: true
+  when: not (common_molecule_mode | default(false))

@@ -6,15 +6,18 @@
     name: sshd
     state: restarted
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Restart fail2ban
   ansible.builtin.systemd:
     name: fail2ban
     state: restarted
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Restart auditd
   ansible.builtin.systemd:
     name: auditd
     state: restarted
   become: true
+  when: not (common_molecule_mode | default(false))

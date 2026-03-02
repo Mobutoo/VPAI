@@ -11,6 +11,7 @@
     state: present
     recreate: always
   become: true
+  when: not (common_molecule_mode | default(false))
   # NOTE: state: present + recreate: always force la recreation du container.
   # Requis pour prendre en compte les changements d'env_file (OPENAI_API_KEY, etc.).
   # state: restarted ne relit PAS l'env_file (docker compose restart = même env).

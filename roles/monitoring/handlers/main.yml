@@ -10,6 +10,7 @@
       - loki
     state: restarted
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Restart alloy stack
   community.docker.docker_compose_v2:
@@ -20,6 +21,7 @@
       - alloy
     state: restarted
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Restart grafana stack
   community.docker.docker_compose_v2:
@@ -30,6 +32,7 @@
       - grafana
     state: restarted
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Restart monitoring stack
   community.docker.docker_compose_v2:
@@ -43,3 +46,4 @@
       - grafana
     state: restarted
   become: true
+  when: not (common_molecule_mode | default(false))

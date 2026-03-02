@@ -7,3 +7,4 @@
     state: present
     recreate: always
   tags: [plane]
+  when: not (common_molecule_mode | default(false))

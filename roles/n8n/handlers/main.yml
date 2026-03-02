@@ -14,3 +14,4 @@
     recreate: always
   become: true
   failed_when: false  # Ne pas échouer si docker-compose.yml n'existe pas encore
+  when: not (common_molecule_mode | default(false))

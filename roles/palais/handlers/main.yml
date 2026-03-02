@@ -22,3 +22,4 @@
     - not ansible_check_mode
     - _palais_in_compose.rc | default(1) == 0
   listen: Restart palais
+  when: not (common_molecule_mode | default(false))

@@ -9,3 +9,4 @@
     state: restarted
   become: true
   failed_when: false
+  when: not (common_molecule_mode | default(false))

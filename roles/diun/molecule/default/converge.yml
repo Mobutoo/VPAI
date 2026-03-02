@@ -71,6 +71,24 @@
     common_molecule_mode: true
     # n8n MCP
     n8n_mcp_auth_token: molecule-stub-mcp-token
+    # Notification
+    notification_method: telegram
+    notification_email: ""
+    # Target environment
+    target_env: prod
+    # Qdrant
+    qdrant_cache_collection: semantic_cache
+    # Docker networks (inventory/group_vars/all/docker.yml)
+    docker_network_frontend_subnet: 172.20.1.0/24
+    docker_network_backend_subnet: 172.20.2.0/24
+    docker_network_monitoring_subnet: 172.20.3.0/24
+    docker_network_egress_subnet: 172.20.4.0/24
+    docker_network_sandbox_subnet: 172.20.5.0/24
+    # SSH
+    ssh_authorized_keys:
+      - "ssh-ed25519 MOLECULE-STUB-KEY molecule-test"
+    # Caddy/admin domain
+    caddy_admin_domain: "javisi.molecule.example.com"
     # Subdomains
     n8n_subdomain: mayi
     litellm_subdomain: llm

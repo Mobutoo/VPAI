@@ -54,6 +54,8 @@ jobs:
           cache: 'pip'
       - run: pip install ansible ansible-lint yamllint
       - run: ansible-galaxy install -r requirements.yml
+      - name: Create dummy vault password (lint only)
+        run: echo "dummy" > .vault_password
       - name: YAML Lint
         run: |
           find . \( -name '*.yml' -o -name '*.yaml' \) \

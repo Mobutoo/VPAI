@@ -39,6 +39,9 @@ jobs:
         run: |
           ansible-galaxy install -r requirements.yml
 
+      - name: Create dummy vault password (lint only)
+        run: echo "dummy" > .vault_password
+
       - name: YAML Lint
         run: |
           find . \( -name '*.yml' -o -name '*.yaml' \) ! -path './.git/*' ! -path './.venv/*' ! -path '*/molecule/*' ! -path '*/collections/*' ! -name 'secrets.yml' -print0 | xargs -0 yamllint -c .yamllint.yml

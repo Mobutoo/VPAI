@@ -26,10 +26,10 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build Kaneo task payload for asset tracking\nconst asset = $input.first().json;\n\nconst emoji = { image: '🖼️', video: '🎬', audio: '🎵' }[asset.type] || '📁';\nconst cost_str = asset.cost_usd > 0 ? ` | $${asset.cost_usd.toFixed(4)}` : ' | gratuit';\n\nconst kaneo_task = {\n  title: `${emoji} ${asset.output_name} [${asset.provider}]`,\n  description: `**Prompt**: ${asset.prompt || '(composition)'}\\n\\n**Storage**: \\`${asset.storage_path}\\`\\n\\n**URL**: ${asset.result_url || asset.render_id || '(async)'}`,\n  status: 'done',\n  priority: 'low',\n  tags: [...asset.tags, 'asset', 'generated'],\n  metadata: {\n    asset_id: asset.asset_id,\n    type: asset.type,\n    provider: asset.provider,\n    model: asset.model,\n    agent_id: asset.agent_id,\n    cost_usd: asset.cost_usd,\n    prompt_hash: btoa(asset.prompt || '').slice(0, 16),\n    storage_path: asset.storage_path,\n    result_url: asset.result_url,\n    render_id: asset.render_id,\n    generated_at: asset.timestamp,\n    width: asset.width,\n    height: asset.height,\n    duration_seconds: asset.duration_seconds\n  }\n};\n\nreturn [{ json: { kaneo_task, asset } }];"
+        "jsCode": "// Build Plane work-item payload for asset tracking\nconst asset = $input.first().json;\n\nconst emoji = { image: '🖼️', video: '🎬', audio: '🎵' }[asset.type] || '📁';\nconst cost_str = asset.cost_usd > 0 ? ` | $${asset.cost_usd.toFixed(4)}` : ' | gratuit';\n\nconst plane_task = {\n  name: `${emoji} ${asset.output_name} [${asset.provider}]`,\n  description_html: `<p><strong>Prompt</strong>: ${asset.prompt || '(composition)'}</p><p><strong>Storage</strong>: <code>${asset.storage_path}</code></p><p><strong>URL</strong>: ${asset.result_url || asset.render_id || '(async)'}</p>`,\n  priority: 'low',\n  metadata: {\n    asset_id: asset.asset_id,\n    type: asset.type,\n    provider: asset.provider,\n    model: asset.model,\n    agent_id: asset.agent_id,\n    cost_usd: asset.cost_usd,\n    prompt_hash: btoa(asset.prompt || '').slice(0, 16),\n    storage_path: asset.storage_path,\n    result_url: asset.result_url,\n    render_id: asset.render_id,\n    generated_at: asset.timestamp,\n    width: asset.width,\n    height: asset.height,\n    duration_seconds: asset.duration_seconds\n  }\n};\n\nreturn [{ json: { plane_task, asset } }];"
       },
       "id": "ar-0001-0000-0000-0000-000000000003",
-      "name": "Build Kaneo payload",
+      "name": "Build Plane payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [700, 300]
@@ -37,21 +37,21 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://kaneo-api:1337/api/tasks",
+        "url": "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug }}/projects/{{ plane_assets_project_id }}/work-items/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Authorization", "value": "=Bearer {{ $env.KANEO_API_KEY }}" },
+            { "name": "X-API-Key",    "value": "={{ $env.PLANE_TOKEN_CONCIERGE }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.kaneo_task) }}",
+        "jsonBody": "={{ JSON.stringify({ name: $json.plane_task.name, description_html: $json.plane_task.description_html, priority: $json.plane_task.priority }) }}",
         "options": {}
       },
       "id": "ar-0001-0000-0000-0000-000000000004",
-      "name": "Register in Kaneo",
+      "name": "Register in Plane",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [920, 300]
@@ -78,7 +78,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const asset = $('Parse & enrich').first().json;\nconst kaneo_result = $('Register in Kaneo').first().json;\n\nreturn [{ json: {\n  status: 'registered',\n  asset_id: asset.asset_id,\n  kaneo_task_id: kaneo_result.id || null,\n  storage_path: asset.storage_path,\n  cost_usd: asset.cost_usd,\n  timestamp: asset.timestamp\n} }];"
+        "jsCode": "const asset = $('Parse & enrich').first().json;\nconst plane_result = $('Register in Plane').first().json;\n\nreturn [{ json: {\n  status: 'registered',\n  asset_id: asset.asset_id,\n  plane_work_item_id: plane_result.id || null,\n  storage_path: asset.storage_path,\n  cost_usd: asset.cost_usd,\n  timestamp: asset.timestamp\n} }];"
       },
       "id": "ar-0001-0000-0000-0000-000000000006",
       "name": "Build response",
@@ -89,7 +89,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { status: 'registered', asset_id: $json.asset_id, kaneo_task_id: $json.kaneo_task_id, storage_path: $json.storage_path } }}"
+        "responseBody": "={{ { status: 'registered', asset_id: $json.asset_id, plane_work_item_id: $json.plane_work_item_id, storage_path: $json.storage_path } }}"
       },
       "id": "ar-0001-0000-0000-0000-000000000007",
       "name": "Webhook Response",
@@ -100,14 +100,14 @@
   ],
   "connections": {
     "Webhook Trigger": { "main": [[{ "node": "Parse & enrich", "type": "main", "index": 0 }]] },
-    "Parse & enrich": { "main": [[{ "node": "Build Kaneo payload", "type": "main", "index": 0 }]] },
-    "Build Kaneo payload": {
+    "Parse & enrich": { "main": [[{ "node": "Build Plane payload", "type": "main", "index": 0 }]] },
+    "Build Plane payload": {
       "main": [[
-        { "node": "Register in Kaneo", "type": "main", "index": 0 },
+        { "node": "Register in Plane",   "type": "main", "index": 0 },
         { "node": "Store in PostgreSQL", "type": "main", "index": 0 }
       ]]
     },
-    "Register in Kaneo": { "main": [[{ "node": "Build response", "type": "main", "index": 0 }]] },
+    "Register in Plane":  { "main": [[{ "node": "Build response", "type": "main", "index": 0 }]] },
     "Store in PostgreSQL": { "main": [[{ "node": "Build response", "type": "main", "index": 0 }]] },
     "Build response": { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] }
   },
@@ -122,6 +122,6 @@
   "staticData": null,
   "tags": [{ "name": "assets" }, { "name": "provenance" }],
   "triggerCount": 1,
-  "updatedAt": "2026-02-22T00:00:00.000Z",
-  "versionId": "1"
+  "updatedAt": "2026-03-02T00:00:00.000Z",
+  "versionId": "2"
 }

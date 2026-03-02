@@ -19,7 +19,7 @@ grafana_subdomain: "tala"
 n8n_subdomain: "mayi"
 litellm_subdomain: "llm"
 qdrant_subdomain: "qd"
-nocodb_subdomain: "hq"              # → hq.<domain> (remplace Kaneo supprimé)
+nocodb_subdomain: "hq"              # → hq.<domain>
 subdomain_preprod: "preprod"
 
 # --- VPN Access Control ---
@@ -215,9 +215,6 @@ workstation_pi_become_pass: "{{ vault_workstation_become_pass }}"
 workstation_pi_ram_gb: 16
 workstation_pi_disk_gb: 256
 
-# Kaneo supprimé — variables archivées (Phase 16, remplacé par Palais)
-# kaneo_subdomain_override, kaneo_agent_email, kaneo_agents_password, kaneo_workspace_id
-
 # === PALAIS ===
 palais_subdomain: "palais"
 
@@ -231,7 +228,6 @@ autofix_repos:
   - name: "VPAI"
     url: "git@github-seko:Mobutoo/VPAI.git"
     default_agent: "builder"
-  # kaneo-vpai retiré — remplacé par Palais
 autofix_workspace: "/home/{{ workstation_pi_user }}/projects/autofix"
 
 # OpenCode

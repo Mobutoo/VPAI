@@ -42,10 +42,6 @@ couchdb_image: "apache/couchdb:3.3.3"
 # Les webhooks Meta passent maintenant par hook.<domain> (Seko-VPN) -> VPN mesh -> VPS
 # cloudflared_image: "cloudflare/cloudflared:2025.1.0"
 
-# --- Kaneo (supprimé — remplacé par Palais en Phase 16) ---
-# kaneo_api_image: "ghcr.io/mobutoo/api:sha-dfc2451"
-# kaneo_web_image: "ghcr.io/mobutoo/web:sha-dfc2451"
-
 # --- Sure (personal finance — Maybe Finance fork) ---
 # Multi-arch: amd64 + arm64 confirmé sur GHCR
 # TODO: Pinner sur SHA digest après premier deploy validé

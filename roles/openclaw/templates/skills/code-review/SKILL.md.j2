@@ -18,15 +18,17 @@ Review automatique du code produit par le Builder, selon les criteres du projet 
 ## Qui execute la review
 
 Le **Builder** (Imhotep) execute la review via `delegate-n8n`.
-Le Concierge delegue en disant : `sessions_spawn(builder, "review ce code : branch=<branch> repo=<url> task_id=<id> project_id=<id>")`
+Le Concierge delegue en disant : `sessions_spawn(builder, "review ce code : branch=<branch> repo=<url> work_item_id=<id> project_id=<id>")`
 
 ## Comment declencer la review
 
-1. Builder cree une sous-tache Kaneo "Review" via Messenger :
+1. Builder cree une sous-tache Plane "Review" via Messenger avec `parent` pour lier au work item parent :
 ```
-sessions_spawn({{ openclaw_agent_messenger_name }}, "create_task projectId=<id> columnId=<review_col_id> title=Review: <titre_tache_parent>")
-sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<review_task_id> name=type:review color=#f59e0b")
-sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<review_task_id> name=agent:builder color=#6366f1")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: create_task projectId=<id> name=Review: <titre_tache_parent> parent=<parent_work_item_id> description_html=<p>Review du livrable de la tache parent.</p>")
+-> Retourne: review_work_item_id
+
+sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: create_label projectId=<id> name=type:review color=#f59e0b")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: create_label projectId=<id> name=agent:builder color=#6366f1")
 ```
 
 2. Builder appelle delegate-n8n :
@@ -34,7 +36,7 @@ sessions_spawn({{ openclaw_agent_messenger_name }}, "add_label taskId=<review_ta
 delegate-n8n endpoint=/webhook/code-review payload={
   "repo_url": "<url>",
   "branch": "<branch>",
-  "task_id": "<review_task_id>",
+  "work_item_id": "<review_work_item_id>",
   "project_id": "<project_id>",
   "secret": "${N8N_WEBHOOK_SECRET}"
 }
@@ -44,7 +46,7 @@ delegate-n8n endpoint=/webhook/code-review payload={
    - SSH vers le RPi
    - Clone/pull le repo
    - Execute la review via LiteLLM (modele gpt-codex ou glm-5)
-   - Logue le resultat en commentaire Kaneo via `POST /api/activity/comment`
+   - Logue le resultat en commentaire Plane via Messenger : `plane: add_comment workItemId=<id> comment_html=<rapport_review>`
 
 ## Criteres de review VPAI
 
@@ -99,12 +101,12 @@ delegate-n8n endpoint=/webhook/code-review payload={
 [PASS — peut etre merge] / [FAIL — corrections necessaires avant merge]
 ```
 
-## Tracabilite Kaneo
+## Tracabilite Plane
 
 Apres la review :
-- Statut `done` si PASS, `blocked` si FAIL
-- Rapport complet en commentaire d'activite sur la tache de review
-- Label `correction` sur les taches a corriger
+- Statut `done` si PASS, `blocked` si FAIL via `plane: update_task workItemId=<id> state=<uuid>`
+- Rapport complet en commentaire via `plane: add_comment workItemId=<id> comment_html=<rapport>`
+- Label `correction` sur les work items a corriger via `plane: create_label`
 
 ## Modeles de review
 
@@ -117,4 +119,4 @@ Apres la review :
 ## Limite
 
 Max 3 iterations de review (Gen -> Review -> Fix) avant escalade au Concierge.
-Compteur Redis : `kaneo:corrections:<task_id>` — si > 2, escalader.
+Compteur Redis : `plane:corrections:<work_item_id>` — si > 2, escalader.

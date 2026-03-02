@@ -33,11 +33,6 @@ claude_code_mcp_context7_version: "latest"
 claude_code_mcp_filesystem_enabled: true
 claude_code_mcp_filesystem_workspace: "/home/{{ claude_code_user }}/projects"
 
-# Kaneo MCP — task management bridge (custom, via HTTP)
-# Reads/writes tasks in Kaneo API for OpenClaw sync
-claude_code_mcp_kaneo_enabled: true
-claude_code_mcp_kaneo_api_url: "http://{{ vps_tailscale_ip | default('100.64.0.1') }}:{{ kaneo_api_port | default(1337) }}"
-
 # n8n MCP — trigger workflows from Claude Code
 claude_code_mcp_n8n_enabled: true
 claude_code_mcp_n8n_url: "http://{{ vps_tailscale_ip | default('100.64.0.1') }}:5678"

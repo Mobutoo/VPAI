@@ -32,13 +32,13 @@ GitHub Issue (label "{{ autofix_label | default('auto-fix') }}")
   → Webhook n8n (/webhook/github-autofix)
     → Validation HMAC (X-Hub-Signature-256)
     → Parse issue + route agent
-    → Kaneo task "in-progress"
+    → Plane work item "in-progress" (via Messenger)
     → SSH vers RPi → claude-autofix <repo_url> <issue_id> <title> <body>
       → git clone/pull
       → branch fix/GH-{id}
       → Claude Code --dangerously-skip-permissions
       → git push + gh pr create
-    → Kaneo task "done" + pr_url
+    → Plane work item "done" + pr_url (via Messenger)
     → Telegram notification
 ```
 
@@ -50,17 +50,25 @@ GitHub Issue (label "{{ autofix_label | default('auto-fix') }}")
 - CI doit passer (lint + tests)
 - Review humaine obligatoire avant merge
 
-## Kaneo tracking
+## Plane tracking
+
+Le suivi Plane passe toujours par le Messenger via `sessions_spawn` :
 
 ```
-POST http://kaneo-api:{{ kaneo_api_port | default(1337) }}/api/tasks
-{
-  "title": "🔧 Auto-fix GH-{id}: {title}",
-  "status": "in-progress",
-  "priority": "high",
-  "tags": ["auto-fix", "github", "{agent}"],
-  "metadata": { "issue_id": N, "repo": "...", "pr_url": null }
-}
+# Creation du work item au debut du fix :
+sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: create_task projectId=<id> name=🔧 Auto-fix GH-{id}: {title} description_html=<p>Issue: {url}</p> priority=high")
+-> Retourne: work_item_id
+
+# Passage en cours :
+sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: update_task workItemId=<work_item_id> state=<uuid_in_progress>")
+
+# Labels :
+sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: create_label projectId=<id> name=auto-fix color=#ef4444")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: create_label projectId=<id> name=github color=#1d4ed8")
+
+# A la fin (PR creee) :
+sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: add_comment workItemId=<work_item_id> comment_html=<p>[DELIVERABLE] PR #{pr_number} — {pr_url}</p>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: update_task workItemId=<work_item_id> state=<uuid_done>")
 ```
 
 ## Limitations

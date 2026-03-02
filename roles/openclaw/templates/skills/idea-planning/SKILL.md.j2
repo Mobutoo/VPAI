@@ -1,6 +1,6 @@
 ---
 name: idea-planning
-description: Universal idea lifecycle — qualification, co-construction multi-agents, versioning Kaneo, approbation Telegram.
+description: Universal idea lifecycle — qualification, co-construction multi-agents, versioning Plane, approbation Telegram.
 metadata: { "openclaw": { "emoji": "💡" } }
 ---
 
@@ -20,7 +20,7 @@ Fonctionne pour TOUT type de projet : tech, business, perso, physique, finance.
          ↓
 [PHASE PLAN]         → Présenter le plan complet pour review utilisateur
          ↓ (approbation explicite REQUISE)
-[PHASE EXÉCUTION]    → Créer dans Kaneo, assigner, dispatcher
+[PHASE EXÉCUTION]    → Créer dans Plane, assigner, dispatcher
 ```
 
 **Règle d'or** : Les phases sont **irréversibles dans l'ordre**. On ne peut pas passer à l'Exécution sans approbation explicite. On ne génère pas de plan en boucle sans que l'utilisateur ait validé la compréhension (Phase Exploration).
@@ -161,7 +161,7 @@ Merger les 4 contributions → plan JSON unifié.
   • <emoji_agent2> <nom_agent2> — <phase ou rôle>
   (liste basée sur raci.responsible + raci.consulted)
 
-🔗 Plan complet : <lien Kaneo task>
+🔗 Plan complet : <lien Plane work item>
 ```
 
 **Correspondance agents → emoji :**
@@ -193,23 +193,34 @@ sessions_spawn(messenger, "telegram_edit message_id=<mid> text=⏳ Analyse en co
 sessions_spawn(messenger, "telegram_edit message_id=<mid> text=⏳ Analyse en cours...\n✅ Contexte marché analysé\n✅ Budget estimé\n✅ Faisabilité évaluée")
 ```
 
-**Étape 3 — Message final avec plan + boutons** :
+**Étape 3 — Création du work item Plane + message final avec boutons** :
 ```
-sessions_spawn(messenger, "create_idea_plan title=<titre> domain=<domain> plan_json_b64=<base64_du_plan_JSON>")
+sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: create_task projectId=<ideas_project_id> name=<titre> description_html=<html_with_plan_json> priority=medium")
 ```
-→ Récupérer task_id retourné par Messenger
+→ Récupérer work_item_id retourné par Messenger
+
+Le plan JSON est stocké dans le `description_html` du work item entre des délimiteurs :
+```html
+<p>---IDEA-PLAN-META-START---</p>
+<p>{"id":"idea-<YYYY-MM-DD>-<NNN>","domain":"<domain>","status":"pending","iterations":1,"created":"<YYYY-MM-DD>"}</p>
+<p>---IDEA-PLAN-META-END---</p>
+<p>---IDEA-PLAN-V1-START---</p>
+<p>{...plan JSON complet...}</p>
+<p>---IDEA-PLAN-V1-END---</p>
+```
+
 → Éditer le message placeholder avec le résumé final + boutons inline :
 ```
 sessions_spawn(messenger, "telegram_edit message_id=<mid> text=<plan_resume> reply_markup_b64=<base64_keyboard>")
 ```
 Boutons inline :
-  [✅ Approuver] callback_data=approve:<task_id>
-  [✏️ Modifier]  callback_data=modify:<task_id>
-  [❌ Refuser]   callback_data=reject:<task_id>
+  [✅ Approuver] callback_data=approve:<work_item_id>
+  [✏️ Modifier]  callback_data=modify:<work_item_id>
+  [❌ Refuser]   callback_data=reject:<work_item_id>
 
 **Aussi — indexer en mémoire** :
 ```
-sessions_spawn(messenger, "update_ideas_memory task_id=<id> title=<titre> domain=<domain> status=In Review summary=<summary>")
+sessions_spawn(messenger, "update_ideas_memory work_item_id=<id> title=<titre> domain=<domain> status=In Review summary=<summary>")
 ```
 
 ---
@@ -217,9 +228,9 @@ sessions_spawn(messenger, "update_ideas_memory task_id=<id> title=<titre> domain
 ## 🚦 Porte de validation — Passage Phase Plan → Phase Exécution
 
 Le plan est présenté avec 3 boutons inline :
-- **[✅ Approuver]** → Callback `approve:<task_id>` → déclenche l'exécution complète
-- **[✏️ Modifier]** → Callback `modify:<task_id>` → retour Phase Plan (itération)
-- **[❌ Refuser]** → Callback `reject:<task_id>` → plan archivé, aucune exécution
+- **[✅ Approuver]** → Callback `approve:<work_item_id>` → déclenche l'exécution complète
+- **[✏️ Modifier]** → Callback `modify:<work_item_id>` → retour Phase Plan (itération)
+- **[❌ Refuser]** → Callback `reject:<work_item_id>` → plan archivé, aucune exécution
 
 **La Phase Exécution ne démarre QUE sur [✅ Approuver] — jamais automatiquement.**
 
@@ -257,27 +268,29 @@ Règle : **un message après un plan présenté = feedback par défaut**, sauf s
    → Prompt CFO : "...Feedback : <feedback>. Révise si nécessaire le budget/délai."
    → Prompt Builder : "...Feedback : <feedback>. Révise si nécessaire la faisabilité."
 3. Merger → plan vN
-4. `sessions_spawn(messenger, "update_idea task_id=<id> version=<N> feedback=<texte_url_encoded> plan_json_b64=<base64>")`
+4. `sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: update_task workItemId=<id> description_html=<html_with_vN_plan>")`
+   → Ajouter le feedback et le plan vN dans le description_html (après les blocs vN-1)
 5. Renvoyer résumé + boutons
 
-### Sur callback "modify:<task_id>" (bouton Telegram)
+### Sur callback "modify:<work_item_id>" (bouton Telegram)
 1. Demander à l'utilisateur : "Qu'est-ce que tu veux modifier ? (garde le reste)"
 2. Attendre la réponse → traiter comme "Sur message modifier" ci-dessus
 
-### Sur callback "approve:<task_id>"
-1. `sessions_spawn(messenger, "approve_idea task_id=<id>")`
-2. Confirmer à l'utilisateur : "✅ Plan approuvé ! Dispatché vers Kaneo avec les tâches assignées."
+### Sur callback "approve:<work_item_id>"
+1. `sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: update_task workItemId=<id> state=<uuid_approved>")`
+2. Confirmer à l'utilisateur : "✅ Plan approuvé ! Dispatché vers Plane avec les tâches assignées."
 
-### Sur callback "reject:<task_id>"
-1. `sessions_spawn(messenger, "reject_idea task_id=<id> reason=Refus utilisateur")`
-2. Confirmer : "❌ Idée archivée dans Kaneo."
+### Sur callback "reject:<work_item_id>"
+1. `sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: update_task workItemId=<id> state=<uuid_cancelled>")`
+2. `sessions_spawn({{ openclaw_agent_messenger_name }}, "plane: add_comment workItemId=<id> comment_html=<p>Refus utilisateur — idée archivée.</p>")`
+3. Confirmer : "❌ Idée archivée dans Plane."
 
 ---
 
-## Règles de versioning dans Kaneo
+## Règles de versioning dans Plane
 
-- Max 3 versions actives dans la description Kaneo
-- Au-delà : le Messenger archive les plus anciennes dans un `add_comment`
+- Max 3 versions actives dans le description_html du work item Plane
+- Au-delà : le Messenger archive les plus anciennes dans un `plane: add_comment`
 - Format des délimiteurs (regex-safe) :
 
 ```
@@ -302,17 +315,17 @@ Règle : **un message après un plan présenté = feedback par défaut**, sauf s
 
 ## Règles absolues
 
-**JAMAIS** créer de projet réel, de tâches Kaneo ou assigner des ressources AVANT l'approbation explicite.
+**JAMAIS** créer de work item Plane, assigner des ressources ou dispatcher AVANT l'approbation explicite.
 
 **JAMAIS** passer directement en Phase Plan sans avoir collecté les réponses de qualification (Étapes 1-2-3).
 
-**JAMAIS** passer en Phase Exécution sans `approve_idea` (bouton ou texte explicite).
+**JAMAIS** passer en Phase Exécution sans approbation (bouton ou texte explicite).
 
 **Séquence garantie** :
 ```
 Détection intention → Dialogue qualification → Confirmation "Go ?"
     → Co-construction (Explorer + CFO + Builder) → Plan présenté avec boutons
-    → [✅ Approuver] → approve_idea → dispatch → Kaneo
+    → [✅ Approuver] → plane: update_task state=approved → dispatch → Plane
 ```
 
 La co-construction = **génération d'un plan uniquement**. Pas d'exécution.

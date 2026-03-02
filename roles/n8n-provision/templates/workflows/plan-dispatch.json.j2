@@ -37,38 +37,30 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "http://kaneo-api:1337/api/auth/sign-in/email",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+        "assignments": {
+          "assignments": [
+            {
+              "id": "set-plane-api-key",
+              "name": "plane_api_key",
+              "value": "={{ $env.PLANE_TOKEN_CONCIERGE }}",
+              "type": "string"
+            }
           ]
         },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={ \"email\": \"{{ $env.KANEO_AGENT_EMAIL }}\", \"password\": \"{{ $env.KANEO_AGENT_PASSWORD }}\" }",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "responseFormat": "json"
-            }
-          }
-        }
+        "options": {}
       },
       "id": "pd-0001-0000-0000-0000-000000000005",
-      "name": "Auth Kaneo",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
+      "name": "Set Plane API key",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
       "position": [700, 300]
     },
     {
       "parameters": {
-        "jsCode": "const response = $input.first().json;\nconst headers = response.headers || {};\nconst setCookie = headers['set-cookie'] || [];\nlet cookie = '';\nif (Array.isArray(setCookie)) {\n  cookie = setCookie.map(c => c.split(';')[0]).join('; ');\n} else if (typeof setCookie === 'string') {\n  cookie = setCookie.split(';')[0];\n}\nif (!cookie) throw new Error('Kaneo auth failed — check KANEO_AGENT_EMAIL/PASSWORD');\nconst ctx = $('Validate payload').first().json;\nreturn [{ json: { ...ctx, cookie } }];"
+        "jsCode": "// Merge Plane API key into context from Validate payload\nconst ctx = $('Validate payload').first().json;\nconst apiKey = $input.first().json.plane_api_key || process.env.PLANE_TOKEN_CONCIERGE || '';\nif (!apiKey) throw new Error('PLANE_TOKEN_CONCIERGE is not configured. Set the token in n8n.env.');\nreturn [{ json: { ...ctx, plane_api_key: apiKey } }];"
       },
       "id": "pd-0001-0000-0000-0000-000000000006",
-      "name": "Extract cookie",
+      "name": "Merge API key",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [920, 300]
@@ -76,11 +68,11 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=http://kaneo-api:1337/api/task/{{ $json.task_id }}",
+        "url": "=http://plane-api:8000/api/v1/workspaces/{% endraw %}{{ plane_workspace_slug }}{% raw %}/projects/{{ $json.project_id }}/work-items/{{ $json.task_id }}/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $json.cookie }}" }
+            { "name": "X-API-Key", "value": "={{ $json.plane_api_key }}" }
           ]
         },
         "options": {}
@@ -94,7 +86,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Parse plan from idea task description\n// Extract last IDEA-PLAN-VN-START block\nconst response = $input.first().json;\nconst ctx = $('Extract cookie').first().json;\n\nconst taskData = response.task || response.data || response;\nconst description = taskData.description || taskData.desc || '';\nconst taskTitle = taskData.title || 'Untitled Idea';\n\nif (!description) {\n  throw new Error(`No description found for task ${ctx.task_id}`);\n}\n\n// Extract last plan version using regex\nconst planMatches = [...description.matchAll(/---IDEA-PLAN-V(\\d+)-START---([\\s\\S]*?)---IDEA-PLAN-V\\d+-END---/g)];\nif (!planMatches.length) {\n  throw new Error(`No plan found in task ${ctx.task_id} description`);\n}\nconst lastPlan = planMatches[planMatches.length - 1];\nconst planVersion = parseInt(lastPlan[1]);\nconst planRaw = lastPlan[2].trim();\n\nlet plan;\ntry {\n  plan = JSON.parse(planRaw);\n} catch (e) {\n  throw new Error(`Invalid plan JSON in task ${ctx.task_id}: ${e.message}`);\n}\n\n// Check idempotence via task labels\nconst labels = taskData.labels || [];\nconst alreadyDispatched = labels.some(l => l.name === 'idea:dispatched');\nif (alreadyDispatched) {\n  return [{ json: { skip: true, reason: 'already_dispatched', task_id: ctx.task_id } }];\n}\n\nreturn [{ json: {\n  ...ctx,\n  plan,\n  plan_version: planVersion,\n  task_title: taskTitle,\n  task_description: description,\n  skip: false\n} }];"
+        "jsCode": "// Parse plan from idea task description_html\n// Extract last IDEA-PLAN-VN-START block\nconst response = $input.first().json;\nconst ctx = $('Merge API key').first().json;\n\nconst taskData = response;\nconst description = taskData.description_html || taskData.description || '';\nconst taskTitle = taskData.name || 'Untitled Idea';\n\nif (!description) {\n  throw new Error(`No description found for task ${ctx.task_id}`);\n}\n\n// Extract last plan version using regex\nconst planMatches = [...description.matchAll(/---IDEA-PLAN-V(\\d+)-START---([\\s\\S]*?)---IDEA-PLAN-V\\d+-END---/g)];\nif (!planMatches.length) {\n  throw new Error(`No plan found in task ${ctx.task_id} description`);\n}\nconst lastPlan = planMatches[planMatches.length - 1];\nconst planVersion = parseInt(lastPlan[1]);\nconst planRaw = lastPlan[2].trim();\n\nlet plan;\ntry {\n  plan = JSON.parse(planRaw);\n} catch (e) {\n  throw new Error(`Invalid plan JSON in task ${ctx.task_id}: ${e.message}`);\n}\n\n// Check idempotence via state group\nconst stateName = (taskData.state_detail?.name || '').toLowerCase();\nconst stateGroup = (taskData.state_detail?.group || '').toLowerCase();\nconst alreadyDispatched = stateGroup === 'done' || stateName === 'implemented';\n\nif (alreadyDispatched) {\n  return [{ json: { skip: true, reason: 'already_dispatched', task_id: ctx.task_id } }];\n}\n\nreturn [{ json: {\n  ...ctx,\n  plan,\n  plan_version: planVersion,\n  task_title: taskTitle,\n  task_description: description,\n  skip: false\n} }];"
       },
       "id": "pd-0001-0000-0000-0000-000000000008",
       "name": "Parse plan",
@@ -126,7 +118,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Decompose implementation_steps into Kaneo tasks using LiteLLM\n// Use deepseek-v3 (cheap model) for intelligent decomposition\nconst http = require('http');\nconst ctx = $input.first().json;\nconst { plan } = ctx;\n\nconst steps = (plan.implementation_steps || []).join('\\n');\nconst raci = plan.raci || {};\nconst responsible = Array.isArray(raci.responsible) ? raci.responsible : [raci.responsible || 'user'];\nconst domain = plan.domain || 'autre';\n\n// Determine agents from RACI\nconst agentMap = {\n  builder: 'builder',\n  cfo: 'cfo',\n  explorer: 'explorer',\n  writer: 'writer',\n  artist: 'artist',\n  tutor: 'tutor',\n  maintainer: 'maintainer',\n  messenger: 'messenger'\n};\nconst responsibleAgents = responsible.map(r => {\n  for (const [k,v] of Object.entries(agentMap)) {\n    if (r.toLowerCase().includes(k)) return v;\n  }\n  return 'user';\n});\n\n// Call LiteLLM to decompose steps intelligently\nconst prompt = `Tu es un gestionnaire de projet. Decompose ces étapes en tâches Kaneo précises et assignables.\\n\\nProjet: ${plan.title}\\nDomaine: ${domain}\\nEtapes: ${steps}\\n\\nAgents RACI responsables: ${responsibleAgents.join(', ')}\\n\\nRéponds UNIQUEMENT avec un JSON valide:\\n[{\"title\": \"Titre court <10 mots\", \"description\": \"Description 1-2 phrases\", \"agentId\": \"<agentId ou 'user'>\"}]\\n\\nMax 8 tâches. Si domaine non-tech: agentId = 'user' par défaut.`;\n\nfunction callLiteLLM(prompt) {\n  return new Promise((resolve, reject) => {\n    const body = JSON.stringify({\n      model: 'custom-litellm/deepseek-v3',\n      messages: [{ role: 'user', content: prompt }],\n      max_tokens: 1000,\n      temperature: 0.1\n    });\n    const opts = {\n      hostname: 'litellm',\n      port: 4000,\n      path: '/v1/chat/completions',\n      method: 'POST',\n      headers: {\n        'Content-Type': 'application/json',\n        'Authorization': `Bearer ${process.env.LITELLM_API_KEY}`,\n        'Content-Length': Buffer.byteLength(body)\n      }\n    };\n    const req = http.request(opts, (res) => {\n      let data = '';\n      res.on('data', c => data += c);\n      res.on('end', () => resolve({ status: res.statusCode, body: data }));\n    });\n    req.on('error', reject);\n    req.write(body);\n    req.end();\n  });\n}\n\nlet tasks;\ntry {\n  const resp = await callLiteLLM(prompt);\n  const result = JSON.parse(resp.body);\n  const content = result.choices?.[0]?.message?.content || '[]';\n  // Extract JSON from potential markdown code blocks\n  const jsonMatch = content.match(/\\[([\\s\\S]*?)\\]/);\n  tasks = jsonMatch ? JSON.parse('[' + jsonMatch[1] + ']') : JSON.parse(content);\n} catch (e) {\n  // Fallback: convert steps directly without LLM\n  tasks = (plan.implementation_steps || []).slice(0, 8).map((step, i) => ({\n    title: step.slice(0, 80),\n    description: step,\n    agentId: responsibleAgents[0] || 'user'\n  }));\n}\n\nreturn [{ json: { ...ctx, decomposed_tasks: tasks, responsible_agents: responsibleAgents } }];"
+        "jsCode": "// Decompose implementation_steps into Plane work-items using LiteLLM\n// Use deepseek-v3 (cheap model) for intelligent decomposition\nconst http = require('http');\nconst ctx = $input.first().json;\nconst { plan } = ctx;\n\nconst steps = (plan.implementation_steps || []).join('\\n');\nconst raci = plan.raci || {};\nconst responsible = Array.isArray(raci.responsible) ? raci.responsible : [raci.responsible || 'user'];\nconst domain = plan.domain || 'autre';\n\n// Determine agents from RACI\nconst agentMap = {\n  builder: 'builder',\n  cfo: 'cfo',\n  explorer: 'explorer',\n  writer: 'writer',\n  artist: 'artist',\n  tutor: 'tutor',\n  maintainer: 'maintainer',\n  messenger: 'messenger'\n};\nconst responsibleAgents = responsible.map(r => {\n  for (const [k,v] of Object.entries(agentMap)) {\n    if (r.toLowerCase().includes(k)) return v;\n  }\n  return 'user';\n});\n\n// Call LiteLLM to decompose steps intelligently\nconst prompt = `Tu es un gestionnaire de projet. Decompose ces étapes en work-items Plane précis et assignables.\\n\\nProjet: ${plan.title}\\nDomaine: ${domain}\\nEtapes: ${steps}\\n\\nAgents RACI responsables: ${responsibleAgents.join(', ')}\\n\\nRéponds UNIQUEMENT avec un JSON valide:\\n[{\"name\": \"Titre court <10 mots\", \"description_html\": \"<p>Description 1-2 phrases</p>\", \"priority\": \"medium\", \"agentId\": \"<agentId ou 'user'>\"}]\\n\\nMax 8 tâches. Priority values: none, urgent, high, medium, low. Si domaine non-tech: agentId = 'user' par défaut.`;\n\nfunction callLiteLLM(prompt) {\n  return new Promise((resolve, reject) => {\n    const body = JSON.stringify({\n      model: 'custom-litellm/deepseek-v3',\n      messages: [{ role: 'user', content: prompt }],\n      max_tokens: 1000,\n      temperature: 0.1\n    });\n    const opts = {\n      hostname: 'litellm',\n      port: 4000,\n      path: '/v1/chat/completions',\n      method: 'POST',\n      headers: {\n        'Content-Type': 'application/json',\n        'Authorization': `Bearer ${process.env.LITELLM_API_KEY}`,\n        'Content-Length': Buffer.byteLength(body)\n      }\n    };\n    const req = http.request(opts, (res) => {\n      let data = '';\n      res.on('data', c => data += c);\n      res.on('end', () => resolve({ status: res.statusCode, body: data }));\n    });\n    req.on('error', reject);\n    req.write(body);\n    req.end();\n  });\n}\n\nlet tasks;\ntry {\n  const resp = await callLiteLLM(prompt);\n  const result = JSON.parse(resp.body);\n  const content = result.choices?.[0]?.message?.content || '[]';\n  // Extract JSON from potential markdown code blocks\n  const jsonMatch = content.match(/\\[([\\s\\S]*?)\\]/);\n  tasks = jsonMatch ? JSON.parse('[' + jsonMatch[1] + ']') : JSON.parse(content);\n} catch (e) {\n  // Fallback: convert steps directly without LLM\n  tasks = (plan.implementation_steps || []).slice(0, 8).map((step, i) => ({\n    name: step.slice(0, 80),\n    description_html: `<p>${step}</p>`,\n    priority: 'medium',\n    agentId: responsibleAgents[0] || 'user'\n  }));\n}\n\nreturn [{ json: { ...ctx, decomposed_tasks: tasks, responsible_agents: responsibleAgents } }];"
       },
       "id": "pd-0001-0000-0000-0000-000000000010",
       "name": "Decompose plan (LLM)",
@@ -137,11 +129,11 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://kaneo-api:1337/api/project",
+        "url": "http://plane-api:8000/api/v1/workspaces/{% endraw %}{{ plane_workspace_slug }}{% raw %}/projects/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $json.cookie }}" }
+            { "name": "X-API-Key", "value": "={{ $json.plane_api_key }}" }
           ]
         },
         "options": {}
@@ -155,7 +147,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Create new project for the approved plan\nconst ctx = $('Decompose plan (LLM)').first().json;\nconst projects = $input.first().json;\n\nconst projectsArr = Array.isArray(projects) ? projects\n  : (projects.projects || projects.data || []);\n\n// Check if project already exists (idempotence)\nconst existing = projectsArr.find(p =>\n  p.name && p.name.toLowerCase() === (ctx.plan.title || '').toLowerCase()\n);\n\nreturn [{ json: { ...ctx, existing_project: existing || null } }];"
+        "jsCode": "// Check if project already exists for the approved plan (idempotence)\nconst ctx = $('Decompose plan (LLM)').first().json;\nconst projects = $input.first().json;\n\n// Plane returns { results: [...] } paginated\nconst projectsArr = Array.isArray(projects) ? projects\n  : (projects.results || projects.data || []);\n\nconst existing = projectsArr.find(p =>\n  p.name && p.name.toLowerCase() === (ctx.plan.title || '').toLowerCase()\n);\n\nreturn [{ json: { ...ctx, existing_project: existing || null } }];"
       },
       "id": "pd-0001-0000-0000-0000-000000000012",
       "name": "Check project exists",
@@ -166,17 +158,17 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://kaneo-api:1337/api/project",
+        "url": "http://plane-api:8000/api/v1/workspaces/{% endraw %}{{ plane_workspace_slug }}{% raw %}/projects/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $json.cookie }}" },
+            { "name": "X-API-Key", "value": "={{ $json.plane_api_key }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"name\": \"{{ $json.plan.title }}\",\n  \"description\": \"{{ $json.plan.summary }}\",\n  \"icon\": \"{{ $json.plan.domain === 'tech' ? '⚙️' : $json.plan.domain === 'business' ? '💼' : $json.plan.domain === 'finance' ? '💰' : $json.plan.domain === 'physique' ? '🏗️' : '💡' }}\"\n}",
+        "jsonBody": "={\n  \"name\": \"{{ $json.plan.title }}\",\n  \"description\": \"{{ $json.plan.summary }}\",\n  \"identifier\": \"{{ ($json.plan.title || 'PRJ').replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 5) || 'PRJ' }}\",\n  \"network\": 2\n}",
         "options": {
           "response": {
             "response": {
@@ -204,10 +196,10 @@
     },
     {
       "parameters": {
-        "jsCode": "// Create columns only for new projects\nconst ctx = $input.first().json;\nif (!ctx.project_is_new) {\n  return [{ json: ctx }];\n}\n\nconst http = require('http');\nconst columns = ['Backlog', 'In Progress', 'Review', 'Done'];\nconst created = [];\n\nfor (const col of columns) {\n  const body = JSON.stringify({ name: col });\n  await new Promise((resolve) => {\n    const opts = {\n      hostname: 'kaneo-api',\n      port: 1337,\n      path: `/api/column/${ctx.project_id}`,\n      method: 'POST',\n      headers: {\n        'Content-Type': 'application/json',\n        'Cookie': ctx.cookie,\n        'Content-Length': Buffer.byteLength(body)\n      }\n    };\n    const req = http.request(opts, (res) => {\n      let d = '';\n      res.on('data', c => d += c);\n      res.on('end', () => { created.push({ col, status: res.statusCode }); resolve(); });\n    });\n    req.on('error', () => { created.push({ col, status: 'error' }); resolve(); });\n    req.write(body);\n    req.end();\n  });\n}\n\nreturn [{ json: { ...ctx, columns_created: created } }];"
+        "jsCode": "// Plane auto-creates default states for new projects (Backlog, Todo, In Progress, Done, Cancelled)\n// No column creation needed — pass context through unchanged\nconst ctx = $input.first().json;\nreturn [{ json: ctx }];"
       },
       "id": "pd-0001-0000-0000-0000-000000000015",
-      "name": "Create columns",
+      "name": "Skip column creation",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [2900, 200]
@@ -215,17 +207,17 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "=http://kaneo-api:1337/api/column/{{ $json.project_id }}",
+        "url": "=http://plane-api:8000/api/v1/workspaces/{% endraw %}{{ plane_workspace_slug }}{% raw %}/projects/{{ $json.project_id }}/states/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $json.cookie }}" }
+            { "name": "X-API-Key", "value": "={{ $json.plane_api_key }}" }
           ]
         },
         "options": {}
       },
       "id": "pd-0001-0000-0000-0000-000000000016",
-      "name": "Get columns",
+      "name": "Get states",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [3120, 200],
@@ -233,17 +225,17 @@
     },
     {
       "parameters": {
-        "jsCode": "// Get backlog column id\nconst cols = $input.first().json;\nconst ctx = $('Create columns').first().json;\n\nconst colsArr = Array.isArray(cols) ? cols\n  : (cols.columns || cols.data || []);\nconst backlogCol = colsArr.find(c => c.name === 'Backlog');\nconst backlogColId = backlogCol?.id || colsArr[0]?.id;\n\nif (!backlogColId) {\n  throw new Error(`No Backlog column found for project ${ctx.project_id}`);\n}\n\nreturn [{ json: { ...ctx, backlog_col_id: backlogColId } }];"
+        "jsCode": "// Get backlog state id — Plane uses states instead of columns\nconst states = $input.first().json;\nconst ctx = $('Skip column creation').first().json;\n\n// Plane returns { results: [...] }\nconst statesArr = Array.isArray(states) ? states\n  : (states.results || states.data || []);\n\n// Prefer group=backlog, then name contains backlog, then first state\nconst backlogState = statesArr.find(s => s.group === 'backlog')\n  || statesArr.find(s => (s.name || '').toLowerCase().includes('backlog'))\n  || statesArr[0];\n\nconst backlogStateId = backlogState?.id;\n\nif (!backlogStateId) {\n  throw new Error(`No backlog state found for project ${ctx.project_id}`);\n}\n\nreturn [{ json: { ...ctx, backlog_state_id: backlogStateId } }];"
       },
       "id": "pd-0001-0000-0000-0000-000000000017",
-      "name": "Set backlog col",
+      "name": "Set backlog state",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [3340, 200]
     },
     {
       "parameters": {
-        "jsCode": "// Load userId map from REGISTRY task (cached in Redis via kaneo-agents-sync)\n// Format: {\"concierge\":\"uid-xxx\",\"builder\":\"uid-yyy\",...}\nconst ctx = $input.first().json;\nconst http = require('http');\n\nfunction httpGet(path, cookie) {\n  return new Promise((resolve) => {\n    const opts = { hostname: 'kaneo-api', port: 1337, path, method: 'GET',\n      headers: { 'Cookie': cookie } };\n    const req = http.request(opts, (res) => {\n      let d = '';\n      res.on('data', c => d += c);\n      res.on('end', () => {\n        try { resolve({ status: res.statusCode, body: JSON.parse(d) }); }\n        catch { resolve({ status: res.statusCode, body: {} }); }\n      });\n    });\n    req.on('error', () => resolve({ status: 0, body: {} }));\n    req.end();\n  });\n}\n\nconst allProjects = await httpGet('/api/project', ctx.cookie);\nconst projectsArr = Array.isArray(allProjects.body) ? allProjects.body\n  : (allProjects.body.projects || allProjects.body.data || []);\nconst agentsProject = projectsArr.find(p =>\n  (p.name || '').toLowerCase().includes('openclaw agents') ||\n  (p.name || '').toLowerCase().includes('openclaw agent')\n);\n\nlet userIdMap = {};\nif (agentsProject) {\n  const tasks = await httpGet(`/api/task/tasks/${agentsProject.id}`, ctx.cookie);\n  const tasksArr = Array.isArray(tasks.body) ? tasks.body\n    : (tasks.body.tasks || tasks.body.data || []);\n  const registryTask = tasksArr.find(t =>\n    (t.description || '').startsWith('[registry]')\n  );\n  if (registryTask) {\n    try {\n      const jsonPart = registryTask.description.replace(/^\\[registry\\]\\s*/, '');\n      userIdMap = JSON.parse(jsonPart);\n    } catch {}\n  }\n}\n\nreturn [{ json: { ...ctx, user_id_map: userIdMap } }];"
+        "jsCode": "// Load userId map from Plane workspace members API\n// Maps agent display_name (lowercase) -> user UUID\nconst ctx = $input.first().json;\nconst http = require('http');\nconst workspace = '{% endraw %}{{ plane_workspace_slug }}{% raw %}';\n\nfunction httpGet(path, apiKey) {\n  return new Promise((resolve) => {\n    const opts = { hostname: 'plane-api', port: 8000, path, method: 'GET',\n      headers: { 'X-API-Key': apiKey } };\n    const req = http.request(opts, (res) => {\n      let d = '';\n      res.on('data', c => d += c);\n      res.on('end', () => {\n        try { resolve({ status: res.statusCode, body: JSON.parse(d) }); }\n        catch { resolve({ status: res.statusCode, body: {} }); }\n      });\n    });\n    req.on('error', () => resolve({ status: 0, body: {} }));\n    req.end();\n  });\n}\n\nconst membersResp = await httpGet(`/api/v1/workspaces/${workspace}/members/`, ctx.plane_api_key);\nconst membersArr = Array.isArray(membersResp.body) ? membersResp.body\n  : (membersResp.body.results || membersResp.body.data || []);\n\n// Build map: agent_name_lowercase -> user_id\nconst userIdMap = {};\nfor (const member of membersArr) {\n  const displayName = (member.member?.display_name || member.display_name || '').toLowerCase();\n  const userId = member.member?.id || member.id;\n  if (displayName && userId) {\n    userIdMap[displayName] = userId;\n  }\n}\n\nreturn [{ json: { ...ctx, user_id_map: userIdMap } }];"
       },
       "id": "pd-0001-0000-0000-0000-000000000018",
       "name": "Load userId map",
@@ -253,7 +245,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Prepare tasks for SplitInBatches\nconst ctx = $input.first().json;\nconst tasks = ctx.decomposed_tasks || [];\n\nconst prepared = tasks.map((task, i) => ({\n  ...ctx,\n  current_task: task,\n  task_index: i,\n  total_tasks: tasks.length\n}));\n\nreturn prepared.map(t => ({ json: t }));"
+        "jsCode": "// Prepare work-items for SplitInBatches\nconst ctx = $input.first().json;\nconst tasks = ctx.decomposed_tasks || [];\n\nconst prepared = tasks.map((task, i) => ({\n  ...ctx,\n  current_task: task,\n  task_index: i,\n  total_tasks: tasks.length\n}));\n\nreturn prepared.map(t => ({ json: t }));"
       },
       "id": "pd-0001-0000-0000-0000-000000000019",
       "name": "Prepare task items",
@@ -275,17 +267,17 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://kaneo-api:1337/api/task/{{ $json.project_id }}",
+        "url": "=http://plane-api:8000/api/v1/workspaces/{% endraw %}{{ plane_workspace_slug }}{% raw %}/projects/{{ $json.project_id }}/work-items/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $json.cookie }}" },
+            { "name": "X-API-Key", "value": "={{ $json.plane_api_key }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"{{ $json.current_task.title }}\",\n  \"description\": \"{{ $json.current_task.description }}\",\n  \"columnId\": \"{{ $json.backlog_col_id }}\"\n}",
+        "jsonBody": "={\n  \"name\": \"{{ $json.current_task.name }}\",\n  \"description_html\": \"{{ $json.current_task.description_html }}\",\n  \"state\": \"{{ $json.backlog_state_id }}\",\n  \"priority\": \"{{ $json.current_task.priority || 'medium' }}\"\n}",
         "options": {
           "response": {
             "response": {
@@ -295,7 +287,7 @@
         }
       },
       "id": "pd-0001-0000-0000-0000-000000000021",
-      "name": "Create task",
+      "name": "Create work-item",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [4220, 200],
@@ -303,7 +295,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Assign task to agent userId\nconst taskResp = $input.first().json;\nconst ctx = $('For each task').first().json;\n\nconst newTaskId = taskResp.id || taskResp.data?.id;\nif (!newTaskId) {\n  return [{ json: { ...ctx, created_task_id: null, assignment_skipped: true } }];\n}\n\nconst agentId = ctx.current_task.agentId || 'user';\nconst userId = ctx.user_id_map[agentId] || '';\n\nreturn [{ json: { ...ctx, created_task_id: newTaskId, agent_id: agentId, user_id: userId } }];"
+        "jsCode": "// Resolve assignee userId for this work-item\nconst taskResp = $input.first().json;\nconst ctx = $('For each task').first().json;\n\nconst newWorkItemId = taskResp.id || taskResp.data?.id;\nif (!newWorkItemId) {\n  return [{ json: { ...ctx, created_work_item_id: null, assignment_skipped: true } }];\n}\n\nconst agentId = ctx.current_task.agentId || 'user';\nconst userId = ctx.user_id_map[agentId.toLowerCase()] || '';\n\nreturn [{ json: { ...ctx, created_work_item_id: newWorkItemId, agent_id: agentId, user_id: userId } }];"
       },
       "id": "pd-0001-0000-0000-0000-000000000022",
       "name": "Prepare assignment",
@@ -313,18 +305,18 @@
     },
     {
       "parameters": {
-        "method": "PUT",
-        "url": "=http://kaneo-api:1337/api/task/assignee/{{ $json.created_task_id }}",
+        "method": "PATCH",
+        "url": "=http://plane-api:8000/api/v1/workspaces/{% endraw %}{{ plane_workspace_slug }}{% raw %}/projects/{{ $json.project_id }}/work-items/{{ $json.created_work_item_id }}/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $json.cookie }}" },
+            { "name": "X-API-Key", "value": "={{ $json.plane_api_key }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"userId\": \"{{ $json.user_id }}\" }",
+        "jsonBody": "={\n  \"assignees\": {{ $json.user_id ? '[\"' + $json.user_id + '\"]' : '[]' }}\n}",
         "options": {}
       },
       "id": "pd-0001-0000-0000-0000-000000000023",
@@ -337,17 +329,17 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://kaneo-api:1337/api/label",
+        "url": "=http://plane-api:8000/api/v1/workspaces/{% endraw %}{{ plane_workspace_slug }}{% raw %}/projects/{{ $json.project_id }}/labels/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $json.cookie }}" },
+            { "name": "X-API-Key", "value": "={{ $json.plane_api_key }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"taskId\": \"{{ $('Prepare assignment').first().json.created_task_id }}\", \"name\": \"agent:{{ $('Prepare assignment').first().json.agent_id }}\", \"color\": \"#6366f1\" }",
+        "jsonBody": "={ \"name\": \"agent:{{ $('Prepare assignment').first().json.agent_id }}\", \"color\": \"#6366f1\" }",
         "options": {}
       },
       "id": "pd-0001-0000-0000-0000-000000000024",
@@ -359,7 +351,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// After all tasks: pass context forward for final steps\nconst ctx = $input.first().json;\nreturn [{ json: ctx }];"
+        "jsCode": "// After all work-items: pass context forward for final steps\nconst ctx = $input.first().json;\nreturn [{ json: ctx }];"
       },
       "id": "pd-0001-0000-0000-0000-000000000025",
       "name": "After all tasks",
@@ -370,11 +362,11 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://kaneo-api:1337/api/project",
+        "url": "http://plane-api:8000/api/v1/workspaces/{% endraw %}{{ plane_workspace_slug }}{% raw %}/projects/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $json.cookie }}" }
+            { "name": "X-API-Key", "value": "={{ $json.plane_api_key }}" }
           ]
         },
         "options": {}
@@ -388,7 +380,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Find Implemented column in Boite a Idees project and move original task there\nconst ctx = $('After all tasks').first().json;\nconst projects = $input.first().json;\nconst http = require('http');\n\nfunction httpReq(method, path, body, cookie) {\n  return new Promise((resolve) => {\n    const bodyStr = body ? JSON.stringify(body) : null;\n    const opts = {\n      hostname: 'kaneo-api', port: 1337, path, method,\n      headers: {\n        'Content-Type': 'application/json',\n        'Cookie': cookie,\n        ...(bodyStr ? { 'Content-Length': Buffer.byteLength(bodyStr) } : {})\n      }\n    };\n    const req = http.request(opts, (res) => {\n      let d = '';\n      res.on('data', c => d += c);\n      res.on('end', () => {\n        try { resolve({ status: res.statusCode, body: JSON.parse(d) }); }\n        catch { resolve({ status: res.statusCode, body: {} }); }\n      });\n    });\n    req.on('error', () => resolve({ status: 0, body: {} }));\n    if (bodyStr) req.write(bodyStr);\n    req.end();\n  });\n}\n\nconst projectsArr = Array.isArray(projects) ? projects\n  : (projects.projects || projects.data || []);\n\nconst ideasProject = projectsArr.find(p =>\n  p.name === 'Boîte à Idées' || p.name === 'Boite a Idees'\n);\n\nlet moved = false;\nlet labelAdded = false;\n\nif (ideasProject) {\n  const colsResp = await httpReq('GET', `/api/column/${ideasProject.id}`, null, ctx.cookie);\n  const colsArr = Array.isArray(colsResp.body) ? colsResp.body\n    : (colsResp.body.columns || colsResp.body.data || []);\n  const implCol = colsArr.find(c => c.name === 'Implemented');\n  if (implCol) {\n    await httpReq('PUT', `/api/task/column/${ctx.task_id}`, { columnId: implCol.id }, ctx.cookie);\n    moved = true;\n  }\n}\n\n// Add idea:dispatched label to original task (idempotence marker)\nawait httpReq('POST', '/api/label', {\n  taskId: ctx.task_id,\n  name: 'idea:dispatched',\n  color: '#0ea5e9'\n}, ctx.cookie);\nlabelAdded = true;\n\nreturn [{ json: { ...ctx, original_task_moved: moved, dispatched_label_added: labelAdded } }];"
+        "jsCode": "// Find 'Done'/'Implemented' state in Idees project and move original task there\nconst ctx = $('After all tasks').first().json;\nconst projects = $input.first().json;\nconst http = require('http');\nconst workspace = '{% endraw %}{{ plane_workspace_slug }}{% raw %}';\n\nfunction httpReq(method, path, body, apiKey) {\n  return new Promise((resolve) => {\n    const bodyStr = body ? JSON.stringify(body) : null;\n    const opts = {\n      hostname: 'plane-api', port: 8000, path, method,\n      headers: {\n        'X-API-Key': apiKey,\n        'Content-Type': 'application/json',\n        ...(bodyStr ? { 'Content-Length': Buffer.byteLength(bodyStr) } : {})\n      }\n    };\n    const req = http.request(opts, (res) => {\n      let d = '';\n      res.on('data', c => d += c);\n      res.on('end', () => {\n        try { resolve({ status: res.statusCode, body: JSON.parse(d) }); }\n        catch { resolve({ status: res.statusCode, body: {} }); }\n      });\n    });\n    req.on('error', () => resolve({ status: 0, body: {} }));\n    if (bodyStr) req.write(bodyStr);\n    req.end();\n  });\n}\n\nconst projectsArr = Array.isArray(projects) ? projects\n  : (projects.results || projects.data || []);\n\nconst ideasProject = projectsArr.find(p =>\n  p.name === 'Boite a Idees' ||\n  p.name === 'Boîte à Idées' ||\n  (p.name || '').toLowerCase().includes('idee') ||\n  (p.name || '').toLowerCase().includes('idea')\n);\n\nlet moved = false;\nlet labelAdded = false;\n\nif (ideasProject) {\n  const statesResp = await httpReq('GET', `/api/v1/workspaces/${workspace}/projects/${ideasProject.id}/states/`, null, ctx.plane_api_key);\n  const statesArr = Array.isArray(statesResp.body) ? statesResp.body\n    : (statesResp.body.results || statesResp.body.data || []);\n  const doneState = statesArr.find(s => s.name === 'Implemented')\n    || statesArr.find(s => s.group === 'done')\n    || statesArr.find(s => (s.name || '').toLowerCase() === 'done');\n  if (doneState) {\n    // task_id is a work-item id within the ideas project\n    await httpReq('PATCH', `/api/v1/workspaces/${workspace}/projects/${ideasProject.id}/work-items/${ctx.task_id}/`, { state: doneState.id }, ctx.plane_api_key);\n    moved = true;\n  }\n  // Add idea:dispatched label to the ideas project (idempotence marker)\n  const labelResp = await httpReq('POST', `/api/v1/workspaces/${workspace}/projects/${ideasProject.id}/labels/`, { name: 'idea:dispatched', color: '#0ea5e9' }, ctx.plane_api_key);\n  labelAdded = labelResp.status < 400;\n}\n\nreturn [{ json: { ...ctx, original_task_moved: moved, dispatched_label_added: labelAdded } }];"
       },
       "id": "pd-0001-0000-0000-0000-000000000027",
       "name": "Mark Implemented",
@@ -398,7 +390,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build final Telegram notification\n// Uses $env.KANEO_PUBLIC_URL instead of hardcoded domain (set in n8n.env)\nconst ctx = $input.first().json;\nconst plan = ctx.plan || {};\nconst tasks = ctx.decomposed_tasks || [];\n\nconst domain = plan.domain || 'autre';\nconst domainEmoji = {\n  tech: '⚙️', business: '💼', finance: '💰', physique: '🏗️', perso: '🏠', autre: '💡'\n}[domain] || '💡';\n\nconst timeline = plan.resources?.timeline || '?';\nconst budget = plan.resources?.budget_estimated || '?';\nconst kaneoUrl = process.env.KANEO_PUBLIC_URL || 'https://hq.example.com';\n\nconst message = [\n  `✅ Projet créé : <b>${plan.title}</b> ${domainEmoji}`,\n  ``,\n  `📋 ${plan.summary || ''}`,\n  ``,\n  `📊 <b>${tasks.length} tâches</b> créées dans Kaneo`,\n  `⏱️ Timeline estimée : ${timeline}`,\n  `💰 Budget estimé : ${budget}`,\n  ``,\n  `🎯 KPI : ${(plan.kpi_victoire || [])[0] || '?'}`,\n  ``,\n  `🔗 Projet : <a href=\"${kaneoUrl}/\">Kaneo</a>`\n].join('\\n');\n\nreturn [{ json: { message, tasks_count: tasks.length, plan_title: plan.title } }];"
+        "jsCode": "// Build final Telegram notification\nconst ctx = $input.first().json;\nconst plan = ctx.plan || {};\nconst tasks = ctx.decomposed_tasks || [];\n\nconst domain = plan.domain || 'autre';\nconst domainEmoji = {\n  tech: '⚙️', business: '💼', finance: '💰', physique: '🏗️', perso: '🏠', autre: '💡'\n}[domain] || '💡';\n\nconst timeline = plan.resources?.timeline || '?';\nconst budget = plan.resources?.budget_estimated || '?';\nconst planeUrl = process.env.PLANE_PUBLIC_URL || 'https://work.example.com';\n\nconst message = [\n  `✅ Projet créé : <b>${plan.title}</b> ${domainEmoji}`,\n  ``,\n  `📋 ${plan.summary || ''}`,\n  ``,\n  `📊 <b>${tasks.length} work-items</b> créés dans Plane`,\n  `⏱️ Timeline estimée : ${timeline}`,\n  `💰 Budget estimé : ${budget}`,\n  ``,\n  `🎯 KPI : ${(plan.kpi_victoire || [])[0] || '?'}`,\n  ``,\n  `🔗 Projet : <a href=\"${planeUrl}/\">Plane</a>`\n].join('\\n');\n\nreturn [{ json: { message, tasks_count: tasks.length, plan_title: plan.title } }];"
       },
       "id": "pd-0001-0000-0000-0000-000000000028",
       "name": "Build notification",
@@ -445,13 +437,13 @@
     "Validate payload": {
       "main": [[
         { "node": "Webhook Response", "type": "main", "index": 0 },
-        { "node": "Auth Kaneo", "type": "main", "index": 0 }
+        { "node": "Set Plane API key", "type": "main", "index": 0 }
       ]]
     },
-    "Auth Kaneo": {
-      "main": [[{ "node": "Extract cookie", "type": "main", "index": 0 }]]
+    "Set Plane API key": {
+      "main": [[{ "node": "Merge API key", "type": "main", "index": 0 }]]
     },
-    "Extract cookie": {
+    "Merge API key": {
       "main": [[{ "node": "Get idea task", "type": "main", "index": 0 }]]
     },
     "Get idea task": {
@@ -479,15 +471,15 @@
       "main": [[{ "node": "Set project id", "type": "main", "index": 0 }]]
     },
     "Set project id": {
-      "main": [[{ "node": "Create columns", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Skip column creation", "type": "main", "index": 0 }]]
     },
-    "Create columns": {
-      "main": [[{ "node": "Get columns", "type": "main", "index": 0 }]]
+    "Skip column creation": {
+      "main": [[{ "node": "Get states", "type": "main", "index": 0 }]]
     },
-    "Get columns": {
-      "main": [[{ "node": "Set backlog col", "type": "main", "index": 0 }]]
+    "Get states": {
+      "main": [[{ "node": "Set backlog state", "type": "main", "index": 0 }]]
     },
-    "Set backlog col": {
+    "Set backlog state": {
       "main": [[{ "node": "Load userId map", "type": "main", "index": 0 }]]
     },
     "Load userId map": {
@@ -499,10 +491,10 @@
     "For each task": {
       "main": [
         [{ "node": "After all tasks", "type": "main", "index": 0 }],
-        [{ "node": "Create task", "type": "main", "index": 0 }]
+        [{ "node": "Create work-item", "type": "main", "index": 0 }]
       ]
     },
-    "Create task": {
+    "Create work-item": {
       "main": [[{ "node": "Prepare assignment", "type": "main", "index": 0 }]]
     },
     "Prepare assignment": {
@@ -534,8 +526,8 @@
     "errorWorkflow": ""
   },
   "staticData": null,
-  "tags": [{ "name": "openclaw" }, { "name": "kaneo" }, { "name": "idea-planning" }],
+  "tags": [{ "name": "openclaw" }, { "name": "plane" }, { "name": "idea-planning" }],
   "triggerCount": 0,
-  "updatedAt": "2026-02-23T00:00:00.000Z",
-  "versionId": "pd-0001-0000-0000-0000-000000000001"
+  "updatedAt": "2026-03-02T00:00:00.000Z",
+  "versionId": "pd-0001-0000-0000-0000-000000000002"
 }{% endraw %}

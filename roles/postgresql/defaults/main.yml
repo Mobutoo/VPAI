@@ -20,7 +20,6 @@ postgresql_databases:
     user: litellm
     extensions:
       - uuid-ossp
-  # kaneo supprimé — remplacé par Palais
   - name: nocodb
     user: nocodb
     extensions: []

@@ -249,10 +249,6 @@ deploy-n8n-mcp: ## Deployer n8n-MCP doc server sur RPi (port 3001) + client mcp.
 	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "n8n-mcp,windows-client" --diff
 	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "claude-code" --diff
 
-.PHONY: deploy-kaneo
-deploy-kaneo: ## Deployer Kaneo (PM tool) uniquement
-	$(ANSIBLE_PLAYBOOK) playbooks/site.yml --tags "kaneo" --diff
-
 .PHONY: deploy-comfyui
 deploy-comfyui: ## Deployer ComfyUI (image gen) sur RPi
 	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "comfyui" --diff

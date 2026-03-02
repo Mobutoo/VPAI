@@ -67,8 +67,7 @@ openclaw_agent_cfo_name: "cfo"
 openclaw_agent_maintainer_name: "maintainer"
 openclaw_agent_messenger_name: "messenger"
 
-# Structured agents list for auto-sync to Kaneo (n8n agents-kaneo-sync workflow)
-# Adding an agent here = it appears automatically in Kaneo UI after next deploy
+# Structured agents list — used for provisioning and workflow integration
 openclaw_agents_list:
   - id: "{{ openclaw_agent_concierge_name }}"
     name: "Mobutoo"
@@ -157,7 +156,7 @@ openclaw_skills:
   - palais-bridge
 
 # --- Boîte à Idées ---
-# Projet Kaneo dédié au cycle de vie des idées (Draft → Approved → Implemented)
+# Cycle de vie des idées (Draft → Approved → Implemented)
 openclaw_ideas_project_name: "Boîte à Idées"
 # Collection Qdrant pour la mémoire sémantique des idées approuvées (1536 dims, Cosine)
 openclaw_qdrant_ideas_collection: "ideas"
@@ -185,10 +184,10 @@ openclaw_n8n_workflows:
     description: "Review automatique de code via SSH RPi + LiteLLM (criteres VPAI)"
   - name: error-to-task
     path: error-to-task
-    description: "Creer une tache de correction Kaneo a partir d'une erreur"
+    description: "Creer une tache de correction a partir d'une erreur"
   - name: project-status
     path: project-status
-    description: "Rapport d'avancement projet Kaneo (temps passe, livrables, blocages)"
+    description: "Rapport d'avancement projet (temps passe, livrables, blocages)"
 
 # --- Budget Control (commands Telegram → n8n webhook) ---
 # Commandes reconnues par le concierge OpenClaw (via Telegram) :

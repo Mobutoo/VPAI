@@ -54,7 +54,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const payload = $input.first().json;\n\n// Repo-to-agent routing (mirrors autofix_repos Ansible variable)\nconst REPO_ROUTING = [\n  { name: 'VPAI',       repo_pattern: 'Mobutoo/VPAI',       url: 'git@github-seko:Mobutoo/VPAI.git',       agent: 'builder' },\n  { name: 'kaneo-vpai', repo_pattern: 'Mobutoo/kaneo-vpai', url: 'git@github-seko:Mobutoo/kaneo-vpai.git', agent: 'builder' }\n];\n\nconst repoFull = payload.repository?.full_name || '';\nconst issueId  = payload.issue?.number || 0;\nconst title    = payload.issue?.title   || '';\nconst body     = (payload.issue?.body   || '').slice(0, 2000);\nconst labels   = (payload.issue?.labels || []).map(l => l.name);\n\n// SECURITY: Reject issues with security label\nif (labels.includes('security')) {\n  throw new Error('Security-tagged issues cannot be auto-fixed. Manual intervention required.');\n}\n\nconst route = REPO_ROUTING.find(r => repoFull.includes(r.repo_pattern)) || {\n  name: repoFull,\n  url: `git@github-seko:${repoFull}.git`,\n  agent: 'builder'\n};\n\nreturn [{ json: {\n  repo: repoFull,\n  repo_url: route.url,\n  issue_id: issueId,\n  issue_title: title,\n  issue_body: body,\n  labels,\n  agent: route.agent\n}}];"
+        "jsCode": "const payload = $input.first().json;\n\n// Repo-to-agent routing (mirrors autofix_repos Ansible variable)\nconst REPO_ROUTING = [\n  { name: 'VPAI',       repo_pattern: 'Mobutoo/VPAI',       url: 'git@github-seko:Mobutoo/VPAI.git',       agent: 'builder' },\n  { name: 'plane-vpai', repo_pattern: 'Mobutoo/plane-vpai', url: 'git@github-seko:Mobutoo/plane-vpai.git', agent: 'builder' }\n];\n\nconst repoFull = payload.repository?.full_name || '';\nconst issueId  = payload.issue?.number || 0;\nconst title    = payload.issue?.title   || '';\nconst body     = (payload.issue?.body   || '').slice(0, 2000);\nconst labels   = (payload.issue?.labels || []).map(l => l.name);\n\n// SECURITY: Reject issues with security label\nif (labels.includes('security')) {\n  throw new Error('Security-tagged issues cannot be auto-fixed. Manual intervention required.');\n}\n\nconst route = REPO_ROUTING.find(r => repoFull.includes(r.repo_pattern)) || {\n  name: repoFull,\n  url: `git@github-seko:${repoFull}.git`,\n  agent: 'builder'\n};\n\nreturn [{ json: {\n  repo: repoFull,\n  repo_url: route.url,\n  issue_id: issueId,\n  issue_title: title,\n  issue_body: body,\n  labels,\n  agent: route.agent,\n  plane_api_key: process.env.PLANE_TOKEN_CONCIERGE || ''\n}}];"
       },
       "id": "gha-0001-0000-0000-0000-000000000004",
       "name": "Parse issue + route agent",
@@ -64,50 +64,12 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "http://kaneo-api:1337/api/auth/sign-in/email",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={ \"email\": \"{{ $env.KANEO_AGENT_EMAIL }}\", \"password\": \"{{ $env.KANEO_AGENT_PASSWORD }}\" }",
-        "options": {
-          "response": {
-            "response": {
-              "fullResponse": true,
-              "responseFormat": "json"
-            }
-          }
-        }
-      },
-      "id": "gha-0001-0000-0000-0000-000000000015",
-      "name": "Auth Kaneo",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [920, 420]
-    },
-    {
-      "parameters": {
-        "jsCode": "const response = $input.first().json;\nconst headers = response.headers || {};\nconst setCookie = headers['set-cookie'] || [];\nlet cookie = '';\nif (Array.isArray(setCookie)) {\n  cookie = setCookie.map(c => c.split(';')[0]).join('; ');\n} else if (typeof setCookie === 'string') {\n  cookie = setCookie.split(';')[0];\n}\nif (!cookie) throw new Error('Kaneo auth failed: no session cookie');\nconst issue = $('Parse issue + route agent').first().json;\nreturn [{ json: { ...issue, cookie } }];"
-      },
-      "id": "gha-0001-0000-0000-0000-000000000016",
-      "name": "Extract auth cookie",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1020, 420]
-    },
-    {
-      "parameters": {
         "method": "GET",
-        "url": "http://kaneo-api:1337/api/project",
+        "url": "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug }}/projects/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie", "value": "={{ $json.cookie }}" }
+            { "name": "X-API-Key", "value": "={{ $json.plane_api_key }}" }
           ]
         },
         "options": {}
@@ -120,7 +82,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const projects = $('Get autofix project').first().json;\nconst auth = $('Extract auth cookie').first().json;\nconst projectsArr = Array.isArray(projects) ? projects : (projects.projects || projects.data || []);\nconst fixProject = projectsArr.find(p => (p.name || '').toLowerCase().includes('auto-fix') || (p.name || '').toLowerCase().includes('autofix'));\nconst cols = fixProject ? [] : null;\nreturn [{ json: {\n  ...auth,\n  project_id: fixProject ? fixProject.id : null,\n  project_exists: !!fixProject\n}}];"
+        "jsCode": "const projects = $('Get autofix project').first().json;\nconst issue = $('Parse issue + route agent').first().json;\n// Plane returns { results: [...] }\nconst projectsArr = Array.isArray(projects) ? projects : (projects.results || projects.data || []);\nconst fixProject = projectsArr.find(p => (p.name || '').toLowerCase().includes('auto-fix') || (p.name || '').toLowerCase().includes('autofix'));\nreturn [{ json: {\n  ...issue,\n  project_id: fixProject ? fixProject.id : null,\n  project_exists: !!fixProject\n}}];"
       },
       "id": "gha-0001-0000-0000-0000-000000000018",
       "name": "Resolve autofix project",
@@ -131,28 +93,28 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://kaneo-api:1337/api/task/{{ $json.project_id }}",
+        "url": "=http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug }}/projects/{{ $json.project_id }}/work-items/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie",       "value": "={{ $json.cookie }}" },
+            { "name": "X-API-Key",    "value": "={{ $json.plane_api_key }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"🔧 Auto-fix GH-{{ $json.issue_id }}: {{ $json.issue_title }}\",\n  \"description\": \"[agent:{{ $json.agent }}] Automated fix for GitHub issue #{{ $json.issue_id }} in {{ $json.repo }}\"\n}",
+        "jsonBody": "={\n  \"name\": \"Auto-fix GH-{{ $json.issue_id }}: {{ $json.issue_title }}\",\n  \"description_html\": \"<p>[agent:{{ $json.agent }}] Automated fix for GitHub issue #{{ $json.issue_id }} in {{ $json.repo }}</p>\",\n  \"priority\": \"high\"\n}",
         "options": {}
       },
       "id": "gha-0001-0000-0000-0000-000000000005",
-      "name": "Create Kaneo task",
+      "name": "Create Plane work-item",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1360, 200]
     },
     {
       "parameters": {
-        "jsCode": "// Store Kaneo task ID + issue data for downstream nodes\nconst kaneoBefore = $('Create Kaneo task').first().json;\nconst issue = $('Resolve autofix project').first().json;\n\nconst taskId = kaneoBefore.id || kaneoBefore.data?.id || null;\n\nif (!taskId) {\n  console.warn('Kaneo task creation returned no ID — task tracking will be skipped');\n}\n\nreturn [{ json: {\n  ...issue,\n  kaneo_task_id: taskId\n}}];"
+        "jsCode": "// Store Plane work-item ID + issue data for downstream nodes\nconst planeResp = $('Create Plane work-item').first().json;\nconst issue = $('Resolve autofix project').first().json;\n\nconst workItemId = planeResp.id || planeResp.data?.id || null;\n\nif (!workItemId) {\n  console.warn('Plane work-item creation returned no ID — task tracking will be skipped');\n}\n\nreturn [{ json: {\n  ...issue,\n  plane_work_item_id: workItemId\n}}];"
       },
       "id": "gha-0001-0000-0000-0000-000000000006",
       "name": "Merge context",
@@ -182,7 +144,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extract PR URL from SSH command output\nconst raw = $input.first().json.stdout || '';\nconst exitCode = $input.first().json.exitCode ?? 0;\n\n// PR URL pattern: https://github.com/...\nconst match = raw.match(/https:\\/\\/github\\.com\\/[^\\s]+\\/pull\\/\\d+/);\nconst prUrl = match ? match[0] : null;\nconst success = exitCode === 0 && prUrl !== null;\n\nreturn [{ json: {\n  success,\n  pr_url: prUrl,\n  raw_output: raw.slice(0, 500),\n  exit_code: exitCode,\n  kaneo_task_id: $('Merge context').first().json.kaneo_task_id,\n  issue_id: $('Merge context').first().json.issue_id,\n  issue_title: $('Merge context').first().json.issue_title,\n  repo: $('Merge context').first().json.repo\n}}];"
+        "jsCode": "// Extract PR URL from SSH command output\nconst raw = $input.first().json.stdout || '';\nconst exitCode = $input.first().json.exitCode ?? 0;\n\n// PR URL pattern: https://github.com/...\nconst match = raw.match(/https:\\/\\/github\\.com\\/[^\\s]+\\/pull\\/\\d+/);\nconst prUrl = match ? match[0] : null;\nconst success = exitCode === 0 && prUrl !== null;\n\nreturn [{ json: {\n  success,\n  pr_url: prUrl,\n  raw_output: raw.slice(0, 500),\n  exit_code: exitCode,\n  plane_work_item_id: $('Merge context').first().json.plane_work_item_id,\n  issue_id: $('Merge context').first().json.issue_id,\n  issue_title: $('Merge context').first().json.issue_title,\n  repo: $('Merge context').first().json.repo,\n  project_id: $('Merge context').first().json.project_id,\n  plane_api_key: $('Merge context').first().json.plane_api_key\n}}];"
       },
       "id": "gha-0001-0000-0000-0000-000000000008",
       "name": "Parse SSH result",
@@ -192,23 +154,23 @@
     },
     {
       "parameters": {
-        "method": "PUT",
-        "url": "=http://kaneo-api:1337/api/task/status/{{ $json.kaneo_task_id }}",
+        "method": "PATCH",
+        "url": "=http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug }}/projects/{{ $json.project_id }}/work-items/{{ $json.plane_work_item_id }}/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie",       "value": "={{ $('Merge context').first().json.cookie }}" },
+            { "name": "X-API-Key",    "value": "={{ $json.plane_api_key }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"status\": \"{{ $json.success ? 'done' : 'to-do' }}\" }",
+        "jsonBody": "={ \"priority\": \"{{ $json.success ? 'none' : 'high' }}\" }",
         "options": {},
         "continueOnFail": true
       },
       "id": "gha-0001-0000-0000-0000-000000000009",
-      "name": "Update Kaneo task status",
+      "name": "Update Plane work-item",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [2060, 160]
@@ -216,17 +178,17 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://kaneo-api:1337/api/activity/comment",
+        "url": "=http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug }}/projects/{{ $json.project_id }}/work-items/{{ $json.plane_work_item_id }}/comments/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie",       "value": "={{ $('Merge context').first().json.cookie }}" },
+            { "name": "X-API-Key",    "value": "={{ $json.plane_api_key }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"taskId\": \"{{ $json.kaneo_task_id }}\",\n  \"comment\": \"[DELIVERABLE] PR Auto-fix GH-{{ $json.issue_id }} — {{ $json.pr_url }}\"\n}",
+        "jsonBody": "={\n  \"comment_html\": \"<p>[DELIVERABLE] PR Auto-fix GH-{{ $json.issue_id }} — {{ $json.pr_url }}</p>\"\n}",
         "options": {},
         "continueOnFail": true
       },
@@ -239,17 +201,17 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://kaneo-api:1337/api/activity/comment",
+        "url": "=http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug }}/projects/{{ $json.project_id }}/work-items/{{ $json.plane_work_item_id }}/comments/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Cookie",       "value": "={{ $('Merge context').first().json.cookie }}" },
+            { "name": "X-API-Key",    "value": "={{ $json.plane_api_key }}" },
             { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"taskId\": \"{{ $json.kaneo_task_id }}\",\n  \"comment\": \"Auto-fix {{ $json.success ? 'reussi' : 'echoue' }}. {{ $json.pr_url ? 'PR: ' + $json.pr_url : 'Pas de PR generee.' }}\"\n}",
+        "jsonBody": "={\n  \"comment_html\": \"<p>Auto-fix {{ $json.success ? 'reussi' : 'echoue' }}. {{ $json.pr_url ? 'PR: ' + $json.pr_url : 'Pas de PR generee.' }}</p>\"\n}",
         "options": {},
         "continueOnFail": true
       },
@@ -327,11 +289,17 @@
     },
     "Parse issue + route agent": {
       "main": [[
-        { "node": "Create Kaneo task",  "type": "main", "index": 0 },
-        { "node": "Webhook Response",   "type": "main", "index": 0 }
+        { "node": "Get autofix project",  "type": "main", "index": 0 },
+        { "node": "Webhook Response",     "type": "main", "index": 0 }
       ]]
     },
-    "Create Kaneo task": {
+    "Get autofix project": {
+      "main": [[{ "node": "Resolve autofix project", "type": "main", "index": 0 }]]
+    },
+    "Resolve autofix project": {
+      "main": [[{ "node": "Create Plane work-item", "type": "main", "index": 0 }]]
+    },
+    "Create Plane work-item": {
       "main": [[{ "node": "Merge context", "type": "main", "index": 0 }]]
     },
     "Merge context": {
@@ -344,9 +312,9 @@
       "main": [[{ "node": "Parse SSH result", "type": "main", "index": 0 }]]
     },
     "Parse SSH result": {
-      "main": [[{ "node": "Update Kaneo task", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Update Plane work-item", "type": "main", "index": 0 }]]
     },
-    "Update Kaneo task": {
+    "Update Plane work-item": {
       "main": [[{ "node": "Build rapport", "type": "main", "index": 0 }]]
     },
     "Build rapport": {
@@ -364,6 +332,6 @@
   "staticData": null,
   "tags": [{ "name": "github" }, { "name": "auto-fix" }, { "name": "claude-code" }],
   "triggerCount": 1,
-  "updatedAt": "2026-02-22T00:00:00.000Z",
-  "versionId": "2"
+  "updatedAt": "2026-03-02T00:00:00.000Z",
+  "versionId": "3"
 }

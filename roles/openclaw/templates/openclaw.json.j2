@@ -450,10 +450,18 @@
       "reactionLevel": "minimal",
 {% if telegram_openclaw_chat_id | default('') | length > 0 %}
       "dmPolicy": "allowlist",
-      "allowFrom": ["{{ telegram_openclaw_chat_id }}"]
+      "allowFrom": ["{{ telegram_openclaw_chat_id }}"],
 {% else %}
-      "dmPolicy": "pairing"
+      "dmPolicy": "pairing",
 {% endif %}
+      "customCommands": [
+        { "command": "tasks", "description": "Lister mes taches en cours" },
+        { "command": "status", "description": "Statut de la stack" },
+        { "command": "budget", "description": "Budget IA 24h" },
+        { "command": "approve", "description": "Approuver une idee" },
+        { "command": "reject", "description": "Refuser une idee" },
+        { "command": "projects", "description": "Lister les projets actifs" }
+      ]
     }{{ ',' if whatsapp_tutor_enabled | default(false) else '' }}
 {% endif %}
 {% if whatsapp_tutor_enabled | default(false) %}

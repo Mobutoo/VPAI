@@ -19,7 +19,6 @@ Acces VPN uniquement via Tailscale mesh (Headscale).
 |---|---|---|
 | LiteLLM | https://{{ litellm_subdomain }}.{{ domain_name }}/v1 | Modeles IA |
 | n8n | https://{{ n8n_subdomain }}.{{ domain_name }} | Workflows |
-| Kaneo | https://{{ kaneo_subdomain_override | default('hq') }}.{{ domain_name }} | PM/Tasks |
 | Grafana | https://{{ grafana_subdomain }}.{{ domain_name }} | Monitoring |
 
 ## MCP Servers actifs
@@ -29,9 +28,6 @@ Acces VPN uniquement via Tailscale mesh (Headscale).
 {% endif %}
 {% if claude_code_mcp_filesystem_enabled | default(false) %}
 - **filesystem** : Operations fichiers dans `{{ claude_code_mcp_filesystem_workspace }}`
-{% endif %}
-{% if claude_code_mcp_kaneo_enabled | default(false) %}
-- **kaneo** : Gestion taches via API Kaneo
 {% endif %}
 {% if claude_code_mcp_n8n_enabled | default(false) %}
 - **n8n** : Declenchement workflows n8n

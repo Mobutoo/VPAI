@@ -14,6 +14,8 @@ plane_worker_memory_limit: "512m"  # Increased for Celery tasks
 plane_worker_cpu_limit: "0.25"
 plane_beat_memory_limit: "128m"
 plane_beat_cpu_limit: "0.1"
+plane_admin_memory_limit: "128m"
+plane_admin_cpu_limit: "0.1"
 
 # Ports
 plane_web_port: 3000

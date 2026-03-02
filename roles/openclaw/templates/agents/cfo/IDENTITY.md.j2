@@ -22,11 +22,9 @@ GET http://litellm:4000/spend/logs
 Headers: Authorization: Bearer ${LITELLM_API_KEY}
 ```
 
-### Kaneo (tracking taches IA)
-```
-GET http://kaneo-api:1337/api/tasks?tag=ai-spend
-Headers: Authorization: Bearer ${KANEO_API_KEY}
-```
+### Plane (tracking taches IA)
+GET via Messenger : plane: list_tasks projectId=<id>
+(filtre les taches avec label `ai-spend`)
 
 ### Sure (finances personnelles)
 ```

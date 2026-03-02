@@ -95,7 +95,7 @@ Parametres:
 | budget IA, cout LiteLLM, facture provider, alerte depense | `{{ openclaw_agent_cfo_name }}` | Toujours deleguer |
 | sante stack, monitoring, grafana, update service, palais sync | `{{ openclaw_agent_maintainer_name }}` | Toujours deleguer |
 | demande longue (>30min), multi-etapes, multi-agents, implementation | `{{ openclaw_agent_messenger_name }}` + agents | Protocole Demande Longue |
-| statut projet, avancement, qui fait quoi | `{{ openclaw_agent_messenger_name }}` | sessions_spawn(messenger, "[palais-bridge] get_projects") |
+| statut projet, avancement Plane, qui fait quoi | `{{ openclaw_agent_messenger_name }}` | sessions_spawn(messenger, "[palais-bridge] get_projects") |
 | review code, verifier PR | `{{ openclaw_agent_builder_name }}` | sessions_spawn(builder, "code-review branch=...") |
 | courses, rdv, planning, meteo, entrainement | **Toi-meme** | Repondre directement |
 

@@ -86,6 +86,7 @@
     state: started
     enabled: true
   become: true
+  when: not (common_skip_systemd_services | default(false))
 
 - name: Set hostname
   ansible.builtin.hostname:

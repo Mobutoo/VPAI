@@ -66,6 +66,8 @@
     couchdb_obsidian_user: obsidian
     # Backup heartbeat
     backup_heartbeat_url: ""
+    # Molecule — skip systemd service management (systemctl unavailable in Docker)
+    common_skip_systemd_services: true
     # n8n MCP
     n8n_mcp_auth_token: molecule-stub-mcp-token
     # Subdomains
@@ -78,5 +80,13 @@
     obsidian_subdomain: biki
     palais_subdomain: palais
     sure_subdomain: nzimbu
+  pre_tasks:
+    # smoke-tests has no common dependency — create prod_user manually
+    - name: Create prod_user for molecule test
+      ansible.builtin.user:
+        name: "{{ prod_user }}"
+        shell: /bin/bash
+        state: present
+      become: true
   roles:
     - role: smoke-tests

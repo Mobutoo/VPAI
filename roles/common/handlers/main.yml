@@ -11,9 +11,11 @@
     name: systemd-timesyncd
     state: restarted
   become: true
+  when: not (common_skip_systemd_services | default(false))
 
 - name: Restart systemd-journald
   ansible.builtin.systemd:
     name: systemd-journald
     state: restarted
   become: true
+  when: not (common_skip_systemd_services | default(false))

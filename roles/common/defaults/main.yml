@@ -47,3 +47,8 @@ common_swap_file: "/swapfile"
 common_ntp_servers:
   - "0.pool.ntp.org"
   - "1.pool.ntp.org"
+
+# --- Molecule / Docker compatibility ---
+# Set to true in molecule converge.yml to skip systemd service management
+# (systemctl is unavailable in Docker containers without full cgroup v2 + systemd)
+common_skip_systemd_services: false

@@ -118,6 +118,7 @@
     creates: /etc/apt/keyrings/crowdsec-archive-keyring.gpg
   changed_when: true
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Add CrowdSec repository
   ansible.builtin.apt_repository:
@@ -128,6 +129,7 @@
     state: present
     filename: crowdsec
   become: true
+  when: not (common_molecule_mode | default(false))
   # Note: Use bookworm (Debian 12) repo as trixie (Debian 13) not yet supported
 
 - name: Install CrowdSec
@@ -138,12 +140,14 @@
     state: present
     update_cache: true
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Install CrowdSec collections
   ansible.builtin.command:
     cmd: "cscli collections install {{ item }}"
   loop: "{{ hardening_crowdsec_collections }}"
   become: true
+  when: not (common_molecule_mode | default(false))
   changed_when: false
 
 - name: Enable and start CrowdSec

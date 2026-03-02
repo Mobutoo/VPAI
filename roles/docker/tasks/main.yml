@@ -40,6 +40,7 @@
     creates: /etc/apt/keyrings/docker.gpg
   changed_when: true
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Add Docker repository
   ansible.builtin.apt_repository:
@@ -51,6 +52,7 @@
     state: present
     filename: docker
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Install Docker CE and Compose plugin
   ansible.builtin.apt:
@@ -63,6 +65,7 @@
     state: present
     update_cache: true
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Deploy Docker daemon.json
   ansible.builtin.template:
@@ -73,6 +76,7 @@
     mode: "0644"
   become: true
   notify: Restart docker
+  when: not (common_molecule_mode | default(false))
 
 - name: Add user to docker group
   ansible.builtin.user:
@@ -80,6 +84,7 @@
     groups: docker
     append: true
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Enable and start Docker
   ansible.builtin.systemd:

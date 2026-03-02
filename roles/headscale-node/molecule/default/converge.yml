@@ -74,10 +74,12 @@
     # Notification
     notification_method: telegram
     notification_email: ""
+    notification_webhook_url: ""
     # Target environment
     target_env: prod
     # Qdrant
     qdrant_cache_collection: semantic_cache
+    qdrant_rag_collection: content_index
     # Docker networks (inventory/group_vars/all/docker.yml)
     docker_network_frontend_subnet: 172.20.1.0/24
     docker_network_backend_subnet: 172.20.2.0/24

@@ -33,7 +33,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install ansible ansible-lint yamllint
+          pip install -r requirements.txt
 
       - name: Install Ansible collections
         run: |
@@ -97,7 +97,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install ansible ansible-lint molecule molecule-docker jmespath yamllint
+          pip install -r requirements.txt
 
       - name: Install Ansible collections
         run: |
@@ -109,3 +109,6 @@ jobs:
           molecule test
         env:
           ANSIBLE_FORCE_COLOR: "1"
+          # molecule-docker destroy.yml uses non-boolean when: (lookup('env','HOME'))
+          # Fixed in ansible-core 2.17+ strict boolean mode — allow until upstream fix
+          ANSIBLE_ALLOW_BROKEN_CONDITIONALS: "True"

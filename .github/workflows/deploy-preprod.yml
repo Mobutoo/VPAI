@@ -16,6 +16,8 @@
 name: Deploy Pre-production
 
 on:
+  # Deploy preprod is MANUAL ONLY — push trigger disabled until preprod server is configured
+  # Re-enable push trigger when PREPROD_SERVER_IP secret is set in the preprod environment
   workflow_dispatch:
     inputs:
       seed_data:
@@ -28,16 +30,6 @@ on:
         required: false
         type: boolean
         default: false
-  push:
-    branches: [main]
-    paths:
-      - 'roles/**'
-      - 'playbooks/**'
-      - 'inventory/**'
-      - 'templates/**'
-      - 'ansible.cfg'
-      - 'requirements.txt'
-      - 'requirements.yml'
 
 env:
   ANSIBLE_FORCE_COLOR: "1"
@@ -87,7 +79,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.PREPROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "${{ secrets.PREPROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Wait for SSH availability
         run: |
@@ -137,7 +129,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.PREPROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "${{ secrets.PREPROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Create vault password file
         run: |
@@ -165,7 +157,7 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.PREPROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "${{ secrets.PREPROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Wait for services to stabilize
         run: sleep 30

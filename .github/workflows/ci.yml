@@ -13,6 +13,8 @@ on:
       - 'ansible.cfg'
       - 'requirements.txt'
       - 'requirements.yml'
+      - '.ansible-lint'
+      - '.yamllint.yml'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]

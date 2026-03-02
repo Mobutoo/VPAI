@@ -1,5 +1,9 @@
 ---
 - name: Converge
   hosts: all
+  vars:
+    # Stub values for site-wide variables (defined in inventory/group_vars/all, not in role defaults)
+    prod_user: molecule
+    project_name: molecule-test
   roles:
     - role: diun

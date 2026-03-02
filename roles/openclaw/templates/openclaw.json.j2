@@ -456,10 +456,7 @@
 {% endif %}
       "customCommands": [
         { "command": "tasks", "description": "Lister mes taches en cours" },
-        { "command": "status", "description": "Statut de la stack" },
         { "command": "budget", "description": "Budget IA 24h" },
-        { "command": "approve", "description": "Approuver une idee" },
-        { "command": "reject", "description": "Refuser une idee" },
         { "command": "projects", "description": "Lister les projets actifs" }
       ]
     }{{ ',' if whatsapp_tutor_enabled | default(false) else '' }}

@@ -18,6 +18,10 @@ platforms:
       - /tmp
 provisioner:
   name: ansible
+  extra_vars:
+    # Stub values for site-wide variables not in role defaults (defined in inventory/group_vars/all)
+    prod_user: molecule
+    project_name: molecule-test
   playbooks:
     converge: converge.yml
     verify: verify.yml

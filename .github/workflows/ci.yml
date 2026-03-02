@@ -10,6 +10,9 @@ on:
       - 'playbooks/**'
       - 'inventory/**'
       - 'templates/**'
+      - 'ansible.cfg'
+      - 'requirements.txt'
+      - 'requirements.yml'
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]

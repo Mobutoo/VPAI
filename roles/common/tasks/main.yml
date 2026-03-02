@@ -86,7 +86,7 @@
     state: started
     enabled: true
   become: true
-  when: not (common_skip_systemd_services | default(false))
+  when: not (common_molecule_mode | default(false))
 
 - name: Set hostname
   ansible.builtin.hostname:
@@ -100,6 +100,7 @@
     line: "{{ common_headscale_ip }} {{ common_headscale_hostname }}"
     state: present
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Configure sysctl parameters
   ansible.posix.sysctl:
@@ -110,6 +111,7 @@
     reload: true
   loop: "{{ common_sysctl_settings | dict2items }}"
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Configure journald log limits
   ansible.builtin.template:
@@ -127,7 +129,10 @@
     path: "{{ common_swap_file }}"
   register: common_swap_file_check
   become: true
-  when: common_swap_enable and ansible_facts['memtotal_mb'] < 6144
+  when:
+    - not (common_molecule_mode | default(false))
+    - common_swap_enable
+    - ansible_facts['memtotal_mb'] < 6144
 
 - name: Create swap file
   ansible.builtin.command:
@@ -136,6 +141,7 @@
   become: true
   changed_when: true
   when:
+    - not (common_molecule_mode | default(false))
     - common_swap_enable
     - ansible_facts['memtotal_mb'] < 6144
     - not (common_swap_file_check.stat.exists | default(false))
@@ -147,7 +153,10 @@
     group: root
     mode: "0600"
   become: true
-  when: common_swap_enable and ansible_facts['memtotal_mb'] < 6144
+  when:
+    - not (common_molecule_mode | default(false))
+    - common_swap_enable
+    - ansible_facts['memtotal_mb'] < 6144
 
 - name: Format swap file
   ansible.builtin.command:
@@ -155,6 +164,7 @@
   become: true
   changed_when: true
   when:
+    - not (common_molecule_mode | default(false))
     - common_swap_enable
     - ansible_facts['memtotal_mb'] < 6144
     - not (common_swap_file_check.stat.exists | default(false))
@@ -165,7 +175,10 @@
   become: true
   changed_when: true
   failed_when: false
-  when: common_swap_enable and ansible_facts['memtotal_mb'] < 6144
+  when:
+    - not (common_molecule_mode | default(false))
+    - common_swap_enable
+    - ansible_facts['memtotal_mb'] < 6144
 
 - name: Add swap to fstab
   ansible.builtin.lineinfile:
@@ -174,7 +187,10 @@
     line: "{{ common_swap_file }} none swap sw 0 0"
     state: present
   become: true
-  when: common_swap_enable and ansible_facts['memtotal_mb'] < 6144
+  when:
+    - not (common_molecule_mode | default(false))
+    - common_swap_enable
+    - ansible_facts['memtotal_mb'] < 6144
 
 - name: Create project base directory
   ansible.builtin.file:

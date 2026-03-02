@@ -12,7 +12,7 @@
     domain_name: molecule.example.com
     # Locale/timezone
     locale: en_US.UTF-8
-    timezone: UTC
+    timezone: Etc/UTC
     # Prod server
     prod_hostname: molecule-test
     prod_ip: 127.0.0.1

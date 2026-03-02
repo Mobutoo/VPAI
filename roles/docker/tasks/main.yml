@@ -87,6 +87,7 @@
     state: started
     enabled: true
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Create Docker networks
   community.docker.docker_network:
@@ -97,6 +98,7 @@
       - subnet: "{{ item.subnet }}"
   loop: "{{ docker_networks }}"
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Deploy Docker cleanup cron script
   ansible.builtin.template:

@@ -10,6 +10,7 @@
     prod_user: molecule
     project_name: molecule-test
     domain_name: molecule.example.com
+    project_display_name: Molecule-Test
     # Locale/timezone
     locale: en_US.UTF-8
     timezone: Etc/UTC

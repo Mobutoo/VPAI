@@ -6,3 +6,4 @@
     name: docker
     state: restarted
   become: true
+  when: not (common_molecule_mode | default(false))

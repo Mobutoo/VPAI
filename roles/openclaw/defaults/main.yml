@@ -155,6 +155,12 @@ openclaw_skills:
   - idea-planning
   - palais-bridge
 
+# Skills supprimés — Ansible les supprime du répertoire global sur le VPS
+# Ajouter ici les skills obsolètes pour nettoyage automatique
+openclaw_skills_removed:
+  - kaneo-bridge    # Remplacé par Plane (phase 2, 2026-03-02)
+  - task-management # Skill orphelin Kaneo non géré par Ansible (phase 2, 2026-03-02)
+
 # --- Boîte à Idées ---
 # Cycle de vie des idées (Draft → Approved → Implemented)
 openclaw_ideas_project_name: "Boîte à Idées"

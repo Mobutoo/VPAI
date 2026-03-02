@@ -298,6 +298,16 @@
     - openclaw_volume_isolation | default(false)
     - openclaw_n8n_integration | default(false)
 
+- name: Remove obsolete skill directories (replaced by Plane integration)
+  ansible.builtin.file:
+    path: "{{ openclaw_system_dir }}/skills/{{ item }}"
+    state: absent
+  become: true
+  loop: "{{ openclaw_skills_removed | default([]) }}"
+  when:
+    - openclaw_volume_isolation | default(false)
+    - openclaw_n8n_integration | default(false)
+
 - name: Deploy OpenClaw environment file
   ansible.builtin.template:
     src: openclaw.env.j2

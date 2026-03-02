@@ -1102,6 +1102,91 @@ docker exec openclaw-sbx-agent-messenger-XXXX ls /workspace/AGENTS.md
 
 ---
 
+### 11.24 OpenClaw v2026.3.1 Upgrade (REX Session 2026-03-02)
+
+#### Probleme 1 : Validation schema config — `channels.telegram.direct`
+
+**Symptome** : Container restart loop au demarrage, config invalide.
+
+**Erreurs dans les logs** :
+```
+channels.telegram.direct.allowFrom: Invalid input: expected object, received array
+channels.telegram.direct.requireTopic: Invalid input: expected object, received boolean
+```
+
+**Cause** : v2026.3.1 change le schema du bloc `direct` dans la config Telegram. Les champs `allowFrom` et `requireTopic` a l'interieur de `direct` attendent des types `object`, pas `array`/`boolean`.
+
+**Fix** : Supprimer le bloc `direct` du template `openclaw.json.j2`. La fonctionnalite DM continue de fonctionner via les cles racine `allowFrom` + `dmPolicy: allowlist`.
+
+```json
+// AVANT (v2026.2.x — casse en v2026.3.1)
+"telegram": {
+  "allowFrom": ["@myuser"],
+  "direct": {
+    "allowFrom": ["@myuser"],
+    "requireTopic": false
+  }
+}
+
+// APRES (v2026.3.1)
+"telegram": {
+  "allowFrom": ["@myuser"],
+  "dmPolicy": "allowlist"
+}
+```
+
+---
+
+#### Probleme 2 : Cle racine `heartbeat` non reconnue
+
+**Symptome** : Message dans les logs au demarrage :
+```
+<root>: Unrecognized key: "heartbeat"
+```
+
+**Cause** : En v2026.3.1, le heartbeat demarre nativement sans config explicite. La cle `heartbeat` n'est PAS une cle valide au niveau racine de `openclaw.json`.
+
+**Fix** : Supprimer le bloc `heartbeat` du template. Le heartbeat demarre automatiquement — confirme dans les logs :
+```
+[heartbeat] started
+```
+
+**Note** : Le comportement `lightContext` est controle par le contenu de `HEARTBEAT.md`, pas par la config.
+
+---
+
+#### Probleme 3 : Mismatch de tag image (cosmétique)
+
+**Observation** : Le tag Docker `2026.3.1` se resout en `v2026.3.1-beta.1` en interne.
+
+**Logs Gateway** :
+```
+update available (latest): v2026.3.1 (current v2026.3.1-beta.1)
+```
+
+Pas un probleme bloquant, mais a noter pour les futurs upgrades : le tag semver sans `v` peut pointer vers une beta.
+
+---
+
+#### Ce qui a bien fonctionne
+
+- **Healthcheck HTTP `/healthz`** : fonctionne parfaitement (remplace le hack WebSocket upgrade precedent)
+- **HEARTBEAT.md.j2 reecrit** (infra-only, sans appels API Kaneo morts) : heartbeat tourne proprement
+- **`OPENCLAW_BROWSER_NO_SANDBOX=1`** : variable d'env acceptee sans probleme
+- **Plugin Telegram** : charge automatiquement avec la config existante
+- **Snapshot VPS pre-upgrade** : a permis un rollback safe si necessaire
+
+---
+
+#### Lecons retenues
+
+- Verifier `docker logs <container>` immediatement apres le deploy — les erreurs de validation config apparaissent dans les premieres lignes
+- La sous-commande `openclaw doctor --fix` peut aider a diagnostiquer les problemes de config
+- Les nouvelles versions d'OpenClaw peuvent changer le schema config — valider le diff du template `.j2` avant chaque upgrade
+- Le heartbeat est natif, aucun config explicite requis — fournir uniquement `HEARTBEAT.md`
+
+---
+
 ## 12. Reseau & VPN
 
 ### 12.1 Reseaux Docker Isoles

@@ -15,7 +15,7 @@
   failed_when: false
   become: true
 
-- name: Download and install Go {{ workstation_go_official_version }} ARM64
+- name: Download and install Go ARM64 (version {{ workstation_go_official_version }})
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |

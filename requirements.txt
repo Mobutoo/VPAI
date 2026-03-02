@@ -1,8 +1,12 @@
 # Python dependencies for CI/CD workflows
 # Used by actions/setup-python cache: 'pip' in .github/workflows/
-ansible>=9.0
-ansible-lint>=24.0
+#
+# NOTE: ansible<11 pins ansible-core to 2.17.x range
+# molecule-docker 2.1 is incompatible with ansible-core 2.20 (destroy.yml boolean bug)
+# Upper bounds prevent accidental breaking upgrades in CI
+ansible>=9.0,<11.0
+ansible-lint>=24.0,<26.0
 yamllint>=1.35
-molecule>=24.0
-molecule-docker>=2.1
+molecule>=24.0,<25.0
+molecule-docker>=2.1,<3.0
 jmespath>=1.0

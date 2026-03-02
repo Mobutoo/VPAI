@@ -2,6 +2,7 @@
 galaxy_info:
   role_name: openclaw
   author: VPAI
+  namespace: mobutoo
   description: OpenClaw personal AI assistant Gateway with LiteLLM proxy integration
   license: MIT
   min_ansible_version: "2.16"

@@ -2,6 +2,7 @@
 galaxy_info:
   role_name: smoke_tests
   author: VPAI
+  namespace: mobutoo
   description: Post-deployment smoke tests — service health verification
   license: MIT
   min_ansible_version: "2.16"

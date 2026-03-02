@@ -2,6 +2,7 @@
 galaxy_info:
   role_name: backup_config
   author: VPAI
+  namespace: mobutoo
   description: Backup configuration — pre-backup scripts, cron, Zerobyte integration
   license: MIT
   min_ansible_version: "2.16"

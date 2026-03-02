@@ -2,6 +2,7 @@
 galaxy_info:
   role_name: common
   author: VPAI
+  namespace: mobutoo
   description: Base OS configuration — packages, locale, timezone, NTP, sysctl, directories
   license: MIT
   min_ansible_version: "2.16"

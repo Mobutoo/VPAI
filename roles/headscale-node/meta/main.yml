@@ -2,6 +2,7 @@
 galaxy_info:
   role_name: headscale_node
   author: VPAI
+  namespace: mobutoo
   description: Tailscale client installation and Headscale server registration
   license: MIT
   min_ansible_version: "2.16"

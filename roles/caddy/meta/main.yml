@@ -2,6 +2,7 @@
 galaxy_info:
   role_name: caddy
   author: VPAI
+  namespace: mobutoo
   description: Caddy reverse proxy with TLS auto, rate limiting, VPN ACL
   license: MIT
   min_ansible_version: "2.16"

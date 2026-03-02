@@ -2,6 +2,7 @@
 galaxy_info:
   role_name: docker
   author: VPAI
+  namespace: mobutoo
   description: Docker CE installation, Compose plugin, daemon config, network creation
   license: MIT
   min_ansible_version: "2.16"

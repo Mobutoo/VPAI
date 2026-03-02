@@ -1,0 +1,120 @@
+---
+# .github/workflows/deploy-waza.yml — Deploy to Waza (Workstation Pi)
+#
+# Waza = Raspberry Pi 5 16GB — Mission Control, Claude Code, OpenCode, ComfyUI
+# Playbook: playbooks/workstation.yml
+#
+# Required GitHub secrets:
+#   SSH_PRIVATE_KEY_WAZA     — SSH private key for waza (or same as prod)
+#   ANSIBLE_VAULT_PASSWORD   — Vault password
+#   WAZA_SERVER_IP           — Waza Tailscale IP (100.64.x.x)
+
+name: Deploy Waza
+
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        description: 'Ansible tags (leave empty for full deploy)'
+        required: false
+        type: string
+        default: ''
+  push:
+    branches: [main]
+    paths:
+      - 'roles/workstation-common/**'
+      - 'roles/headscale-node/**'
+      - 'roles/opencode/**'
+      - 'roles/claude-code/**'
+      - 'roles/codex-cli/**'
+      - 'roles/gemini-cli/**'
+      - 'roles/comfyui/**'
+      - 'roles/opencut/**'
+      - 'roles/workstation-caddy/**'
+      - 'roles/workstation-monitoring/**'
+      - 'roles/obsidian-collector-pi/**'
+      - 'roles/n8n-mcp/**'
+      - 'playbooks/workstation.yml'
+      - 'inventory/group_vars/workstation/**'
+      - 'inventory/group_vars/all/**'
+      - 'ansible.cfg'
+      - 'requirements.txt'
+      - 'requirements.yml'
+
+env:
+  ANSIBLE_FORCE_COLOR: "1"
+
+jobs:
+  lint:
+    name: Lint Workstation Playbook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install ansible ansible-lint yamllint
+
+      - name: Install Ansible collections
+        run: ansible-galaxy install -r requirements.yml
+
+      - name: Create dummy vault password (lint only)
+        run: echo "dummy" > .vault_password
+
+      - name: YAML Lint
+        run: |
+          find . \( -name '*.yml' -o -name '*.yaml' \) \
+            ! -path './.git/*' ! -path './.venv/*' \
+            ! -path '*/molecule/*' ! -path '*/collections/*' \
+            ! -name 'secrets.yml' -print0 | xargs -0 yamllint -c .yamllint.yml
+
+      - name: Ansible Lint (workstation playbook)
+        run: ansible-lint playbooks/workstation.yml
+
+  deploy:
+    name: Deploy to Waza
+    needs: lint
+    runs-on: ubuntu-latest
+    environment: waza
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install ansible jmespath
+          ansible-galaxy install -r requirements.yml
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY_WAZA || secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.WAZA_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Create vault password file
+        run: |
+          printf '%s' "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_password
+          chmod 600 .vault_password
+
+      - name: Deploy to Waza
+        run: |
+          TAGS_OPTION=""
+          if [ -n "${{ github.event.inputs.tags }}" ]; then
+            TAGS_OPTION="--tags ${{ github.event.inputs.tags }}"
+          fi
+
+          ansible-playbook playbooks/workstation.yml \
+            -i "${{ secrets.WAZA_SERVER_IP }}," \
+            -e "ansible_user=mobuone" \
+            -e "ansible_port=22" \
+            ${TAGS_OPTION} \
+            --diff

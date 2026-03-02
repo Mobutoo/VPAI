@@ -37,7 +37,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug }}/projects/{{ plane_assets_project_id }}/work-items/",
+        "url": "http://plane-api:8000/api/v1/workspaces/ewutelo/projects/71de60ae-4218-4581-bacb-057b1436effb/work-items/",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

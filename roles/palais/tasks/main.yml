@@ -134,7 +134,7 @@
       - "--exclude=.svelte-kit"
       - "--exclude=build"
     delete: true
-    dest_port: "{{ prod_ssh_port | int }}"
+    dest_port: "{{ ansible_port | default(prod_ssh_port) | int }}"
   notify: Restart palais
   # delegate_to / docker exec / synchronize incompatible with molecule
   when: not (common_molecule_mode | default(false))

@@ -76,6 +76,17 @@
 
 # ── DB Migration: add columns + extend node_status enum ─────────────────────
 # Idempotent (IF NOT EXISTS) — ALTER TYPE ADD VALUE must run outside a transaction
+# Guard: skip if postgresql container is not running (first deploy on fresh server)
+
+- name: Check if postgresql container is running (skip migrations if not yet started)
+  ansible.builtin.command:
+    cmd: docker container inspect {{ project_name }}_postgresql
+  register: _pg_container_check
+  changed_when: false
+  failed_when: false
+  become: true
+  when: not (common_molecule_mode | default(false))
+  tags: [palais]
 
 - name: Palais DB migration — add bio/local_ip/description columns
   ansible.builtin.command:
@@ -89,7 +100,10 @@
   register: _palais_db_migrate
   failed_when: _palais_db_migrate.rc != 0
   # delegate_to / docker exec / synchronize incompatible with molecule
-  when: not (common_molecule_mode | default(false))
+  when:
+    - not (common_molecule_mode | default(false))
+    - _pg_container_check is defined
+    - _pg_container_check.rc | default(1) == 0
   tags: [palais]
 
 - name: Palais DB migration — extend node_status enum with busy/degraded
@@ -103,7 +117,10 @@
   register: _palais_db_enum
   failed_when: _palais_db_enum.rc != 0
   # delegate_to / docker exec / synchronize incompatible with molecule
-  when: not (common_molecule_mode | default(false))
+  when:
+    - not (common_molecule_mode | default(false))
+    - _pg_container_check is defined
+    - _pg_container_check.rc | default(1) == 0
   tags: [palais]
 
 # ─────────────────────────────────────────────────────────────────────────────

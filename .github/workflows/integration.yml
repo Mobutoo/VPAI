@@ -212,34 +212,35 @@ jobs:
           printf '%s' "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_password
           chmod 600 .vault_password
 
-      - name: Deploy — First run (fresh server, port 22)
+      - name: Create CI inventory (CX22 IP in [preprod] group for site.yml)
         env:
           SERVER_IP: ${{ needs.provision.outputs.server_ip }}
           PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
         run: |
+          # site.yml uses hosts: "{{ target_env }}" — need a [preprod] group
+          cat > /tmp/ci_inventory.ini << EOF
+          [preprod]
+          ${SERVER_IP} ansible_user=root ansible_port=22 ansible_port_override=22 ansible_ssh_private_key_file=~/.ssh/ci_key ansible_ssh_common_args='-o StrictHostKeyChecking=no' target_env=preprod domain_name=${PREPROD_DOMAIN}
+          EOF
+          echo "CI inventory:"
+          cat /tmp/ci_inventory.ini
+
+      - name: Deploy — First run (fresh server, port 22)
+        env:
+          PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
+        run: |
           ansible-playbook playbooks/site.yml \
-            -i "${SERVER_IP}," \
-            -e "ansible_user=root" \
-            -e "ansible_port=22" \
-            -e "ansible_port_override=22" \
-            -e "ansible_ssh_private_key_file=~/.ssh/ci_key" \
-            -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+            -i /tmp/ci_inventory.ini \
             -e "target_env=preprod" \
             -e "domain_name=${PREPROD_DOMAIN}" \
             --diff
 
       - name: Deploy — Second run (idempotence check, changed=0 required)
         env:
-          SERVER_IP: ${{ needs.provision.outputs.server_ip }}
           PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
         run: |
           ansible-playbook playbooks/site.yml \
-            -i "${SERVER_IP}," \
-            -e "ansible_user=root" \
-            -e "ansible_port=22" \
-            -e "ansible_port_override=22" \
-            -e "ansible_ssh_private_key_file=~/.ssh/ci_key" \
-            -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+            -i /tmp/ci_inventory.ini \
             -e "target_env=preprod" \
             -e "domain_name=${PREPROD_DOMAIN}" \
             2>&1 | tee /tmp/ansible_idempotence.log

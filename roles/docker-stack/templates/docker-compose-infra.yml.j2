@@ -175,40 +175,25 @@ services:
   # Seko-VPN (role webhook-relay) — 100% auto-hébergé, zéro dépendance tiers.
 
 networks:
+  # Networks pre-created by the 'docker' Ansible role — declare external to avoid
+  # label mismatch errors (com.docker.compose.network label not set by docker role).
+  # docker-compose.yml (Phase B) uses the same external: true pattern.
   frontend:
     name: {{ project_name }}_frontend
-    driver: bridge
-    ipam:
-      config:
-        - subnet: {{ docker_network_frontend_subnet }}
+    external: true
 
   backend:
     name: {{ project_name }}_backend
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: {{ docker_network_backend_subnet }}
+    external: true
 
   egress:
     name: {{ project_name }}_egress
-    driver: bridge
-    ipam:
-      config:
-        - subnet: {{ docker_network_egress_subnet }}
+    external: true
 
   monitoring:
     name: {{ project_name }}_monitoring
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: {{ docker_network_monitoring_subnet }}
+    external: true
 
   sandbox:
     name: {{ project_name }}_sandbox
-    driver: bridge
-    internal: true
-    ipam:
-      config:
-        - subnet: {{ docker_network_sandbox_subnet }}
+    external: true

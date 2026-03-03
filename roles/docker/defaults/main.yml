@@ -24,6 +24,9 @@ docker_networks:
   - name: "{{ project_name }}_egress"
     subnet: "{{ docker_network_egress_subnet }}"
     internal: false
+  - name: "{{ project_name }}_sandbox"
+    subnet: "{{ docker_network_sandbox_subnet }}"
+    internal: true
 
 docker_cleanup_cron_weekday: "0"
 docker_cleanup_cron_hour: "4"

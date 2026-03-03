@@ -103,5 +103,7 @@
     sure_subdomain: nzimbu
     # LiteLLM UI admin — litellm_ui_username is in defaults (empty), password is in vault
     litellm_ui_password: molecule-stub-ui-pass
+    # Qdrant semantic cache — defined in inventory/group_vars/all/main.yml, not litellm defaults
+    qdrant_embedding_model: "text-embedding-3-small"
   roles:
     - role: litellm

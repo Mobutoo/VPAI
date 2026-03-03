@@ -105,5 +105,8 @@
     openclaw_sandbox_mode: "off"
     # Plane integration — stub dict (openclaw.env.j2 iterates vault_plane_agent_tokens)
     vault_plane_agent_tokens: {}
+    # Palais integration — palais_port is in palais role defaults (not openclaw)
+    palais_api_key: "molecule-stub-palais-key"
+    palais_port: 3300
   roles:
     - role: openclaw

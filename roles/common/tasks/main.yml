@@ -210,3 +210,6 @@
     mode: "0755"
   loop: "{{ common_project_dirs }}"
   become: true
+  when: not (common_molecule_mode | default(false))
+  # 'backups' subdir appears in both common_project_dirs (0755) and backup_base_dir (0750)
+  # — competing modes cause idempotence failure on second converge run in molecule

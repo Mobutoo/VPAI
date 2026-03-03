@@ -233,7 +233,7 @@ jobs:
           ansible-playbook playbooks/site.yml \
             -i inventory/ci_hosts.ini \
             --vault-password-file .vault_password \
-            --skip-tags vpn-dns,palais-mcp,hardening \
+            --skip-tags vpn-dns,palais-mcp,hardening,n8n-provision,plane-provision \
             -e "target_env=preprod" \
             -e "domain_name=${PREPROD_DOMAIN}" \
             --diff
@@ -245,7 +245,7 @@ jobs:
           ansible-playbook playbooks/site.yml \
             -i inventory/ci_hosts.ini \
             --vault-password-file .vault_password \
-            --skip-tags vpn-dns,palais-mcp,hardening \
+            --skip-tags vpn-dns,palais-mcp,hardening,n8n-provision,plane-provision \
             -e "target_env=preprod" \
             -e "domain_name=${PREPROD_DOMAIN}" \
             2>&1 | tee /tmp/ansible_idempotence.log

@@ -76,7 +76,7 @@ jobs:
           # Create CX22 with Debian 13 (trixie) — labelled for traceability
           SERVER_JSON=$(hcloud server create \
             --name "ci-integration-${{ github.run_id }}" \
-            --type cx22 \
+            --type cx23 \
             --image debian-13 \
             --ssh-key "${KEY_NAME}" \
             --location nbg1 \

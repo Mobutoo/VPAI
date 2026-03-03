@@ -1,0 +1,412 @@
+---
+# .github/workflows/integration.yml — Integration tests on ephemeral Hetzner CX22
+# Design: docs/plans/2026-03-03-integration-ci-design.md
+#
+# Triggers:
+#   - schedule: Sunday 05:00 UTC (after backups at 03:00)
+#   - workflow_dispatch: manual via GitHub UI or `make integration` (Waza)
+#
+# Required secrets (environment: integration):
+#   HETZNER_CLOUD_TOKEN, ANSIBLE_VAULT_PASSWORD, SSH_PRIVATE_KEY,
+#   OVH_APPLICATION_KEY, OVH_APPLICATION_SECRET, OVH_CONSUMER_KEY,
+#   PREPROD_DOMAIN (e.g. preprod.ewutelo.cloud), LITELLM_MASTER_KEY
+
+name: Integration
+
+on:
+  schedule:
+    - cron: '0 5 * * 0'   # Dimanche 05:00 UTC — backups 03:00 terminés
+  workflow_dispatch:
+
+env:
+  ANSIBLE_FORCE_COLOR: "1"
+
+jobs:
+  # ===========================================================================
+  # Job 1 — provision : CX22 (Debian 13) + OVH wildcard DNS
+  # Outputs: server_id, server_ip, ssh_key_name
+  # ===========================================================================
+  provision:
+    name: Provision CX22 + DNS
+    runs-on: ubuntu-latest
+    environment: integration
+    outputs:
+      server_id: ${{ steps.server.outputs.server_id }}
+      server_ip: ${{ steps.server.outputs.server_ip }}
+      ssh_key_name: ${{ steps.server.outputs.ssh_key_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install ovh requests
+
+      - name: Install hcloud CLI
+        run: |
+          HCLOUD_VERSION="v1.47.0"
+          curl -sL \
+            "https://github.com/hetznercloud/cli/releases/download/${HCLOUD_VERSION}/hcloud-linux-amd64.tar.gz" \
+            | tar xz hcloud
+          sudo mv hcloud /usr/local/bin/hcloud
+          hcloud version
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ci_key
+          chmod 600 ~/.ssh/ci_key
+          ssh-keygen -y -f ~/.ssh/ci_key > ~/.ssh/ci_key.pub
+
+      - name: Create CX22 server (Debian 13 trixie)
+        id: server
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HETZNER_CLOUD_TOKEN }}
+        run: |
+          KEY_NAME="ci-integration-${{ github.run_id }}"
+          PUBKEY=$(cat ~/.ssh/ci_key.pub)
+
+          # Register SSH public key in Hetzner project
+          hcloud ssh-key create --name "${KEY_NAME}" --public-key "${PUBKEY}"
+
+          # Create CX22 with Debian 13 (trixie) — labelled for traceability
+          SERVER_JSON=$(hcloud server create \
+            --name "ci-integration-${{ github.run_id }}" \
+            --type cx22 \
+            --image debian-13 \
+            --ssh-key "${KEY_NAME}" \
+            --location nbg1 \
+            --label "ci=integration" \
+            --label "run_id=${{ github.run_id }}" \
+            --output json)
+
+          SERVER_ID=$(echo "${SERVER_JSON}" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['server']['id'])")
+          SERVER_IP=$(hcloud server describe "${SERVER_ID}" --output json \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['public_net']['ipv4']['ip'])")
+
+          echo "server_id=${SERVER_ID}" >> "${GITHUB_OUTPUT}"
+          echo "server_ip=${SERVER_IP}" >> "${GITHUB_OUTPUT}"
+          echo "ssh_key_name=${KEY_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "CX22 created: ID=${SERVER_ID} IP=${SERVER_IP}"
+
+      - name: Wait for SSH availability (max 120s)
+        run: |
+          SERVER_IP="${{ steps.server.outputs.server_ip }}"
+          for i in $(seq 1 24); do
+            if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
+              -i ~/.ssh/ci_key "root@${SERVER_IP}" echo "SSH ready"; then
+              exit 0
+            fi
+            echo "Waiting for SSH... (attempt ${i}/24)"
+            sleep 5
+          done
+          echo "ERROR: SSH not available after 120s" && exit 1
+
+      - name: Add server to known hosts
+        run: |
+          SERVER_IP="${{ steps.server.outputs.server_ip }}"
+          ssh-keyscan -H "${SERVER_IP}" >> ~/.ssh/known_hosts
+
+      - name: Set OVH DNS wildcard record (*.preprod → CX22 IP)
+        env:
+          OVH_APP_KEY: ${{ secrets.OVH_APPLICATION_KEY }}
+          OVH_APP_SECRET: ${{ secrets.OVH_APPLICATION_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          SERVER_IP: ${{ steps.server.outputs.server_ip }}
+          PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
+        run: |
+          python3 << 'PYEOF'
+          import os, ovh
+
+          # PREPROD_DOMAIN = preprod.ewutelo.cloud
+          # Creates: *.preprod.ewutelo.cloud A → SERVER_IP
+          preprod_domain = os.environ['PREPROD_DOMAIN']
+          parts = preprod_domain.split('.', 1)
+          base_domain = parts[1]        # ewutelo.cloud
+          sub = parts[0]                # preprod
+          wildcard_sub = f'*.{sub}'     # *.preprod
+          server_ip = os.environ['SERVER_IP']
+
+          client = ovh.Client(
+              endpoint='ovh-eu',
+              application_key=os.environ['OVH_APP_KEY'],
+              application_secret=os.environ['OVH_APP_SECRET'],
+              consumer_key=os.environ['OVH_CONSUMER_KEY'],
+          )
+
+          client.post(f'/domain/zone/{base_domain}/record',
+              fieldType='A',
+              subDomain=wildcard_sub,
+              target=server_ip,
+              ttl=60)
+
+          client.post(f'/domain/zone/{base_domain}/refresh')
+          print(f"DNS: {wildcard_sub}.{base_domain} -> {server_ip} (TTL 60)")
+          PYEOF
+
+      - name: Wait for DNS propagation
+        run: |
+          echo "Waiting 60s for DNS propagation..."
+          sleep 60
+          SERVER_IP="${{ steps.server.outputs.server_ip }}"
+          PREPROD_DOMAIN="${{ secrets.PREPROD_DOMAIN }}"
+          RESOLVED=$(dig +short "test.${PREPROD_DOMAIN}" @1.1.1.1 | head -1) || RESOLVED=""
+          if [ "${RESOLVED}" = "${SERVER_IP}" ]; then
+            echo "DNS OK: test.${PREPROD_DOMAIN} -> ${RESOLVED}"
+          else
+            echo "WARN: DNS not yet resolved (got: '${RESOLVED}', expected: '${SERVER_IP}')"
+            echo "Waiting 30s more..."
+            sleep 30
+          fi
+
+  # ===========================================================================
+  # Job 2 — deploy : Ansible site.yml ×2 (deploy + idempotence check)
+  # ansible_port_override=22 : keep SSH on port 22 (CI can't use Tailscale IP)
+  # ===========================================================================
+  deploy:
+    name: Deploy + Idempotence Check
+    runs-on: ubuntu-latest
+    environment: integration
+    needs: provision
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Ansible dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Ansible collections
+        run: ansible-galaxy install -r requirements.yml
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ci_key
+          chmod 600 ~/.ssh/ci_key
+          ssh-keyscan -H "${{ needs.provision.outputs.server_ip }}" >> ~/.ssh/known_hosts
+
+      - name: Create vault password file
+        run: |
+          printf '%s' "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_password
+          chmod 600 .vault_password
+
+      - name: Deploy — First run (fresh server, port 22)
+        env:
+          SERVER_IP: ${{ needs.provision.outputs.server_ip }}
+          PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
+        run: |
+          ansible-playbook playbooks/site.yml \
+            -i "${SERVER_IP}," \
+            -e "ansible_user=root" \
+            -e "ansible_port=22" \
+            -e "ansible_port_override=22" \
+            -e "ansible_ssh_private_key_file=~/.ssh/ci_key" \
+            -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+            -e "target_env=preprod" \
+            -e "domain_name=${PREPROD_DOMAIN}" \
+            --diff
+
+      - name: Deploy — Second run (idempotence check, changed=0 required)
+        env:
+          SERVER_IP: ${{ needs.provision.outputs.server_ip }}
+          PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
+        run: |
+          ansible-playbook playbooks/site.yml \
+            -i "${SERVER_IP}," \
+            -e "ansible_user=root" \
+            -e "ansible_port=22" \
+            -e "ansible_port_override=22" \
+            -e "ansible_ssh_private_key_file=~/.ssh/ci_key" \
+            -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'" \
+            -e "target_env=preprod" \
+            -e "domain_name=${PREPROD_DOMAIN}" \
+            2>&1 | tee /tmp/ansible_idempotence.log
+
+          # Parse PLAY RECAP — sum changed counts across all hosts
+          CHANGED=$(grep -oP '(?<=changed=)\d+' /tmp/ansible_idempotence.log \
+            | paste -sd+ - | bc 2>/dev/null || echo "0")
+
+          echo "Idempotence result: changed=${CHANGED}"
+
+          if [ "${CHANGED:-0}" -gt 0 ]; then
+            echo "IDEMPOTENCE FAILED — ${CHANGED} task(s) changed on 2nd run"
+            echo "=== Changed tasks ==="
+            grep "changed:" /tmp/ansible_idempotence.log | head -20 || true
+            exit 1
+          fi
+
+          echo "IDEMPOTENCE PASSED — 0 tasks changed on 2nd run"
+
+  # ===========================================================================
+  # Job 3 — smoke-tests : 9 external HTTPS + 8 internal SSH checks
+  # ===========================================================================
+  smoke-tests:
+    name: Smoke Tests (HTTPS + Internal)
+    runs-on: ubuntu-latest
+    environment: integration
+    needs: [provision, deploy]
+    steps:
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ci_key
+          chmod 600 ~/.ssh/ci_key
+          ssh-keyscan -H "${{ needs.provision.outputs.server_ip }}" >> ~/.ssh/known_hosts
+
+      - name: Wait for TLS certificate issuance (Caddy ACME, 90s)
+        run: |
+          echo "Waiting 90s for Caddy to obtain TLS certificates via ACME..."
+          sleep 90
+
+      - name: External HTTPS smoke tests (9 checks from CI runner)
+        env:
+          PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
+          LITELLM_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
+        run: |
+          FAILURES=0
+          TIMEOUT=20
+          D="${PREPROD_DOMAIN}"
+
+          check_https() {
+            local name="$1" url="$2" expected="${3:-200}"
+            local status
+            status=$(curl -sL -o /dev/null -w "%{http_code}" \
+              --max-time "${TIMEOUT}" "${url}" 2>/dev/null) || status="000"
+            if [ "${status}" = "${expected}" ]; then
+              echo "PASS  ${name} (HTTP ${status})"
+            else
+              echo "FAIL  ${name} (HTTP ${status}, expected ${expected})"
+              FAILURES=$((FAILURES + 1))
+            fi
+          }
+
+          # LiteLLM requires Bearer auth header — tested separately
+          check_https_litellm() {
+            local name="$1" url="$2"
+            local status
+            status=$(curl -sL -o /dev/null -w "%{http_code}" \
+              --max-time "${TIMEOUT}" \
+              -H "Authorization: Bearer ${LITELLM_KEY}" \
+              "${url}" 2>/dev/null) || status="000"
+            if [ "${status}" = "200" ]; then
+              echo "PASS  ${name} (HTTP ${status})"
+            else
+              echo "FAIL  ${name} (HTTP ${status}, expected 200)"
+              FAILURES=$((FAILURES + 1))
+            fi
+          }
+
+          echo "=== External HTTPS Checks (runner → preprod) ==="
+          check_https     "Caddy /health"          "https://${D}/health"
+          check_https     "n8n /healthz"            "https://n8n.${D}/healthz"
+          check_https_litellm "LiteLLM /health"    "https://llm.${D}/health"
+          check_https     "Grafana /api/health"     "https://tala.${D}/api/health"
+          check_https     "Qdrant /healthz"         "https://qdrant.${D}/healthz"
+          check_https     "NocoDB (auth required)"  "https://nocodb.${D}/api/v1/db/meta/projects" "401"
+          check_https     "OpenClaw /health"        "https://oc.${D}/health"
+          check_https     "Palais /health"          "https://palais.${D}/health"
+          check_https     "Plane /api/"             "https://plane.${D}/api/"
+
+          echo ""
+          echo "External checks: $((9 - FAILURES)) passed, ${FAILURES} failed"
+          [ "${FAILURES}" -eq 0 ] || exit 1
+
+      - name: Internal smoke tests (8 checks via SSH on CX22)
+        env:
+          SERVER_IP: ${{ needs.provision.outputs.server_ip }}
+        run: |
+          # Runs the smoke-test.sh deployed by the smoke-tests Ansible role
+          ssh -i ~/.ssh/ci_key \
+            -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=30 \
+            "root@${SERVER_IP}" \
+            "bash /opt/*/scripts/smoke-test.sh 2>&1"
+
+  # ===========================================================================
+  # Job 4 — destroy : always runs — delete CX22 + OVH DNS cleanup
+  # ===========================================================================
+  destroy:
+    name: Destroy CX22 + DNS Cleanup
+    runs-on: ubuntu-latest
+    environment: integration
+    needs: [provision, smoke-tests]
+    if: always()
+    steps:
+      - name: Install hcloud CLI
+        run: |
+          HCLOUD_VERSION="v1.47.0"
+          curl -sL \
+            "https://github.com/hetznercloud/cli/releases/download/${HCLOUD_VERSION}/hcloud-linux-amd64.tar.gz" \
+            | tar xz hcloud
+          sudo mv hcloud /usr/local/bin/hcloud
+
+      - name: Install Python OVH SDK
+        run: pip install ovh
+
+      - name: Delete CX22 server + SSH key
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HETZNER_CLOUD_TOKEN }}
+          SERVER_ID: ${{ needs.provision.outputs.server_id }}
+          SSH_KEY_NAME: ${{ needs.provision.outputs.ssh_key_name }}
+        run: |
+          if [ -n "${SERVER_ID}" ]; then
+            hcloud server delete "${SERVER_ID}" \
+              && echo "Server ${SERVER_ID} deleted" \
+              || echo "WARN: Could not delete server ${SERVER_ID}"
+          else
+            echo "WARN: No server_id to delete (provision may have failed)"
+          fi
+
+          if [ -n "${SSH_KEY_NAME}" ]; then
+            hcloud ssh-key delete "${SSH_KEY_NAME}" 2>/dev/null \
+              && echo "SSH key ${SSH_KEY_NAME} deleted" \
+              || echo "WARN: Could not delete SSH key ${SSH_KEY_NAME}"
+          fi
+
+      - name: Remove OVH DNS wildcard record
+        env:
+          OVH_APP_KEY: ${{ secrets.OVH_APPLICATION_KEY }}
+          OVH_APP_SECRET: ${{ secrets.OVH_APPLICATION_SECRET }}
+          OVH_CONSUMER_KEY: ${{ secrets.OVH_CONSUMER_KEY }}
+          PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
+        run: |
+          python3 << 'PYEOF'
+          import os, ovh
+
+          preprod_domain = os.environ['PREPROD_DOMAIN']
+          parts = preprod_domain.split('.', 1)
+          base_domain = parts[1]        # ewutelo.cloud
+          sub = parts[0]                # preprod
+          wildcard_sub = f'*.{sub}'     # *.preprod
+
+          client = ovh.Client(
+              endpoint='ovh-eu',
+              application_key=os.environ['OVH_APP_KEY'],
+              application_secret=os.environ['OVH_APP_SECRET'],
+              consumer_key=os.environ['OVH_CONSUMER_KEY'],
+          )
+
+          records = client.get(f'/domain/zone/{base_domain}/record',
+              fieldType='A', subDomain=wildcard_sub)
+
+          if not records:
+              print(f"No DNS record found for {wildcard_sub}.{base_domain} — nothing to delete")
+          else:
+              for record_id in records:
+                  client.delete(f'/domain/zone/{base_domain}/record/{record_id}')
+                  print(f"Deleted DNS record {record_id} ({wildcard_sub}.{base_domain})")
+              client.post(f'/domain/zone/{base_domain}/refresh')
+              print("DNS zone refreshed")
+          PYEOF

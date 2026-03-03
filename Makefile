@@ -297,6 +297,20 @@ deploy-app-prod: lint ## Deployer sur le serveur Prod Apps
 		--diff
 
 # ====================================================================
+# INTEGRATION CI
+# ====================================================================
+
+.PHONY: integration
+integration: ## Déclencher le pipeline d'intégration manuellement (Waza → GitHub Actions)
+	@echo "$(YELLOW)>>> Triggering integration pipeline on GitHub Actions...$(NC)"
+	gh workflow run integration.yml --ref main
+	@echo "$(GREEN)>>> Triggered. Monitor: make integration-status$(NC)"
+
+.PHONY: integration-status
+integration-status: ## Voir le statut des derniers runs d'intégration
+	@gh run list --workflow=integration.yml --limit 5
+
+# ====================================================================
 # CLEANUP
 # ====================================================================
 

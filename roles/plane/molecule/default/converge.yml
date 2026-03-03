@@ -112,5 +112,13 @@
     vault_redis_password: "molecule-stub-redis-pass"
     vault_plane_minio_access_key: "molecule-stub-minio-access-key"
     vault_plane_minio_secret_key: "molecule-stub-minio-secret-key"
+  pre_tasks:
+    - name: Create molecule user (substitutes for common role dependency)
+      ansible.builtin.user:
+        name: molecule
+        shell: /bin/bash
+        create_home: true
+        state: present
+      become: true
   roles:
     - role: plane

@@ -106,5 +106,10 @@
     vault_plane_agent_tokens: {}
     # obsidian-collector specific — not in base stubs
     vault_couchdb_obsidian_password: "molecule-stub-couchdb-pass"
+  pre_tasks:
+    - name: Update apt cache (substitutes for common role dependency)
+      ansible.builtin.apt:
+        update_cache: true
+      become: true
   roles:
     - role: obsidian-collector

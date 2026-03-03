@@ -113,5 +113,13 @@
     litellm_anthropic_budget_daily: 0.75
     litellm_openai_budget_daily: 0.50
     litellm_openrouter_budget_daily: 3.25
+  pre_tasks:
+    - name: Create molecule user (substitutes for common role dependency)
+      ansible.builtin.user:
+        name: molecule
+        shell: /bin/bash
+        create_home: true
+        state: present
+      become: true
   roles:
     - role: palais

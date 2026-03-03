@@ -120,6 +120,13 @@
     # admin_email used in plane_admin_email default fallback
     admin_email: "admin@molecule.test"
   pre_tasks:
+    - name: Create molecule user (substitutes for common role dependency)
+      ansible.builtin.user:
+        name: molecule
+        shell: /bin/bash
+        create_home: true
+        state: present
+      become: true
     - name: Ensure plane_config_dir exists for template deployment
       ansible.builtin.file:
         path: "/opt/molecule-test/configs/plane"

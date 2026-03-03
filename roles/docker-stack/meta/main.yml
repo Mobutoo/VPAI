@@ -2,7 +2,8 @@
 # docker-stack — meta
 galaxy_info:
   role_name: docker_stack
-  author: "{{ project_display_name }} Team"
+  namespace: mobutoo
+  author: VPAI
   description: "Déploie le docker-compose.yml centralisé et lance tous les conteneurs"
   license: MIT
   min_ansible_version: "2.16"

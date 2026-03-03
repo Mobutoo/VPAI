@@ -1,6 +1,7 @@
 ---
 galaxy_info:
   role_name: nocodb
+  namespace: mobutoo
   author: VPAI
   description: NocoDB project management — Airtable alternative on PostgreSQL
   license: MIT

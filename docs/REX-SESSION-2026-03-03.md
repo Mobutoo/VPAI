@@ -234,6 +234,35 @@ Le CI intégration est le meilleur détecteur de ces oublis.
 
 ---
 
+### REX-63 — Docker Compose : conflit labels `com.docker.compose.network`
+
+**Symptôme** : Run 11 — `network javisi_backend was found but has incorrect label com.docker.compose.network set to "" (expected: "backend")`.
+
+**Cause** : Le rôle `docker` (Phase 1) crée les réseaux via `community.docker.docker_network`
+sans ajouter les labels Compose (`com.docker.compose.network`, `com.docker.compose.project`).
+Quand `docker-compose-infra.yml` (Phase A) s'exécute ensuite, il tente de gérer ces réseaux
+et Docker Compose vérifie ses labels — ils sont absents → erreur.
+
+**Fix** : Déclarer tous les réseaux dans `docker-compose-infra.yml.j2` comme `external: true`
+(identique au pattern déjà utilisé dans `docker-compose.yml` Phase B) :
+```yaml
+networks:
+  frontend:
+    name: {{ project_name }}_frontend
+    external: true
+  backend:
+    name: {{ project_name }}_backend
+    external: true
+  # etc.
+```
+
+**Règle** : Tout réseau créé hors Compose (via module Ansible ou CLI Docker) doit être
+déclaré `external: true` dans TOUS les fichiers `docker-compose*.yml` qui le référencent.
+Les réseaux gérés par Compose exigent leurs labels propriétaires ; un réseau sans ces labels
+est rejeté comme "incorrect" même s'il existe et a la bonne configuration réseau.
+
+---
+
 ## Architecture du Pipeline d'Intégration CI
 
 ```
@@ -271,4 +300,6 @@ gh run view <ID> --repo Mobutoo/VPAI --log-failed   # Logs d'échec
 | Palais `dest_port` dynamique | ✅ Corrigé (`ansible_port \| default`) |
 | Palais migrations — guard container | ✅ Corrigé (`docker inspect` guard) |
 | `vault_couchdb_obsidian_password` | ✅ Ajouté dans secrets.yml |
-| Run 10 | ⏳ En cours |
+| `community.docker.docker_compose_v2` silencieux | ✅ Remplacé par `shell` transparent |
+| docker-compose-infra réseaux `external: true` | ✅ Corrigé (conflit labels Compose) |
+| Run 12 | ⏳ En cours |

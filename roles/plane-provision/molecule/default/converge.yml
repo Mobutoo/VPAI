@@ -119,6 +119,9 @@
     # MinIO vault secrets (used in plane/defaults but consumed by provision-minio.sh.j2)
     vault_plane_minio_access_key: "molecule-stub-minio-access"
     vault_plane_minio_secret_key: "molecule-stub-minio-secret"
+    # plane/defaults resolved vars (not inherited since plane role not a dependency)
+    plane_minio_access_key: "molecule-stub-minio-access"
+    plane_minio_secret_key: "molecule-stub-minio-secret"
     # admin_email used in plane_admin_email default fallback
     admin_email: "admin@molecule.test"
   pre_tasks:

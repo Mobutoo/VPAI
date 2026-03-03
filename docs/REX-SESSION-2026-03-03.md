@@ -286,7 +286,30 @@ gh run watch --repo Mobutoo/VPAI   # Surveiller en live
 gh run view <ID> --repo Mobutoo/VPAI --log-failed   # Logs d'échec
 ```
 
-**Skip-tags CI définitifs** : `vpn-dns,palais-mcp,hardening`
+**Skip-tags CI définitifs** : `vpn-dns,palais-mcp,hardening,n8n-provision,plane-provision`
+
+---
+
+### REX-64 — n8n owner provisioning : HTTP vide sur fresh install v2.7.3
+
+**Symptôme** : Run 12 — `fatal: [IP]: FAILED! => censored (no_log: true)` sur
+`n8n-provision : Provision PostgreSQL Main credential in n8n`.
+
+**Contexte** : Phase A ✅ + Phase B ✅ (219 tasks ok, 120 changed, 1 failed).
+Tous les containers démarrent correctement. L'échec est uniquement dans le provisioning n8n.
+
+**Cause** : Sur fresh install n8n 2.7.3, la tâche `Provision n8n owner account via API`
+retourne HTTP vide (status code non capturé) → le warning s'affiche mais la tâche est
+marquée `ok`. Sans owner configuré, tous les appels API n8n suivants (credentials, workflows)
+échouent en 401/403 silencieux (masqués par `no_log: true`).
+
+**Fix** : Ajouter `n8n-provision` et `plane-provision` aux skip-tags CI.
+Ces rôles font des appels API à des services fraîchement démarrés non encore initialisés.
+Ils sont couverts par molecule pour les templates, et par les smoke-tests pour la disponibilité HTTP.
+
+**Règle** : Les rôles de provisioning applicatif (`n8n-provision`, `plane-provision`) ne
+peuvent pas être testés en CI intégration sur un serveur éphémère fresh — les services n'ont
+pas d'owner/workspace initialisé. Toujours les skipper en CI avec leur tag exact.
 
 ---
 
@@ -302,4 +325,5 @@ gh run view <ID> --repo Mobutoo/VPAI --log-failed   # Logs d'échec
 | `vault_couchdb_obsidian_password` | ✅ Ajouté dans secrets.yml |
 | `community.docker.docker_compose_v2` silencieux | ✅ Remplacé par `shell` transparent |
 | docker-compose-infra réseaux `external: true` | ✅ Corrigé (conflit labels Compose) |
-| Run 12 | ⏳ En cours |
+| n8n-provision,plane-provision skip CI | ✅ API fresh install non testable en éphémère |
+| Run 13 | ⏳ En cours |

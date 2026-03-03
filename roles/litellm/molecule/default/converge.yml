@@ -105,5 +105,11 @@
     litellm_ui_password: molecule-stub-ui-pass
     # Qdrant semantic cache — defined in inventory/group_vars/all/main.yml, not litellm defaults
     qdrant_embedding_model: "text-embedding-3-small"
+    # Provider budgets — defined in inventory/group_vars/all/main.yml, not litellm defaults
+    litellm_anthropic_budget_daily: 0.75
+    litellm_openai_budget_daily: 0.50
+    litellm_openrouter_budget_daily: 3.25
+    litellm_google_budget_daily: 0.25
+    litellm_byteplus_budget_monthly: 5.00
   roles:
     - role: litellm

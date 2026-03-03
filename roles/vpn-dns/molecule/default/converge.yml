@@ -128,7 +128,7 @@
           # Stub Headscale config for molecule testing
           server_url: "https://vpn.molecule.test"
           listen_addr: "0.0.0.0:8080"
-          dns_config:
+          dns:
             override_local_dns: true
             extra_records: []
         mode: "0644"

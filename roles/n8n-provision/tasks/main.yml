@@ -251,6 +251,7 @@
     dest: "/tmp/n8n-workflow-creative-pipeline.json"
     mode: "0644"
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Template plan-dispatch workflow (resolves Jinja2 vars)
   ansible.builtin.template:
@@ -258,6 +259,7 @@
     dest: "/tmp/n8n-workflow-plan-dispatch.json"
     mode: "0644"
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Copy n8n workflow files to server
   ansible.builtin.copy:
@@ -265,6 +267,7 @@
     dest: "/tmp/n8n-workflow-{{ item }}.json"
     mode: "0644"
   become: true
+  when: not (common_molecule_mode | default(false))
   loop:
     - ai-translate
     - ai-summarize

@@ -21,4 +21,4 @@ obsidian_collector_docs_dir: "/opt/{{ project_name }}/repo/docs"
 obsidian_collector_script_dir: "/opt/{{ project_name }}/scripts"
 
 # Limite de messages parsés par session .jsonl (évite des notes trop longues)
-obsidian_collector_max_session_messages: "{{ obsidian_collector_max_session_messages | default(20) }}"
+obsidian_collector_max_session_messages: 20

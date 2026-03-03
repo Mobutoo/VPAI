@@ -112,6 +112,7 @@
     # template tasks can render without the plane role being applied.
     plane_config_dir: "/opt/molecule-test/configs/plane"
     # Vault secrets referenced by plane-provision defaults/templates
+    plane_minio_bucket: "plane"
     vault_plane_admin_api_token: "molecule-stub-plane-api-token"
     vault_plane_concierge_password: "molecule-stub-concierge-pass"
     # MinIO vault secrets (used in plane/defaults but consumed by provision-minio.sh.j2)

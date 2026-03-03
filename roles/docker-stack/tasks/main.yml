@@ -61,22 +61,28 @@
   become: true
 
 - name: Start Infrastructure stack (Phase A)
-  community.docker.docker_compose_v2:
-    project_src: "/opt/{{ project_name }}"
-    files:
-      - docker-compose-infra.yml
-    state: present
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      cd /opt/{{ project_name }}
+      docker compose -f docker-compose-infra.yml up -d 2>&1
   become: true
   register: docker_infra_result
-  failed_when: false
+  changed_when: >-
+    'Creating' in (docker_infra_result.stdout | default(''))
+    or 'Starting' in (docker_infra_result.stdout | default(''))
+    or 'Pulling' in (docker_infra_result.stdout | default(''))
+  failed_when: docker_infra_result.rc | default(0) != 0
   when: not (common_molecule_mode | default(false))
   # docker compose not available in molecule
 
-- name: Show Phase A errors if any
+- name: Show Phase A output
   ansible.builtin.debug:
-    msg: >-
-      Phase A returned: {{ docker_infra_result.msg | default('OK') }}
-  when: docker_infra_result.failed | default(false)
+    msg: "{{ docker_infra_result.stdout_lines | default([]) }}"
+  when:
+    - not (common_molecule_mode | default(false))
+    - docker_infra_result is defined
 
 # === INDIVIDUAL HEALTH CHECKS (with diagnostic logs on failure) ===
 

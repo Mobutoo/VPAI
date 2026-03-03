@@ -159,22 +159,27 @@
   when: not (common_molecule_mode | default(false))
 
 # === UFW FIREWALL ===
+# All UFW tasks are skipped in molecule mode (community.general.ufw always reports
+# changed in Docker containers — non-idempotent by design).
 - name: UFW — Reset to defaults
   community.general.ufw:
     state: reset
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: UFW — Set default deny incoming
   community.general.ufw:
     default: deny
     direction: incoming
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: UFW — Set default allow outgoing
   community.general.ufw:
     default: allow
     direction: outgoing
   become: true
+  when: not (common_molecule_mode | default(false))
 
 # --- Mode standard : ports 80 et 443 ouverts à tous ---
 - name: UFW — Allow HTTP and HTTPS (standard mode)
@@ -184,7 +189,9 @@
     proto: tcp
   loop: "{{ hardening_ufw_allowed_tcp_ports }}"
   become: true
-  when: not (hardening_vpn_only_mode | default(false) | bool)
+  when:
+    - not (common_molecule_mode | default(false))
+    - not (hardening_vpn_only_mode | default(false) | bool)
 
 # --- Mode VPN-only : port 80 fermé, port 443 restreint au CIDR VPN ---
 # ACME DNS-01 (OVH) ne nécessite pas le port 80.
@@ -196,7 +203,9 @@
     proto: tcp
     from_ip: "{{ hardening_ufw_vpn_network }}"
   become: true
-  when: hardening_vpn_only_mode | default(false) | bool
+  when:
+    - not (common_molecule_mode | default(false))
+    - hardening_vpn_only_mode | default(false) | bool
 
 - name: "UFW VPN-only: Display lockdown status"
   ansible.builtin.debug:
@@ -214,7 +223,9 @@
     proto: tcp
     from_ip: "{{ hardening_ufw_vpn_network }}"
   become: true
-  when: hardening_vpn_ready | bool
+  when:
+    - not (common_molecule_mode | default(false))
+    - hardening_vpn_ready | bool
 
 - name: UFW — Allow SSH from anywhere (open mode)
   community.general.ufw:
@@ -222,7 +233,9 @@
     port: "{{ hardening_ssh_port }}"
     proto: tcp
   become: true
-  when: not (hardening_vpn_ready | bool)
+  when:
+    - not (common_molecule_mode | default(false))
+    - not (hardening_vpn_ready | bool)
 
 - name: UFW — Allow Tailscale UDP
   community.general.ufw:
@@ -230,11 +243,13 @@
     port: "{{ hardening_ufw_tailscale_port }}"
     proto: udp
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: UFW — Enable firewall
   community.general.ufw:
     state: enabled
   become: true
+  when: not (common_molecule_mode | default(false))
 
 # === UNATTENDED UPGRADES ===
 - name: Configure unattended-upgrades

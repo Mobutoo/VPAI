@@ -191,3 +191,6 @@
           {{ tailscale_ip }}  {{ caddy_qdrant_domain }}
       {% endif %}
       ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  when: not (common_molecule_mode | default(false))
+  # caddy_*_domain vars are defined in caddy role defaults, not available
+  # in headscale-node molecule context (caddy role not loaded)

@@ -104,6 +104,8 @@
       and 'No such container' not in (postgresql_migration_result.stdout | default(''))
   loop:
     - 001_asset_provenance.sql
+  when: not (common_molecule_mode | default(false))
+  # docker not available in molecule container (no daemon/socket mounted)
 
 # --- Plane Database Provisioning (on existing container) ---
 # CRITICAL: init.sql.j2 only executes on FIRST PostgreSQL container initialization.
@@ -127,4 +129,6 @@
     - postgresql_plane_db_result.rc != 0
     - "'already exists' not in (postgresql_plane_db_result.stderr | default(''))"
     - "'No such container' not in (postgresql_plane_db_result.stderr | default(''))"
+  when: not (common_molecule_mode | default(false))
+  # docker not available in molecule container (no daemon/socket mounted)
   tags: [postgresql, plane]

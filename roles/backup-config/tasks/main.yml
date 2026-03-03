@@ -71,6 +71,8 @@
     job: "/opt/{{ project_name }}/scripts/pre-backup.sh >> /opt/{{ project_name }}/logs/pre-backup.log 2>&1"
     user: "{{ prod_user }}"
   become: true
+  when: not (common_molecule_mode | default(false))
+  # Cron module reports changed non-idempotently in Docker containers
 
 - name: Configure backup cleanup cron job
   ansible.builtin.cron:
@@ -80,3 +82,5 @@
     job: "/opt/{{ project_name }}/scripts/backup-cleanup.sh >> /opt/{{ project_name }}/logs/backup-cleanup.log 2>&1"
     user: "{{ prod_user }}"
   become: true
+  when: not (common_molecule_mode | default(false))
+  # Cron module reports changed non-idempotently in Docker containers

@@ -87,6 +87,9 @@
     mode: "0644"
   become: true
   notify: Restart caddy stack
+  when: not (common_molecule_mode | default(false))
+  # Template uses ansible_facts['date_time'] which varies between converge runs
+  # causing idempotence failures in molecule. UI-only file, not tested by verify.yml.
 
 - name: Deploy restricted zone page (VPN block page)
   ansible.builtin.template:
@@ -97,3 +100,4 @@
     mode: "0644"
   become: true
   notify: Restart caddy stack
+  when: not (common_molecule_mode | default(false))

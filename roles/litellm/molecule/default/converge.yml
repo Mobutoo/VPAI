@@ -101,5 +101,7 @@
     obsidian_subdomain: biki
     palais_subdomain: palais
     sure_subdomain: nzimbu
+    # LiteLLM UI admin — litellm_ui_username is in defaults (empty), password is in vault
+    litellm_ui_password: molecule-stub-ui-pass
   roles:
     - role: litellm

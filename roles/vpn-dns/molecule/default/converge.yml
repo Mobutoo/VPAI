@@ -132,6 +132,7 @@
             override_local_dns: true
             extra_records: []
         mode: "0644"
+        force: false
       become: true
   roles:
     - role: vpn-dns

@@ -236,6 +236,21 @@
     plane_beat_memory_limit: "128m"
     plane_beat_cpu_limit: "0.1"
 
+    # --- PostgreSQL databases (postgresql/defaults/main.yml) ---
+    postgresql_databases:
+      - name: n8n
+        user: n8n
+        extensions: [uuid-ossp]
+      - name: litellm
+        user: litellm
+        extensions: [uuid-ossp]
+      - name: nocodb
+        user: nocodb
+        extensions: []
+      - name: palais
+        user: palais
+        extensions: [uuid-ossp]
+
   pre_tasks:
     - name: Create molecule user (substitutes for common role dependency)
       ansible.builtin.user:

@@ -47,6 +47,8 @@
   become: true
   changed_when: false
   failed_when: false
+  when: not (common_molecule_mode | default(false))
+  # docker compose not available in molecule
 
 # === PHASE A : INFRASTRUCTURE (all services start independently) ===
 - name: Deploy docker-compose-infra.yml template
@@ -67,6 +69,8 @@
   become: true
   register: docker_infra_result
   failed_when: false
+  when: not (common_molecule_mode | default(false))
+  # docker compose not available in molecule
 
 - name: Show Phase A errors if any
   ansible.builtin.debug:
@@ -89,18 +93,24 @@
   until: pg_health.stdout | default('') == 'healthy'
   become: true
   failed_when: false
+  when: not (common_molecule_mode | default(false))
+  # docker inspect not available in molecule
 
 - name: Show PostgreSQL logs if unhealthy
   ansible.builtin.command:
     cmd: "docker logs {{ project_name }}_postgresql --tail 30"
   become: true
   changed_when: false
-  when: pg_health.stdout | default('') != 'healthy'
+  when:
+    - not (common_molecule_mode | default(false))
+    - pg_health.stdout | default('') != 'healthy'
 
 - name: Fail if PostgreSQL is unhealthy
   ansible.builtin.fail:
     msg: "PostgreSQL failed to become healthy. Check logs above."
-  when: pg_health.stdout | default('') != 'healthy'
+  when:
+    - not (common_molecule_mode | default(false))
+    - pg_health.stdout | default('') != 'healthy'
 
 # --- PostgreSQL provisioning (idempotent — creates DBs/users if missing) ---
 # REX: init.sql only runs on FIRST PostgreSQL initialization (empty data dir)
@@ -120,6 +130,8 @@
   become: true
   register: pg_provision
   changed_when: "'Creating' in pg_provision.stdout"
+  when: not (common_molecule_mode | default(false))
+  # requires live PostgreSQL container
 
 - name: Show PostgreSQL provisioning output
   ansible.builtin.debug:
@@ -139,18 +151,24 @@
   until: redis_health.stdout | default('') == 'healthy'
   become: true
   failed_when: false
+  when: not (common_molecule_mode | default(false))
+  # docker inspect not available in molecule
 
 - name: Show Redis logs if unhealthy
   ansible.builtin.command:
     cmd: "docker logs {{ project_name }}_redis --tail 30"
   become: true
   changed_when: false
-  when: redis_health.stdout | default('') != 'healthy'
+  when:
+    - not (common_molecule_mode | default(false))
+    - redis_health.stdout | default('') != 'healthy'
 
 - name: Fail if Redis is unhealthy
   ansible.builtin.fail:
     msg: "Redis failed to become healthy. Check logs above."
-  when: redis_health.stdout | default('') != 'healthy'
+  when:
+    - not (common_molecule_mode | default(false))
+    - redis_health.stdout | default('') != 'healthy'
 
 # --- Qdrant ---
 - name: Wait for Qdrant to be healthy
@@ -165,18 +183,24 @@
   until: qdrant_health.stdout | default('') == 'healthy'
   become: true
   failed_when: false
+  when: not (common_molecule_mode | default(false))
+  # docker inspect not available in molecule
 
 - name: Show Qdrant logs if unhealthy
   ansible.builtin.command:
     cmd: "docker logs {{ project_name }}_qdrant --tail 30"
   become: true
   changed_when: false
-  when: qdrant_health.stdout | default('') != 'healthy'
+  when:
+    - not (common_molecule_mode | default(false))
+    - qdrant_health.stdout | default('') != 'healthy'
 
 - name: Fail if Qdrant is unhealthy
   ansible.builtin.fail:
     msg: "Qdrant failed to become healthy. Check logs above."
-  when: qdrant_health.stdout | default('') != 'healthy'
+  when:
+    - not (common_molecule_mode | default(false))
+    - qdrant_health.stdout | default('') != 'healthy'
 
 # --- Qdrant Collection Provisioning (idempotent) ---
 # Creates collections needed by LiteLLM semantic cache and RAG indexing
@@ -218,6 +242,8 @@
   changed_when: "'CREATED' in qdrant_cache_provision.stdout"
   failed_when: false
   no_log: true
+  when: not (common_molecule_mode | default(false))
+  # requires live Qdrant container
 
 - name: Show Qdrant semantic_cache provisioning result
   ansible.builtin.debug:
@@ -263,6 +289,8 @@
   changed_when: "'CREATED' in qdrant_rag_provision.stdout"
   failed_when: false
   no_log: true
+  when: not (common_molecule_mode | default(false))
+  # requires live Qdrant container
 
 - name: Show Qdrant content_index provisioning result
   ansible.builtin.debug:
@@ -281,13 +309,17 @@
   until: caddy_health.stdout | default('') == 'healthy'
   become: true
   failed_when: false
+  when: not (common_molecule_mode | default(false))
+  # docker inspect not available in molecule
 
 - name: Show Caddy logs if unhealthy
   ansible.builtin.command:
     cmd: "docker logs {{ project_name }}_caddy --tail 30"
   become: true
   changed_when: false
-  when: caddy_health.stdout | default('') != 'healthy'
+  when:
+    - not (common_molecule_mode | default(false))
+    - caddy_health.stdout | default('') != 'healthy'
 
 # Caddy unhealthy is non-blocking (recovers when backends come up)
 - name: Warn if Caddy is unhealthy (non-blocking)
@@ -319,14 +351,18 @@
   changed_when: false
   failed_when: false
   become: true
+  when: not (common_molecule_mode | default(false))
+  # /var/run/docker.sock not available in molecule
 
 - name: Set docker_socket_gid fact
   ansible.builtin.set_fact:
     docker_socket_gid: "{{ docker_socket_gid_raw.stdout | trim | default('999') }}"
+  when: not (common_molecule_mode | default(false))
+  # depends on docker_socket_gid_raw from previous task
 
 - name: Show detected docker socket GID
   ansible.builtin.debug:
-    msg: "Docker socket GID: {{ docker_socket_gid }} (openclaw will use group_add)"
+    msg: "Docker socket GID: {{ docker_socket_gid | default('999 (molecule stub)') }} (openclaw will use group_add)"
 
 # === PHASE B : APPLICATIONS ===
 - name: Deploy docker-compose.yml template (apps + monitoring)
@@ -348,6 +384,8 @@
   become: true
   register: docker_apps_result
   failed_when: false
+  when: not (common_molecule_mode | default(false))
+  # docker compose not available in molecule
 
 - name: Display Applications stack status
   ansible.builtin.debug:
@@ -369,6 +407,8 @@
   changed_when: false
   failed_when: false
   become: true
+  when: not (common_molecule_mode | default(false))
+  # docker inspect not available in molecule
 
 - name: Restart LiteLLM if not healthy
   ansible.builtin.command:
@@ -377,7 +417,9 @@
   changed_when: true
   failed_when: false
   register: litellm_restart
-  when: litellm_precheck.stdout | default('') != 'healthy'
+  when:
+    - not (common_molecule_mode | default(false))
+    - litellm_precheck.stdout | default('') != 'healthy'
 
 - name: Show LiteLLM restart result
   ansible.builtin.debug:
@@ -398,6 +440,8 @@
   until: litellm_health.stdout | default('') == 'healthy'
   become: true
   failed_when: false
+  when: not (common_molecule_mode | default(false))
+  # docker inspect not available in molecule
 
 - name: Show LiteLLM logs if unhealthy
   ansible.builtin.command:
@@ -405,7 +449,9 @@
   become: true
   changed_when: false
   failed_when: false
-  when: litellm_health.stdout | default('') != 'healthy'
+  when:
+    - not (common_molecule_mode | default(false))
+    - litellm_health.stdout | default('') != 'healthy'
 
 - name: Warn if LiteLLM is unhealthy
   ansible.builtin.debug:
@@ -421,7 +467,9 @@
   register: docker_ps_output
   changed_when: false
   become: true
+  when: not (common_molecule_mode | default(false))
+  # docker ps not available in molecule
 
 - name: Display final container status
   ansible.builtin.debug:
-    msg: "{{ docker_ps_output.stdout_lines }}"
+    msg: "{{ docker_ps_output.stdout_lines | default(['(molecule: docker ps skipped)']) }}"

@@ -55,7 +55,10 @@
     owner: "{{ workstation_pi_user }}"
     mode: "0750"
   delegate_to: workstation-pi
-  when: workstation_pi_tailscale_ip | default('') != ''
+  # delegate_to / docker exec / synchronize incompatible with molecule
+  when:
+    - not (common_molecule_mode | default(false))
+    - workstation_pi_tailscale_ip | default('') != ''
   tags: [palais, palais-mcp]
 
 - name: Deploy Palais MCP server config to Pi
@@ -65,7 +68,10 @@
     owner: "{{ workstation_pi_user }}"
     mode: "0640"
   delegate_to: workstation-pi
-  when: workstation_pi_tailscale_ip | default('') != ''
+  # delegate_to / docker exec / synchronize incompatible with molecule
+  when:
+    - not (common_molecule_mode | default(false))
+    - workstation_pi_tailscale_ip | default('') != ''
   tags: [palais, palais-mcp]
 
 # ── DB Migration: add columns + extend node_status enum ─────────────────────
@@ -82,6 +88,8 @@
   changed_when: false
   register: _palais_db_migrate
   failed_when: _palais_db_migrate.rc != 0
+  # delegate_to / docker exec / synchronize incompatible with molecule
+  when: not (common_molecule_mode | default(false))
   tags: [palais]
 
 - name: Palais DB migration — extend node_status enum with busy/degraded
@@ -94,6 +102,8 @@
   changed_when: false
   register: _palais_db_enum
   failed_when: _palais_db_enum.rc != 0
+  # delegate_to / docker exec / synchronize incompatible with molecule
+  when: not (common_molecule_mode | default(false))
   tags: [palais]
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -109,4 +119,6 @@
     delete: true
     dest_port: "{{ prod_ssh_port | int }}"
   notify: Restart palais
+  # delegate_to / docker exec / synchronize incompatible with molecule
+  when: not (common_molecule_mode | default(false))
   tags: [palais]

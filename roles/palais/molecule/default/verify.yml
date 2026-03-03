@@ -1,0 +1,104 @@
+---
+- name: Verify palais role
+  hosts: all
+  gather_facts: false
+  vars:
+    project_name: molecule-test
+  tasks:
+    - name: Check palais config directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/configs/palais"
+      register: palais_config_dir
+
+    - name: Assert palais config directory
+      ansible.builtin.assert:
+        that: palais_config_dir.stat.exists and palais_config_dir.stat.isdir
+
+    - name: Check palais data directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/data/palais"
+      register: palais_data_dir
+
+    - name: Assert palais data directory
+      ansible.builtin.assert:
+        that: palais_data_dir.stat.exists and palais_data_dir.stat.isdir
+
+    - name: Check palais deliverables subdirectory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/data/palais/deliverables"
+      register: palais_deliverables_dir
+
+    - name: Assert palais deliverables subdirectory
+      ansible.builtin.assert:
+        that: palais_deliverables_dir.stat.exists and palais_deliverables_dir.stat.isdir
+
+    - name: Check palais avatars subdirectory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/data/palais/avatars"
+      register: palais_avatars_dir
+
+    - name: Assert palais avatars subdirectory
+      ansible.builtin.assert:
+        that: palais_avatars_dir.stat.exists and palais_avatars_dir.stat.isdir
+
+    - name: Check palais app directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/palais-app"
+      register: palais_app_dir
+
+    - name: Assert palais app directory
+      ansible.builtin.assert:
+        that: palais_app_dir.stat.exists and palais_app_dir.stat.isdir
+
+    - name: Check palais env file exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/configs/palais/palais.env"
+      register: palais_env_file
+
+    - name: Assert palais env file
+      ansible.builtin.assert:
+        that: palais_env_file.stat.exists
+
+    - name: Check palais env contains DATABASE_URL
+      ansible.builtin.command:
+        cmd: grep -q "DATABASE_URL" /opt/{{ project_name }}/configs/palais/palais.env
+      changed_when: false
+      failed_when: false
+      register: palais_db_check
+
+    - name: Assert DATABASE_URL present
+      ansible.builtin.assert:
+        that: palais_db_check.rc == 0
+
+    - name: Check palais env contains PALAIS_API_KEY
+      ansible.builtin.command:
+        cmd: grep -q "PALAIS_API_KEY" /opt/{{ project_name }}/configs/palais/palais.env
+      changed_when: false
+      failed_when: false
+      register: palais_apikey_check
+
+    - name: Assert PALAIS_API_KEY present
+      ansible.builtin.assert:
+        that: palais_apikey_check.rc == 0
+
+    - name: Check palais env contains LITELLM_KEY
+      ansible.builtin.command:
+        cmd: grep -q "LITELLM_KEY" /opt/{{ project_name }}/configs/palais/palais.env
+      changed_when: false
+      failed_when: false
+      register: palais_litellm_check
+
+    - name: Assert LITELLM_KEY present
+      ansible.builtin.assert:
+        that: palais_litellm_check.rc == 0
+
+    - name: Check palais env contains BUDGET_DAILY_LIMIT
+      ansible.builtin.command:
+        cmd: grep -q "BUDGET_DAILY_LIMIT" /opt/{{ project_name }}/configs/palais/palais.env
+      changed_when: false
+      failed_when: false
+      register: palais_budget_check
+
+    - name: Assert BUDGET_DAILY_LIMIT present
+      ansible.builtin.assert:
+        that: palais_budget_check.rc == 0

@@ -82,10 +82,18 @@ jobs:
           - n8n
           - litellm
           - openclaw
+          - nocodb
+          - plane
+          - palais
           - monitoring
           - diun
+          - obsidian-collector
+          - docker-stack
+          - n8n-provision
+          - plane-provision
           - backup-config
           - uptime-config
+          - vpn-dns
           - smoke-tests
     steps:
       - name: Checkout

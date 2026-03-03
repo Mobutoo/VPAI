@@ -1,0 +1,73 @@
+---
+- name: Verify plane-provision role
+  hosts: all
+  gather_facts: false
+  vars:
+    project_name: molecule-test
+    plane_config_dir: "/opt/molecule-test/configs/plane"
+  tasks:
+    - name: Check MinIO provision script exists
+      ansible.builtin.stat:
+        path: "{{ plane_config_dir }}/provision-minio.sh"
+      register: minio_script
+
+    - name: Assert MinIO provision script exists
+      ansible.builtin.assert:
+        that: minio_script.stat.exists
+        fail_msg: "provision-minio.sh was not deployed to {{ plane_config_dir }}"
+
+    - name: Check Plane provision script exists
+      ansible.builtin.stat:
+        path: "{{ plane_config_dir }}/provision-plane.sh"
+      register: plane_script
+
+    - name: Assert Plane provision script exists
+      ansible.builtin.assert:
+        that: plane_script.stat.exists
+        fail_msg: "provision-plane.sh was not deployed to {{ plane_config_dir }}"
+
+    - name: Check MinIO provision script is executable
+      ansible.builtin.stat:
+        path: "{{ plane_config_dir }}/provision-minio.sh"
+      register: minio_script_perms
+
+    - name: Assert MinIO provision script is executable
+      ansible.builtin.assert:
+        that: minio_script_perms.stat.executable
+        fail_msg: "provision-minio.sh is not executable"
+
+    - name: Check Plane provision script is executable
+      ansible.builtin.stat:
+        path: "{{ plane_config_dir }}/provision-plane.sh"
+      register: plane_script_perms
+
+    - name: Assert Plane provision script is executable
+      ansible.builtin.assert:
+        that: plane_script_perms.stat.executable
+        fail_msg: "provision-plane.sh is not executable"
+
+    - name: Verify MinIO script contains expected bucket name
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: "grep -q 'BUCKET=' '{{ plane_config_dir }}/provision-minio.sh'"
+      changed_when: false
+      failed_when: false
+      register: minio_bucket_check
+
+    - name: Assert MinIO script contains BUCKET variable
+      ansible.builtin.assert:
+        that: minio_bucket_check.rc == 0
+        fail_msg: "provision-minio.sh does not contain expected BUCKET= assignment"
+
+    - name: Verify Plane provision script contains workspace slug
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: "grep -q 'WORKSPACE=' '{{ plane_config_dir }}/provision-plane.sh'"
+      changed_when: false
+      failed_when: false
+      register: plane_workspace_check
+
+    - name: Assert Plane provision script contains WORKSPACE variable
+      ansible.builtin.assert:
+        that: plane_workspace_check.rc == 0
+        fail_msg: "provision-plane.sh does not contain expected WORKSPACE= assignment"

@@ -1,0 +1,40 @@
+---
+- name: Verify obsidian-collector role
+  hosts: all
+  gather_facts: false
+  vars:
+    project_name: molecule-test
+  tasks:
+    - name: Check obsidian collector script directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/scripts"
+      register: obsidian_script_dir
+    - name: Assert script directory exists
+      ansible.builtin.assert:
+        that: obsidian_script_dir.stat.exists and obsidian_script_dir.stat.isdir
+
+    - name: Check obsidian collector script exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/scripts/obsidian-collector.py"
+      register: obsidian_script
+    - name: Assert collector script exists
+      ansible.builtin.assert:
+        that: obsidian_script.stat.exists
+
+    - name: Check collector script contains couchdb_url
+      ansible.builtin.command:
+        cmd: grep -q "couchdb" /opt/{{ project_name }}/scripts/obsidian-collector.py
+      changed_when: false
+      failed_when: false
+      register: obsidian_couchdb_check
+    - name: Assert couchdb config in script
+      ansible.builtin.assert:
+        that: obsidian_couchdb_check.rc == 0
+
+    - name: Check log file exists
+      ansible.builtin.stat:
+        path: /var/log/obsidian-collector.log
+      register: obsidian_log
+    - name: Assert log file exists
+      ansible.builtin.assert:
+        that: obsidian_log.stat.exists

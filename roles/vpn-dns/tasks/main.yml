@@ -20,6 +20,8 @@
       Tailscale IP not found for prod-server.
       Ensure headscale-node role ran before vpn-dns.
     quiet: true
+  # groups['prod'][0] hostvars not available in molecule (single host)
+  when: not (common_molecule_mode | default(false))
 
 - name: "VPN-DNS | Display DNS records to deploy"
   ansible.builtin.debug:
@@ -103,6 +105,8 @@
       exit 1
   become: true
   changed_when: false
+  # docker inspect not available in molecule
+  when: not (common_molecule_mode | default(false))
 
 - name: "VPN-DNS | Display completion message"
   ansible.builtin.debug:

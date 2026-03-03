@@ -1,0 +1,58 @@
+---
+- name: Verify plane role
+  hosts: all
+  gather_facts: false
+  vars:
+    project_name: molecule-test
+  tasks:
+    - name: Check plane config directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/configs/plane"
+      register: plane_config_dir
+    - name: Assert plane config directory
+      ansible.builtin.assert:
+        that: plane_config_dir.stat.exists and plane_config_dir.stat.isdir
+
+    - name: Check plane uploads data directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/data/plane/uploads"
+      register: plane_uploads_dir
+    - name: Assert plane uploads directory
+      ansible.builtin.assert:
+        that: plane_uploads_dir.stat.exists
+
+    - name: Check plane minio data directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/data/plane/minio"
+      register: plane_minio_dir
+    - name: Assert plane minio directory
+      ansible.builtin.assert:
+        that: plane_minio_dir.stat.exists
+
+    - name: Check plane env file exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/configs/plane/plane.env"
+      register: plane_env_file
+    - name: Assert plane env file
+      ansible.builtin.assert:
+        that: plane_env_file.stat.exists
+
+    - name: Check plane env contains DATABASE_URL
+      ansible.builtin.command:
+        cmd: grep -q "DATABASE_URL" /opt/{{ project_name }}/configs/plane/plane.env
+      changed_when: false
+      failed_when: false
+      register: plane_db_check
+    - name: Assert DATABASE_URL present
+      ansible.builtin.assert:
+        that: plane_db_check.rc == 0
+
+    - name: Check plane env contains SECRET_KEY
+      ansible.builtin.command:
+        cmd: grep -q "SECRET_KEY" /opt/{{ project_name }}/configs/plane/plane.env
+      changed_when: false
+      failed_when: false
+      register: plane_secret_check
+    - name: Assert SECRET_KEY present
+      ansible.builtin.assert:
+        that: plane_secret_check.rc == 0

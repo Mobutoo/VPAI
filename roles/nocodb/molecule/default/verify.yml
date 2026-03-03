@@ -1,0 +1,42 @@
+---
+- name: Verify nocodb role
+  hosts: all
+  gather_facts: false
+  vars:
+    project_name: molecule-test
+  tasks:
+    - name: Check nocodb config directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/configs/nocodb"
+      register: nocodb_config_dir
+    - name: Assert nocodb config directory
+      ansible.builtin.assert:
+        that: nocodb_config_dir.stat.exists and nocodb_config_dir.stat.isdir
+
+    - name: Check nocodb env file exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/configs/nocodb/nocodb.env"
+      register: nocodb_env_file
+    - name: Assert nocodb env file
+      ansible.builtin.assert:
+        that: nocodb_env_file.stat.exists
+
+    - name: Check nocodb env contains JWT secret
+      ansible.builtin.command:
+        cmd: grep -q "NC_AUTH_JWT_SECRET" /opt/{{ project_name }}/configs/nocodb/nocodb.env
+      changed_when: false
+      failed_when: false
+      register: nocodb_jwt_check
+    - name: Assert JWT secret present
+      ansible.builtin.assert:
+        that: nocodb_jwt_check.rc == 0
+
+    - name: Check nocodb env contains S3 bucket
+      ansible.builtin.command:
+        cmd: grep -q "NC_S3_BUCKET_NAME" /opt/{{ project_name }}/configs/nocodb/nocodb.env
+      changed_when: false
+      failed_when: false
+      register: nocodb_s3_check
+    - name: Assert S3 bucket config present
+      ansible.builtin.assert:
+        that: nocodb_s3_check.rc == 0

@@ -1,0 +1,240 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    # ============================================================
+    # Stub values for site-wide inventory variables
+    # (inventory/group_vars/all — not defined in role defaults)
+    # ============================================================
+    # Identity
+    prod_user: molecule
+    project_name: molecule-test
+    domain_name: molecule.example.com
+    project_display_name: Molecule-Test
+    # Locale/timezone
+    locale: en_US.UTF-8
+    timezone: Etc/UTC
+    # Prod server
+    prod_hostname: molecule-test
+    prod_ip: 127.0.0.1
+    prod_ssh_port: 22
+    # VPN/Headscale
+    vpn_headscale_ip: 127.0.0.1
+    vpn_hostname: molecule-headscale
+    vpn_headscale_url: https://headscale.example.com
+    vpn_tailscale_ip: ""
+    vpn_network_cidr: 100.64.0.0/10
+    vps_tailscale_ip: ""
+    vpn_server_public_ip: ""
+    # Caddy ACL — no VPN in molecule tests
+    caddy_vpn_enforce: false
+    caddy_vpn_cidr: 100.64.0.0/10
+    # Database passwords (stub)
+    postgresql_password: molecule-stub-db-pass
+    redis_password: molecule-stub-redis-pass
+    # Secrets / API keys (stub)
+    litellm_master_key: molecule-stub-llm-key
+    litellm_salt_key: molecule-stub-salt-key
+    openclaw_api_key: molecule-stub-openclaw-key
+    openclaw_gateway_token: molecule-stub-gateway-token
+    qdrant_api_key: molecule-stub-qdrant-key
+    grafana_admin_password: molecule-stub-grafana-pass
+    n8n_encryption_key: molecule-stub-n8n-key
+    n8n_owner_password: molecule-stub-n8n-owner
+    n8n_webhook_secret: ""
+    nocodb_jwt_secret: molecule-stub-nocodb-jwt
+    nocodb_api_token: molecule-stub-nocodb-token
+    anthropic_api_key: molecule-stub-anthropic-key
+    openai_api_key: molecule-stub-openai-key
+    openrouter_api_key: ""
+    google_gemini_api_key: ""
+    byteplus_api_key: ""
+    brave_search_api_key: ""
+    github_webhook_secret: ""
+    # S3 / Object Storage
+    s3_access_key: molecule-stub-s3-key
+    s3_secret_key: molecule-stub-s3-secret
+    s3_bucket_backups: molecule-test-backups
+    s3_bucket_shared: molecule-test-shared
+    # Grafana admin
+    grafana_admin_user: admin
+    # NocoDB
+    nocodb_s3_bucket: molecule-test-shared
+    # Workstation Pi
+    workstation_pi_become_pass: molecule-stub-pass
+    workstation_pi_ip: 127.0.0.1
+    # CouchDB / Obsidian
+    couchdb_obsidian_user: obsidian
+    # Backup heartbeat
+    backup_heartbeat_url: ""
+    # Molecule — skip systemd service management (systemctl unavailable in Docker)
+    common_molecule_mode: true
+    # n8n MCP
+    n8n_mcp_auth_token: molecule-stub-mcp-token
+    # Notification
+    notification_method: telegram
+    notification_email: ""
+    notification_webhook_url: ""
+    # Target environment
+    target_env: prod
+    # Qdrant
+    qdrant_cache_collection: semantic_cache
+    qdrant_rag_collection: content_index
+    # Docker networks (inventory/group_vars/all/docker.yml)
+    docker_network_frontend_subnet: 172.20.1.0/24
+    docker_network_backend_subnet: 172.20.2.0/24
+    docker_network_monitoring_subnet: 172.20.3.0/24
+    docker_network_egress_subnet: 172.20.4.0/24
+    docker_network_sandbox_subnet: 172.20.5.0/24
+    # SSH
+    ssh_authorized_keys:
+      - "ssh-ed25519 MOLECULE-STUB-KEY molecule-test"
+    # Caddy/admin domain
+    caddy_admin_domain: "javisi.molecule.example.com"
+    # Subdomains
+    n8n_subdomain: mayi
+    litellm_subdomain: llm
+    grafana_subdomain: tala
+    qdrant_subdomain: qd
+    nocodb_subdomain: hq
+    admin_subdomain: javisi
+    obsidian_subdomain: biki
+    palais_subdomain: palais
+    sure_subdomain: nzimbu
+    # Plane integration (Phase 2) — stub empty dict
+    # n8n.env.j2 references vault_plane_agent_tokens.concierge | default('')
+    vault_plane_agent_tokens: {}
+
+    # ============================================================
+    # docker-stack specific additions
+    # (vars in templates not covered by base stubs above)
+    # ============================================================
+
+    # --- Image versions (inventory/group_vars/all/versions.yml) ---
+    postgresql_image: "postgres:18.1-bookworm"
+    redis_image: "redis:8.0-bookworm"
+    qdrant_image: "qdrant/qdrant:v1.16.3"
+    n8n_image: "docker.n8n.io/n8nio/n8n:2.7.3"
+    litellm_image: "ghcr.io/berriai/litellm:v1.81.3-stable"
+    openclaw_image: "ghcr.io/openclaw/openclaw:2026.3.1"
+    nocodb_image: "nocodb/nocodb:0.301.2"
+    caddy_image: "caddy:2.10.2-alpine"
+    grafana_image: "grafana/grafana:12.3.2"
+    victoriametrics_image: "victoriametrics/victoria-metrics:v1.135.0"
+    loki_image: "grafana/loki:3.6.5"
+    alloy_image: "grafana/alloy:v1.13.0"
+    cadvisor_image: "ghcr.io/google/cadvisor:0.55.1"
+    diun_image: "crazymax/diun:4.31.0"
+    sure_image: "ghcr.io/we-promise/sure:nightly"
+    plane_web_image: "makeplane/plane-frontend:v1.2.2"
+    plane_admin_image: "makeplane/plane-admin:v1.2.2"
+    plane_api_image: "makeplane/plane-backend:v1.2.2"
+    plane_worker_image: "makeplane/plane-backend:v1.2.2"
+    plane_minio_image: "minio/minio:RELEASE.2024-11-07T00-52-20Z"
+
+    # --- Docker resource limits (inventory/group_vars/all/docker.yml) ---
+    # (expressed as literals to avoid Jinja2 target_env conditions in molecule)
+    postgresql_memory_limit: "768M"
+    postgresql_memory_reservation: "256M"
+    postgresql_cpu_limit: "0.75"
+    redis_memory_limit: "384M"
+    redis_memory_reservation: "128M"
+    redis_cpu_limit: "0.5"
+    n8n_memory_limit: "512M"
+    n8n_memory_reservation: "256M"
+    n8n_cpu_limit: "1.0"
+    litellm_memory_limit: "512M"
+    litellm_memory_reservation: "256M"
+    litellm_cpu_limit: "1.0"
+    openclaw_memory_limit: "768M"
+    openclaw_memory_reservation: "384M"
+    openclaw_cpu_limit: "1.0"
+    qdrant_memory_limit: "768M"
+    qdrant_memory_reservation: "256M"
+    qdrant_cpu_limit: "0.75"
+    caddy_memory_limit: "256M"
+    caddy_memory_reservation: "64M"
+    caddy_cpu_limit: "0.5"
+    grafana_memory_limit: "384M"
+    grafana_memory_reservation: "128M"
+    grafana_cpu_limit: "0.5"
+    victoriametrics_memory_limit: "512M"
+    victoriametrics_memory_reservation: "128M"
+    victoriametrics_cpu_limit: "0.5"
+    loki_memory_limit: "384M"
+    loki_memory_reservation: "128M"
+    loki_cpu_limit: "0.5"
+    alloy_memory_limit: "256M"
+    alloy_memory_reservation: "64M"
+    alloy_cpu_limit: "0.25"
+    cadvisor_memory_limit: "256M"
+    cadvisor_memory_reservation: "64M"
+    cadvisor_cpu_limit: "0.25"
+    nocodb_memory_limit: "256M"
+    nocodb_memory_reservation: "128M"
+    nocodb_cpu_limit: "0.5"
+    diun_memory_limit: "128M"
+    diun_memory_reservation: "32M"
+    diun_cpu_limit: "0.25"
+    sure_web_memory_limit: "384M"
+    sure_web_memory_reservation: "192M"
+    sure_web_cpu_limit: "1.0"
+    sure_worker_memory_limit: "256M"
+    sure_worker_memory_reservation: "128M"
+    sure_worker_cpu_limit: "0.5"
+
+    # --- Qdrant embedding dimensions (inventory/group_vars/all/main.yml) ---
+    qdrant_embedding_dimensions: 1536
+
+    # --- Caddy VPN-only mode (caddy/defaults/main.yml) ---
+    caddy_acme_dns01: false
+    caddy_vpn_only_mode: false
+    caddy_no_port80: false
+    caddy_docker_frontend_cidr: "172.20.1.0/24"
+    # Derived caddy domains (caddy/defaults/main.yml)
+    caddy_grafana_domain: "tala.molecule.example.com"
+
+    # --- OVH API (only needed when caddy_acme_dns01=true — stub for template rendering) ---
+    ovh_endpoint: "ovh-eu"
+    ovh_application_key: ""
+    ovh_application_secret: ""
+    ovh_consumer_key: ""
+
+    # --- OpenClaw (openclaw/defaults/main.yml) ---
+    openclaw_volume_isolation: true
+    openclaw_n8n_integration: true
+    openclaw_system_dir: "/opt/molecule-test/data/openclaw/system"
+    openclaw_workspace_dir: "/opt/molecule-test/data/openclaw/workspace"
+    openclaw_state_dir: "/opt/molecule-test/data/openclaw/state"
+    openclaw_gateway_port: 18789
+    # docker_socket_gid is set by runtime task; provide stub for template rendering
+    docker_socket_gid: "999"
+
+    # --- Palais (palais/defaults/main.yml) ---
+    palais_config_dir: "/opt/molecule-test/configs/palais"
+    palais_data_dir: "/opt/molecule-test/data/palais"
+    palais_memory_limit: "192M"
+    palais_memory_reservation: "128M"
+    palais_cpu_limit: "0.75"
+    palais_port: 3300
+
+    # --- Plane (plane/defaults/main.yml) ---
+    plane_config_dir: "/opt/molecule-test/configs/plane"
+    plane_data_dir: "/opt/molecule-test/data/plane"
+    plane_minio_access_key: "molecule-stub-minio-key"
+    plane_minio_secret_key: "molecule-stub-minio-secret"
+    plane_minio_memory_limit: "256m"
+    plane_minio_cpu_limit: "0.25"
+    plane_web_memory_limit: "256m"
+    plane_web_cpu_limit: "0.25"
+    plane_admin_memory_limit: "128m"
+    plane_admin_cpu_limit: "0.1"
+    plane_api_memory_limit: "1024m"
+    plane_api_cpu_limit: "0.5"
+    plane_worker_memory_limit: "512m"
+    plane_worker_cpu_limit: "0.25"
+    plane_beat_memory_limit: "128m"
+    plane_beat_cpu_limit: "0.1"
+
+  roles:
+    - role: docker-stack

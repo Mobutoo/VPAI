@@ -1,0 +1,29 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: docker
+platforms:
+  - name: instance
+    # geerlingguy image has systemd pre-configured for Ansible testing in Docker
+    # Required: cgroupns_mode host + /sys/fs/cgroup rw for cgroup v2 (GitHub Actions ubuntu-latest)
+    image: geerlingguy/docker-debian12-ansible:latest
+    pre_build_image: true
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run
+      - /tmp
+provisioner:
+  name: ansible
+  extra_vars:
+    # Stub values for site-wide variables not in role defaults (defined in inventory/group_vars/all)
+    prod_user: molecule
+    project_name: molecule-test
+  playbooks:
+    converge: converge.yml
+    verify: verify.yml
+verifier:
+  name: ansible

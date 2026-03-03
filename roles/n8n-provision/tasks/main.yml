@@ -9,6 +9,8 @@
   changed_when: false
   failed_when: false
   become: true
+  when: not (common_molecule_mode | default(false))
+  # docker exec / n8n API / docker container not available in molecule
 
 - name: Skip n8n provisioning if container doesn't exist
   ansible.builtin.debug:
@@ -25,6 +27,8 @@
   failed_when: false
   become: true
   when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
     - n8n_owner_email | default('') | length > 0
     - n8n_container_check.stdout | default('') | length > 0
 
@@ -34,6 +38,8 @@
       {{ n8n_owner_email | default('') | length > 0 and
          n8n_container_check.stdout | default('') | length > 0 and
          '"showSetupPage":false' not in (n8n_settings_check.stdout | default('')) }}
+  when: not (common_molecule_mode | default(false))
+  # docker exec / n8n API / docker container not available in molecule
 
 - name: Wait for n8n container to be healthy
   ansible.builtin.command:
@@ -45,7 +51,10 @@
   delay: 5
   until: n8n_health_status.stdout | default('') == 'healthy'
   become: true
-  when: n8n_setup_needed | bool
+  when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
+    - n8n_setup_needed | default(false) | bool
 
 - name: Provision n8n owner account via API
   ansible.builtin.shell:
@@ -69,7 +78,9 @@
   no_log: true
   become: true
   when:
-    - n8n_setup_needed | bool
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
+    - n8n_setup_needed | default(false) | bool
     - n8n_health_status.stdout | default('') == 'healthy'
 
 - name: Display n8n owner provisioning result
@@ -79,7 +90,7 @@
       ✅ n8n owner account created successfully.
       {% elif n8n_owner_result.stdout | default('') == '400' %}
       ℹ️  n8n owner already exists (setup already completed). Skipping.
-      {% elif not (n8n_setup_needed | bool) %}
+      {% elif not (n8n_setup_needed | default(false) | bool) %}
       ℹ️  n8n owner already provisioned or not configured. Skipping.
       {% else %}
       ⚠️  WARNING: n8n owner provisioning returned HTTP {{ n8n_owner_result.stdout | default('unknown') }}.
@@ -166,6 +177,8 @@
   no_log: true
   become: true
   when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
     - n8n_container_check.stdout | default('') | length > 0
     - n8n_owner_email | default('') | length > 0
 
@@ -194,7 +207,6 @@
     state: directory
     mode: "0755"
   become: true
-  when: n8n_container_check.stdout | default('') | length > 0
 
 # Pre-register RPi SSH host key in n8n container known_hosts
 # Eliminates StrictHostKeyChecking=accept-new TOFU risk for github-autofix and code-review workflows.
@@ -227,6 +239,8 @@
   failed_when: false
   become: true
   when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
     - n8n_container_check.stdout | default('') | length > 0
     - workstation_pi_tailscale_ip | default('') | length > 0
 
@@ -237,7 +251,6 @@
     dest: "/tmp/n8n-workflow-creative-pipeline.json"
     mode: "0644"
   become: true
-  when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Template plan-dispatch workflow (resolves Jinja2 vars)
   ansible.builtin.template:
@@ -245,7 +258,6 @@
     dest: "/tmp/n8n-workflow-plan-dispatch.json"
     mode: "0644"
   become: true
-  when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Copy n8n workflow files to server
   ansible.builtin.copy:
@@ -279,7 +291,6 @@
     - palais-standup
     - palais-insight-alert
     - launch-claude-code
-  when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Check workflow update status (checksum comparison)
   ansible.builtin.shell:
@@ -333,7 +344,8 @@
     - {file: "launch-claude-code", name: "Palais Launch Claude Code"}
   loop_control:
     label: "{{ item.name }}"
-  when: n8n_container_check.stdout | default('') | length > 0
+  when: not (common_molecule_mode | default(false))
+  # docker exec / n8n API / docker container not available in molecule
 
 - name: Display workflow update status
   ansible.builtin.debug:
@@ -354,6 +366,8 @@
   loop_control:
     label: "{{ item.item.name }}"
   when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
     - n8n_container_check.stdout | default('') | length > 0
     - item.stdout | default('') == 'NEEDS_UPDATE'
 
@@ -421,6 +435,8 @@
   loop_control:
     label: "{{ item.item.name }}"
   when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
     - n8n_container_check.stdout | default('') | length > 0
     - item.stdout | default('') == 'NEEDS_UPDATE'
 
@@ -443,6 +459,8 @@
   loop_control:
     label: "{{ item.item.name }}"
   when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
     - n8n_container_check.stdout | default('') | length > 0
     - item.stdout | default('') == 'NEEDS_UPDATE'
 
@@ -473,6 +491,8 @@
   loop_control:
     label: "{{ item.item.name }}"
   when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
     - n8n_container_check.stdout | default('') | length > 0
     - item.stdout | default('') == 'NEEDS_UPDATE'
 
@@ -517,7 +537,8 @@
     - {file: "launch-claude-code", name: "Palais Launch Claude Code"}
   loop_control:
     label: "{{ item.name }}"
-  when: n8n_container_check.stdout | default('') | length > 0
+  when: not (common_molecule_mode | default(false))
+  # docker exec / n8n API / docker container not available in molecule
 
 - name: Restart n8n to activate published workflows
   ansible.builtin.command:
@@ -525,6 +546,8 @@
   become: true
   changed_when: true
   when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
     - n8n_container_check.stdout | default('') | length > 0
     - n8n_workflow_check.results | default([]) | selectattr('stdout', 'equalto', 'NEEDS_UPDATE') | list | length > 0
 
@@ -557,10 +580,10 @@
     - error-to-task
     - project-status
     - plan-dispatch
+    - litellm-credit-alert
     - palais-standup
     - palais-insight-alert
     - launch-claude-code
-  when: n8n_container_check.stdout | default('') | length > 0
 
 - name: Display n8n workflow update results
   ansible.builtin.debug:
@@ -591,7 +614,10 @@
   failed_when: false
   become: true
   tags: [n8n-nuke]
-  when: n8n_nuke_requested | default(false) | bool
+  when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
+    - n8n_nuke_requested | default(false) | bool
 
 - name: "[nuke] Delete ALL n8n workflows (unpublish + PostgreSQL DELETE cascade)"
   ansible.builtin.shell:
@@ -636,6 +662,8 @@
   become: true
   tags: [n8n-nuke]
   when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
     - n8n_nuke_requested | default(false) | bool
     - n8n_nuke_container_check.stdout | default('') | length > 0
 
@@ -654,6 +682,8 @@
   become: true
   tags: [n8n-nuke]
   when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
     - n8n_nuke_requested | default(false) | bool
     - n8n_nuke_container_check.stdout | default('') | length > 0
 
@@ -665,5 +695,7 @@
   become: true
   tags: [n8n-nuke]
   when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
     - n8n_nuke_requested | default(false) | bool
     - n8n_nuke_container_check.stdout | default('') | length > 0

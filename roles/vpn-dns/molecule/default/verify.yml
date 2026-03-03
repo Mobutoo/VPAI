@@ -1,0 +1,24 @@
+---
+- name: Verify vpn-dns role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check Headscale config exists
+      ansible.builtin.stat:
+        path: /opt/services/headscale/config/config.yaml
+      register: headscale_config
+
+    - name: Assert Headscale config exists
+      ansible.builtin.assert:
+        that: headscale_config.stat.exists
+
+    - name: Check Headscale config contains extra_records
+      ansible.builtin.command:
+        cmd: grep -q "extra_records" /opt/services/headscale/config/config.yaml
+      changed_when: false
+      failed_when: false
+      register: extra_records_check
+
+    - name: Assert extra_records present in config
+      ansible.builtin.assert:
+        that: extra_records_check.rc == 0

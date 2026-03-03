@@ -1,0 +1,102 @@
+---
+- name: Verify docker-stack role
+  hosts: all
+  gather_facts: false
+  vars:
+    project_name: molecule-test
+  tasks:
+    - name: Check project directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}"
+      register: project_dir
+
+    - name: Assert project directory
+      ansible.builtin.assert:
+        that: project_dir.stat.exists and project_dir.stat.isdir
+
+    - name: Check Makefile exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/Makefile"
+      register: makefile
+
+    - name: Assert Makefile exists
+      ansible.builtin.assert:
+        that: makefile.stat.exists
+
+    - name: Check docker-compose-infra.yml exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/docker-compose-infra.yml"
+      register: compose_infra
+
+    - name: Assert docker-compose-infra.yml exists
+      ansible.builtin.assert:
+        that: compose_infra.stat.exists
+
+    - name: Check docker-compose.yml exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/docker-compose.yml"
+      register: compose_apps
+
+    - name: Assert docker-compose.yml exists
+      ansible.builtin.assert:
+        that: compose_apps.stat.exists
+
+    - name: Check PostgreSQL provisioning script exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/scripts/provision-postgresql.sh"
+      register: pg_script
+
+    - name: Assert PostgreSQL provisioning script exists
+      ansible.builtin.assert:
+        that: pg_script.stat.exists
+
+    - name: Check menu.sh exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/menu.sh"
+      register: menu_sh
+
+    - name: Assert menu.sh exists
+      ansible.builtin.assert:
+        that: menu_sh.stat.exists
+
+    - name: Check logs/caddy directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/logs/caddy"
+      register: caddy_logs_dir
+
+    - name: Assert logs/caddy directory exists
+      ansible.builtin.assert:
+        that: caddy_logs_dir.stat.exists and caddy_logs_dir.stat.isdir
+
+    - name: Check scripts directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/scripts"
+      register: scripts_dir
+
+    - name: Assert scripts directory exists
+      ansible.builtin.assert:
+        that: scripts_dir.stat.exists and scripts_dir.stat.isdir
+
+    - name: Verify docker-compose-infra.yml contains expected service names
+      ansible.builtin.command:
+        cmd: "grep -c 'container_name:' /opt/{{ project_name }}/docker-compose-infra.yml"
+      register: infra_containers
+      changed_when: false
+      failed_when: false
+
+    - name: Assert docker-compose-infra.yml has at least 4 containers (pg, redis, qdrant, caddy)
+      ansible.builtin.assert:
+        that: infra_containers.stdout | int >= 4
+        fail_msg: "docker-compose-infra.yml should define at least 4 containers, found {{ infra_containers.stdout }}"
+
+    - name: Verify docker-compose.yml contains expected service names
+      ansible.builtin.command:
+        cmd: "grep -c 'container_name:' /opt/{{ project_name }}/docker-compose.yml"
+      register: apps_containers
+      changed_when: false
+      failed_when: false
+
+    - name: Assert docker-compose.yml has at least 5 containers (n8n, litellm, openclaw, grafana, etc.)
+      ansible.builtin.assert:
+        that: apps_containers.stdout | int >= 5
+        fail_msg: "docker-compose.yml should define at least 5 containers, found {{ apps_containers.stdout }}"

@@ -34,6 +34,8 @@
     user: root
     state: present
   become: true
+  # cron module reports changed non-idempotently in Docker containers (no real crontab)
+  when: not (common_molecule_mode | default(false))
 
 - name: Obsidian Collector | Create log file
   ansible.builtin.file:

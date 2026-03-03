@@ -1,0 +1,23 @@
+---
+- name: Verify n8n-provision role
+  hosts: all
+  gather_facts: false
+  vars:
+    project_name: molecule-test
+  tasks:
+    - name: Check workflow checksum directory exists
+      ansible.builtin.stat:
+        path: "/opt/{{ project_name }}/configs/n8n/workflow-checksums"
+      register: checksum_dir
+
+    - name: Assert checksum directory exists and is a directory
+      ansible.builtin.assert:
+        that:
+          - checksum_dir.stat.exists
+          - checksum_dir.stat.isdir
+        fail_msg: >-
+          Workflow checksum directory
+          /opt/{{ project_name }}/configs/n8n/workflow-checksums
+          was not created by the role.
+        success_msg: >-
+          Workflow checksum directory exists as expected.

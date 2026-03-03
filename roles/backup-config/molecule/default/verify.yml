@@ -2,10 +2,14 @@
 - name: Verify backup-config role
   hosts: all
   gather_facts: false
+  vars:
+    # Stub vars — verify.yml runs independently, does not inherit converge.yml vars
+    project_name: molecule-test
+    prod_user: molecule
   tasks:
     - name: Check backup base directory exists
       ansible.builtin.stat:
-        path: "/opt/vpai/backups"
+        path: "/opt/{{ project_name }}/backups"
       register: backup_base
     - name: Assert backup base dir
       ansible.builtin.assert:
@@ -13,7 +17,7 @@
 
     - name: Check backup subdirectories exist
       ansible.builtin.stat:
-        path: "/opt/vpai/backups/{{ item }}"
+        path: "/opt/{{ project_name }}/backups/{{ item }}"
       loop:
         - pg_dump
         - redis
@@ -30,17 +34,17 @@
 
     - name: Check pre-backup script exists
       ansible.builtin.stat:
-        path: "/opt/vpai/scripts/pre-backup.sh"
+        path: "/opt/{{ project_name }}/scripts/pre-backup.sh"
       register: pre_backup
     - name: Assert pre-backup script
       ansible.builtin.assert:
         that:
           - pre_backup.stat.exists
-          - pre_backup.stat.mode == '0750'
+          - pre_backup.stat.mode == "0750"
 
     - name: Check pre-backup script starts with set -euo pipefail
       ansible.builtin.command:
-        cmd: grep -q "set -euo pipefail" /opt/vpai/scripts/pre-backup.sh
+        cmd: grep -q "set -euo pipefail" /opt/{{ project_name }}/scripts/pre-backup.sh
       changed_when: false
       failed_when: false
       register: pre_backup_pipefail
@@ -50,17 +54,17 @@
 
     - name: Check backup cleanup script exists
       ansible.builtin.stat:
-        path: "/opt/vpai/scripts/backup-cleanup.sh"
+        path: "/opt/{{ project_name }}/scripts/backup-cleanup.sh"
       register: cleanup_script
     - name: Assert cleanup script
       ansible.builtin.assert:
         that:
           - cleanup_script.stat.exists
-          - cleanup_script.stat.mode == '0750'
+          - cleanup_script.stat.mode == "0750"
 
     - name: Check pre-backup cron job
       ansible.builtin.command:
-        cmd: crontab -l -u deploy
+        cmd: crontab -l -u {{ prod_user }}
       changed_when: false
       failed_when: false
       register: crontab_output

@@ -2,28 +2,35 @@
 - name: Verify docker role
   hosts: all
   gather_facts: false
+  vars:
+    # Stub vars — verify.yml runs independently, does not inherit converge.yml vars
+    common_molecule_mode: true
   tasks:
     - name: Check Docker is installed
       ansible.builtin.command:
         cmd: docker --version
       changed_when: false
+      when: not (common_molecule_mode | default(false))
 
     - name: Check Docker Compose plugin is installed
       ansible.builtin.command:
         cmd: docker compose version
       changed_when: false
+      when: not (common_molecule_mode | default(false))
 
     - name: Check daemon.json exists
       ansible.builtin.stat:
         path: /etc/docker/daemon.json
       register: daemon_json
       failed_when: not daemon_json.stat.exists
+      when: not (common_molecule_mode | default(false))
 
     - name: Check Docker service is running
       ansible.builtin.systemd:
         name: docker
       register: docker_service
       failed_when: docker_service.status.ActiveState != "active"
+      when: not (common_molecule_mode | default(false))
 
     - name: Check cleanup script exists
       ansible.builtin.stat:

@@ -2,10 +2,13 @@
 - name: Verify uptime-config role
   hosts: all
   gather_facts: false
+  vars:
+    # Stub vars — verify.yml runs independently, does not inherit converge.yml vars
+    project_name: molecule-test
   tasks:
     - name: Check docs directory exists
       ansible.builtin.stat:
-        path: "/opt/vpai/docs"
+        path: "/opt/{{ project_name }}/docs"
       register: docs_dir
     - name: Assert docs dir
       ansible.builtin.assert:
@@ -13,7 +16,7 @@
 
     - name: Check Uptime Kuma monitors reference exists
       ansible.builtin.stat:
-        path: "/opt/vpai/docs/uptime-kuma-monitors.md"
+        path: "/opt/{{ project_name }}/docs/uptime-kuma-monitors.md"
       register: monitors_doc
     - name: Assert monitors doc
       ansible.builtin.assert:
@@ -21,7 +24,7 @@
 
     - name: Check monitors doc contains 6 monitors
       ansible.builtin.command:
-        cmd: grep -c "^### " /opt/vpai/docs/uptime-kuma-monitors.md
+        cmd: grep -c "^### " /opt/{{ project_name }}/docs/uptime-kuma-monitors.md
       changed_when: false
       failed_when: false
       register: monitor_count

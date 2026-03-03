@@ -2,20 +2,23 @@
 - name: Verify smoke-tests role
   hosts: all
   gather_facts: false
+  vars:
+    # Stub vars — verify.yml runs independently, does not inherit converge.yml vars
+    project_name: molecule-test
   tasks:
     - name: Check smoke test script exists
       ansible.builtin.stat:
-        path: "/opt/vpai/scripts/smoke-test.sh"
+        path: "/opt/{{ project_name }}/scripts/smoke-test.sh"
       register: smoke_script
     - name: Assert smoke test script
       ansible.builtin.assert:
         that:
           - smoke_script.stat.exists
-          - smoke_script.stat.mode == '0750'
+          - smoke_script.stat.mode == "0750"
 
     - name: Check smoke test script starts with set -euo pipefail
       ansible.builtin.command:
-        cmd: grep -q "set -euo pipefail" /opt/vpai/scripts/smoke-test.sh
+        cmd: grep -q "set -euo pipefail" /opt/{{ project_name }}/scripts/smoke-test.sh
       changed_when: false
       failed_when: false
       register: smoke_pipefail
@@ -25,7 +28,7 @@
 
     - name: Check smoke test script checks HTTPS
       ansible.builtin.command:
-        cmd: grep -q "Caddy HTTPS" /opt/vpai/scripts/smoke-test.sh
+        cmd: grep -q "Caddy HTTPS" /opt/{{ project_name }}/scripts/smoke-test.sh
       changed_when: false
       failed_when: false
       register: smoke_https
@@ -35,7 +38,7 @@
 
     - name: Check smoke test script checks PostgreSQL
       ansible.builtin.command:
-        cmd: grep -q "PostgreSQL" /opt/vpai/scripts/smoke-test.sh
+        cmd: grep -q "PostgreSQL" /opt/{{ project_name }}/scripts/smoke-test.sh
       changed_when: false
       failed_when: false
       register: smoke_pg
@@ -45,7 +48,7 @@
 
     - name: Check smoke test script checks Redis
       ansible.builtin.command:
-        cmd: grep -q "Redis" /opt/vpai/scripts/smoke-test.sh
+        cmd: grep -q "Redis" /opt/{{ project_name }}/scripts/smoke-test.sh
       changed_when: false
       failed_when: false
       register: smoke_redis
@@ -55,7 +58,7 @@
 
     - name: Check smoke test script checks TLS
       ansible.builtin.command:
-        cmd: grep -q "TLS" /opt/vpai/scripts/smoke-test.sh
+        cmd: grep -q "TLS" /opt/{{ project_name }}/scripts/smoke-test.sh
       changed_when: false
       failed_when: false
       register: smoke_tls
@@ -65,7 +68,7 @@
 
     - name: Check smoke test script checks DNS
       ansible.builtin.command:
-        cmd: grep -q "DNS" /opt/vpai/scripts/smoke-test.sh
+        cmd: grep -q "DNS" /opt/{{ project_name }}/scripts/smoke-test.sh
       changed_when: false
       failed_when: false
       register: smoke_dns
@@ -75,7 +78,7 @@
 
     - name: Check smoke test has proper exit codes
       ansible.builtin.command:
-        cmd: grep -q "exit 1" /opt/vpai/scripts/smoke-test.sh
+        cmd: grep -q "exit 1" /opt/{{ project_name }}/scripts/smoke-test.sh
       changed_when: false
       failed_when: false
       register: smoke_exit

@@ -2,6 +2,9 @@
 - name: Verify n8n role
   hosts: all
   gather_facts: false
+  vars:
+    # Stub vars — verify.yml runs independently, does not inherit converge.yml vars
+    project_name: molecule-test
   tasks:
     - name: Check n8n env file exists
       ansible.builtin.stat:

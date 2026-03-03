@@ -2,10 +2,13 @@
 - name: Verify diun role
   hosts: all
   gather_facts: false
+  vars:
+    # Stub vars — verify.yml runs independently, does not inherit converge.yml vars
+    project_name: molecule-test
   tasks:
     - name: Check DIUN data directory exists
       ansible.builtin.stat:
-        path: "/opt/vpai/data/diun"
+        path: "/opt/{{ project_name }}/data/diun"
       register: diun_data
     - name: Assert DIUN data dir
       ansible.builtin.assert:
@@ -13,7 +16,7 @@
 
     - name: Check DIUN config directory exists
       ansible.builtin.stat:
-        path: "/opt/vpai/configs/diun"
+        path: "/opt/{{ project_name }}/configs/diun"
       register: diun_config
     - name: Assert DIUN config dir
       ansible.builtin.assert:
@@ -21,7 +24,7 @@
 
     - name: Check DIUN config file exists
       ansible.builtin.stat:
-        path: "/opt/vpai/configs/diun/diun.yml"
+        path: "/opt/{{ project_name }}/configs/diun/diun.yml"
       register: diun_cfg
     - name: Assert DIUN config file
       ansible.builtin.assert:
@@ -29,7 +32,7 @@
 
     - name: Check DIUN config contains watch schedule
       ansible.builtin.command:
-        cmd: grep -q "schedule" /opt/vpai/configs/diun/diun.yml
+        cmd: grep -q "schedule" /opt/{{ project_name }}/configs/diun/diun.yml
       changed_when: false
       failed_when: false
       register: diun_schedule
@@ -39,7 +42,7 @@
 
     - name: Check DIUN config contains docker provider
       ansible.builtin.command:
-        cmd: grep -q "docker" /opt/vpai/configs/diun/diun.yml
+        cmd: grep -q "docker" /opt/{{ project_name }}/configs/diun/diun.yml
       changed_when: false
       failed_when: false
       register: diun_docker

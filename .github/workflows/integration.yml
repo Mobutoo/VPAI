@@ -56,12 +56,11 @@ jobs:
           sudo mv hcloud /usr/local/bin/hcloud
           hcloud version
 
-      - name: Prepare SSH key
+      - name: Generate ephemeral SSH key (unique per run — avoids Hetzner uniqueness constraint)
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ci_key
-          chmod 600 ~/.ssh/ci_key
-          ssh-keygen -y -f ~/.ssh/ci_key > ~/.ssh/ci_key.pub
+          ssh-keygen -t ed25519 -f ~/.ssh/ci_key -N "" -q
+          echo "Ephemeral key fingerprint: $(ssh-keygen -lf ~/.ssh/ci_key.pub)"
 
       - name: Create CX22 server (Debian 13 trixie)
         id: server
@@ -165,6 +164,13 @@ jobs:
             sleep 30
           fi
 
+      - name: Upload ephemeral SSH key as artifact (shared with deploy + smoke-tests jobs)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-ssh-key-${{ github.run_id }}
+          path: ~/.ssh/ci_key
+          retention-days: 1
+
   # ===========================================================================
   # Job 2 — deploy : Ansible site.yml ×2 (deploy + idempotence check)
   # ansible_port_override=22 : keep SSH on port 22 (CI can't use Tailscale IP)
@@ -190,10 +196,14 @@ jobs:
       - name: Install Ansible collections
         run: ansible-galaxy install -r requirements.yml
 
-      - name: Configure SSH key
+      - name: Download ephemeral SSH key artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-ssh-key-${{ github.run_id }}
+          path: ~/.ssh/
+
+      - name: Configure SSH
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ci_key
           chmod 600 ~/.ssh/ci_key
           ssh-keyscan -H "${{ needs.provision.outputs.server_ip }}" >> ~/.ssh/known_hosts
 
@@ -258,10 +268,14 @@ jobs:
     environment: integration
     needs: [provision, deploy]
     steps:
+      - name: Download ephemeral SSH key artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-ssh-key-${{ github.run_id }}
+          path: ~/.ssh/
+
       - name: Configure SSH
         run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/ci_key
           chmod 600 ~/.ssh/ci_key
           ssh-keyscan -H "${{ needs.provision.outputs.server_ip }}" >> ~/.ssh/known_hosts
 

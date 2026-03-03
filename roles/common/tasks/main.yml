@@ -172,8 +172,9 @@
 - name: Enable swap file
   ansible.builtin.command:
     cmd: "swapon {{ common_swap_file }}"
+  register: swapon_result
   become: true
-  changed_when: true
+  changed_when: swapon_result.rc == 0  # rc=0 → newly activated; rc!=0 → already active
   failed_when: false
   when:
     - not (common_molecule_mode | default(false))

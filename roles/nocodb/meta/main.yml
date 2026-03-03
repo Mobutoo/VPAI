@@ -10,6 +10,4 @@ galaxy_info:
     - name: Debian
       versions: [bookworm, trixie]
 
-dependencies:
-  - role: docker
-  - role: postgresql
+dependencies: []

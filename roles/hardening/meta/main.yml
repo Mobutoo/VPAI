@@ -12,5 +12,4 @@ galaxy_info:
         - bookworm
         - trixie
 
-dependencies:
-  - role: common
+dependencies: []

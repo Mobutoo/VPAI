@@ -20,7 +20,7 @@
       chmod a+r /etc/apt/keyrings/tailscale-archive-keyring.gpg
   args:
     creates: /etc/apt/keyrings/tailscale-archive-keyring.gpg
-  changed_when: true
+  changed_when: false  # creates: guard ensures idempotency — task only runs once
   become: true
   when: not (common_molecule_mode | default(false))
 

@@ -335,7 +335,10 @@
 
 - name: Check if sandbox has required extra packages
   ansible.builtin.command:
-    cmd: docker run --rm {{ openclaw_sandbox_image }} which redis-cli
+    cmd: docker run --rm {{ openclaw_sandbox_image }} redis-cli --version
+  # NOTE: use 'redis-cli --version' not 'which redis-cli' — 'which' (debianutils) may not
+  # be installed in the minimal bookworm-slim sandbox image. 'which' returning rc=1 caused
+  # needs_build=True on every run 2 → Write/Append/Build tasks always CHANGED.
   register: openclaw_sandbox_tools_check
   changed_when: false
   failed_when: false

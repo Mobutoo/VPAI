@@ -34,6 +34,8 @@
     path: "{{ qdrant_data_dir }}/snapshots/tmp"
     state: absent
   become: true
+  changed_when: false
+  # Qdrant recreates snapshots/tmp at startup — always reporting absent is safe (never meaningful)
 
 - name: Deploy Qdrant config
   ansible.builtin.template:

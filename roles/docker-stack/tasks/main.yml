@@ -34,22 +34,6 @@
     mode: "0755"
   become: true
 
-# === CLEANUP : Stop Phase B apps before redeploy (infra stays running) ===
-- name: Stop Phase B apps stack if it exists
-  ansible.builtin.shell:
-    executable: /bin/bash
-    cmd: |
-      set -o pipefail
-      cd /opt/{{ project_name }}
-      if [ -f docker-compose.yml ]; then
-        docker compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
-      fi
-  become: true
-  changed_when: false
-  failed_when: false
-  when: not (common_molecule_mode | default(false))
-  # docker compose not available in molecule
-
 # === PHASE A : INFRASTRUCTURE (all services start independently) ===
 - name: Deploy docker-compose-infra.yml template
   ansible.builtin.template:
@@ -72,7 +56,8 @@
   changed_when: >-
     'Creating' in (docker_infra_result.stdout | default(''))
     or 'Starting' in (docker_infra_result.stdout | default(''))
-    or 'Pulling' in (docker_infra_result.stdout | default(''))
+  # NOTE: 'Pulling' removed — image pulls are not a state change for the stack.
+  # Including it causes idempotence failure on re-runs when Docker re-verifies images.
   failed_when: docker_infra_result.rc | default(0) != 0
   when: not (common_molecule_mode | default(false))
   # docker compose not available in molecule
@@ -379,7 +364,28 @@
     group: "{{ prod_user }}"
     mode: "0644"
   become: true
+  register: docker_compose_template_result
   notify: Restart docker stack
+
+# === CLEANUP : Stop Phase B only when compose file changes ===
+# REX: Unconditional stop caused Phase B to always report CHANGED on idempotent runs.
+# Stop only when the compose template changed to clean up orphans before recreate.
+- name: Stop Phase B apps stack if compose changed
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      cd /opt/{{ project_name }}
+      if [ -f docker-compose.yml ]; then
+        docker compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
+      fi
+  become: true
+  changed_when: false
+  failed_when: false
+  when:
+    - not (common_molecule_mode | default(false))
+    - docker_compose_template_result.changed | default(true)
+  # docker compose not available in molecule
 
 - name: Start Applications stack (Phase B)
   community.docker.docker_compose_v2:
@@ -420,7 +426,7 @@
   ansible.builtin.command:
     cmd: "docker restart {{ project_name }}_litellm"
   become: true
-  changed_when: true
+  changed_when: litellm_precheck.stdout | default('') != 'healthy'
   failed_when: false
   register: litellm_restart
   when:

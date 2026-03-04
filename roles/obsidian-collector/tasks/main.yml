@@ -7,8 +7,12 @@
     state: directory
     owner: root
     group: root
-    mode: "0750"
+    mode: "0755"
   become: true
+  # NOTE: mode 0755 matches docker-stack which also manages /opt/{project}/scripts.
+  # Competing modes (0750 here vs 0755 in docker-stack) cause a perpetual mode-flip
+  # on every run (idempotence failure). docker-stack runs after this role in site.yml,
+  # so docker-stack always wins → use 0755 consistently.
 
 - name: Obsidian Collector | Install Python3 requests (required for collector)
   ansible.builtin.package:

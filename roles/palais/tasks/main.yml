@@ -135,7 +135,12 @@
       - "--exclude=build"
     delete: true
     dest_port: "{{ ansible_port | default(prod_ssh_port) | int }}"
+    owner: false
+    group: false
   notify: Restart palais
   # delegate_to / docker exec / synchronize incompatible with molecule
+  # NOTE: owner/group: false prevents rsync -a from using --owner/-o and --group/-g.
+  # Without this, rsync tries to preserve CI runner ownership (runner:runner) on the VPS,
+  # causing a permanent ownership mismatch → always CHANGED → fires Restart palais handler.
   when: not (common_molecule_mode | default(false))
   tags: [palais]

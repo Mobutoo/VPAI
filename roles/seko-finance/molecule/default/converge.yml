@@ -1,0 +1,22 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    common_molecule_mode: true
+    project_name: javisi
+    prod_user: molecule
+    domain_name: test.local
+    seko_finance_subdomain: nzimbu
+    seko_finance_firefly_pat: "test_pat_token"
+    firefly_web_port: 8080
+    litellm_master_key: "sk-test-key"
+    timezone: "Europe/Paris"
+  pre_tasks:
+    - name: Create molecule test user (not present in geerlingguy Docker image)
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
+  roles:
+    - role: seko-finance

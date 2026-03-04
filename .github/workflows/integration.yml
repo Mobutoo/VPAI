@@ -333,15 +333,22 @@ jobs:
 
           check_https() {
             local name="$1" url="$2" expected="${3:-200}"
-            local status
-            status=$(curl -sL -o /dev/null -w "%{http_code}" \
-              --max-time "${TIMEOUT}" "${url}" 2>/dev/null) || status="000"
-            if [ "${status}" = "${expected}" ]; then
-              echo "PASS  ${name} (HTTP ${status})"
-            else
-              echo "FAIL  ${name} (HTTP ${status}, expected ${expected})"
-              FAILURES=$((FAILURES + 1))
-            fi
+            local status attempt
+            for attempt in 1 2 3; do
+              status=$(curl -sL -o /dev/null -w "%{http_code}" \
+                --max-time "${TIMEOUT}" "${url}" 2>/dev/null) || status="000"
+              if [ "${status}" = "${expected}" ]; then
+                echo "PASS  ${name} (HTTP ${status})"
+                return
+              fi
+              # Retry on 000 (TLS not ready — Caddy ACME still issuing cert)
+              if [ "${status}" = "000" ] && [ "${attempt}" -lt 3 ]; then
+                echo "WAIT  ${name} (HTTP 000, TLS not ready — retry ${attempt}/3 in 30s)"
+                sleep 30
+              fi
+            done
+            echo "FAIL  ${name} (HTTP ${status}, expected ${expected})"
+            FAILURES=$((FAILURES + 1))
           }
 
           echo "=== External HTTPS Checks (runner → preprod) ==="

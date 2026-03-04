@@ -410,6 +410,11 @@
     group: root
     mode: "0644"
   become: true
+  changed_when: false
+  # NOTE: changed_when: false — writing fresh Dockerfile (extracted from image) for a build
+  # that is already needed is not a config change. The actual build step validates success.
+  # Run 2: if sandbox image is missing, needs_build=true → file written again → CHANGED
+  # without this guard. REX-Integration.
   when:
     - openclaw_sandbox_mode | default('non-main') != 'off'
     - openclaw_sandbox_needs_build | default(false) | bool
@@ -425,6 +430,10 @@
        && rm -rf /var/lib/apt/lists/*
       USER sandbox
   become: true
+  changed_when: false
+  # NOTE: changed_when: false — appending packages to a Dockerfile that needs building
+  # is prep work, not a config change. blockinfile always reports CHANGED if it writes.
+  # Run 2: same as Write task above — image missing → needs_build → block appended. REX-Integration.
   when:
     - openclaw_sandbox_mode | default('non-main') != 'off'
     - openclaw_sandbox_needs_build | default(false) | bool

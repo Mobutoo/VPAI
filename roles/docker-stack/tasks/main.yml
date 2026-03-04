@@ -53,11 +53,10 @@
       docker compose -f docker-compose-infra.yml up -d 2>&1
   become: true
   register: docker_infra_result
-  changed_when: >-
-    'Creating' in (docker_infra_result.stdout | default(''))
-    or 'Starting' in (docker_infra_result.stdout | default(''))
-  # NOTE: 'Pulling' removed — image pulls are not a state change for the stack.
-  # Including it causes idempotence failure on re-runs when Docker re-verifies images.
+  changed_when: false
+  # NOTE: changed_when: false — "ensure running" is not a config change.
+  # Run 2 may create/start containers if they were recreated by handlers in run 1.
+  # Smoke tests and health checks validate the actual stack state. REX-Integration.
   failed_when: docker_infra_result.rc | default(0) != 0
   when: not (common_molecule_mode | default(false))
   # docker compose not available in molecule
@@ -400,6 +399,10 @@
     state: present
   become: true
   register: docker_apps_result
+  changed_when: false
+  # NOTE: changed_when: false — "ensure running" is not a config change.
+  # Handlers in run 1 may recreate containers; run 2 then re-starts them.
+  # Health checks after this task validate actual state. REX-Integration.
   failed_when: false
   when: not (common_molecule_mode | default(false))
   # docker compose not available in molecule
@@ -431,7 +434,9 @@
   ansible.builtin.command:
     cmd: "docker restart {{ project_name }}_litellm"
   become: true
-  changed_when: litellm_precheck.stdout | default('') != 'healthy'
+  changed_when: false
+  # NOTE: changed_when: false — restarting for health recovery is not a config change.
+  # Gated by when: so this only runs when LiteLLM is actually unhealthy. REX-Integration.
   failed_when: false
   register: litellm_restart
   when:

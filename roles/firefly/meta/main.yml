@@ -1,0 +1,16 @@
+---
+# firefly — role metadata
+
+galaxy_info:
+  role_name: firefly
+  author: Mobutoo
+  description: Deploy Firefly III personal finance engine
+  license: AGPL-3.0
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

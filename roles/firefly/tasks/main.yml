@@ -1,0 +1,31 @@
+---
+# firefly — tasks
+# Firefly III personal finance engine (Laravel in Docker)
+
+- name: Create Firefly III config directory
+  ansible.builtin.file:
+    path: "{{ firefly_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create Firefly III data directory
+  ansible.builtin.file:
+    path: "{{ firefly_data_dir }}/upload"
+    state: directory
+    owner: "www-data"
+    group: "www-data"
+    mode: "0755"
+  become: true
+
+- name: Deploy Firefly III environment file
+  ansible.builtin.template:
+    src: firefly.env.j2
+    dest: "{{ firefly_config_dir }}/firefly.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart firefly stack

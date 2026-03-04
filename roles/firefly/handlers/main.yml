@@ -1,0 +1,29 @@
+---
+# firefly — handlers
+# Pattern: grep-guard before restart — checks that firefly-iii service is declared
+# in docker-compose.yml (i.e. docker-stack Phase B has been deployed).
+# Uses state: present + recreate: always to reload env_file (REX: restart ≠ recreate).
+
+- name: Check firefly service is in compose file
+  ansible.builtin.command:
+    cmd: grep -q "firefly-iii" /opt/{{ project_name }}/docker-compose.yml
+  register: _firefly_in_compose
+  failed_when: false
+  changed_when: false
+  listen: Restart firefly stack
+
+- name: Restart firefly containers
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - firefly-iii
+    state: present
+    recreate: always
+  become: true
+  when:
+    - not ansible_check_mode
+    - _firefly_in_compose.rc | default(1) == 0
+    - not (common_molecule_mode | default(false))
+  listen: Restart firefly stack

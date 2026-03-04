@@ -107,5 +107,15 @@
         name: molecule
         state: present
         create_home: true
+
+    - name: Update apt cache (geerlingguy image may have stale cache)
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install openssh-server (hardening role configures sshd)
+      ansible.builtin.apt:
+        name: openssh-server
+        state: present
   roles:
     - role: hardening

@@ -127,10 +127,11 @@ grafana_admin_password: "{{ vault_grafana_admin_password }}"
 # Qdrant
 qdrant_api_key: "{{ vault_qdrant_api_key }}"
 
-# Sure (personal finance)
-sure_secret_key_base: "{{ vault_sure_secret_key_base }}"
-sure_db_password: "{{ vault_sure_db_password | default(postgresql_password) }}"
-sure_api_key: "{{ vault_sure_api_key | default('') }}"
+# Firefly III (personal finance engine)
+firefly_app_key: "{{ vault_firefly_app_key }}"
+
+# Seko-Finance Dashboard (financial cockpit — connects to Firefly III + LiteLLM)
+seko_finance_firefly_pat: "{{ vault_firefly_pat | default('') }}"
 
 # NocoDB (pipeline production IA manga)
 # Note: NocoDB utilise postgresql_password (variable partagée) — pas de vault séparé
@@ -218,8 +219,9 @@ workstation_pi_disk_gb: 256
 # === PALAIS ===
 palais_subdomain: "palais"
 
-# Sure (personal finance)
-sure_subdomain: "nzimbu"
+# Firefly III + Seko-Finance (personal finance)
+firefly_subdomain: "lola"
+seko_finance_subdomain: "nzimbu"
 
 # Auto-Fix Pipeline (GitHub Issues -> Claude Code -> PR)
 autofix_enabled: true

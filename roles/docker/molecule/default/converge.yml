@@ -101,5 +101,21 @@
     obsidian_subdomain: biki
     palais_subdomain: palais
     sure_subdomain: nzimbu
+  pre_tasks:
+    - name: Create molecule test user (not present in geerlingguy Docker image)
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
+
+    - name: Update apt cache (geerlingguy image may have stale cache)
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install curl (normally installed by common role)
+      ansible.builtin.apt:
+        name: curl
+        state: present
   roles:
     - role: docker

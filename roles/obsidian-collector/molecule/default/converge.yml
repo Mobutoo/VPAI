@@ -107,6 +107,12 @@
     # obsidian-collector specific — not in base stubs
     vault_couchdb_obsidian_password: "molecule-stub-couchdb-pass"
   pre_tasks:
+    - name: Create molecule test user (not present in geerlingguy Docker image)
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
+
     - name: Update apt cache (substitutes for common role dependency)
       ansible.builtin.apt:
         update_cache: true

@@ -98,12 +98,20 @@ jobs:
           printf '%s' "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_password
           chmod 600 .vault_password
 
+      - name: Create preprod inventory (loads group_vars/all automatically)
+        run: |
+          cat > inventory/preprod_hosts.ini << EOF
+          [preprod]
+          ${{ secrets.PREPROD_SERVER_IP }} ansible_user=root ansible_port=22 ansible_ssh_private_key_file=~/.ssh/id_ed25519 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+          EOF
+
       - name: Deploy to permanent preprod server
         run: |
           ansible-playbook playbooks/site.yml \
-            -i "${{ secrets.PREPROD_SERVER_IP }}," \
+            -i inventory/preprod_hosts.ini \
+            --vault-password-file .vault_password \
             -e "target_env=preprod" \
-            -e "ansible_user=root" \
+            -e "domain_name=${{ secrets.PREPROD_DOMAIN }}" \
             --diff
 
   seed:
@@ -136,12 +144,20 @@ jobs:
           printf '%s' "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_password
           chmod 600 .vault_password
 
+      - name: Create preprod inventory (loads group_vars/all automatically)
+        run: |
+          cat > inventory/preprod_hosts.ini << EOF
+          [preprod]
+          ${{ secrets.PREPROD_SERVER_IP }} ansible_user=root ansible_port=22 ansible_ssh_private_key_file=~/.ssh/id_ed25519 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+          EOF
+
       - name: Seed preprod with prod data
         run: |
           ansible-playbook playbooks/seed-preprod.yml \
-            -i "${{ secrets.PREPROD_SERVER_IP }}," \
+            -i inventory/preprod_hosts.ini \
+            --vault-password-file .vault_password \
             -e "target_env=preprod" \
-            -e "ansible_user=root" \
+            -e "domain_name=${{ secrets.PREPROD_DOMAIN }}" \
             --diff
 
   smoke-tests:
@@ -166,7 +182,7 @@ jobs:
         run: |
           bash scripts/smoke-test.sh \
             --ci \
-            "https://${{ secrets.PREPROD_DOMAIN }}"
+            "${{ secrets.PREPROD_DOMAIN }}"
         env:
           LITELLM_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
 

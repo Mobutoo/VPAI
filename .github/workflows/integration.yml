@@ -145,23 +145,44 @@ jobs:
               target=server_ip,
               ttl=60)
 
+          # Root: preprod.ewutelo.cloud → SERVER_IP (REX-68)
+          client.post(f'/domain/zone/{base_domain}/record',
+              fieldType='A',
+              subDomain=sub,
+              target=server_ip,
+              ttl=60)
+
           client.post(f'/domain/zone/{base_domain}/refresh')
           print(f"DNS: {wildcard_sub}.{base_domain} -> {server_ip} (TTL 60)")
+          print(f"DNS: {sub}.{base_domain} -> {server_ip} (TTL 60)")
           PYEOF
 
-      - name: Wait for DNS propagation
+      - name: Wait for DNS propagation (90s + validation)
         run: |
-          echo "Waiting 60s for DNS propagation..."
-          sleep 60
+          echo "Waiting 90s for DNS propagation..."
+          sleep 90
           SERVER_IP="${{ steps.server.outputs.server_ip }}"
           PREPROD_DOMAIN="${{ secrets.PREPROD_DOMAIN }}"
-          RESOLVED=$(dig +short "test.${PREPROD_DOMAIN}" @1.1.1.1 | head -1) || RESOLVED=""
-          if [ "${RESOLVED}" = "${SERVER_IP}" ]; then
-            echo "DNS OK: test.${PREPROD_DOMAIN} -> ${RESOLVED}"
-          else
-            echo "WARN: DNS not yet resolved (got: '${RESOLVED}', expected: '${SERVER_IP}')"
-            echo "Waiting 30s more..."
-            sleep 30
+          PASS=true
+
+          for sub in "" "n8n" "llm" "tala" "qdrant" "nocodb" "oc" "palais" "plane"; do
+            if [ -n "${sub}" ]; then
+              FQDN="${sub}.${PREPROD_DOMAIN}"
+            else
+              FQDN="${PREPROD_DOMAIN}"
+            fi
+            RESOLVED=$(dig +short "${FQDN}" @1.1.1.1 | head -1) || RESOLVED=""
+            if [ "${RESOLVED}" = "${SERVER_IP}" ]; then
+              echo "DNS OK: ${FQDN} -> ${RESOLVED}"
+            else
+              echo "WARN: ${FQDN} not resolved (got: '${RESOLVED}', expected: '${SERVER_IP}')"
+              PASS=false
+            fi
+          done
+
+          if [ "${PASS}" = "false" ]; then
+            echo "Some DNS records not yet propagated — waiting 60s more..."
+            sleep 60
           fi
 
       - name: Upload ephemeral SSH key as artifact (shared with deploy + smoke-tests jobs)
@@ -285,15 +306,26 @@ jobs:
           chmod 600 ~/.ssh/ci_key
           ssh-keyscan -H "${{ needs.provision.outputs.server_ip }}" >> ~/.ssh/known_hosts
 
-      - name: Wait for TLS certificate issuance (Caddy ACME, 90s)
+      - name: Pre-warm TLS certificates (trigger Caddy ACME for all subdomains)
+        env:
+          PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
         run: |
-          echo "Waiting 90s for Caddy to obtain TLS certificates via ACME..."
-          sleep 90
+          D="${PREPROD_DOMAIN}"
+          echo "Triggering ACME certificate issuance for all subdomains..."
+          for sub in "" "n8n" "llm" "tala" "qdrant" "nocodb" "oc" "palais" "plane"; do
+            if [ -n "${sub}" ]; then
+              curl -sk "https://${sub}.${D}/" --max-time 10 >/dev/null 2>&1 &
+            else
+              curl -sk "https://${D}/" --max-time 10 >/dev/null 2>&1 &
+            fi
+          done
+          wait
+          echo "ACME triggered for all subdomains. Waiting 180s for cert issuance..."
+          sleep 180
 
       - name: External HTTPS smoke tests (9 checks from CI runner)
         env:
           PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
-          LITELLM_KEY: ${{ secrets.LITELLM_MASTER_KEY }}
         run: |
           FAILURES=0
           TIMEOUT=20
@@ -312,47 +344,39 @@ jobs:
             fi
           }
 
-          # LiteLLM requires Bearer auth header — tested separately
-          check_https_litellm() {
-            local name="$1" url="$2"
-            local status
-            status=$(curl -sL -o /dev/null -w "%{http_code}" \
-              --max-time "${TIMEOUT}" \
-              -H "Authorization: Bearer ${LITELLM_KEY}" \
-              "${url}" 2>/dev/null) || status="000"
-            if [ "${status}" = "200" ]; then
-              echo "PASS  ${name} (HTTP ${status})"
-            else
-              echo "FAIL  ${name} (HTTP ${status}, expected 200)"
-              FAILURES=$((FAILURES + 1))
-            fi
-          }
-
           echo "=== External HTTPS Checks (runner → preprod) ==="
+
+          # Public endpoints (not VPN-gated)
           check_https     "Caddy /health"          "https://${D}/health"
-          check_https     "n8n /healthz"            "https://n8n.${D}/healthz"
-          check_https_litellm "LiteLLM /health"    "https://llm.${D}/health"
-          check_https     "Grafana /api/health"     "https://tala.${D}/api/health"
-          check_https     "Qdrant /healthz"         "https://qdrant.${D}/healthz"
-          check_https     "NocoDB (auth required)"  "https://nocodb.${D}/api/v1/db/meta/projects" "401"
-          check_https     "OpenClaw /health"        "https://oc.${D}/health"
-          check_https     "Palais /health"          "https://palais.${D}/health"
-          check_https     "Plane /api/"             "https://plane.${D}/api/"
+
+          # VPN-gated endpoints — expect 403 from non-VPN CI runner (REX-69)
+          # All subdomain services use import vpn_only in Caddyfile
+          check_https     "n8n (VPN-gated)"         "https://n8n.${D}/healthz"                      "403"
+          check_https     "LiteLLM (VPN-gated)"     "https://llm.${D}/health"                       "403"
+          check_https     "Grafana (VPN-gated)"      "https://tala.${D}/api/health"                  "403"
+          check_https     "Qdrant (VPN-gated)"       "https://qdrant.${D}/healthz"                   "403"
+          check_https     "NocoDB (VPN-gated)"       "https://nocodb.${D}/api/v1/db/meta/projects"   "403"
+          check_https     "OpenClaw (VPN-gated)"     "https://oc.${D}/health"                        "403"
+          check_https     "Palais (VPN-gated)"       "https://palais.${D}/health"                    "403"
+          check_https     "Plane (VPN-gated)"        "https://plane.${D}/api/"                       "403"
 
           echo ""
           echo "External checks: $((9 - FAILURES)) passed, ${FAILURES} failed"
           [ "${FAILURES}" -eq 0 ] || exit 1
 
-      - name: Internal smoke tests (8 checks via SSH on CX22)
+      - name: Internal smoke tests (via SSH on CX22)
         env:
           SERVER_IP: ${{ needs.provision.outputs.server_ip }}
+          PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
         run: |
-          # Runs the smoke-test.sh deployed by the smoke-tests Ansible role
+          D="${PREPROD_DOMAIN}"
+          # Add /etc/hosts entries so server can resolve its own domains (REX-71)
+          HOSTS_LINE="127.0.0.1 ${D} n8n.${D} llm.${D} tala.${D} qdrant.${D} nocodb.${D} oc.${D} palais.${D} plane.${D} nzimbu.${D}"
           ssh -i ~/.ssh/ci_key \
             -o StrictHostKeyChecking=no \
             -o ConnectTimeout=30 \
             "root@${SERVER_IP}" \
-            "bash /opt/*/scripts/smoke-test.sh 2>&1"
+            "echo '${HOSTS_LINE}' >> /etc/hosts && bash /opt/*/scripts/smoke-test.sh 2>&1"
 
   # ===========================================================================
   # Job 4 — destroy : always runs — delete CX22 + OVH DNS cleanup
@@ -427,6 +451,15 @@ jobs:
               for record_id in records:
                   client.delete(f'/domain/zone/{base_domain}/record/{record_id}')
                   print(f"Deleted DNS record {record_id} ({wildcard_sub}.{base_domain})")
+
+          # Delete root domain record (REX-68)
+          root_records = client.get(f'/domain/zone/{base_domain}/record',
+              fieldType='A', subDomain=sub)
+          for record_id in root_records:
+              client.delete(f'/domain/zone/{base_domain}/record/{record_id}')
+              print(f"Deleted root DNS record {record_id} ({sub}.{base_domain})")
+
+          if records or root_records:
               client.post(f'/domain/zone/{base_domain}/refresh')
               print("DNS zone refreshed")
           PYEOF

@@ -110,5 +110,11 @@
     palais_port: 3300
     # n8n integration — defined in inventory/group_vars/all/main.yml (not openclaw)
     n8n_webhook_base_url: "http://n8n:5678"
+  pre_tasks:
+    - name: Create molecule test user (not present in geerlingguy Docker image)
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
   roles:
     - role: openclaw

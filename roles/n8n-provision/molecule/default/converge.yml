@@ -117,5 +117,11 @@
     # Creative pipeline subdomain overrides (have defaults in template, explicit here for clarity)
     comfyui_subdomain: "comfyui"
     remotion_subdomain: "remotion"
+  pre_tasks:
+    - name: Create molecule test user (not present in geerlingguy Docker image)
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
   roles:
     - role: n8n-provision

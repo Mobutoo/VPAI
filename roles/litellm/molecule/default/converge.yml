@@ -111,5 +111,11 @@
     litellm_openrouter_budget_daily: 3.25
     litellm_google_budget_daily: 0.25
     litellm_byteplus_budget_monthly: 5.00
+  pre_tasks:
+    - name: Create molecule test user (not present in geerlingguy Docker image)
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
   roles:
     - role: litellm

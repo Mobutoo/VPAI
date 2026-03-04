@@ -101,5 +101,11 @@
     obsidian_subdomain: biki
     palais_subdomain: palais
     sure_subdomain: nzimbu
+  pre_tasks:
+    - name: Create molecule test user (not present in geerlingguy Docker image)
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
   roles:
     - role: common

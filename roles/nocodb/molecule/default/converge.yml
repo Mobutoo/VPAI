@@ -107,5 +107,11 @@
     # nocodb-specific stubs (not in base block above)
     s3_region: "nbg1"
     s3_endpoint: "nbg1.your-objectstorage.com"
+  pre_tasks:
+    - name: Create molecule test user (not present in geerlingguy Docker image)
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
   roles:
     - role: nocodb

@@ -113,6 +113,12 @@
     # Simulates the tailscale_ip fact set by headscale-node role on prod-server
     tailscale_ip: "100.64.0.1"
   pre_tasks:
+    - name: Create molecule test user (not present in geerlingguy Docker image)
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
+
     - name: Create Headscale config directory (molecule stub)
       ansible.builtin.file:
         path: /opt/services/headscale/config

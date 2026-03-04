@@ -381,6 +381,10 @@ jobs:
           D="${PREPROD_DOMAIN}"
           # Add /etc/hosts entries so server can resolve its own domains (REX-71)
           HOSTS_LINE="127.0.0.1 ${D} mayi.${D} llm.${D} tala.${D} qd.${D} hq.${D} javisi.${D} palais.${D} work.${D} nzimbu.${D}"
+          # Wait for slow-starting containers (Sure has start_period: 120s)
+          echo "Waiting 120s for all containers to pass healthchecks..."
+          sleep 120
+
           ssh -i ~/.ssh/ci_key \
             -o StrictHostKeyChecking=no \
             -o ConnectTimeout=30 \

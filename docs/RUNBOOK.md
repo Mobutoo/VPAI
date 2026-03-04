@@ -367,19 +367,15 @@ docker exec javisi_openclaw node /app/openclaw.mjs devices remove <device-id>
 | `n8n_encryption_key` | n8n | **JAMAIS** (casse les donnees chiffrees) |
 | `qdrant_api_key` | qdrant, openclaw | Trimestriel |
 | `openclaw_gateway_token` | openclaw, caddy (route bootstrap) | Trimestriel |
-| `sure_secret_key_base` | sure-web, sure-worker | **JAMAIS** (casse les sessions Rails) |
-| `sure_db_password` | sure-web, sure-worker, postgresql | Trimestriel |
-| `sure_api_key` | sure-web, claude-code MCP | Trimestriel |
+| `firefly_app_key` | firefly-iii | **JAMAIS** (casse les sessions Laravel) |
+| `firefly_pat` | seko-finance, claude-code MCP | Trimestriel |
 | `github_webhook_secret` | n8n (github-autofix workflow) | Annuel |
 
-### Generer les nouveaux secrets (Sure + autofix pipeline)
+### Generer les nouveaux secrets (Firefly III + autofix pipeline)
 
 ```bash
-# Secret key base Rails (64 octets hex) — NE PAS CHANGER apres premier deploy
-openssl rand -hex 64
-
-# Mot de passe DB Sure
-openssl rand -hex 32
+# APP_KEY Laravel (32 octets base64) — NE PAS CHANGER apres premier deploy
+php artisan key:generate --show  # ou: echo "base64:$(openssl rand -base64 32)"
 
 # GitHub webhook secret
 openssl rand -hex 32
@@ -387,9 +383,8 @@ openssl rand -hex 32
 # Ajouter dans le vault :
 ansible-vault edit inventory/group_vars/all/secrets.yml
 # Ajouter les cles suivantes :
-# vault_sure_secret_key_base: "<resultat openssl rand -hex 64>"
-# vault_sure_db_password: "<resultat openssl rand -hex 32>"
-# vault_sure_api_key: ""  # Remplir apres premier boot Sure (Settings > API)
+# vault_firefly_app_key: "base64:<resultat openssl rand -base64 32>"
+# vault_firefly_pat: ""  # Generer dans Firefly III > Options > Profile > OAuth > PAT
 # vault_github_webhook_secret: "<resultat openssl rand -hex 32>"
 ```
 

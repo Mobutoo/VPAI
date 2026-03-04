@@ -78,9 +78,14 @@ _vpn_dns_records_default: >-
      if (qdrant_subdomain | default('')) | length > 0
      else [])
     +
-    ([{"name": sure_subdomain ~ "." ~ domain_name, "type": "A",
+    ([{"name": firefly_subdomain ~ "." ~ domain_name, "type": "A",
        "value": _vpn_dns_vps_ts_ip}]
-     if (sure_subdomain | default('')) | length > 0
+     if (firefly_subdomain | default('')) | length > 0
+     else [])
+    +
+    ([{"name": seko_finance_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (seko_finance_subdomain | default('')) | length > 0
      else [])
     +
     ([{"name": palais_subdomain ~ "." ~ domain_name, "type": "A",

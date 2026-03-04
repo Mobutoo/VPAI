@@ -100,7 +100,8 @@
     admin_subdomain: javisi
     obsidian_subdomain: biki
     palais_subdomain: palais
-    sure_subdomain: nzimbu
+    firefly_subdomain: lola
+    seko_finance_subdomain: nzimbu
   pre_tasks:
     # uptime-config has no common dependency — create prod_user manually
     - name: Create prod_user for molecule test

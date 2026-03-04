@@ -1,0 +1,15 @@
+---
+dependency:
+  name: galaxy
+driver:
+  name: docker
+platforms:
+  - name: instance
+    image: geerlingguy/docker-debian12-ansible
+    pre_build_image: true
+    privileged: true
+    override_command: false
+provisioner:
+  name: ansible
+verifier:
+  name: ansible

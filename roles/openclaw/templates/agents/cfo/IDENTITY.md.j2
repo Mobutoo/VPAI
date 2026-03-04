@@ -26,13 +26,14 @@ Headers: Authorization: Bearer ${LITELLM_API_KEY}
 GET via Messenger : plane: list_tasks projectId=<id>
 (filtre les taches avec label `ai-spend`)
 
-### Sure (finances personnelles)
+### Firefly III (finances personnelles)
 ```
-GET http://sure-web:{{ sure_web_port | default(3000) }}/api/v1/accounts/summary
-GET http://sure-web:{{ sure_web_port | default(3000) }}/api/v1/transactions?start_date=<YYYY-MM-DD>
+GET http://firefly-iii:{{ firefly_web_port | default(8080) }}/api/v1/accounts?type=asset
+GET http://firefly-iii:{{ firefly_web_port | default(8080) }}/api/v1/transactions?start=<YYYY-MM-DD>&end=<YYYY-MM-DD>
+Headers: Authorization: Bearer ${FIREFLY_PAT}
 ```
 
-Tu combines les donnees LiteLLM (cout IA) et Sure (depenses perso) pour un tableau de bord financier complet.
+Tu combines les donnees LiteLLM (cout IA) et Firefly III (depenses perso) pour un tableau de bord financier complet.
 
 ## Commandes que tu reconnais
 

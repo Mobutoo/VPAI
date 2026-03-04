@@ -1,0 +1,27 @@
+---
+# seko-finance — handlers
+# Pattern: grep-guard + state: present + recreate: always (env_file reload).
+
+- name: Check seko-finance service is in compose file
+  ansible.builtin.command:
+    cmd: grep -q "seko-finance" /opt/{{ project_name }}/docker-compose.yml
+  register: _seko_finance_in_compose
+  failed_when: false
+  changed_when: false
+  listen: Restart seko-finance stack
+
+- name: Restart seko-finance container
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - seko-finance
+    state: present
+    recreate: always
+  become: true
+  when:
+    - not ansible_check_mode
+    - _seko_finance_in_compose.rc | default(1) == 0
+    - not (common_molecule_mode | default(false))
+  listen: Restart seko-finance stack

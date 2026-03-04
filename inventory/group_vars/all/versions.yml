@@ -42,10 +42,12 @@ couchdb_image: "apache/couchdb:3.3.3"
 # Les webhooks Meta passent maintenant par hook.<domain> (Seko-VPN) -> VPN mesh -> VPS
 # cloudflared_image: "cloudflare/cloudflared:2025.1.0"
 
-# --- Sure (personal finance — Maybe Finance fork) ---
-# Multi-arch: amd64 + arm64 confirmé sur GHCR
+# --- Firefly III (personal finance engine) ---
+firefly_image: "fireflyiii/core:version-6.5.3"
+
+# --- Seko-Finance Dashboard (Next.js financial cockpit) ---
 # TODO: Pinner sur SHA digest après premier deploy validé
-sure_image: "ghcr.io/we-promise/sure:nightly"
+seko_finance_image: "ghcr.io/mobutoo/seko-finance:latest"
 
 # --- Workstation Pi (natif — pas Docker) ---
 # Caddy : binaire custom build via xcaddy (module dns.providers.ovh)

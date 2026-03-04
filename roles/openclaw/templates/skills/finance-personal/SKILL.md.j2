@@ -1,13 +1,13 @@
 ---
 name: finance-personal
-description: Query personal finance data from Sure (accounts, transactions, categories, net worth). Used by CFO for personal budget and spending analysis.
+description: Query personal finance data from Firefly III (accounts, transactions, categories, net worth). Used by CFO for personal budget and spending analysis.
 metadata: { "openclaw": { "emoji": "💳", "always": false } }
 ---
 
-# Skill: Finance Personnelle (Sure)
+# Skill: Finance Personnelle (Firefly III)
 
-Interroge l'application Sure pour les donnees de finances personnelles.
-Sure est accessible sur le reseau Docker interne a `http://sure-web:{{ sure_web_port | default(3000) }}`.
+Interroge l'application Firefly III pour les donnees de finances personnelles.
+Firefly III est accessible sur le reseau Docker interne a `http://firefly-iii:{{ firefly_web_port | default(8080) }}`.
 
 ## Quand utiliser ce skill
 
@@ -17,25 +17,25 @@ Sure est accessible sur le reseau Docker interne a `http://sure-web:{{ sure_web_
 - Budget mensuel vs depenses reelles
 - Suivi objectifs epargne
 
-## API Sure
+## API Firefly III
 
-Base URL : `http://sure-web:{{ sure_web_port | default(3000) }}`
+Base URL : `http://firefly-iii:{{ firefly_web_port | default(8080) }}`
+Headers: `Authorization: Bearer ${FIREFLY_PAT}` et `Content-Type: application/json`
 
 ### Lister les comptes
 ```
-GET /api/v1/accounts
-Headers: Content-Type: application/json
+GET /api/v1/accounts?type=asset
 ```
 
 ### Patrimoine net
 ```
-GET /api/v1/accounts/summary
+GET /api/v1/summary/basic?start=<YYYY-MM-DD>&end=<YYYY-MM-DD>
 ```
 
 ### Transactions recentes
 ```
-GET /api/v1/transactions?page=1&per_page=50
-GET /api/v1/transactions?category=<category>&start_date=<YYYY-MM-DD>&end_date=<YYYY-MM-DD>
+GET /api/v1/transactions?page=1&limit=50
+GET /api/v1/transactions?start=<YYYY-MM-DD>&end=<YYYY-MM-DD>&type=withdrawal
 ```
 
 ### Categories
@@ -46,7 +46,7 @@ GET /api/v1/categories
 ### Creer une transaction manuelle
 ```
 POST /api/v1/transactions
-Body: { "date": "YYYY-MM-DD", "amount": -12.50, "name": "<description>", "category_id": "<id>", "account_id": "<id>" }
+Body: { "transactions": [{ "type": "withdrawal", "date": "YYYY-MM-DD", "amount": "12.50", "description": "<description>", "source_id": "<account_id>", "category_name": "<category>" }] }
 ```
 
 ## Commandes reconnues

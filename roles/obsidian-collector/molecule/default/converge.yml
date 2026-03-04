@@ -100,7 +100,8 @@
     admin_subdomain: javisi
     obsidian_subdomain: biki
     palais_subdomain: palais
-    sure_subdomain: nzimbu
+    firefly_subdomain: lola
+    seko_finance_subdomain: nzimbu
     # Plane integration (Phase 2) — stub empty dict
     # n8n.env.j2 references vault_plane_agent_tokens.concierge | default('')
     vault_plane_agent_tokens: {}

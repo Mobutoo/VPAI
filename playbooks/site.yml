@@ -80,8 +80,10 @@
       tags: [openclaw, phase3]
     - role: palais
       tags: [palais, phase3]
-    - role: sure
-      tags: [sure, phase3]
+    - role: firefly
+      tags: [firefly, phase3]
+    - role: seko-finance
+      tags: [seko-finance, phase3]
 
     # Phase 4 — Observabilité
     - role: monitoring

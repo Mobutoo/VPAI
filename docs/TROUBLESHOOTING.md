@@ -22,6 +22,7 @@
 11. [OpenClaw](#11-openclaw) — 11.16 workspaceAccess · 11.17 provider openai direct · 11.18 handler recreate · 11.19 heartbeat/cron · 11.20 status slugs · 11.21 external-link read-only · 11.22 comment field · 11.23 sandbox DinD ENOENT
 12. [Reseau & VPN](#12-reseau--vpn)
 13. [Systeme & Debian 13](#13-systeme--debian-13)
+42. [CI/CD Pipeline](#42-cicd-pipeline) — 42.1 Molecule pre_tasks · 42.2 Sous-domaines custom · 42.3 Inventaire inline · 42.4 Firefly III déploiement · 42.5 TLS ACME timing
 
 ---
 
@@ -1757,6 +1758,92 @@ Procédure manuelle :
 # 2. ansible-vault edit inventory/group_vars/all/secrets.yml
 #    → vault_nocodb_api_token: "valeur-réelle"
 # 3. make deploy-role ROLE=nocodb ENV=prod
+```
+
+---
+
+## 42. CI/CD Pipeline
+
+### 42.1 Molecule : `chown failed: failed to look up user molecule`
+
+**Symptôme** : 14/23 rôles Molecule échouent avec `chown failed: failed to look up user molecule`.
+
+**Cause** : L'image `geerlingguy/docker-debian12-ansible` ne contient pas l'utilisateur `molecule`. Les rôles utilisent cet user pour le ownership des fichiers.
+
+**Fix** : Ajouter `pre_tasks` dans chaque `converge.yml` :
+```yaml
+pre_tasks:
+  - name: Create molecule test user (not present in geerlingguy Docker image)
+    ansible.builtin.user:
+      name: molecule
+      state: present
+      create_home: true
+```
+
+**Variantes** : Certains rôles (docker, hardening) nécessitent des pré-requis supplémentaires :
+- `docker` : `apt update` + `curl` (normalement installé par le rôle `common`)
+- `hardening` : `openssh-server` + `/run/sshd` directory
+
+### 42.2 Smoke tests : sous-domaines custom vs noms de services
+
+**Symptôme** : HTTP 000 sur n8n, Qdrant, NocoDB, OpenClaw, Plane dans les smoke tests CI.
+
+**Cause** : Les URLs utilisent les noms de services au lieu des sous-domaines custom :
+
+| Service | ❌ Faux | ✅ Correct | Source |
+|---------|---------|-----------|--------|
+| n8n | `n8n.domain` | `mayi.domain` | `n8n_subdomain` |
+| Qdrant | `qdrant.domain` | `qd.domain` | `qdrant_subdomain` |
+| NocoDB | `nocodb.domain` | `hq.domain` | `nocodb_subdomain` |
+| OpenClaw | `oc.domain` | `javisi.domain` | `admin_subdomain` |
+| Plane | `plane.domain` | `work.domain` | hardcodé Caddyfile |
+
+**Vérification** : `grep subdomain inventory/group_vars/all/main.yml`
+
+**Fix** : Mettre à jour les 4 sections dans `integration.yml` (DNS validation, TLS pre-warm, smoke test URLs, /etc/hosts) + `scripts/smoke-test.sh`.
+
+### 42.3 Inventaire inline : group_vars non chargés
+
+**Symptôme** : `ansible-playbook -i "IP,"` → variables de `inventory/group_vars/all/` manquantes.
+
+**Cause** : Ansible ne charge `group_vars/` que si l'inventaire est un fichier dans le répertoire `inventory/`.
+
+**Fix** : Écrire l'inventaire dans un fichier sous `inventory/` :
+```bash
+cat > inventory/ci_hosts.ini << EOF
+[preprod]
+${IP} ansible_user=root ...
+EOF
+ansible-playbook -i inventory/ci_hosts.ini ...
+```
+
+### 42.4 Firefly III — Notes de déploiement
+
+- **Redis DB** : db2 (cache) et db3 (sessions) — éviter collision avec db0 (default) et db1 (ancien Sure)
+- **`TRUSTED_PROXIES=**`** : requis derrière Caddy (sinon redirect loops HTTPS)
+- **`APP_KEY`** : doit être préfixé `base64:` (convention Laravel). Générer : `echo "base64:$(openssl rand -base64 32)"`
+- **Volume persistant** : seul `/var/www/html/storage/upload` nécessite un volume Docker
+- **Healthcheck** : `curl -sf http://127.0.0.1:8080/health` (l'image Firefly a curl intégré)
+- **PostgreSQL** : DB `firefly`, user `firefly`, password partagé `{{ postgresql_password }}`
+- **Sous-domaine** : `lola` (Firefly III admin) + `nzimbu` (Seko-Finance dashboard)
+
+### 42.5 TLS ACME timing : HTTP 000 sur subdomains
+
+**Symptôme** : Caddy retourne HTTP 000 (connection refused/TLS error) au lieu de 403 sur les premiers accès.
+
+**Cause** : Caddy émet les certificats TLS en mode "lazy" (à la première requête). Sur un serveur frais, le premier accès déclenche ACME → délai de 30-180s avant que le cert soit prêt.
+
+**Fix dans integration.yml** :
+1. **TLS pre-warm** : boucle `curl -sk` sur tous les subdomains pour déclencher ACME
+2. **Wait 180s** après le pre-warm
+3. **Retry logic** : 3 tentatives × 30s pour chaque check (rattrape les certs lents)
+
+```bash
+for sub in "" "mayi" "llm" "tala" "qd" "hq" "javisi" "palais" "work" "nzimbu"; do
+  curl -sk "https://${sub}.${D}/" --max-time 10 >/dev/null 2>&1 &
+done
+wait
+sleep 180
 ```
 
 ---

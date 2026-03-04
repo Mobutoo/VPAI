@@ -1,0 +1,22 @@
+---
+# firefly — defaults
+# Firefly III personal finance engine (Laravel).
+# Runs as Docker container on Sese-AI, shares PostgreSQL and Redis.
+
+firefly_config_dir: "/opt/{{ project_name }}/configs/firefly"
+firefly_data_dir: "/opt/{{ project_name }}/data/firefly"
+
+# Internal web port (exposed via Caddy on lola.<domain>)
+firefly_web_port: 8080
+
+# PostgreSQL connection (shared instance)
+firefly_db_name: "firefly"
+firefly_db_user: "firefly"
+
+# Redis DB numbers (shared Redis — avoid collision with db0=default, db1=former-sure)
+firefly_redis_db: 2
+firefly_redis_cache_db: 3
+
+# Subdomain (VPN-only, served by Caddy)
+# Overridden by firefly_subdomain in inventory/group_vars/all/main.yml
+firefly_subdomain: "lola"

@@ -23,11 +23,9 @@ postgresql_databases:
   - name: nocodb
     user: nocodb
     extensions: []
-  - name: sure_production
-    user: sure
-    extensions:
-      - uuid-ossp
-      - pgcrypto
+  - name: firefly
+    user: firefly
+    extensions: []
   - name: palais
     user: palais
     extensions:

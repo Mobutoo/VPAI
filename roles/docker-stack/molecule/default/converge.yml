@@ -100,7 +100,8 @@
     admin_subdomain: javisi
     obsidian_subdomain: biki
     palais_subdomain: palais
-    sure_subdomain: nzimbu
+    firefly_subdomain: lola
+    seko_finance_subdomain: nzimbu
     # Plane integration (Phase 2) — stub empty dict
     # n8n.env.j2 references vault_plane_agent_tokens.concierge | default('')
     vault_plane_agent_tokens: {}
@@ -125,7 +126,8 @@
     alloy_image: "grafana/alloy:v1.13.0"
     cadvisor_image: "ghcr.io/google/cadvisor:0.55.1"
     diun_image: "crazymax/diun:4.31.0"
-    sure_image: "ghcr.io/we-promise/sure:nightly"
+    firefly_image: "fireflyiii/core:version-6.5.3"
+    seko_finance_image: "ghcr.io/mobutoo/seko-finance:latest"
     plane_web_image: "makeplane/plane-frontend:v1.2.2"
     plane_admin_image: "makeplane/plane-admin:v1.2.2"
     plane_api_image: "makeplane/plane-backend:v1.2.2"
@@ -176,12 +178,12 @@
     diun_memory_limit: "128M"
     diun_memory_reservation: "32M"
     diun_cpu_limit: "0.25"
-    sure_web_memory_limit: "384M"
-    sure_web_memory_reservation: "192M"
-    sure_web_cpu_limit: "1.0"
-    sure_worker_memory_limit: "256M"
-    sure_worker_memory_reservation: "128M"
-    sure_worker_cpu_limit: "0.5"
+    firefly_memory_limit: "512M"
+    firefly_memory_reservation: "256M"
+    firefly_cpu_limit: "1.0"
+    seko_finance_memory_limit: "384M"
+    seko_finance_memory_reservation: "256M"
+    seko_finance_cpu_limit: "0.75"
 
     # --- Qdrant embedding dimensions (inventory/group_vars/all/main.yml) ---
     qdrant_embedding_dimensions: 1536
@@ -250,6 +252,9 @@
       - name: palais
         user: palais
         extensions: [uuid-ossp]
+      - name: firefly
+        user: firefly
+        extensions: []
 
   pre_tasks:
     - name: Create molecule user (substitutes for common role dependency)

@@ -111,13 +111,13 @@
   become: true
   when: claude_code_mcp_filesystem_enabled | default(false)
 
-# --- Sure MCP server (Python, via uvx) ---
+# --- Firefly III MCP server (Python, via uvx) ---
 - name: Ensure pipx/uvx is available for Python MCP servers
   ansible.builtin.apt:
     name: pipx
     state: present
   become: true
-  when: claude_code_mcp_sure_enabled | default(false)
+  when: claude_code_mcp_firefly_enabled | default(false)
 
 - name: Ensure uvx is accessible via pipx ensurepath
   ansible.builtin.command:
@@ -125,7 +125,7 @@
   become: true
   become_user: "{{ claude_code_user }}"
   changed_when: false
-  when: claude_code_mcp_sure_enabled | default(false)
+  when: claude_code_mcp_firefly_enabled | default(false)
 
 # --- Auto-fix pipeline ---
 - name: Create autofix workspace directory

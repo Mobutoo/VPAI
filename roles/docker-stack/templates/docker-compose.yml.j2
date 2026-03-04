@@ -142,71 +142,77 @@ services:
       start_period: 60s
 
   # === PERSONAL FINANCE ===
-  sure-web:
-    image: {{ sure_image }}
-    container_name: {{ project_name }}_sure_web
+  firefly-iii:
+    image: {{ firefly_image }}
+    container_name: {{ project_name }}_firefly
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
     cap_add:
-      - CHOWN
-      - SETGID
+      - DAC_OVERRIDE
+      - FOWNER
       - SETUID
+      - SETGID
     env_file:
-      - /opt/{{ project_name }}/configs/sure/sure.env
+      - /opt/{{ project_name }}/configs/firefly/firefly.env
     volumes:
-      - /opt/{{ project_name }}/data/sure:/rails/storage
+      - /opt/{{ project_name }}/data/firefly/upload:/var/www/html/storage/upload
     networks:
       - backend
       - frontend
     deploy:
       resources:
         limits:
-          memory: {{ sure_web_memory_limit }}
-          cpus: "{{ sure_web_cpu_limit }}"
+          memory: {{ firefly_memory_limit }}
+          cpus: "{{ firefly_cpu_limit }}"
         reservations:
-          memory: {{ sure_web_memory_reservation }}
+          memory: {{ firefly_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:3000/ || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 120s
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  sure-worker:
-    image: {{ sure_image }}
-    container_name: {{ project_name }}_sure_worker
+  seko-finance:
+    image: {{ seko_finance_image }}
+    container_name: {{ project_name }}_seko_finance
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-    command: bundle exec sidekiq
     env_file:
-      - /opt/{{ project_name }}/configs/sure/sure.env
-    volumes:
-      - /opt/{{ project_name }}/data/sure:/rails/storage
+      - /opt/{{ project_name }}/configs/seko-finance/seko-finance.env
     networks:
       - backend
+      - frontend
+      - egress
     deploy:
       resources:
         limits:
-          memory: {{ sure_worker_memory_limit }}
-          cpus: "{{ sure_worker_cpu_limit }}"
+          memory: {{ seko_finance_memory_limit }}
+          cpus: "{{ seko_finance_cpu_limit }}"
         reservations:
-          memory: {{ sure_worker_memory_reservation }}
+          memory: {{ seko_finance_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
       interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # === PALAIS ===
   palais:

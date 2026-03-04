@@ -37,9 +37,9 @@ claude_code_mcp_filesystem_workspace: "/home/{{ claude_code_user }}/projects"
 claude_code_mcp_n8n_enabled: true
 claude_code_mcp_n8n_url: "http://{{ vps_tailscale_ip | default('100.64.0.1') }}:5678"
 
-# Sure MCP — personal finance (24 tools: accounts, transactions, categories)
-claude_code_mcp_sure_enabled: true
-claude_code_mcp_sure_api_url: "https://{{ sure_subdomain | default('nzimbu') }}.{{ domain_name }}"
+# Firefly III MCP — personal finance (accounts, transactions, categories)
+claude_code_mcp_firefly_enabled: true
+claude_code_mcp_firefly_api_url: "https://{{ firefly_subdomain | default('lola') }}.{{ domain_name }}"
 
 # n8n-docs MCP — documentation n8n nodes (HTTP/SSE local Docker, port 3001)
 # 1 084 nodes + schémas + 2 709 templates, SQLite embarqué, zéro web

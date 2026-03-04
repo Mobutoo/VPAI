@@ -117,5 +117,11 @@
       ansible.builtin.apt:
         name: openssh-server
         state: present
+
+    - name: Create sshd privilege separation directory
+      ansible.builtin.file:
+        path: /run/sshd
+        state: directory
+        mode: "0755"
   roles:
     - role: hardening

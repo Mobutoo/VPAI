@@ -5,14 +5,13 @@
   ansible.builtin.file:
     path: "{{ obsidian_collector_script_dir }}"
     state: directory
-    owner: root
-    group: root
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
     mode: "0755"
   become: true
-  # NOTE: mode 0755 matches docker-stack which also manages /opt/{project}/scripts.
-  # Competing modes (0750 here vs 0755 in docker-stack) cause a perpetual mode-flip
-  # on every run (idempotence failure). docker-stack runs after this role in site.yml,
-  # so docker-stack always wins → use 0755 consistently.
+  # NOTE: owner/group must match docker-stack which also manages /opt/{project}/scripts
+  # with owner prod_user. root vs prod_user causes perpetual owner-flip on each run.
+  # mode 0755 matches docker-stack (was 0750, causing mode-flip). REX-Integration.
 
 - name: Obsidian Collector | Install Python3 requests (required for collector)
   ansible.builtin.package:

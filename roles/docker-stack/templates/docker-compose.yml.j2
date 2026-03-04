@@ -98,8 +98,10 @@ services:
       # OpenClaw spawns sandbox containers via Docker socket. Sandbox bind-mount
       # paths use OPENCLAW_STATE_DIR as base. Docker daemon resolves these on the
       # HOST — so container paths MUST equal host paths for mounts to work.
-      # The system dir is mounted at its own host path (identity mount).
-      - {{ openclaw_system_dir }}:{{ openclaw_system_dir }}
+      # system/ mounted :ro — design intent (immutable at runtime). OpenClaw must NOT
+      # modify openclaw.json at runtime; doing so causes idempotence failure (Ansible
+      # detects diff on run 2 → CHANGED). REX-Integration.
+      - {{ openclaw_system_dir }}:{{ openclaw_system_dir }}:ro
       - {{ openclaw_workspace_dir }}:{{ openclaw_system_dir }}/workspace
       - {{ openclaw_state_dir }}/sessions:{{ openclaw_system_dir }}/sessions
       - {{ openclaw_state_dir }}/canvas:{{ openclaw_system_dir }}/canvas

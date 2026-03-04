@@ -377,7 +377,12 @@
       set -o pipefail
       cd /opt/{{ project_name }}
       if [ -f docker-compose.yml ]; then
-        docker compose -f docker-compose.yml down --remove-orphans 2>/dev/null || true
+        docker compose -f docker-compose.yml down 2>/dev/null || true
+        # NOTE: --remove-orphans intentionally omitted. Both compose files share the same
+        # project name (javisi). Using --remove-orphans in docker-compose.yml removes infra
+        # containers (postgresql, redis, qdrant, caddy) defined only in docker-compose-infra.yml
+        # because they appear as "orphans" from docker-compose.yml's perspective. This causes
+        # Phase A to recreate infra on every run 2 → idempotence failure. REX-Integration.
       fi
   become: true
   changed_when: false

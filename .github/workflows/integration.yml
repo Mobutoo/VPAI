@@ -165,7 +165,7 @@ jobs:
           PREPROD_DOMAIN="${{ secrets.PREPROD_DOMAIN }}"
           PASS=true
 
-          for sub in "" "n8n" "llm" "tala" "qdrant" "nocodb" "oc" "palais" "plane"; do
+          for sub in "" "mayi" "llm" "tala" "qd" "hq" "javisi" "palais" "work" "nzimbu"; do
             if [ -n "${sub}" ]; then
               FQDN="${sub}.${PREPROD_DOMAIN}"
             else
@@ -312,7 +312,9 @@ jobs:
         run: |
           D="${PREPROD_DOMAIN}"
           echo "Triggering ACME certificate issuance for all subdomains..."
-          for sub in "" "n8n" "llm" "tala" "qdrant" "nocodb" "oc" "palais" "plane"; do
+          # Subdomains match Caddy config: mayi(n8n), llm, tala(grafana), qd(qdrant),
+          # hq(nocodb), javisi(openclaw/admin), palais, nzimbu(sure), work(plane)
+          for sub in "" "mayi" "llm" "tala" "qd" "hq" "javisi" "palais" "work" "nzimbu"; do
             if [ -n "${sub}" ]; then
               curl -sk "https://${sub}.${D}/" --max-time 10 >/dev/null 2>&1 &
             else
@@ -358,14 +360,14 @@ jobs:
 
           # VPN-gated endpoints — expect 403 from non-VPN CI runner (REX-69)
           # All subdomain services use import vpn_only in Caddyfile
-          check_https     "n8n (VPN-gated)"         "https://n8n.${D}/healthz"                      "403"
+          check_https     "n8n (VPN-gated)"         "https://mayi.${D}/healthz"                     "403"
           check_https     "LiteLLM (VPN-gated)"     "https://llm.${D}/health"                       "403"
           check_https     "Grafana (VPN-gated)"      "https://tala.${D}/api/health"                  "403"
-          check_https     "Qdrant (VPN-gated)"       "https://qdrant.${D}/healthz"                   "403"
-          check_https     "NocoDB (VPN-gated)"       "https://nocodb.${D}/api/v1/db/meta/projects"   "403"
-          check_https     "OpenClaw (VPN-gated)"     "https://oc.${D}/health"                        "403"
+          check_https     "Qdrant (VPN-gated)"       "https://qd.${D}/healthz"                      "403"
+          check_https     "NocoDB (VPN-gated)"       "https://hq.${D}/api/v1/db/meta/projects"      "403"
+          check_https     "OpenClaw (VPN-gated)"     "https://javisi.${D}/health"                    "403"
           check_https     "Palais (VPN-gated)"       "https://palais.${D}/health"                    "403"
-          check_https     "Plane (VPN-gated)"        "https://plane.${D}/api/"                       "403"
+          check_https     "Plane (VPN-gated)"        "https://work.${D}/api/"                        "403"
 
           echo ""
           echo "External checks: $((9 - FAILURES)) passed, ${FAILURES} failed"
@@ -378,7 +380,7 @@ jobs:
         run: |
           D="${PREPROD_DOMAIN}"
           # Add /etc/hosts entries so server can resolve its own domains (REX-71)
-          HOSTS_LINE="127.0.0.1 ${D} n8n.${D} llm.${D} tala.${D} qdrant.${D} nocodb.${D} oc.${D} palais.${D} plane.${D} nzimbu.${D}"
+          HOSTS_LINE="127.0.0.1 ${D} mayi.${D} llm.${D} tala.${D} qd.${D} hq.${D} javisi.${D} palais.${D} work.${D} nzimbu.${D}"
           ssh -i ~/.ssh/ci_key \
             -o StrictHostKeyChecking=no \
             -o ConnectTimeout=30 \

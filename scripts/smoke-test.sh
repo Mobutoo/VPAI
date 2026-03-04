@@ -88,14 +88,14 @@ if [ "$CI_MODE" = "true" ]; then
   echo "SKIP  Plane (VPN-only)"
 else
   echo "--- Admin Endpoints (VPN-only) ---"
-  check "n8n healthz"     "https://n8n.${DOMAIN}/healthz"
+  check "n8n healthz"     "https://mayi.${DOMAIN}/healthz"
   check "LiteLLM health"  "https://llm.${DOMAIN}/health"
   check "Grafana health"  "https://tala.${DOMAIN}/api/health"
-  check "Qdrant healthz"  "https://qdrant.${DOMAIN}/healthz"
-  check "OpenClaw health" "https://oc.${DOMAIN}/health"
-  check "NocoDB API"      "https://nocodb.${DOMAIN}/api/v1/db/meta/projects" "401"
+  check "Qdrant healthz"  "https://qd.${DOMAIN}/healthz"
+  check "OpenClaw health" "https://javisi.${DOMAIN}/health"
+  check "NocoDB API"      "https://hq.${DOMAIN}/api/v1/db/meta/projects" "401"
   check "Palais health"   "https://palais.${DOMAIN}/health"
-  check "Plane API"       "https://plane.${DOMAIN}/api/"
+  check "Plane API"       "https://work.${DOMAIN}/api/"
 fi
 
 echo ""

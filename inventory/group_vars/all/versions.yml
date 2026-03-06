@@ -46,7 +46,8 @@ couchdb_image: "apache/couchdb:3.3.3"
 firefly_image: "fireflyiii/core:version-6.5.3"
 
 # --- Zimboo Dashboard (Next.js financial cockpit) ---
-zimboo_image: "ghcr.io/mobutoo/zimboo:v1.10.0"
+# TODO: Pinner sur tag version quand disponible (actuellement seuls SHA + latest sur GHCR)
+zimboo_image: "ghcr.io/mobutoo/zimboo:latest"
 
 # --- Workstation Pi (natif — pas Docker) ---
 # Caddy : binaire custom build via xcaddy (module dns.providers.ovh)

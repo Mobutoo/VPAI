@@ -101,7 +101,7 @@
     obsidian_subdomain: biki
     palais_subdomain: palais
     firefly_subdomain: lola
-    seko_finance_subdomain: nzimbu
+    zimboo_subdomain: zimboo
     # Plane integration (Phase 2) — stub empty dict
     # n8n.env.j2 references vault_plane_agent_tokens.concierge | default('')
     vault_plane_agent_tokens: {}
@@ -127,7 +127,7 @@
     cadvisor_image: "ghcr.io/google/cadvisor:0.55.1"
     diun_image: "crazymax/diun:4.31.0"
     firefly_image: "fireflyiii/core:version-6.5.3"
-    seko_finance_image: "ghcr.io/mobutoo/seko-finance:latest"
+    zimboo_image: "ghcr.io/mobutoo/zimboo:v1.10.0"
     plane_web_image: "makeplane/plane-frontend:v1.2.2"
     plane_admin_image: "makeplane/plane-admin:v1.2.2"
     plane_api_image: "makeplane/plane-backend:v1.2.2"
@@ -181,9 +181,9 @@
     firefly_memory_limit: "512M"
     firefly_memory_reservation: "256M"
     firefly_cpu_limit: "1.0"
-    seko_finance_memory_limit: "384M"
-    seko_finance_memory_reservation: "256M"
-    seko_finance_cpu_limit: "0.75"
+    zimboo_memory_limit: "384M"
+    zimboo_memory_reservation: "256M"
+    zimboo_cpu_limit: "0.75"
 
     # --- Qdrant embedding dimensions (inventory/group_vars/all/main.yml) ---
     qdrant_embedding_dimensions: 1536

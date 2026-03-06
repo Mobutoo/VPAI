@@ -102,7 +102,7 @@
     obsidian_subdomain: biki
     palais_subdomain: palais
     firefly_subdomain: lola
-    seko_finance_subdomain: nzimbu
+    zimboo_subdomain: zimboo
     # Plane integration (Phase 2) — stub empty dict
     vault_plane_agent_tokens: {}
     # ============================================================

@@ -92,7 +92,7 @@ firefly_memory_limit: "{{ '512M' if target_env == 'prod' else '256M' }}"
 firefly_memory_reservation: "128M"
 firefly_cpu_limit: "1.0"
 
-# Seko-Finance Dashboard (Next.js cockpit)
-seko_finance_memory_limit: "{{ '384M' if target_env == 'prod' else '256M' }}"
-seko_finance_memory_reservation: "128M"
-seko_finance_cpu_limit: "0.5"
+# Zimboo Dashboard (Next.js cockpit)
+zimboo_memory_limit: "{{ '384M' if target_env == 'prod' else '256M' }}"
+zimboo_memory_reservation: "128M"
+zimboo_cpu_limit: "0.5"

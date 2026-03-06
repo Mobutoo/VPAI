@@ -53,8 +53,8 @@ if [ -n "${TAILSCALE_IP}" ]; then
 {% if firefly_subdomain | default('') | length > 0 %}
   CURL_VPN_OPTS="${CURL_VPN_OPTS} --resolve {{ firefly_subdomain }}.{{ domain_name }}:443:${TAILSCALE_IP}"
 {% endif %}
-{% if seko_finance_subdomain | default('') | length > 0 %}
-  CURL_VPN_OPTS="${CURL_VPN_OPTS} --resolve {{ seko_finance_subdomain }}.{{ domain_name }}:443:${TAILSCALE_IP}"
+{% if zimboo_subdomain | default('') | length > 0 %}
+  CURL_VPN_OPTS="${CURL_VPN_OPTS} --resolve {{ zimboo_subdomain }}.{{ domain_name }}:443:${TAILSCALE_IP}"
 {% endif %}
   echo "INFO  Using Tailscale IP ${TAILSCALE_IP} for VPN-protected endpoints"
 else
@@ -172,10 +172,10 @@ check_http "Grafana health" "${GRAFANA_URL}/api/health"
 FIREFLY_URL="https://{{ firefly_subdomain }}.{{ domain_name }}"
 check_http "Firefly III health" "${FIREFLY_URL}/health" "200"
 {% endif %}
-{% if seko_finance_subdomain | default('') | length > 0 %}
+{% if zimboo_subdomain | default('') | length > 0 %}
 # shellcheck disable=SC2086
-SEKO_FINANCE_URL="https://{{ seko_finance_subdomain }}.{{ domain_name }}"
-check_http "Seko-Finance health" "${SEKO_FINANCE_URL}/api/health" "200"
+ZIMBOO_URL="https://{{ zimboo_subdomain }}.{{ domain_name }}"
+check_http "Zimboo health" "${ZIMBOO_URL}/api/health" "200"
 {% endif %}
 # LiteLLM /health requires auth (master_key in general_settings)
 # shellcheck disable=SC2086
@@ -208,8 +208,8 @@ check_container "DIUN" "diun"
 {% if firefly_subdomain | default('') | length > 0 %}
 check_container "Firefly III" "firefly"
 {% endif %}
-{% if seko_finance_subdomain | default('') | length > 0 %}
-check_container "Seko-Finance" "seko_finance"
+{% if zimboo_subdomain | default('') | length > 0 %}
+check_container "Zimboo" "zimboo"
 {% endif %}
 
 echo ""
@@ -228,8 +228,8 @@ check_container_health "Grafana" "grafana"
 {% if firefly_subdomain | default('') | length > 0 %}
 check_container_health "Firefly III" "firefly"
 {% endif %}
-{% if seko_finance_subdomain | default('') | length > 0 %}
-check_container_health "Seko-Finance" "seko_finance"
+{% if zimboo_subdomain | default('') | length > 0 %}
+check_container_health "Zimboo" "zimboo"
 {% endif %}
 
 echo ""

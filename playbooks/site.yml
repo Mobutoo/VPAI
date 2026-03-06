@@ -82,8 +82,8 @@
       tags: [palais, phase3]
     - role: firefly
       tags: [firefly, phase3]
-    - role: seko-finance
-      tags: [seko-finance, phase3]
+    - role: zimboo
+      tags: [zimboo, phase3]
 
     # Phase 4 — Observabilité
     - role: monitoring

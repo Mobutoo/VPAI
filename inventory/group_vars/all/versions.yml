@@ -45,9 +45,8 @@ couchdb_image: "apache/couchdb:3.3.3"
 # --- Firefly III (personal finance engine) ---
 firefly_image: "fireflyiii/core:version-6.5.3"
 
-# --- Seko-Finance Dashboard (Next.js financial cockpit) ---
-# TODO: Pinner sur SHA digest après premier deploy validé
-seko_finance_image: "ghcr.io/mobutoo/seko-finance:latest"
+# --- Zimboo Dashboard (Next.js financial cockpit) ---
+zimboo_image: "ghcr.io/mobutoo/zimboo:v1.10.0"
 
 # --- Workstation Pi (natif — pas Docker) ---
 # Caddy : binaire custom build via xcaddy (module dns.providers.ovh)

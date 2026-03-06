@@ -1,0 +1,22 @@
+---
+# zimboo — tasks
+# Zimboo Dashboard (Next.js — pre-built Docker image from GHCR)
+
+- name: Create Zimboo config directory
+  ansible.builtin.file:
+    path: "{{ zimboo_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy Zimboo environment file
+  ansible.builtin.template:
+    src: zimboo.env.j2
+    dest: "{{ zimboo_config_dir }}/zimboo.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart zimboo stack

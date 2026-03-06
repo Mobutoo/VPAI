@@ -101,7 +101,7 @@
     obsidian_subdomain: biki
     palais_subdomain: palais
     firefly_subdomain: lola
-    seko_finance_subdomain: nzimbu
+    zimboo_subdomain: zimboo
   pre_tasks:
     - name: Create molecule test user (not present in geerlingguy Docker image)
       ansible.builtin.user:

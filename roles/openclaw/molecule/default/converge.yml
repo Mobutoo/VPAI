@@ -101,7 +101,7 @@
     obsidian_subdomain: biki
     palais_subdomain: palais
     firefly_subdomain: lola
-    seko_finance_subdomain: nzimbu
+    zimboo_subdomain: zimboo
     # OpenClaw sandbox — disable Docker sandbox in molecule (no Docker daemon)
     openclaw_sandbox_mode: "off"
     # Plane integration — stub dict (openclaw.env.j2 iterates vault_plane_agent_tokens)

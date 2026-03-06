@@ -263,13 +263,13 @@ BOOTSTRAP 200
 }
 {% endif %}
 
-# === Seko-Finance Dashboard (financial cockpit) — nzimbu.<domain> ===
-{% if seko_finance_subdomain | default('') | length > 0 %}
-{{ caddy_seko_finance_domain }} {
+# === Zimboo Dashboard (financial cockpit) — zimboo.<domain> ===
+{% if zimboo_subdomain | default('') | length > 0 %}
+{{ caddy_zimboo_domain }} {
     import vpn_only
     import vpn_error_page
 
-    reverse_proxy seko-finance:{{ seko_finance_port | default(3000) }}
+    reverse_proxy zimboo:{{ zimboo_port | default(3000) }}
 
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"

@@ -368,7 +368,7 @@ docker exec javisi_openclaw node /app/openclaw.mjs devices remove <device-id>
 | `qdrant_api_key` | qdrant, openclaw | Trimestriel |
 | `openclaw_gateway_token` | openclaw, caddy (route bootstrap) | Trimestriel |
 | `firefly_app_key` | firefly-iii | **JAMAIS** (casse les sessions Laravel) |
-| `firefly_pat` | seko-finance, claude-code MCP | Trimestriel |
+| `firefly_pat` | zimboo, claude-code MCP | Trimestriel |
 | `github_webhook_secret` | n8n (github-autofix workflow) | Annuel |
 
 ### Generer les nouveaux secrets (Firefly III + autofix pipeline)

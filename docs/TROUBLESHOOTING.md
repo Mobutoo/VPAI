@@ -1825,7 +1825,7 @@ ansible-playbook -i inventory/ci_hosts.ini ...
 - **Volume persistant** : seul `/var/www/html/storage/upload` nécessite un volume Docker
 - **Healthcheck** : `curl -sf http://127.0.0.1:8080/health` (l'image Firefly a curl intégré)
 - **PostgreSQL** : DB `firefly`, user `firefly`, password partagé `{{ postgresql_password }}`
-- **Sous-domaine** : `lola` (Firefly III admin) + `nzimbu` (Seko-Finance dashboard)
+- **Sous-domaine** : `lola` (Firefly III admin) + `zimboo` (Zimboo dashboard)
 
 ### 42.5 TLS ACME timing : HTTP 000 sur subdomains
 
@@ -1839,7 +1839,7 @@ ansible-playbook -i inventory/ci_hosts.ini ...
 3. **Retry logic** : 3 tentatives × 30s pour chaque check (rattrape les certs lents)
 
 ```bash
-for sub in "" "mayi" "llm" "tala" "qd" "hq" "javisi" "palais" "work" "nzimbu"; do
+for sub in "" "mayi" "llm" "tala" "qd" "hq" "javisi" "palais" "work" "zimboo"; do
   curl -sk "https://${sub}.${D}/" --max-time 10 >/dev/null 2>&1 &
 done
 wait

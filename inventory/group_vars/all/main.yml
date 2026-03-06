@@ -130,8 +130,8 @@ qdrant_api_key: "{{ vault_qdrant_api_key }}"
 # Firefly III (personal finance engine)
 firefly_app_key: "{{ vault_firefly_app_key }}"
 
-# Seko-Finance Dashboard (financial cockpit — connects to Firefly III + LiteLLM)
-seko_finance_firefly_pat: "{{ vault_firefly_pat | default('') }}"
+# Zimboo Dashboard (financial cockpit — connects to Firefly III + LiteLLM)
+zimboo_firefly_pat: "{{ vault_firefly_pat | default('') }}"
 
 # NocoDB (pipeline production IA manga)
 # Note: NocoDB utilise postgresql_password (variable partagée) — pas de vault séparé
@@ -219,9 +219,9 @@ workstation_pi_disk_gb: 256
 # === PALAIS ===
 palais_subdomain: "palais"
 
-# Firefly III + Seko-Finance (personal finance)
+# Firefly III + Zimboo (personal finance)
 firefly_subdomain: "lola"
-seko_finance_subdomain: "nzimbu"
+zimboo_subdomain: "zimboo"
 
 # Auto-Fix Pipeline (GitHub Issues -> Claude Code -> PR)
 autofix_enabled: true

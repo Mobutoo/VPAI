@@ -7,8 +7,8 @@
     project_name: javisi
     prod_user: molecule
     domain_name: test.local
-    seko_finance_subdomain: nzimbu
-    seko_finance_firefly_pat: "test_pat_token"
+    zimboo_subdomain: zimboo
+    zimboo_firefly_pat: "test_pat_token"
     firefly_web_port: 8080
     litellm_master_key: "sk-test-key"
     timezone: "Europe/Paris"
@@ -19,4 +19,4 @@
         state: present
         create_home: true
   roles:
-    - role: seko-finance
+    - role: zimboo

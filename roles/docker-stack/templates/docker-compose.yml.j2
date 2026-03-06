@@ -181,16 +181,16 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  seko-finance:
-    image: {{ seko_finance_image }}
-    container_name: {{ project_name }}_seko_finance
+  zimboo:
+    image: {{ zimboo_image }}
+    container_name: {{ project_name }}_zimboo
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
     env_file:
-      - /opt/{{ project_name }}/configs/seko-finance/seko-finance.env
+      - /opt/{{ project_name }}/configs/zimboo/zimboo.env
     networks:
       - backend
       - frontend
@@ -198,10 +198,10 @@ services:
     deploy:
       resources:
         limits:
-          memory: {{ seko_finance_memory_limit }}
-          cpus: "{{ seko_finance_cpu_limit }}"
+          memory: {{ zimboo_memory_limit }}
+          cpus: "{{ zimboo_cpu_limit }}"
         reservations:
-          memory: {{ seko_finance_memory_reservation }}
+          memory: {{ zimboo_memory_reservation }}
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
       interval: 30s

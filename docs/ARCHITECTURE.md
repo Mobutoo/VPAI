@@ -483,7 +483,7 @@ graph TD
 | **Agent IA** | OpenClaw | v2026.2.22 | 8080 | VPN only |
 | **Dashboard** | Palais | custom | 3300 | VPN only |
 | **Finance** | Firefly III | 6.5.3 | 8080 | VPN only (`lola`) |
-| **Finance Dashboard** | Seko-Finance | latest | 3000 | VPN only (`nzimbu`) |
+| **Finance Dashboard** | Zimboo | v1.10.0 | 3000 | VPN only (`zimboo`) |
 | **Base de données** | PostgreSQL | 18.1 | 5432 | interne |
 | **Cache** | Redis | 8.0 | 6379 | interne |
 | **Vector DB** | Qdrant | v1.16.3 | 6333 | interne |
@@ -573,7 +573,7 @@ graph TD
 ║  │  └──────┬───────┘  └──────┬───────┘  └───────┬────────┘  └─────────────┘ │ ║
 ║  │         │                 │                   │                            │ ║
 ║  │  ┌──────▼─────────────────▼───────────────────▼──────────────────────┐   │ ║
-║  │  │  Firefly III :8080  |  Seko-Finance :3000                          │   │ ║
+║  │  │  Firefly III :8080  |  Zimboo :3000                          │   │ ║
 ║  │  └───────────────────────────────────────────────────────────────────┘   │ ║
 ║  └───────────────────────────────────────────────────────────────────────────┘ ║
 ║                                                                                ║

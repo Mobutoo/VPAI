@@ -1,0 +1,16 @@
+---
+# zimboo — defaults
+# Zimboo Dashboard: Next.js financial cockpit connected to Firefly III + LiteLLM.
+# Runs as Docker container (pre-built image from GHCR).
+
+zimboo_config_dir: "/opt/{{ project_name }}/configs/zimboo"
+
+# Internal web port (exposed via Caddy on zimboo.<domain>)
+zimboo_port: 3000
+
+# LLM model for chat feature (via LiteLLM proxy)
+zimboo_llm_model: "deepseek-v3-free"
+
+# Subdomain (VPN-only, served by Caddy)
+# Overridden by zimboo_subdomain in inventory/group_vars/all/main.yml
+zimboo_subdomain: "zimboo"

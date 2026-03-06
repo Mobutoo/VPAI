@@ -165,7 +165,7 @@ jobs:
           PREPROD_DOMAIN="${{ secrets.PREPROD_DOMAIN }}"
           PASS=true
 
-          for sub in "" "mayi" "llm" "tala" "qd" "hq" "javisi" "palais" "work" "nzimbu" "lola"; do
+          for sub in "" "mayi" "llm" "tala" "qd" "hq" "javisi" "palais" "work" "zimboo" "lola"; do
             if [ -n "${sub}" ]; then
               FQDN="${sub}.${PREPROD_DOMAIN}"
             else
@@ -313,8 +313,8 @@ jobs:
           D="${PREPROD_DOMAIN}"
           echo "Triggering ACME certificate issuance for all subdomains..."
           # Subdomains match Caddy config: mayi(n8n), llm, tala(grafana), qd(qdrant),
-          # hq(nocodb), javisi(openclaw/admin), palais, nzimbu(seko-finance), lola(firefly), work(plane)
-          for sub in "" "mayi" "llm" "tala" "qd" "hq" "javisi" "palais" "work" "nzimbu" "lola"; do
+          # hq(nocodb), javisi(openclaw/admin), palais, zimboo(zimboo), lola(firefly), work(plane)
+          for sub in "" "mayi" "llm" "tala" "qd" "hq" "javisi" "palais" "work" "zimboo" "lola"; do
             if [ -n "${sub}" ]; then
               curl -sk "https://${sub}.${D}/" --max-time 10 >/dev/null 2>&1 &
             else
@@ -380,7 +380,7 @@ jobs:
         run: |
           D="${PREPROD_DOMAIN}"
           # Add /etc/hosts entries so server can resolve its own domains (REX-71)
-          HOSTS_LINE="127.0.0.1 ${D} mayi.${D} llm.${D} tala.${D} qd.${D} hq.${D} javisi.${D} palais.${D} work.${D} nzimbu.${D} lola.${D}"
+          HOSTS_LINE="127.0.0.1 ${D} mayi.${D} llm.${D} tala.${D} qd.${D} hq.${D} javisi.${D} palais.${D} work.${D} zimboo.${D} lola.${D}"
           # Wait for slow-starting containers (Firefly III has start_period: 60s)
           echo "Waiting 120s for all containers to pass healthchecks..."
           sleep 120

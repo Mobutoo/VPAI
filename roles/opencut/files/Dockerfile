@@ -13,6 +13,7 @@ ARG OPENCUT_VERSION
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
+    ca-certificates \
     python3 \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
@@ -34,13 +35,26 @@ RUN bun install --frozen-lockfile || bun install
 # Build the Next.js web app (standalone output for minimal runtime)
 WORKDIR /build/opencut/apps/web
 ENV NEXT_TELEMETRY_DISABLED=1
-# Provide dummy env vars for build time (Next.js needs them at build)
+# Provide dummy env vars for build time (Next.js Zod schema validation)
 ENV DATABASE_URL="postgresql://dummy:dummy@localhost:5432/dummy"
 ENV BETTER_AUTH_SECRET="build-time-placeholder"
 ENV UPSTASH_REDIS_REST_URL="http://localhost:8079"
 ENV UPSTASH_REDIS_REST_TOKEN="build-time-placeholder"
 ENV NEXT_PUBLIC_SITE_URL="http://localhost:3000"
-RUN bun run build
+ENV NEXT_PUBLIC_MARBLE_API_URL="http://localhost:3000"
+ENV MARBLE_WORKSPACE_KEY="build-time-placeholder"
+ENV FREESOUND_CLIENT_ID="build-time-placeholder"
+ENV FREESOUND_API_KEY="build-time-placeholder"
+ENV CLOUDFLARE_ACCOUNT_ID="build-time-placeholder"
+ENV R2_ACCESS_KEY_ID="build-time-placeholder"
+ENV R2_SECRET_ACCESS_KEY="build-time-placeholder"
+ENV R2_BUCKET_NAME="build-time-placeholder"
+ENV MODAL_TRANSCRIPTION_URL="http://localhost:3000"
+
+# Start a mock API server during build to satisfy CMS fetch calls (Marble API)
+# Returns empty JSON for any request so pages pre-render without errors
+RUN node -e "require('http').createServer((q,r)=>{r.writeHead(200,{'Content-Type':'application/json'});r.end(JSON.stringify({data:[],posts:[],items:[],results:[]}))}).listen(3000,()=>console.log('Mock API on :3000'))" & \
+    sleep 1 && bun run build
 
 # === Stage 2: Runtime ===
 FROM node:22-slim
@@ -49,9 +63,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -g 1000 opencut && \
-    useradd -u 1000 -g opencut -m -s /bin/bash opencut
+# Use existing node user (UID 1000, GID 1000) — already present in node:22-slim
 
 WORKDIR /app
 

@@ -36,7 +36,7 @@ palais_budget_monthly_limit: "50"
 namecheap_client_ip: "{{ prod_ssh_host | default('') }}"
 
 # OVH API
-ovh_endpoint: "ovh-eu"
+ovh_endpoint: "https://eu.api.ovh.com/1.0"
 
 # Headscale (VPN topology — Module 11)
 palais_headscale_api_key: "{{ vault_palais_headscale_api_key | default('') }}"

@@ -41,14 +41,14 @@ interface HetznerVolume {
     created: string;
 }
 
-async function hetznerFetch<T>(path: string, options?: RequestInit): Promise<T> {
-    const token = env.HETZNER_API_TOKEN;
-    if (!token) throw new Error('HETZNER_API_TOKEN not configured');
+async function hetznerFetch<T>(path: string, options?: RequestInit & { token?: string }): Promise<T> {
+    const token = options?.token || env.HETZNER_API_TOKENS?.split(',')[0] || env.HETZNER_API_TOKEN;
+    if (!token) throw new Error('HETZNER_API_TOKENS not configured');
 
     const res = await fetch(`${BASE_URL}${path}`, {
         ...options,
         headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${token.trim()}`,
             'Content-Type': 'application/json',
             ...options?.headers,
         },
@@ -62,9 +62,28 @@ async function hetznerFetch<T>(path: string, options?: RequestInit): Promise<T> 
     return res.json();
 }
 
-export async function listServers(): Promise<HetznerServer[]> {
-    const data = await hetznerFetch<{ servers: HetznerServer[] }>('/servers');
+/** Get all configured Hetzner API tokens (comma-separated env var) */
+export function getTokens(): string[] {
+    const raw = env.HETZNER_API_TOKENS || env.HETZNER_API_TOKEN || '';
+    return raw.split(',').map(t => t.trim()).filter(Boolean);
+}
+
+export async function listServers(token?: string): Promise<HetznerServer[]> {
+    const data = await hetznerFetch<{ servers: HetznerServer[] }>('/servers', { token });
     return data.servers;
+}
+
+/** List servers from ALL configured projects */
+export async function listAllServers(): Promise<HetznerServer[]> {
+    const tokens = getTokens();
+    const results: HetznerServer[] = [];
+
+    for (const token of tokens) {
+        const projectServers = await listServers(token);
+        results.push(...projectServers);
+    }
+
+    return results;
 }
 
 export async function getServer(id: number): Promise<HetznerServer> {

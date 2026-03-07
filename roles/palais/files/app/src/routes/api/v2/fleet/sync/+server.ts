@@ -5,7 +5,6 @@ import { eq } from "drizzle-orm";
 import { ok, err } from "$lib/server/api/response";
 import * as dockerRemote from "$lib/server/providers/docker-remote";
 import * as hetzner from "$lib/server/providers/hetzner";
-import { env } from "$env/dynamic/private";
 
 /** Sync fleet: discover Hetzner servers + collect Docker metrics */
 export const POST: RequestHandler = async () => {
@@ -13,10 +12,11 @@ export const POST: RequestHandler = async () => {
         const imported: string[] = [];
         const errors: { source: string; slug: string; error: string }[] = [];
 
-        // ── Phase 1: Import servers from Hetzner API ──────────────────────
-        if (env.HETZNER_API_TOKEN) {
+        // ── Phase 1: Import servers from Hetzner API (all projects) ──────
+        const hetznerTokens = hetzner.getTokens();
+        if (hetznerTokens.length > 0) {
             try {
-                const hetznerServers = await hetzner.listServers();
+                const hetznerServers = await hetzner.listAllServers();
 
                 for (const hs of hetznerServers) {
                     const slug = hs.name.toLowerCase().replace(/[^a-z0-9]/g, '-');

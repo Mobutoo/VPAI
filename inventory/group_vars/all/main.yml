@@ -225,7 +225,7 @@ ovh_application_secret: "{{ vault_ovh_application_secret | default('') }}"
 ovh_consumer_key: "{{ vault_ovh_consumer_key | default('') }}"
 namecheap_api_key: "{{ vault_namecheap_api_key | default('') }}"
 namecheap_api_user: "{{ vault_namecheap_api_user | default('') }}"
-ovh_vps_service: "{{ vault_ovh_vps_service | default('') }}"
+ovh_vps_service: "{{ vault_ovh_vps_service | default('vps-fda058f7.vps.ovh.net') }}"
 n8n_deploy_webhook: "webhook-deploy-palais-v2"
 n8n_provision_webhook: "webhook-provision"
 

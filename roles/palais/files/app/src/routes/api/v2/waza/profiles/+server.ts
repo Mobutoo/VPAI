@@ -62,7 +62,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		await Promise.all(
 			services.map(async (service) => {
-				await dockerRemote.controlContainer('workstation', service.slug, action);
+				await dockerRemote.controlContainer('waza', service.slug, action);
 
 				if (action === 'start') {
 					await db

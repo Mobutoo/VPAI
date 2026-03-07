@@ -68,8 +68,8 @@
 
 	const VPN_LINKS = [
 		{ from: 'sese-ai', to: 'seko-vpn' },
-		{ from: 'rpi5',    to: 'seko-vpn' },
-		{ from: 'sese-ai', to: 'rpi5' }
+		{ from: 'waza',    to: 'seko-vpn' },
+		{ from: 'sese-ai', to: 'waza' }
 	];
 
 	function nodePos(name: string): { x: number; y: number; label: string } {

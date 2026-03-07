@@ -4,7 +4,7 @@ import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ params }) => {
 	try {
-		const containers = await dockerRemote.listContainers('workstation');
+		const containers = await dockerRemote.listContainers('waza');
 		const container = containers.find((c) => c.name === params.slug);
 
 		if (!container) {

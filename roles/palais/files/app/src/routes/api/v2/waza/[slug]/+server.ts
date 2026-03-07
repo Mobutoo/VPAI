@@ -40,7 +40,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			return err('Invalid action. Must be "start" or "stop"', 400);
 		}
 
-		await dockerRemote.controlContainer('workstation', params.slug, action);
+		await dockerRemote.controlContainer('waza', params.slug, action);
 
 		if (action === 'start') {
 			await db

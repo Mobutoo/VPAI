@@ -16,7 +16,7 @@ export async function seedNodes(): Promise<void> {
 			description: 'OVH VPS 8 Go — Cerveau IA (OpenClaw, LiteLLM, n8n)'
 		},
 		{
-			name: 'rpi5',
+			name: 'waza',
 			tailscaleIp: env.WORKSTATION_PI_TAILSCALE_IP || null,
 			localIp: env.WORKSTATION_PI_LOCAL_IP || null,
 			description: 'Raspberry Pi 5 16 Go — Mission Control (Claude Code)'
@@ -75,8 +75,8 @@ export async function seedNodes(): Promise<void> {
 			diskGb: 80
 		},
 		{
-			name: 'rpi5',
-			slug: 'rpi5',
+			name: 'waza',
+			slug: 'waza',
 			provider: 'local',
 			serverRole: 'workstation',
 			tailscaleIp: env.WORKSTATION_PI_TAILSCALE_IP || null,

@@ -188,19 +188,19 @@ SELECT
     CASE
         WHEN name = 'sese-ai'  THEN 'ovh'::provider_type
         WHEN name = 'seko-vpn' THEN 'ionos'::provider_type
-        WHEN name = 'rpi5'     THEN 'local'::provider_type
+        WHEN name IN ('rpi5', 'waza') THEN 'local'::provider_type
         ELSE 'ovh'::provider_type
     END,
     CASE
         WHEN name = 'sese-ai'  THEN 'ai_brain'::server_role
         WHEN name = 'seko-vpn' THEN 'vpn_hub'::server_role
-        WHEN name = 'rpi5'     THEN 'workstation'::server_role
+        WHEN name IN ('rpi5', 'waza') THEN 'workstation'::server_role
         ELSE 'app_prod'::server_role
     END,
     tailscale_ip,
     local_ip,
     COALESCE(status, 'offline')::text::node_status,
-    CASE WHEN name = 'rpi5' THEN 22 ELSE 804 END,
+    CASE WHEN name IN ('rpi5', 'waza') THEN 22 ELSE 804 END,
     'mobuone',
     created_at
 FROM nodes

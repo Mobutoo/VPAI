@@ -32,9 +32,9 @@ export const POST: RequestHandler = async () => {
                             invDate,
                             invMonthEnd,
                             undefined,
-                            `OVH Invoice ${inv.invoiceId}`,
+                            `OVH Invoice ${inv.billId}`,
                             {
-                                invoiceId: inv.invoiceId,
+                                invoiceId: inv.billId,
                                 currency: inv.priceWithTax.currencyCode,
                                 url: inv.url
                             }

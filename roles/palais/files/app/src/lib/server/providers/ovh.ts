@@ -8,7 +8,7 @@ interface OvhVpsStatus {
 }
 
 interface OvhInvoice {
-    invoiceId: string;
+    billId: string;
     date: string;
     priceWithTax: { value: number; currencyCode: string };
     url: string;

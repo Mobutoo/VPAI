@@ -131,7 +131,7 @@ export async function listVolumes(): Promise<HetznerVolume[]> {
 export async function getUpcomingInvoice(): Promise<{ amount: number; currency: string }> {
     // Hetzner doesn't have an "upcoming invoice" endpoint directly
     // Use the pricing endpoint + server list to estimate
-    const servers = await listServers();
+    const servers = await listAllServers();
     // CX22 = €5.39/mo, CX11 = €3.49/mo, etc — approximate from server_type
     const pricing: Record<string, number> = {
         cx22: 5.39, cx23: 5.39, cx11: 3.49, cx21: 4.49, cx31: 8.49, cx41: 15.49, cx51: 28.49,

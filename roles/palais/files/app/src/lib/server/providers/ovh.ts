@@ -74,4 +74,53 @@ export async function getRecentInvoices(count: number = 5): Promise<OvhInvoice[]
     return invoices;
 }
 
-export type { OvhVpsStatus, OvhInvoice };
+// ── Domain management ─────────────────────────────────────────────────
+
+interface OvhDomainInfo {
+    domain: string;
+    nameServerType: string;
+    offer: string;
+    transferLockStatus: string;
+    whoisOwner: string;
+}
+
+interface OvhDomainServiceInfo {
+    domain: string;
+    expiration: string;
+    renew: { automatic: boolean };
+}
+
+export async function listDomains(): Promise<string[]> {
+    return ovhFetch<string[]>('/domain');
+}
+
+export async function getDomainInfo(domain: string): Promise<OvhDomainInfo> {
+    return ovhFetch<OvhDomainInfo>(`/domain/${domain}`);
+}
+
+export async function getDomainServiceInfo(domain: string): Promise<OvhDomainServiceInfo> {
+    return ovhFetch<OvhDomainServiceInfo>(`/domain/${domain}/serviceInfos`);
+}
+
+export async function getDomainDnsRecords(domain: string): Promise<OvhDnsRecord[]> {
+    const ids = await ovhFetch<number[]>(`/domain/zone/${domain}/record`);
+    const records: OvhDnsRecord[] = [];
+
+    for (const id of ids) {
+        const record = await ovhFetch<OvhDnsRecord>(`/domain/zone/${domain}/record/${id}`);
+        records.push(record);
+    }
+
+    return records;
+}
+
+interface OvhDnsRecord {
+    id: number;
+    fieldType: string;
+    subDomain: string;
+    target: string;
+    ttl: number;
+    zone: string;
+}
+
+export type { OvhVpsStatus, OvhInvoice, OvhDomainInfo, OvhDomainServiceInfo, OvhDnsRecord };

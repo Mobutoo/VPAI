@@ -184,17 +184,30 @@ CREATE TABLE IF NOT EXISTS waza_services (
 INSERT INTO servers (name, slug, provider, server_role, tailscale_ip, public_ip, status, ssh_port, ssh_user, created_at)
 SELECT
     name,
-    lower(regexp_replace(name, '[^a-z0-9]', '-', 'gi')),
-    'ovh'::provider_type,
-    'ai_brain'::server_role,
+    lower(regexp_replace(name, '[^a-zA-Z0-9]', '-', 'gi')),
+    CASE
+        WHEN name = 'sese-ai'  THEN 'ovh'::provider_type
+        WHEN name = 'seko-vpn' THEN 'ionos'::provider_type
+        WHEN name = 'rpi5'     THEN 'local'::provider_type
+        ELSE 'ovh'::provider_type
+    END,
+    CASE
+        WHEN name = 'sese-ai'  THEN 'ai_brain'::server_role
+        WHEN name = 'seko-vpn' THEN 'vpn_hub'::server_role
+        WHEN name = 'rpi5'     THEN 'workstation'::server_role
+        ELSE 'app_prod'::server_role
+    END,
     tailscale_ip,
     local_ip,
-    status::text::node_status,
-    804,
+    COALESCE(status, 'offline')::text::node_status,
+    CASE WHEN name = 'rpi5' THEN 22 ELSE 804 END,
     'mobuone',
     created_at
 FROM nodes
-ON CONFLICT (slug) DO NOTHING;
+ON CONFLICT (slug) DO UPDATE SET
+    provider = EXCLUDED.provider,
+    server_role = EXCLUDED.server_role,
+    ssh_port = EXCLUDED.ssh_port;
 
 -- ============ SEED: initial Waza services ============
 

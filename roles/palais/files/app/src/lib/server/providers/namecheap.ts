@@ -69,7 +69,9 @@ function extractAttribute(tag: string, attr: string, xml: string): string | null
 }
 
 function extractAllTags(tagName: string, xml: string): string[] {
-    const regex = new RegExp(`<${tagName}[^/]*(?:\\/>|>[^<]*<\\/${tagName}>)`, 'gi');
+    // Match self-closing <Tag ... /> or <Tag ...>content</Tag>
+    // Uses [^>]* instead of [^/]* to handle dates with slashes in attributes (e.g. 08/03/2025)
+    const regex = new RegExp(`<${tagName}\\s[^>]*\\/>|<${tagName}\\s[^>]*>[^<]*<\\/${tagName}>`, 'gi');
     return xml.match(regex) ?? [];
 }
 

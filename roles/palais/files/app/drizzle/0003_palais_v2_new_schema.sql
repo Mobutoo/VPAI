@@ -212,9 +212,7 @@ ON CONFLICT (slug) DO UPDATE SET
 -- ============ SEED: initial Waza services ============
 
 INSERT INTO waza_services (name, slug, always_on, ram_limit_mb, cpu_limit, profile) VALUES
-    ('Claude Code', 'claude-code', true, 128, 0.5, 'dev'),
-    ('OpenCode', 'opencode', true, 256, 0.5, 'dev'),
-    ('OpenCut', 'opencut', false, 1024, 1.0, 'video'),
-    ('ComfyUI', 'comfyui', false, 4096, 2.0, 'art'),
-    ('Remotion', 'remotion', false, 512, 0.5, 'video')
+    ('ComfyUI', 'workstation_comfyui', false, 4096, 2.0, 'art'),
+    ('Remotion', 'workstation_remotion', false, 512, 0.5, 'video'),
+    ('n8n MCP Bridge', 'n8n-mcp', true, 512, 0.5, 'dev')
 ON CONFLICT (slug) DO NOTHING;

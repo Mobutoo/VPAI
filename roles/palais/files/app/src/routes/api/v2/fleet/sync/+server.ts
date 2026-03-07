@@ -86,6 +86,14 @@ export const POST: RequestHandler = async () => {
         }
 
         // ── Phase 1b: Import VPS from OVH API ───────────────────────────
+        // Map known OVH VPS service names to existing seeded servers
+        // (e.g. vps-fda058f7.vps.ovh.net → sese-ai)
+        const ovhVpsMap: Record<string, string> = {};
+        if (env.OVH_VPS_SERVICE) {
+            // OVH_VPS_SERVICE=vps-fda058f7.vps.ovh.net maps to sese-ai (our OVH VPS)
+            ovhVpsMap[env.OVH_VPS_SERVICE] = 'sese-ai';
+        }
+
         if (env.OVH_APPLICATION_KEY && env.OVH_APPLICATION_SECRET && env.OVH_CONSUMER_KEY) {
             try {
                 const vpsNames = await ovh.listVps();
@@ -93,12 +101,26 @@ export const POST: RequestHandler = async () => {
                 for (const vpsName of vpsNames) {
                     try {
                         const status = await ovh.getVpsStatus(vpsName);
-                        const slug = vpsName.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
-                        // Skip stopped/inactive VPS (avoid re-importing decommissioned servers)
-                        if (status.state !== 'running') {
+                        // If this VPS maps to an existing seeded server, enrich it instead
+                        const mappedSlug = ovhVpsMap[vpsName];
+                        if (mappedSlug) {
+                            await db
+                                .update(servers)
+                                .set({
+                                    status: status.state === 'running' ? 'online' : 'offline',
+                                    cpuCores: status.model?.vcore ?? undefined,
+                                    ramMb: status.model?.memory ? status.model.memory * 1024 : undefined,
+                                    diskGb: status.model?.disk ?? undefined,
+                                    metadata: { ovh_service: vpsName, model: status.model?.name },
+                                    updatedAt: new Date()
+                                })
+                                .where(eq(servers.slug, mappedSlug));
+                            imported.push(mappedSlug);
                             continue;
                         }
+
+                        const slug = vpsName.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
                         await db
                             .insert(servers)

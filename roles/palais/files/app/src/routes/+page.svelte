@@ -1,7 +1,10 @@
 <script lang="ts">
-	import StandupCard from '$lib/components/dashboard/StandupCard.svelte';
-	import InsightBanner from '$lib/components/dashboard/InsightBanner.svelte';
 	import AgentCard from '$lib/components/agents/AgentCard.svelte';
+	import StatCard from '$lib/components/dashboard/StatCard.svelte';
+	import MiniServerCard from '$lib/components/dashboard/MiniServerCard.svelte';
+	import DeploymentTimeline from '$lib/components/dashboard/DeploymentTimeline.svelte';
+	import Aya from '$lib/components/icons/Aya.svelte';
+	import Nkyinkyim from '$lib/components/icons/Nkyinkyim.svelte';
 
 	let { data } = $props();
 
@@ -26,9 +29,26 @@
 	const busyAgents   = $derived(data.agents.filter((a: Record<string, unknown>) => a.status === 'busy').length);
 	const errorAgents  = $derived(data.agents.filter((a: Record<string, unknown>) => a.status === 'error').length);
 
-	// ── Insight lists ──
-	const criticalInsights    = $derived((data.insights ?? []).filter((i: Record<string, unknown>) => i.severity === 'critical'));
-	const nonCriticalInsights = $derived((data.insights ?? []).filter((i: Record<string, unknown>) => i.severity !== 'critical'));
+	// ── Waza service actions ──
+	async function toggleWazaService(slug: string, currentStatus: string) {
+		const action = currentStatus === 'running' ? 'stop' : 'start';
+		await fetch(`/api/v2/waza/${slug}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ action })
+		});
+	}
+
+	// ── Server metrics helpers ──
+	function cpuPercent(server: typeof data.servers[number]): number {
+		return server.latestMetric?.cpuPercent ?? 0;
+	}
+
+	function ramPercent(server: typeof data.servers[number]): number {
+		const m = server.latestMetric;
+		if (!m || !m.ramTotalMb || !m.ramUsedMb) return 0;
+		return (m.ramUsedMb / m.ramTotalMb) * 100;
+	}
 </script>
 
 <!-- ══════════════════════════════════════════════════════════
@@ -42,7 +62,7 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════════════
-     MAIN DASHBOARD WRAPPER — hex grid filigrane
+     MAIN DASHBOARD WRAPPER
      ══════════════════════════════════════════════════════════ -->
 <div class="space-y-7 relative">
 
@@ -51,19 +71,27 @@
 		class="flex items-start justify-between gap-4"
 		style="animation: fadeSlideUp 0.5s ease-out both; animation-delay: 0ms;"
 	>
-		<!-- Left: wordmark + session status row -->
+		<!-- Left: wordmark + mission control subtitle -->
 		<div class="flex flex-col gap-2">
-			<h1
-				class="tracking-[0.18em] font-black leading-none"
-				style="
-					color: var(--palais-gold);
-					font-family: 'Orbitron', sans-serif;
-					font-size: clamp(1.1rem, 3vw, 1.6rem);
-					text-shadow: 0 0 24px rgba(212,168,67,0.45), 0 0 48px rgba(212,168,67,0.18);
-				"
-			>
-				PALAIS
-			</h1>
+			<div class="flex flex-col gap-0.5">
+				<h1
+					class="tracking-[0.18em] font-black leading-none"
+					style="
+						color: var(--palais-gold);
+						font-family: 'Orbitron', sans-serif;
+						font-size: clamp(1.1rem, 3vw, 1.6rem);
+						text-shadow: 0 0 24px rgba(212,168,67,0.45), 0 0 48px rgba(212,168,67,0.18);
+					"
+				>
+					PALAIS <span style="font-size: 0.65em; opacity: 0.7; letter-spacing: 0.3em;">v2</span>
+				</h1>
+				<p
+					class="tracking-[0.3em] uppercase"
+					style="font-family: 'Orbitron', sans-serif; font-size: 0.5rem; color: var(--palais-text-muted); letter-spacing: 0.35em;"
+				>
+					Mission Control
+				</p>
+			</div>
 			<!-- Status summary bar -->
 			<div
 				class="flex items-center gap-2 flex-wrap"
@@ -111,25 +139,12 @@
 		</div>
 	</header>
 
-	<!-- ── CRITICAL INSIGHT BANNERS ─────────────────────────── -->
-	{#if criticalInsights.length > 0}
-		<div
-			class="space-y-2"
-			style="animation: fadeSlideUp 0.5s ease-out both; animation-delay: 80ms;"
-		>
-			{#each criticalInsights as insight (insight.id)}
-				<InsightBanner {insight} />
-			{/each}
-		</div>
-	{/if}
-
-	<!-- ── DIGITAL STANDUP ──────────────────────────────────── -->
+	<!-- ── ROW 1: STAT CARDS ──────────────────────────────────── -->
 	<section
-		style="animation: fadeSlideUp 0.5s ease-out both; animation-delay: 160ms;"
+		style="animation: fadeSlideUp 0.5s ease-out both; animation-delay: 60ms;"
 	>
-		<!-- HUD section header -->
 		<h2
-			class="flex items-center gap-2 mb-3"
+			class="flex items-center gap-2 mb-4"
 			style="
 				font-family: 'Orbitron', sans-serif;
 				font-size: 0.6rem;
@@ -140,15 +155,167 @@
 			"
 		>
 			<span style="width: 8px; height: 1px; background: var(--palais-gold); opacity: 0.5; display: inline-block; flex-shrink: 0;"></span>
-			BRIEFING DU JOUR
+			OVERVIEW
 			<span style="flex: 1; height: 1px; background: linear-gradient(to right, rgba(212,168,67,0.3), transparent); display: inline-block;"></span>
 		</h2>
-		<StandupCard standup={data.standup} />
+
+		<div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+			<StatCard
+				value="{data.onlineCount}/{data.serverCount}"
+				label="Servers Online"
+				icon={Aya}
+				color="var(--palais-cyan)"
+			/>
+			<StatCard
+				value={data.containerCount}
+				label="Containers"
+				color="var(--palais-gold)"
+			/>
+			<StatCard
+				value="0"
+				label="Monthly Cost"
+				color="var(--palais-green)"
+			/>
+			<StatCard
+				value={data.activeDeploys}
+				label="Active Deploys"
+				icon={Nkyinkyim}
+				color="var(--palais-gold)"
+			/>
+		</div>
 	</section>
 
-	<!-- ── AGENTS ACTIFS ────────────────────────────────────── -->
+	<!-- ── ROW 2: SERVER HEALTH MINI-GRID ────────────────────── -->
+	{#if data.servers.length > 0}
+		<section
+			style="animation: fadeSlideUp 0.5s ease-out both; animation-delay: 120ms;"
+		>
+			<h2
+				class="flex items-center gap-2 mb-4"
+				style="
+					font-family: 'Orbitron', sans-serif;
+					font-size: 0.6rem;
+					letter-spacing: 0.25em;
+					text-transform: uppercase;
+					color: var(--palais-gold);
+					opacity: 0.7;
+				"
+			>
+				<span style="width: 8px; height: 1px; background: var(--palais-gold); opacity: 0.5; display: inline-block; flex-shrink: 0;"></span>
+				FLEET HEALTH
+				<span style="flex: 1; height: 1px; background: linear-gradient(to right, rgba(212,168,67,0.3), transparent); display: inline-block;"></span>
+			</h2>
+
+			<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+				{#each data.servers as server, i (server.id)}
+					<MiniServerCard
+						name={server.name}
+						status={server.status}
+						cpuPercent={cpuPercent(server)}
+						ramPercent={ramPercent(server)}
+						provider={server.provider}
+					/>
+				{/each}
+			</div>
+		</section>
+	{/if}
+
+	<!-- ── ROW 3: DEPLOYMENT TIMELINE ────────────────────────── -->
 	<section
-		style="animation: fadeSlideUp 0.5s ease-out both; animation-delay: 240ms;"
+		style="animation: fadeSlideUp 0.5s ease-out both; animation-delay: 180ms;"
+	>
+		<h2
+			class="flex items-center gap-2 mb-4"
+			style="
+				font-family: 'Orbitron', sans-serif;
+				font-size: 0.6rem;
+				letter-spacing: 0.25em;
+				text-transform: uppercase;
+				color: var(--palais-gold);
+				opacity: 0.7;
+			"
+		>
+			<span style="width: 8px; height: 1px; background: var(--palais-gold); opacity: 0.5; display: inline-block; flex-shrink: 0;"></span>
+			RECENT DEPLOYS
+			<span style="flex: 1; height: 1px; background: linear-gradient(to right, rgba(212,168,67,0.3), transparent); display: inline-block;"></span>
+		</h2>
+
+		<DeploymentTimeline deployments={data.recentDeploys} />
+	</section>
+
+	<!-- ── ROW 4: WAZA QUICK-CONTROLS ────────────────────────── -->
+	{#if data.wazaServices.length > 0}
+		<section
+			style="animation: fadeSlideUp 0.5s ease-out both; animation-delay: 240ms;"
+		>
+			<h2
+				class="flex items-center gap-2 mb-4"
+				style="
+					font-family: 'Orbitron', sans-serif;
+					font-size: 0.6rem;
+					letter-spacing: 0.25em;
+					text-transform: uppercase;
+					color: var(--palais-gold);
+					opacity: 0.7;
+				"
+			>
+				<span style="width: 8px; height: 1px; background: var(--palais-gold); opacity: 0.5; display: inline-block; flex-shrink: 0;"></span>
+				WAZA SERVICES
+				<span style="flex: 1; height: 1px; background: linear-gradient(to right, rgba(212,168,67,0.3), transparent); display: inline-block;"></span>
+			</h2>
+
+			<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+				{#each data.wazaServices as svc, i (svc.id)}
+					<div
+						class="glass-panel rounded-lg p-3 flex flex-col gap-2"
+						style="
+							border: 1px solid rgba(212,168,67,0.1);
+							animation: cardReveal 0.4s ease-out both;
+							animation-delay: {i * 40}ms;
+						"
+					>
+						<!-- Service name -->
+						<span
+							class="uppercase tracking-[0.15em] truncate"
+							style="font-family: 'Orbitron', sans-serif; font-size: 0.5rem; color: var(--palais-text);"
+						>{svc.name}</span>
+
+						<!-- Status badge -->
+						<span
+							class="self-start px-1.5 py-0.5 rounded uppercase tracking-[0.1em]"
+							style="
+								font-family: 'JetBrains Mono', monospace;
+								font-size: 0.4rem;
+								color: {svc.status === 'running' ? 'var(--palais-green)' : svc.status === 'stopped' ? 'var(--palais-text-muted)' : 'var(--palais-gold)'};
+								border: 1px solid {svc.status === 'running' ? 'rgba(76,175,80,0.3)' : svc.status === 'stopped' ? 'rgba(255,255,255,0.1)' : 'rgba(212,168,67,0.3)'};
+								background: {svc.status === 'running' ? 'rgba(76,175,80,0.08)' : svc.status === 'stopped' ? 'rgba(255,255,255,0.03)' : 'rgba(212,168,67,0.08)'};
+							"
+						>{svc.status ?? 'unknown'}</span>
+
+						<!-- Toggle button -->
+						<button
+							onclick={() => toggleWazaService(svc.slug, svc.status ?? 'stopped')}
+							class="mt-auto rounded px-2 py-1 uppercase tracking-[0.15em] transition-opacity hover:opacity-80 active:opacity-60"
+							style="
+								font-family: 'Orbitron', sans-serif;
+								font-size: 0.42rem;
+								color: {svc.status === 'running' ? 'var(--palais-red)' : 'var(--palais-green)'};
+								border: 1px solid {svc.status === 'running' ? 'rgba(229,57,53,0.3)' : 'rgba(76,175,80,0.3)'};
+								background: {svc.status === 'running' ? 'rgba(229,57,53,0.06)' : 'rgba(76,175,80,0.06)'};
+								cursor: pointer;
+							"
+						>
+							{svc.status === 'running' ? 'Stop' : 'Start'}
+						</button>
+					</div>
+				{/each}
+			</div>
+		</section>
+	{/if}
+
+	<!-- ── AGENTS ACTIFS ────────────────────────────────────────── -->
+	<section
+		style="animation: fadeSlideUp 0.5s ease-out both; animation-delay: 300ms;"
 	>
 		<!-- HUD section header with count badge -->
 		<div class="flex items-center gap-3 mb-4">
@@ -189,33 +356,5 @@
 			{/each}
 		</div>
 	</section>
-
-	<!-- ── INSIGHTS ─────────────────────────────────────────── -->
-	{#if nonCriticalInsights.length > 0}
-		<section
-			style="animation: fadeSlideUp 0.5s ease-out both; animation-delay: 320ms;"
-		>
-			<h2
-				class="flex items-center gap-2 mb-3"
-				style="
-					font-family: 'Orbitron', sans-serif;
-					font-size: 0.6rem;
-					letter-spacing: 0.25em;
-					text-transform: uppercase;
-					color: var(--palais-gold);
-					opacity: 0.7;
-				"
-			>
-				<span style="width: 8px; height: 1px; background: var(--palais-gold); opacity: 0.5; display: inline-block; flex-shrink: 0;"></span>
-				INSIGHTS
-				<span style="flex: 1; height: 1px; background: linear-gradient(to right, rgba(212,168,67,0.3), transparent); display: inline-block;"></span>
-			</h2>
-			<div class="space-y-2">
-				{#each nonCriticalInsights as insight (insight.id)}
-					<InsightBanner {insight} />
-				{/each}
-			</div>
-		</section>
-	{/if}
 
 </div>

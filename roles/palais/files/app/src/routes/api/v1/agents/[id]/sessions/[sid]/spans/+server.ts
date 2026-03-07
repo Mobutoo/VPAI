@@ -38,7 +38,6 @@ export const GET: RequestHandler = async ({ params }) => {
 		session: {
 			id: session.id,
 			agentId: session.agentId,
-			taskId: session.taskId,
 			model: session.model,
 			status: session.status,
 			startedAt: session.startedAt,

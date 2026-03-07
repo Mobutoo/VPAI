@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
-import { backupStatus, nodes, insights } from '$lib/server/db/schema';
+import { backupStatus, nodes } from '$lib/server/db/schema';
 import { eq, desc } from 'drizzle-orm';
 
 // GET /api/v1/health/backup — latest backup status per node
@@ -58,22 +58,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		details: body.details ?? null
 	});
 
-	// Alert: stale backup (> 24h) → create insight
+	// Log stale/failed backup to console (insights table removed in v2)
 	const isStale = lastBackupAt
 		? Date.now() - lastBackupAt.getTime() > 24 * 60 * 60 * 1000
 		: true;
 
 	if (isStale || body.status === 'failed') {
-		await db.insert(insights).values({
-			type: 'error_pattern',
-			severity: body.status === 'failed' ? 'critical' : 'warning',
-			title: `Backup ${body.status === 'failed' ? 'échoué' : 'obsolète'} — ${node.name}`,
-			description: isStale
-				? `Dernier backup : ${lastBackupAt?.toISOString() ?? 'jamais'}. Délai > 24h.`
-				: `Backup en status "${body.status}" sur ${node.name}.`,
-			suggestedActions: [{ action: 'Vérifier Zerobyte sur le noeud cible' }],
-			acknowledged: false
-		});
+		console.warn(`[Backup] ${body.status === 'failed' ? 'Failed' : 'Stale'} backup on node "${body.node}"`);
 	}
 
 	return json({ ok: true, node: body.node, status: body.status });

@@ -6,17 +6,24 @@
 		Nyame, Bese
 	} from '$lib/components/icons';
 
-	const nav = [
-		{ href: '/', label: 'Dashboard', icon: GyeNyame },
-		{ href: '/agents', label: 'Agents', icon: Dwennimmen },
-		{ href: '/projects', label: 'Projects', icon: Nkyinkyim },
-		{ href: '/missions', label: 'Missions', icon: Akoma },
-		{ href: '/ideas', label: 'Ideas', icon: Fawohodie },
-		{ href: '/memory', label: 'Memory', icon: Sankofa },
-		{ href: '/budget', label: 'Budget', icon: Aya },
-		{ href: '/insights', label: 'Insights', icon: AnanseNtontan },
-		{ href: '/health', label: 'Health', icon: Nyame },
-		{ href: '/creative', label: 'Creative', icon: Bese },
+	interface NavItem {
+		href: string;
+		label: string;
+		icon: typeof GyeNyame;
+	}
+
+	const nav: NavItem[] = [
+		{ href: '/',           label: 'Dashboard',   icon: GyeNyame },
+		{ href: '/fleet',      label: 'Fleet',        icon: Aya },
+		{ href: '/workspaces', label: 'Workspaces',   icon: AnanseNtontan },
+		{ href: '/services',   label: 'Services',     icon: Bese },
+		{ href: '/deploy',     label: 'Deploy',       icon: Nkyinkyim },
+		{ href: '/costs',      label: 'Costs',        icon: Akoma },
+		{ href: '/domains',    label: 'Domains',      icon: Fawohodie },
+		{ href: '/terminal',   label: 'Terminal',     icon: Sankofa },
+		{ href: '/waza',       label: 'Waza',         icon: Dwennimmen },
+		{ href: '/agents',     label: 'Agents',       icon: Nyame },
+		{ href: '/memory',     label: 'Memory',       icon: Sankofa },
 	];
 
 	let currentPath = $derived($page.url.pathname);
@@ -84,7 +91,7 @@
 		<div class="h-px w-full bg-gradient-to-r from-transparent via-[var(--palais-gold)] to-transparent opacity-20"></div>
 		<!-- Tiny version tag -->
 		<div class="flex justify-center mt-1">
-			<span class="sidebar-version-tag">v1</span>
+			<span class="sidebar-version-tag">v2</span>
 		</div>
 	</div>
 
@@ -231,7 +238,7 @@
 	filter: drop-shadow(0 0 5px rgba(212, 168, 67, 0.55));
 }
 
-/* Hover: soft gold glow on icon */
+/* Hover: soft gold glow on icon (non-active items only) */
 .sidebar-nav-item:not(.sidebar-nav-active):hover .sidebar-icon-wrap {
 	color: rgba(212, 168, 67, 0.75);
 	filter: drop-shadow(0 0 4px rgba(212, 168, 67, 0.4));

@@ -218,6 +218,15 @@ workstation_pi_disk_gb: 256
 
 # === PALAIS ===
 palais_subdomain: "palais"
+# Palais v2 — Infrastructure Control Plane
+hetzner_api_token: "{{ vault_hetzner_api_token | default('') }}"
+ovh_app_key: "{{ vault_ovh_application_key | default('') }}"
+ovh_app_secret: "{{ vault_ovh_application_secret | default('') }}"
+namecheap_api_key: "{{ vault_namecheap_api_key | default('') }}"
+namecheap_api_user: "{{ vault_namecheap_api_user | default('') }}"
+ovh_vps_service: "{{ vault_ovh_vps_service | default('') }}"
+n8n_deploy_webhook: "webhook-deploy-palais-v2"
+n8n_provision_webhook: "webhook-provision"
 
 # Firefly III + Zimboo (personal finance)
 firefly_subdomain: "lola"

@@ -1,28 +1,50 @@
 import { db } from '$lib/server/db';
-import { agents, insights } from '$lib/server/db/schema';
-import { eq, desc, ne } from 'drizzle-orm';
+import { agents, servers, serverMetrics, deployments, projectRegistry, wazaServices } from '$lib/server/db/schema';
+import { desc, eq } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
-	const allAgents = await db.select().from(agents).orderBy(agents.name);
+	const [allAgents, allServers, recentDeploys, allWaza] = await Promise.all([
+		db.select().from(agents).orderBy(agents.name),
+		db.select().from(servers).orderBy(servers.name),
+		db.select({
+			id: deployments.id,
+			version: deployments.version,
+			status: deployments.status,
+			startedAt: deployments.startedAt,
+			workspaceName: projectRegistry.name,
+			workspaceSlug: projectRegistry.slug,
+		})
+			.from(deployments)
+			.leftJoin(projectRegistry, eq(deployments.workspaceId, projectRegistry.id))
+			.orderBy(desc(deployments.startedAt))
+			.limit(5),
+		db.select().from(wazaServices).orderBy(wazaServices.name),
+	]);
 
-	// Load latest standup
-	const [latestStandup] = await db.select().from(insights)
-		.where(eq(insights.type, 'standup'))
-		.orderBy(desc(insights.createdAt))
-		.limit(1);
+	// Get latest metric per server
+	const serversWithMetrics = await Promise.all(
+		allServers.map(async (s) => {
+			const [metric] = await db.select().from(serverMetrics)
+				.where(eq(serverMetrics.serverId, s.id))
+				.orderBy(desc(serverMetrics.recordedAt))
+				.limit(1);
+			return { ...s, latestMetric: metric ?? null };
+		})
+	);
 
-	// Load active non-standup insights
-	const activeInsights = await db.select().from(insights)
-		.where(eq(insights.acknowledged, false))
-		.orderBy(desc(insights.createdAt))
-		.limit(5);
+	const onlineCount = allServers.filter(s => s.status === 'online').length;
+	const containerCount = serversWithMetrics.reduce((sum, s) => sum + (s.latestMetric?.containerCount ?? 0), 0);
+	const activeDeploys = recentDeploys.filter(d => d.status === 'running').length;
 
 	return {
 		agents: allAgents,
-		standup: latestStandup
-			? { generated: true, ...latestStandup }
-			: { generated: false },
-		insights: activeInsights.filter(i => i.type !== 'standup')
+		servers: serversWithMetrics,
+		serverCount: allServers.length,
+		onlineCount,
+		containerCount,
+		activeDeploys,
+		recentDeploys,
+		wazaServices: allWaza,
 	};
 };

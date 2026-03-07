@@ -123,6 +123,164 @@
     - _pg_container_check.rc | default(1) == 0
   tags: [palais]
 
+- name: Palais DB v2 migration — create workspaces table
+  ansible.builtin.command:
+    cmd: >-
+      docker exec {{ project_name }}_postgresql psql -U {{ palais_db_user }} -d {{ palais_db_name }}
+      -c "CREATE TABLE IF NOT EXISTS workspaces (
+          id serial PRIMARY KEY,
+          name varchar(100) NOT NULL,
+          slug varchar(100) UNIQUE NOT NULL,
+          description text,
+          git_repo varchar(255),
+          branch varchar(100) DEFAULT 'main',
+          node_id integer REFERENCES nodes(id),
+          compose_path varchar(255),
+          status varchar(20) DEFAULT 'active',
+          created_at timestamptz DEFAULT now(),
+          updated_at timestamptz DEFAULT now()
+      );"
+  become: true
+  changed_when: false
+  when:
+    - not (common_molecule_mode | default(false))
+    - _pg_container_check is defined
+    - _pg_container_check.rc | default(1) == 0
+  tags: [palais, palais-migrate]
+
+- name: Palais DB v2 migration — create deployments table
+  ansible.builtin.command:
+    cmd: >-
+      docker exec {{ project_name }}_postgresql psql -U {{ palais_db_user }} -d {{ palais_db_name }}
+      -c "CREATE TABLE IF NOT EXISTS deployments (
+          id serial PRIMARY KEY,
+          workspace_id integer REFERENCES workspaces(id),
+          triggered_by varchar(100) DEFAULT 'manual',
+          status varchar(20) DEFAULT 'pending',
+          git_ref varchar(100),
+          started_at timestamptz DEFAULT now(),
+          finished_at timestamptz,
+          error_message text
+      );"
+  become: true
+  changed_when: false
+  when:
+    - not (common_molecule_mode | default(false))
+    - _pg_container_check is defined
+    - _pg_container_check.rc | default(1) == 0
+  tags: [palais, palais-migrate]
+
+- name: Palais DB v2 migration — create deployment_steps table
+  ansible.builtin.command:
+    cmd: >-
+      docker exec {{ project_name }}_postgresql psql -U {{ palais_db_user }} -d {{ palais_db_name }}
+      -c "CREATE TABLE IF NOT EXISTS deployment_steps (
+          id serial PRIMARY KEY,
+          deployment_id integer REFERENCES deployments(id) ON DELETE CASCADE,
+          step_name varchar(100) NOT NULL,
+          status varchar(20) DEFAULT 'pending',
+          output text,
+          started_at timestamptz,
+          finished_at timestamptz
+      );"
+  become: true
+  changed_when: false
+  when:
+    - not (common_molecule_mode | default(false))
+    - _pg_container_check is defined
+    - _pg_container_check.rc | default(1) == 0
+  tags: [palais, palais-migrate]
+
+- name: Palais DB v2 migration — create cost_entries table
+  ansible.builtin.command:
+    cmd: >-
+      docker exec {{ project_name }}_postgresql psql -U {{ palais_db_user }} -d {{ palais_db_name }}
+      -c "CREATE TABLE IF NOT EXISTS cost_entries (
+          id serial PRIMARY KEY,
+          provider varchar(50) NOT NULL,
+          service varchar(100),
+          amount_eur numeric(10,4) NOT NULL,
+          currency varchar(3) DEFAULT 'EUR',
+          period_start date NOT NULL,
+          period_end date,
+          notes text,
+          created_at timestamptz DEFAULT now()
+      );"
+  become: true
+  changed_when: false
+  when:
+    - not (common_molecule_mode | default(false))
+    - _pg_container_check is defined
+    - _pg_container_check.rc | default(1) == 0
+  tags: [palais, palais-migrate]
+
+- name: Palais DB v2 migration — create domains table
+  ansible.builtin.command:
+    cmd: >-
+      docker exec {{ project_name }}_postgresql psql -U {{ palais_db_user }} -d {{ palais_db_name }}
+      -c "CREATE TABLE IF NOT EXISTS domains (
+          id serial PRIMARY KEY,
+          name varchar(255) UNIQUE NOT NULL,
+          registrar varchar(50) DEFAULT 'namecheap',
+          expires_at timestamptz,
+          auto_renew boolean DEFAULT true,
+          status varchar(20) DEFAULT 'active',
+          created_at timestamptz DEFAULT now(),
+          updated_at timestamptz DEFAULT now()
+      );"
+  become: true
+  changed_when: false
+  when:
+    - not (common_molecule_mode | default(false))
+    - _pg_container_check is defined
+    - _pg_container_check.rc | default(1) == 0
+  tags: [palais, palais-migrate]
+
+- name: Palais DB v2 migration — create dns_records table
+  ansible.builtin.command:
+    cmd: >-
+      docker exec {{ project_name }}_postgresql psql -U {{ palais_db_user }} -d {{ palais_db_name }}
+      -c "CREATE TABLE IF NOT EXISTS dns_records (
+          id serial PRIMARY KEY,
+          domain_id integer REFERENCES domains(id) ON DELETE CASCADE,
+          record_type varchar(10) NOT NULL,
+          host varchar(255) NOT NULL,
+          value text NOT NULL,
+          ttl integer DEFAULT 1800,
+          created_at timestamptz DEFAULT now()
+      );"
+  become: true
+  changed_when: false
+  when:
+    - not (common_molecule_mode | default(false))
+    - _pg_container_check is defined
+    - _pg_container_check.rc | default(1) == 0
+  tags: [palais, palais-migrate]
+
+- name: Palais DB v2 migration — create waza_services table
+  ansible.builtin.command:
+    cmd: >-
+      docker exec {{ project_name }}_postgresql psql -U {{ palais_db_user }} -d {{ palais_db_name }}
+      -c "CREATE TABLE IF NOT EXISTS waza_services (
+          id serial PRIMARY KEY,
+          name varchar(100) NOT NULL,
+          slug varchar(100) UNIQUE NOT NULL,
+          description text,
+          compose_service varchar(100),
+          profile varchar(50),
+          port integer,
+          status varchar(20) DEFAULT 'stopped',
+          node_id integer REFERENCES nodes(id),
+          created_at timestamptz DEFAULT now()
+      );"
+  become: true
+  changed_when: false
+  when:
+    - not (common_molecule_mode | default(false))
+    - _pg_container_check is defined
+    - _pg_container_check.rc | default(1) == 0
+  tags: [palais, palais-migrate]
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 - name: Sync palais application source

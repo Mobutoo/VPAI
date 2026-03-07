@@ -1,22 +1,20 @@
 import type { McpToolDefinition } from '../types';
-import { taskToolDefs } from './tasks';
-import { projectToolDefs } from './projects';
 import { agentToolDefs } from './agents';
-import { budgetToolDefs } from './budget';
-import { deliverableToolDefs } from './deliverables';
 import { memoryToolDefs } from './memory';
-import { insightToolDefs } from './insights';
-import { standupToolDefs } from './standup';
+import { fleetToolDefs } from './fleet';
+import { workspacesToolDefs } from './workspaces';
+import { servicesToolDefs } from './services';
+import { costsToolDefs } from './costs';
+import { domainsToolDefs } from './domains';
 
 export function getToolDefinitions(): McpToolDefinition[] {
 	return [
-		...taskToolDefs,
-		...projectToolDefs,
-		...agentToolDefs,
-		...budgetToolDefs,
-		...deliverableToolDefs,
 		...memoryToolDefs,
-		...insightToolDefs,
-		...standupToolDefs,
+		...agentToolDefs,
+		...fleetToolDefs,
+		...workspacesToolDefs,
+		...servicesToolDefs,
+		...costsToolDefs,
+		...domainsToolDefs,
 	];
 }

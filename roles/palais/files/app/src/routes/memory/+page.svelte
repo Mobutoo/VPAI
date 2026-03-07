@@ -306,8 +306,10 @@
 					<svg bind:this={svgEl} width="100%" height="400" viewBox="0 0 400 400" style="overflow: visible;">
 						<!-- Edges -->
 						{#each graphLinks as link}
-							{@const src = graphNodes.find((n) => n.id === (link.source as GraphNode).id ?? link.source)}
-							{@const tgt = graphNodes.find((n) => n.id === (link.target as GraphNode).id ?? link.target)}
+							{@const srcId = typeof link.source === "object" ? (link.source as GraphNode).id : (link.source as number)}
+							{@const tgtId = typeof link.target === "object" ? (link.target as GraphNode).id : (link.target as number)}
+							{@const src = graphNodes.find((n) => n.id === srcId)}
+							{@const tgt = graphNodes.find((n) => n.id === tgtId)}
 							{#if src?.x !== undefined && tgt?.x !== undefined}
 								<line
 									x1={src.x} y1={src.y}
@@ -400,11 +402,11 @@
 					</div>
 
 					<!-- Relations -->
-					{#if selectedNodeDetail?.edges?.length > 0}
+					{#if (selectedNodeDetail?.edges?.length ?? 0) > 0}
 						<div>
 							<p class="text-xs font-semibold mb-2" style="color: var(--palais-text-muted); font-size: 0.65rem; letter-spacing: 0.05em;">RELATIONS</p>
 							<div class="flex flex-col gap-1.5">
-								{#each selectedNodeDetail.edges as edge}
+								{#each selectedNodeDetail!.edges as edge}
 									{@const isSource = edge.source === selectedNode.id}
 									{@const otherId = isSource ? edge.target : edge.source}
 									{@const other = selectedNodeDetail?.connected?.find((n) => n.id === otherId)}

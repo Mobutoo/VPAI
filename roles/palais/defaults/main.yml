@@ -25,18 +25,21 @@ palais_admin_password: "{{ vault_palais_admin_password | default('admin') }}"
 palais_session_secret: "{{ vault_palais_session_secret | default('changeme') }}"
 
 # Resources
-palais_memory_limit: "192M"
-palais_memory_reservation: "128M"
-palais_cpu_limit: "0.75"
+palais_memory_limit: "256M"
+palais_memory_reservation: "192M"
+palais_cpu_limit: "1.0"
 
-# Standup
-palais_standup_hour: "08"
+# Budget (monthly, EUR)
+palais_budget_monthly_limit: "50"
+
+# Namecheap DNS
+namecheap_client_ip: "{{ prod_ssh_host | default('') }}"
+
+# OVH API
+ovh_endpoint: "ovh-eu"
 
 # Headscale (VPN topology — Module 11)
 palais_headscale_api_key: "{{ vault_palais_headscale_api_key | default('') }}"
-
-# ComfyUI (Atelier Creatif — Module 12)
-palais_comfyui_port: 8188
 
 # Agents (same as OpenClaw)
 palais_agents:

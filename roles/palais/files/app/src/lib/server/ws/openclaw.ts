@@ -33,7 +33,6 @@ async function handleMessage(data: string) {
 				.update(agents)
 				.set({
 					status: event.status as 'idle' | 'busy' | 'error' | 'offline',
-					currentTaskId: event.taskId ?? null,
 					lastSeenAt: new Date()
 				})
 				.where(eq(agents.id, event.agentId));
@@ -42,7 +41,6 @@ async function handleMessage(data: string) {
 		if (event.type === 'session.started') {
 			await db.insert(agentSessions).values({
 				agentId: event.agentId,
-				taskId: event.taskId,
 				model: event.model,
 				status: 'running'
 			});
@@ -190,7 +188,6 @@ async function resolveSessionId(agentId: string): Promise<number | null> {
 
 /**
  * Calculate confidence score after a session completes.
- * Score = 1.0 − error_penalty − retry_penalty − token_overage_penalty (clamped 0–1)
  */
 async function calculateAndStoreConfidence(sessionId: number): Promise<void> {
 	const spans = await db.select().from(agentSpans).where(eq(agentSpans.sessionId, sessionId));
@@ -202,23 +199,11 @@ async function calculateAndStoreConfidence(sessionId: number): Promise<void> {
 		typeof s.name === 'string' && s.name.toLowerCase().includes('retry')
 	).length;
 
-	// Penalties
 	const errorPenalty = Math.min(0.6, (errorSpans / totalSpans) * 0.8);
 	const retryPenalty = Math.min(0.3, (retrySpans / totalSpans) * 0.4);
 	const confidence = Math.max(0, Math.min(1, 1 - errorPenalty - retryPenalty));
 
-	const [session] = await db.select({ taskId: agentSessions.taskId })
-		.from(agentSessions).where(eq(agentSessions.id, sessionId));
-
 	await db.update(agentSessions)
 		.set({ confidenceScore: confidence })
 		.where(eq(agentSessions.id, sessionId));
-
-	// Propagate to task if linked
-	if (session?.taskId) {
-		const { tasks } = await import('$lib/server/db/schema');
-		await db.update(tasks)
-			.set({ confidenceScore: confidence })
-			.where(eq(tasks.id, session.taskId));
-	}
 }

@@ -234,9 +234,11 @@ services:
     networks:
       - frontend
       - backend
+      - egress
     volumes:
       - {{ palais_data_dir }}/deliverables:/data/deliverables
       - {{ palais_data_dir }}/avatars:/data/avatars
+      - /home/{{ prod_user }}/.ssh/seko-vpn-deploy:/run/secrets/deploy_key:ro
     deploy:
       resources:
         limits:

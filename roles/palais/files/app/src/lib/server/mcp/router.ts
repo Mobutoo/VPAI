@@ -21,7 +21,7 @@ export async function handleMcpRequest(request: JsonRpcRequest): Promise<JsonRpc
 				id,
 				result: {
 					protocolVersion: '2024-11-05',
-					serverInfo: { name: 'palais', version: '1.0.0' },
+					serverInfo: { name: 'palais', version: '2.0.0' },
 					capabilities: { tools: {} }
 				}
 			};

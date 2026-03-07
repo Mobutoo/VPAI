@@ -2,26 +2,15 @@ import type { Handle } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
 import { building } from '$app/environment';
 import { connectOpenClaw } from '$lib/server/ws/openclaw';
-import { startBudgetCron } from '$lib/server/budget/cron';
 import { ensureQdrantCollection } from '$lib/server/memory/qdrant';
-import { startStandupScheduler } from '$lib/server/standup/scheduler';
-import { startInsightScheduler } from '$lib/server/insights/scheduler';
 import { seedNodes } from '$lib/server/db/seed';
 
 const API_KEY = env.PALAIS_API_KEY || 'dev-key';
 
 if (!building) {
 	connectOpenClaw();
-	startBudgetCron();
 	ensureQdrantCollection();
 	seedNodes().catch((err) => console.error('[seed] seedNodes failed:', err));
-
-	// Proactive Intelligence schedulers (idempotent — guard inside each function)
-	if (typeof globalThis.__palaisSchedulersStarted === 'undefined') {
-		globalThis.__palaisSchedulersStarted = true;
-		startStandupScheduler();
-		startInsightScheduler();
-	}
 }
 
 export const handle: Handle = async ({ event, resolve }) => {

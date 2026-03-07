@@ -5,14 +5,16 @@ import { eq } from "drizzle-orm";
 import { ok, err } from "$lib/server/api/response";
 import * as dockerRemote from "$lib/server/providers/docker-remote";
 import * as hetzner from "$lib/server/providers/hetzner";
+import * as ovh from "$lib/server/providers/ovh";
+import { env } from "$env/dynamic/private";
 
-/** Sync fleet: discover Hetzner servers + collect Docker metrics */
+/** Sync fleet: discover Hetzner + OVH servers, collect Docker metrics */
 export const POST: RequestHandler = async () => {
     try {
         const imported: string[] = [];
         const errors: { source: string; slug: string; error: string }[] = [];
 
-        // ── Phase 1: Import servers from Hetzner API (all projects) ──────
+        // ── Phase 1a: Import servers from Hetzner API (all projects) ─────
         const hetznerTokens = hetzner.getTokens();
         if (hetznerTokens.length > 0) {
             try {
@@ -79,6 +81,71 @@ export const POST: RequestHandler = async () => {
                     source: 'hetzner',
                     slug: '*',
                     error: e instanceof Error ? e.message : 'Hetzner API error'
+                });
+            }
+        }
+
+        // ── Phase 1b: Import VPS from OVH API ───────────────────────────
+        if (env.OVH_APPLICATION_KEY && env.OVH_APPLICATION_SECRET && env.OVH_CONSUMER_KEY) {
+            try {
+                const vpsNames = await ovh.listVps();
+
+                for (const vpsName of vpsNames) {
+                    try {
+                        const status = await ovh.getVpsStatus(vpsName);
+                        const slug = vpsName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+
+                        await db
+                            .insert(servers)
+                            .values({
+                                name: status.name || vpsName,
+                                slug,
+                                provider: 'ovh',
+                                serverRole: 'app_prod',
+                                location: status.zone ?? null,
+                                status: status.state === 'running' ? 'online' : 'offline',
+                                cpuCores: status.model?.vcore ?? null,
+                                ramMb: status.model?.memory ? status.model.memory * 1024 : null,
+                                diskGb: status.model?.disk ?? null,
+                                os: status.model?.name ?? null,
+                                sshPort: 22,
+                                sshUser: 'root',
+                                metadata: {
+                                    ovh_service: vpsName,
+                                    model: status.model?.name
+                                },
+                                updatedAt: new Date()
+                            })
+                            .onConflictDoUpdate({
+                                target: servers.slug,
+                                set: {
+                                    status: status.state === 'running' ? 'online' : 'offline',
+                                    cpuCores: status.model?.vcore ?? null,
+                                    ramMb: status.model?.memory ? status.model.memory * 1024 : null,
+                                    diskGb: status.model?.disk ?? null,
+                                    os: status.model?.name ?? null,
+                                    metadata: {
+                                        ovh_service: vpsName,
+                                        model: status.model?.name
+                                    },
+                                    updatedAt: new Date()
+                                }
+                            });
+
+                        imported.push(slug);
+                    } catch (e) {
+                        errors.push({
+                            source: 'ovh',
+                            slug: vpsName,
+                            error: e instanceof Error ? e.message : 'Unknown error'
+                        });
+                    }
+                }
+            } catch (e) {
+                errors.push({
+                    source: 'ovh',
+                    slug: '*',
+                    error: e instanceof Error ? e.message : 'OVH API error'
                 });
             }
         }

@@ -95,6 +95,11 @@ export const POST: RequestHandler = async () => {
                         const status = await ovh.getVpsStatus(vpsName);
                         const slug = vpsName.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
+                        // Skip stopped/inactive VPS (avoid re-importing decommissioned servers)
+                        if (status.state !== 'running') {
+                            continue;
+                        }
+
                         await db
                             .insert(servers)
                             .values({

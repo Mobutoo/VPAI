@@ -40,7 +40,14 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			return err('Invalid action. Must be "start" or "stop"', 400);
 		}
 
-		await dockerRemote.controlContainer('waza', params.slug, action);
+		// Use custom start/stop commands if defined, otherwise fallback to docker
+		const customCmd = action === 'start' ? service.startCmd : service.stopCmd;
+
+		if (customCmd) {
+			await dockerRemote.execOnServer('waza', customCmd);
+		} else {
+			await dockerRemote.controlContainer('waza', params.slug, action);
+		}
 
 		if (action === 'start') {
 			await db

@@ -175,6 +175,9 @@ CREATE TABLE IF NOT EXISTS waza_services (
     cpu_limit       REAL,
     status          VARCHAR(20) DEFAULT 'stopped',
     profile         VARCHAR(50),
+    start_cmd       TEXT,
+    stop_cmd        TEXT,
+    status_cmd      TEXT,
     started_at      TIMESTAMP,
     last_stopped_at TIMESTAMP
 );
@@ -211,8 +214,20 @@ ON CONFLICT (slug) DO UPDATE SET
 
 -- ============ SEED: initial Waza services ============
 
-INSERT INTO waza_services (name, slug, always_on, ram_limit_mb, cpu_limit, profile) VALUES
-    ('ComfyUI', 'workstation_comfyui', false, 4096, 2.0, 'art'),
-    ('Remotion', 'workstation_remotion', false, 512, 0.5, 'video'),
-    ('n8n MCP Bridge', 'n8n-mcp', true, 512, 0.5, 'dev')
+INSERT INTO waza_services (name, slug, always_on, ram_limit_mb, cpu_limit, profile, start_cmd, stop_cmd, status_cmd) VALUES
+    ('ComfyUI', 'workstation_comfyui', false, 4096, 2.0, 'art', NULL, NULL, NULL),
+    ('Remotion', 'workstation_remotion', false, 512, 0.5, 'video', NULL, NULL, NULL),
+    ('n8n MCP Bridge', 'n8n-mcp', true, 512, 0.5, 'dev', NULL, NULL, NULL),
+    ('OpenCut', 'opencut', false, 1536, 2.0, 'video',
+        'docker compose -f /opt/workstation/docker-compose-opencut.yml up -d',
+        'docker compose -f /opt/workstation/docker-compose-opencut.yml down',
+        'docker compose -f /opt/workstation/docker-compose-opencut.yml ps --format json'),
+    ('Flash Studio', 'flash-daemon', false, 256, 0.5, 'dev',
+        'tmux new-session -d -s flash ''cd ~/flash-studio/flash-infra && bash scripts/flash-daemon.sh 2>&1 | tee /tmp/daemon-v5.log''',
+        'tmux kill-session -t flash',
+        'tmux has-session -t flash 2>/dev/null && echo running || echo stopped'),
+    ('Macgyver', 'macgyver-daemon', false, 256, 0.5, 'dev',
+        'tmux new-session -d -s macgyver ''cd ~/macgyver && bash macgyver-daemon.sh 2>&1 | tee /tmp/macgyver.log''',
+        'tmux kill-session -t macgyver',
+        'tmux has-session -t macgyver 2>/dev/null && echo running || echo stopped')
 ON CONFLICT (slug) DO NOTHING;

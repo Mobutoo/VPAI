@@ -209,6 +209,15 @@ function parseMemory(str: string): number {
     return num;
 }
 
+/** Execute an arbitrary SSH command on a configured server */
+export async function execOnServer(serverName: string, command: string): Promise<string> {
+    const servers = parseServerConnections();
+    const server = servers.get(serverName);
+    if (!server) throw new Error(`Unknown server: ${serverName}`);
+
+    return execSsh(server, command);
+}
+
 export function getConfiguredServers(): string[] {
     return Array.from(parseServerConnections().keys());
 }

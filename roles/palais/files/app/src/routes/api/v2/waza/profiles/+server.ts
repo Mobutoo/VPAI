@@ -62,7 +62,12 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		await Promise.all(
 			services.map(async (service) => {
-				await dockerRemote.controlContainer('waza', service.slug, action);
+				const customCmd = action === 'start' ? service.startCmd : service.stopCmd;
+				if (customCmd) {
+					await dockerRemote.execOnServer('waza', customCmd);
+				} else {
+					await dockerRemote.controlContainer('waza', service.slug, action);
+				}
 
 				if (action === 'start') {
 					await db

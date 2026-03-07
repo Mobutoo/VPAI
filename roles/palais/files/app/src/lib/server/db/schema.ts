@@ -296,6 +296,9 @@ export const wazaServices = pgTable('waza_services', {
 	cpuLimit: real('cpu_limit'),
 	status: varchar('status', { length: 20 }).default('stopped'),
 	profile: varchar('profile', { length: 50 }),
+	startCmd: text('start_cmd'),
+	stopCmd: text('stop_cmd'),
+	statusCmd: text('status_cmd'),
 	startedAt: timestamp('started_at'),
 	lastStoppedAt: timestamp('last_stopped_at')
 });

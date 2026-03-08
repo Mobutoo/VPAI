@@ -29,7 +29,7 @@ redis_cpu_limit: "0.5"
 
 # n8n
 n8n_memory_limit: "{{ '1024M' if target_env == 'prod' else '512M' }}"
-n8n_memory_reservation: "256M"
+n8n_memory_reservation: "512M"
 n8n_cpu_limit: "1.0"
 
 # OpenClaw (Node.js — needs 1.5GB+ for heap, see NODE_OPTIONS in env)
@@ -39,7 +39,7 @@ openclaw_cpu_limit: "1.0"
 
 # LiteLLM (needs 1GB+ for PostgreSQL + Redis cache + model routing)
 litellm_memory_limit: "{{ '1024M' if target_env == 'prod' else '512M' }}"
-litellm_memory_reservation: "256M"
+litellm_memory_reservation: "512M"
 litellm_cpu_limit: "1.0"
 
 # Qdrant (1536M prod: 2 collections — semantic_cache + content_index RAG)

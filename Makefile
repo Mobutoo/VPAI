@@ -55,14 +55,14 @@ vault-edit: ## Éditer le fichier Ansible Vault
 .PHONY: lint
 lint: ## Lancer yamllint + ansible-lint
 	@echo "$(GREEN)>>> Running yamllint...$(NC)"
-	find . \( -name '*.yml' -o -name '*.yaml' \) ! -path './.git/*' ! -path './.venv/*' ! -path '*/molecule/*' ! -path '*/collections/*' ! -name 'secrets.yml' -print0 | xargs -0 $(YAMLLINT) -c .yamllint.yml
+	find . \( -name '*.yml' -o -name '*.yaml' \) ! -path './.git/*' ! -path './.venv/*' ! -path '*/molecule/*' ! -path '*/collections/*' ! -path '*/node_modules/*' ! -name 'secrets.yml' -print0 | xargs -0 $(YAMLLINT) -c .yamllint.yml
 	@echo "$(GREEN)>>> Running ansible-lint...$(NC)"
 	$(ANSIBLE_LINT) playbooks/site.yml
 	@echo "$(GREEN)>>> All linting passed$(NC)"
 
 .PHONY: lint-yaml
 lint-yaml: ## Lancer yamllint uniquement
-	find . \( -name '*.yml' -o -name '*.yaml' \) ! -path './.git/*' ! -path './.venv/*' ! -path '*/molecule/*' ! -path '*/collections/*' ! -name 'secrets.yml' -print0 | xargs -0 $(YAMLLINT) -c .yamllint.yml
+	find . \( -name '*.yml' -o -name '*.yaml' \) ! -path './.git/*' ! -path './.venv/*' ! -path '*/molecule/*' ! -path '*/collections/*' ! -path '*/node_modules/*' ! -name 'secrets.yml' -print0 | xargs -0 $(YAMLLINT) -c .yamllint.yml
 
 .PHONY: lint-ansible
 lint-ansible: ## Lancer ansible-lint uniquement

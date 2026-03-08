@@ -2,15 +2,20 @@ import { env } from '$env/dynamic/private';
 
 const QDRANT_URL = env.QDRANT_URL ?? 'http://qdrant:6333';
 const COLLECTION = env.QDRANT_COLLECTION ?? 'palais_memory';
+const QDRANT_API_KEY = env.QDRANT_API_KEY ?? '';
 const VECTOR_SIZE = 1536; // text-embedding-3-small
 
 // ── HTTP helpers ──────────────────────────────────────────────────────────────
 
 async function qdrantFetch(path: string, options?: RequestInit): Promise<Response> {
-	return fetch(`${QDRANT_URL}${path}`, {
-		...options,
-		headers: { 'Content-Type': 'application/json', ...(options?.headers ?? {}) }
-	});
+	const headers: Record<string, string> = {
+		'Content-Type': 'application/json',
+		...(options?.headers as Record<string, string> ?? {})
+	};
+	if (QDRANT_API_KEY) {
+		headers['api-key'] = QDRANT_API_KEY;
+	}
+	return fetch(`${QDRANT_URL}${path}`, { ...options, headers });
 }
 
 // ── Collection init ───────────────────────────────────────────────────────────
@@ -105,4 +110,107 @@ export async function deletePoint(id: string): Promise<void> {
 		method: 'POST',
 		body: JSON.stringify({ points: [id] })
 	});
+}
+
+// ── Multi-collection browsing ────────────────────────────────────────────────
+
+export interface QdrantCollectionInfo {
+	name: string;
+	pointsCount: number;
+	vectorSize: number;
+	distance: string;
+	status: string;
+}
+
+/**
+ * List all Qdrant collections with their metadata.
+ */
+export async function listCollections(): Promise<QdrantCollectionInfo[]> {
+	const res = await qdrantFetch('/collections');
+	if (!res.ok) return [];
+	const data = await res.json();
+	const names: string[] = (data.result?.collections ?? []).map((c: { name: string }) => c.name);
+
+	// Fetch details in parallel
+	const details = await Promise.allSettled(
+		names.map(async (name) => {
+			const detail = await qdrantFetch(`/collections/${name}`);
+			if (!detail.ok) return null;
+			const d = await detail.json();
+			const r = d.result;
+			return {
+				name,
+				pointsCount: r?.points_count ?? 0,
+				vectorSize: r?.config?.params?.vectors?.size ?? 0,
+				distance: r?.config?.params?.vectors?.distance ?? 'unknown',
+				status: r?.status ?? 'unknown'
+			} as QdrantCollectionInfo;
+		})
+	);
+
+	return details
+		.filter((d): d is PromiseFulfilledResult<QdrantCollectionInfo | null> => d.status === 'fulfilled')
+		.map((d) => d.value)
+		.filter((d): d is QdrantCollectionInfo => d !== null);
+}
+
+export interface QdrantPoint {
+	id: string | number;
+	payload: Record<string, unknown>;
+}
+
+/**
+ * Scroll (paginate) through points in any collection.
+ */
+export async function scrollPoints(
+	collection: string,
+	limit = 20,
+	offset?: string | number | null
+): Promise<{ points: QdrantPoint[]; nextOffset: string | number | null }> {
+	const body: Record<string, unknown> = {
+		limit,
+		with_payload: true,
+		with_vector: false
+	};
+	if (offset !== undefined && offset !== null) {
+		body.offset = offset;
+	}
+
+	const res = await qdrantFetch(`/collections/${encodeURIComponent(collection)}/points/scroll`, {
+		method: 'POST',
+		body: JSON.stringify(body)
+	});
+
+	if (!res.ok) return { points: [], nextOffset: null };
+	const data = await res.json();
+	return {
+		points: (data.result?.points ?? []).map((p: { id: string | number; payload: Record<string, unknown> }) => ({
+			id: p.id,
+			payload: p.payload ?? {}
+		})),
+		nextOffset: data.result?.next_page_offset ?? null
+	};
+}
+
+/**
+ * Search in any collection by vector.
+ */
+export async function searchInCollection(
+	collection: string,
+	vector: number[],
+	topK = 10,
+	scoreThreshold = 0.0
+): Promise<Array<{ id: string | number; score: number; payload: Record<string, unknown> }>> {
+	const res = await qdrantFetch(`/collections/${encodeURIComponent(collection)}/points/search`, {
+		method: 'POST',
+		body: JSON.stringify({
+			vector,
+			limit: topK,
+			score_threshold: scoreThreshold,
+			with_payload: true
+		})
+	});
+	if (!res.ok) return [];
+	const data = await res.json();
+	return data.result ?? [];
 }

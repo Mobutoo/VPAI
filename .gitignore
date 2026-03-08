@@ -27,7 +27,7 @@ build/
 *.retry
 /tmp/
 ansible_facts_cache/
-collections/
+/collections/
 .ansible/
 
 # --- Claude Code ---

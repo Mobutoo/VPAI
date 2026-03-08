@@ -7,7 +7,8 @@
 // ============================================================
 
 discovery.docker "containers" {
-  host = "unix:///var/run/docker.sock"
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "30s"
 }
 
 // ============================================================
@@ -151,6 +152,14 @@ prometheus.scrape "workstation_creative" {
 
 discovery.relabel "docker_logs" {
   targets = discovery.docker.containers.targets
+
+  // Drop ephemeral OpenClaw sandbox containers (openclaw-sbx-*)
+  // They produce non-standard logs and churn frequently, wasting memory
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/openclaw-sbx-.*"
+    action        = "drop"
+  }
 
   rule {
     source_labels = ["__meta_docker_container_name"]

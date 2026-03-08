@@ -117,8 +117,17 @@ services:
       UPSTASH_REDIS_REST_URL: "http://opencut-redis:80"
       UPSTASH_REDIS_REST_TOKEN: "{{ vault_opencut_redis_token }}"
       NEXT_PUBLIC_SITE_URL: "https://{{ opencut_subdomain }}.{{ domain_name }}"
-      NEXT_PUBLIC_MARBLE_API_URL: ""
       NEXT_TELEMETRY_DISABLED: "1"
+      # External services — placeholders (not used in self-hosted mode)
+      NEXT_PUBLIC_MARBLE_API_URL: "http://localhost:9999"
+      MARBLE_WORKSPACE_KEY: "placeholder"
+      FREESOUND_CLIENT_ID: "placeholder"
+      FREESOUND_API_KEY: "placeholder"
+      CLOUDFLARE_ACCOUNT_ID: "placeholder"
+      R2_ACCESS_KEY_ID: "placeholder"
+      R2_SECRET_ACCESS_KEY: "placeholder"
+      R2_BUCKET_NAME: "placeholder"
+      MODAL_TRANSCRIPTION_URL: "http://localhost:9999"
     volumes:
       - {{ opencut_data_dir }}/uploads:/app/uploads
     networks:

@@ -153,6 +153,36 @@
     - _pg_container_check.rc | default(1) == 0
   tags: [palais, palais-migrate]
 
+- name: Copy Palais 0004 migration SQL into postgresql container
+  ansible.builtin.command:
+    cmd: >-
+      docker cp /opt/{{ project_name }}/palais-app/drizzle/0004_waza_url_and_tmux_fix.sql
+      {{ project_name }}_postgresql:/tmp/0004_waza_url_and_tmux_fix.sql
+  become: true
+  changed_when: false
+  when:
+    - not (common_molecule_mode | default(false))
+    - _pg_container_check is defined
+    - _pg_container_check.rc | default(1) == 0
+  tags: [palais, palais-migrate]
+
+- name: Palais DB migration 0004 — waza url + tmux fix
+  ansible.builtin.command:
+    cmd: >-
+      docker exec {{ project_name }}_postgresql psql -U {{ palais_db_user }} -d {{ palais_db_name }}
+      -f /tmp/0004_waza_url_and_tmux_fix.sql
+  become: true
+  changed_when: false
+  register: _palais_0004_migrate
+  failed_when:
+    - _palais_0004_migrate.rc != 0
+    - "'already exists' not in (_palais_0004_migrate.stderr | default(''))"
+  when:
+    - not (common_molecule_mode | default(false))
+    - _pg_container_check is defined
+    - _pg_container_check.rc | default(1) == 0
+  tags: [palais, palais-migrate]
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 - name: Sync palais application source

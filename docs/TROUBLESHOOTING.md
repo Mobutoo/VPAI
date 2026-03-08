@@ -233,6 +233,57 @@ sudo docker compose -f /opt/workstation/docker-compose-opencut.yml ps
 
 Une erreur 502 sur `cut.ewutelo.cloud` est **normale** quand le service est arrete — la page bleue "Service en veille" s'affiche.
 
+### 0.14 ComfyUI — comfy-pilot supprime (Claude Code MCP incompatible Docker)
+
+Le plugin [comfy-pilot](https://github.com/ConstantineB6/comfy-pilot) (v1.0.24) a ete installe dans `custom_nodes/` pour permettre a Claude Code de piloter ComfyUI via un serveur MCP embarque + terminal integre.
+
+**Probleme** : Le plugin execute `claude` CLI en subprocess Python (`subprocess.run(["claude", ...])`). Dans un container Docker, le binaire `claude` n'existe pas → erreur affichee dans l'UI ComfyUI : `bash: claude: command not found`.
+
+**Suppression** (2026-03-08) : Le dossier `custom_nodes/comfy-pilot/` a ete supprime sur Waza.
+
+**TODO — Solution alternative** : Trouver un moyen de connecter Claude Code a ComfyUI sans installer le CLI dans le container. Pistes :
+1. **MCP server externe** : Lancer `mcp_server.py` (le fichier de comfy-pilot) sur l'hote Pi en dehors de Docker, avec l'API ComfyUI exposee sur `localhost:8188`. Configurer Claude Code pour se connecter a ce MCP server via `~/.claude/settings.json`.
+2. **Volume mount du socket Claude** : Monter le socket/binaire `claude` de l'hote dans le container (`/usr/bin/claude:/usr/bin/claude:ro`). Necessite que Claude Code soit installe sur l'hote Pi.
+3. **API ComfyUI directe** : Utiliser l'API REST de ComfyUI (`/api/prompt`, `/api/history`, `/api/queue`) directement depuis Claude Code via un MCP server custom cote hote.
+
+La piste 1 (MCP server sur l'hote) est la plus propre : pas de modification du container, separation des responsabilites.
+
+### 0.15 Pages standby Caddy — services on-demand (502/503 → page bleue)
+
+Tous les services on-demand (ComfyUI, Remotion, OpenCut) ont une page standby bleue/cyan quand ils sont arretes (502/503), distincte de la page 403 rouge (VPN requis).
+
+Le template `Caddyfile-workstation.j2` utilise des **macros Jinja2** (`standby_page` et `vpn_error_fallback`) pour eviter la duplication HTML.
+
+**Piege** : Ne pas utiliser `import vpn_error_page` pour les services on-demand — ce snippet catch TOUTES les erreurs avec une page 403, y compris les 502/503 legitimes quand le service est arrete. Utiliser plutot le pattern `handle_errors` avec les macros.
+
+### 0.16 Headscale extra_records — sous-domaines workstation manquants
+
+Les sous-domaines workstation (`oc`, `studio`, `re`, `cut`) doivent pointer vers l'IP Tailscale de Waza (`100.64.0.1`), pas vers le VPS prod.
+
+Si les `extra_records` Headscale n'ont pas ces entrees, le split DNS ne fonctionne pas et le navigateur atteint l'IP publique du VPN server (wildcard OVH) → 502 car aucun service n'y repond.
+
+**Verification** :
+```bash
+# Depuis Waza (via VPN)
+dig +short cut.ewutelo.cloud
+# Doit retourner 100.64.0.1 (pas 87.106.30.160)
+```
+
+**Fix** : Relancer le role `vpn-dns` avec les facts workstation disponibles :
+```bash
+ansible-playbook playbooks/vpn.yml --tags vpn-dns
+```
+
+Ou ajouter manuellement dans `/opt/services/headscale/config/config.yaml` sur Seko-VPN :
+```yaml
+extra_records:
+  - name: cut.ewutelo.cloud
+    type: A
+    value: 100.64.0.1
+  # + studio, re, oc
+```
+Puis `sudo docker restart headscale`.
+
 ---
 
 ## 1. Ansible & Linting

@@ -299,6 +299,7 @@ export const wazaServices = pgTable('waza_services', {
 	startCmd: text('start_cmd'),
 	stopCmd: text('stop_cmd'),
 	statusCmd: text('status_cmd'),
+	url: varchar('url', { length: 253 }),
 	startedAt: timestamp('started_at'),
 	lastStoppedAt: timestamp('last_stopped_at')
 });

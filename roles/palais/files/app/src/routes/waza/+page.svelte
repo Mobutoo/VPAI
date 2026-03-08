@@ -272,6 +272,24 @@
 							</span>
 						</div>
 
+						<!-- Service URL -->
+						{#if svc.url}
+							<a
+								href={svc.url}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="block mb-3 truncate"
+								style="
+									color: var(--palais-cyan); font-family: 'JetBrains Mono', monospace;
+									font-size: 0.68rem; text-decoration: none; opacity: {isRunning ? 0.9 : 0.4};
+									transition: opacity 0.2s;
+								"
+								title={svc.url}
+							>
+								<span style="color: rgba(212,168,67,0.4);">→ </span>{svc.url.replace('https://', '')}
+							</a>
+						{/if}
+
 						<!-- Resource limits -->
 						<div class="flex gap-3 mb-4">
 							{#if svc.ramLimitMb}

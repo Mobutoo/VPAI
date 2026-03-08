@@ -62,9 +62,9 @@ loki_memory_limit: "384M"
 loki_memory_reservation: "128M"
 loki_cpu_limit: "0.5"
 
-# Alloy
-alloy_memory_limit: "256M"
-alloy_memory_reservation: "64M"
+# Alloy — increased from 256M after OOM kills (2026-03-08)
+alloy_memory_limit: "512M"
+alloy_memory_reservation: "128M"
 alloy_cpu_limit: "0.25"
 
 # Caddy

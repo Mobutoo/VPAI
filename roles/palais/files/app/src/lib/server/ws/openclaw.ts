@@ -146,6 +146,8 @@ async function handleMessage(data: string) {
 	}
 }
 
+let connectId = 0;
+
 export function connectOpenClaw() {
 	const url = env.OPENCLAW_WS_URL || 'ws://openclaw:18789';
 	const token = env.OPENCLAW_GATEWAY_TOKEN || '';
@@ -162,11 +164,55 @@ export function connectOpenClaw() {
 	});
 
 	ws.on('open', () => {
-		console.log('[WS] Connected to OpenClaw Gateway');
+		console.log('[WS] TCP open — sending protocol connect frame');
+		// OpenClaw Gateway v3 protocol: first message must be a JSON-RPC "connect"
+		// with client metadata and auth token. Without this, the gateway times out
+		// the handshake after 20s and closes the connection.
+		const reqId = `palais-${++connectId}`;
+		ws?.send(
+			JSON.stringify({
+				type: 'req',
+				id: reqId,
+				method: 'connect',
+				params: {
+					minProtocol: 3,
+					maxProtocol: 3,
+					client: {
+						id: 'gateway-client',
+						version: '1.0.0',
+						platform: 'docker',
+						mode: 'backend'
+					},
+					auth: { token }
+				}
+			})
+		);
 		if (reconnectTimer) clearTimeout(reconnectTimer);
 	});
 
-	ws.on('message', (data) => handleMessage(data.toString()));
+	ws.on('message', (data) => {
+		const text = data.toString();
+		try {
+			const frame = JSON.parse(text);
+			// Handle protocol response frames
+			if (frame.type === 'res' && frame.ok === true) {
+				console.log('[WS] Connected to OpenClaw Gateway (protocol v3)');
+				return;
+			}
+			if (frame.type === 'res' && frame.ok === false) {
+				console.error('[WS] Connect rejected:', frame.error);
+				return;
+			}
+			// Handle event frames (agent status, sessions, spans, etc.)
+			if (frame.type === 'event' && frame.payload) {
+				handleMessage(JSON.stringify(frame.payload));
+				return;
+			}
+		} catch {
+			// Not JSON — pass through
+		}
+		handleMessage(text);
+	});
 
 	ws.on('close', () => {
 		console.log('[WS] Disconnected, reconnecting in 30s...');

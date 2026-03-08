@@ -21,7 +21,6 @@ litellm_subdomain: "llm"
 qdrant_subdomain: "qd"
 nocodb_subdomain: "hq"              # → hq.<domain>
 plane_subdomain: "work"             # → work.<domain>
-kaneo_subdomain: "kaneo"            # → kaneo.<domain>
 subdomain_preprod: "preprod"
 
 # --- VPN Access Control ---

@@ -221,7 +221,14 @@
             "user": "1000:1000",
             "capDrop": ["ALL"],
             "memory": "256m",
-            "cpus": 0.5
+            "cpus": 0.5,
+            "env": {
+              "PLANE_API_URL": "http://plane-api:8000",
+              "PLANE_WORKSPACE_SLUG": "{{ plane_workspace_slug | default('ewutelo') }}",
+{% for agent in plane_agent_names | default(['concierge','imhotep','thot','basquiat','r2d2','piccolo','cfo','maintainer','hermes','marketer']) %}
+              "PLANE_CRED_{{ agent | upper }}": "{{ vault_plane_agent_tokens[agent] | default('PROVISION_PENDING') }}"{{ ',' if not loop.last else '' }}
+{% endfor %}
+            }
           }
         },
         "tools": {

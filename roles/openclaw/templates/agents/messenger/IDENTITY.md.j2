@@ -31,17 +31,17 @@ L'agent appelant passe son nom. Hermes selectionne le token correspondant :
 
 ```bash
 # Mapping agent -> variable d'env
-PLANE_TOKEN_CONCIERGE    -> agent concierge
-PLANE_TOKEN_BUILDER      -> agent builder
-PLANE_TOKEN_IMHOTEP      -> agent imhotep
-PLANE_TOKEN_THOT         -> agent thot
-PLANE_TOKEN_BASQUIAT     -> agent basquiat
-PLANE_TOKEN_R2D2         -> agent r2d2
-PLANE_TOKEN_PICCOLO      -> agent piccolo
-PLANE_TOKEN_CFO          -> agent cfo
-PLANE_TOKEN_MAINTAINER   -> agent maintainer
-PLANE_TOKEN_HERMES       -> agent hermes (Messenger lui-meme)
-PLANE_TOKEN_MARKETER     -> agent marketer
+PLANE_CRED_CONCIERGE    -> agent concierge
+PLANE_CRED_BUILDER      -> agent builder
+PLANE_CRED_IMHOTEP      -> agent imhotep
+PLANE_CRED_THOT         -> agent thot
+PLANE_CRED_BASQUIAT     -> agent basquiat
+PLANE_CRED_R2D2         -> agent r2d2
+PLANE_CRED_PICCOLO      -> agent piccolo
+PLANE_CRED_CFO          -> agent cfo
+PLANE_CRED_MAINTAINER   -> agent maintainer
+PLANE_CRED_HERMES       -> agent hermes (Messenger lui-meme)
+PLANE_CRED_MARKETER     -> agent marketer
 ```
 
 Workspace slug : `{{ plane_workspace_slug | default('ewutelo') }}`
@@ -67,18 +67,18 @@ Workspace slug : `{{ plane_workspace_slug | default('ewutelo') }}`
 #### plane: list_projects (appele par concierge)
 
 ```bash
-PLANE_TOKEN="${PLANE_TOKEN_CONCIERGE}"
+PLANE_CRED="${PLANE_CRED_CONCIERGE}"
 curl -s -X GET "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug | default('ewutelo') }}/projects/" \
-  -H "X-API-Key: ${PLANE_TOKEN}" \
+  -H "X-API-Key: ${PLANE_CRED}" \
   -H "Content-Type: application/json"
 ```
 
 #### plane: create_task projectId=<id> name="Ma tache" caller=builder
 
 ```bash
-PLANE_TOKEN="${PLANE_TOKEN_BUILDER}"
+PLANE_CRED="${PLANE_CRED_BUILDER}"
 curl -s -X POST "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug | default('ewutelo') }}/projects/<id>/work-items/" \
-  -H "X-API-Key: ${PLANE_TOKEN}" \
+  -H "X-API-Key: ${PLANE_CRED}" \
   -H "Content-Type: application/json" \
   -d '{"name":"Ma tache","description_html":"<p>Details</p>","priority":"medium"}'
 ```
@@ -86,25 +86,25 @@ curl -s -X POST "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug
 #### plane: list_members (workspace)
 
 ```bash
-PLANE_TOKEN="${PLANE_TOKEN_CONCIERGE}"
+PLANE_CRED="${PLANE_CRED_CONCIERGE}"
 curl -s -X GET "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug | default('ewutelo') }}/members/" \
-  -H "X-API-Key: ${PLANE_TOKEN}"
+  -H "X-API-Key: ${PLANE_CRED}"
 ```
 
 #### plane: get_states projectId=<id> caller=builder
 
 ```bash
-PLANE_TOKEN="${PLANE_TOKEN_BUILDER}"
+PLANE_CRED="${PLANE_CRED_BUILDER}"
 curl -s -X GET "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug | default('ewutelo') }}/projects/<id>/states/" \
-  -H "X-API-Key: ${PLANE_TOKEN}"
+  -H "X-API-Key: ${PLANE_CRED}"
 ```
 
 #### plane: get_comments workItemId=<id> caller=builder
 
 ```bash
-PLANE_TOKEN="${PLANE_TOKEN_BUILDER}"
+PLANE_CRED="${PLANE_CRED_BUILDER}"
 curl -s -X GET "http://plane-api:8000/api/v1/workspaces/{{ plane_workspace_slug | default('ewutelo') }}/projects/<project_id>/work-items/<id>/comments/" \
-  -H "X-API-Key: ${PLANE_TOKEN}"
+  -H "X-API-Key: ${PLANE_CRED}"
 ```
 
 ## Commandes Palais disponibles

@@ -107,6 +107,8 @@ services:
       - {{ openclaw_state_dir }}/canvas:{{ openclaw_system_dir }}/canvas
       - {{ openclaw_state_dir }}/cron:{{ openclaw_system_dir }}/cron
       - {{ openclaw_state_dir }}/memory:{{ openclaw_system_dir }}/memory
+      - {{ openclaw_state_dir }}/sandbox:{{ openclaw_system_dir }}/sandbox
+      - {{ openclaw_state_dir }}/agents:{{ openclaw_system_dir }}/agents
 {% else %}
       - /opt/{{ project_name }}/data/openclaw:/home/node/.openclaw
 {% endif %}

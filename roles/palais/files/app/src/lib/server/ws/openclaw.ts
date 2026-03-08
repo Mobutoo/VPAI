@@ -148,9 +148,18 @@ async function handleMessage(data: string) {
 
 export function connectOpenClaw() {
 	const url = env.OPENCLAW_WS_URL || 'ws://openclaw:18789';
+	const token = env.OPENCLAW_GATEWAY_TOKEN || '';
+
+	if (!token) {
+		console.warn('[WS] OPENCLAW_GATEWAY_TOKEN not set — skipping connection');
+		return;
+	}
+
 	console.log(`[WS] Connecting to OpenClaw: ${url}`);
 
-	ws = new WebSocket(url);
+	ws = new WebSocket(url, {
+		headers: { Authorization: `Bearer ${token}` }
+	});
 
 	ws.on('open', () => {
 		console.log('[WS] Connected to OpenClaw Gateway');
@@ -160,8 +169,8 @@ export function connectOpenClaw() {
 	ws.on('message', (data) => handleMessage(data.toString()));
 
 	ws.on('close', () => {
-		console.log('[WS] Disconnected, reconnecting in 10s...');
-		reconnectTimer = setTimeout(connectOpenClaw, 10_000);
+		console.log('[WS] Disconnected, reconnecting in 30s...');
+		reconnectTimer = setTimeout(connectOpenClaw, 30_000);
 	});
 
 	ws.on('error', (err) => {

@@ -93,6 +93,26 @@ _vpn_dns_records_default: >-
      if (palais_subdomain | default('')) | length > 0
      else [])
     +
+    ([{"name": nocodb_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (nocodb_subdomain | default('')) | length > 0
+     else [])
+    +
+    ([{"name": plane_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (plane_subdomain | default('')) | length > 0
+     else [])
+    +
+    ([{"name": kaneo_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (kaneo_subdomain | default('')) | length > 0
+     else [])
+    +
+    ([{"name": obsidian_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (obsidian_subdomain | default('')) | length > 0
+     else [])
+    +
     ([{"name": oc_subdomain ~ "." ~ domain_name, "type": "A",
        "value": _vpn_dns_workstation_ts_ip}]
      if (oc_subdomain | default('')) | length > 0

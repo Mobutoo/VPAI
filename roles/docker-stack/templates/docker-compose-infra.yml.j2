@@ -175,6 +175,67 @@ services:
   # NOTE: cloudflared a été retiré. Les webhooks Meta sont maintenant relayés via
   # Seko-VPN (role webhook-relay) — 100% auto-hébergé, zéro dépendance tiers.
 
+  # === DOCKER SOCKET PROXY (C3 — security: read-only API filter for monitoring) ===
+  # Replaces direct /var/run/docker.sock bind mount for cAdvisor, Alloy, DIUN.
+  # POST=0 blocks all write operations (container create/start/stop/exec/delete).
+  # OpenClaw keeps direct socket access (needs container lifecycle for sandboxes).
+  socket-proxy:
+    image: {{ socket_proxy_image }}
+    container_name: {{ project_name }}_socket_proxy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /run:size=1M
+      - /tmp:size=5M
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      # Read-only API for monitoring (cAdvisor, Alloy, DIUN)
+      POST: "0"
+      CONTAINERS: "1"
+      IMAGES: "1"
+      INFO: "1"
+      VERSION: "1"
+      EVENTS: "1"
+      PING: "1"
+      # Deny all other Docker API endpoints
+      AUTH: "0"
+      BUILD: "0"
+      COMMIT: "0"
+      CONFIGS: "0"
+      DISTRIBUTION: "0"
+      EXEC: "0"
+      GRPC: "0"
+      NETWORKS: "1"
+      NODES: "0"
+      PLUGINS: "0"
+      SECRETS: "0"
+      SERVICES: "0"
+      SESSION: "0"
+      SWARM: "0"
+      SYSTEM: "0"
+      TASKS: "0"
+      VOLUMES: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          memory: {{ socket_proxy_memory_limit }}
+          cpus: "{{ socket_proxy_cpu_limit }}"
+        reservations:
+          memory: {{ socket_proxy_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:2375/_ping || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
 networks:
   # Networks pre-created by the 'docker' Ansible role — declare external to avoid
   # label mismatch errors (com.docker.compose.network label not set by docker role).

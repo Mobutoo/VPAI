@@ -87,6 +87,11 @@ diun_memory_limit: "128M"
 diun_memory_reservation: "32M"
 diun_cpu_limit: "0.25"
 
+# Docker Socket Proxy (security — read-only API filter for monitoring)
+socket_proxy_memory_limit: "64M"
+socket_proxy_memory_reservation: "16M"
+socket_proxy_cpu_limit: "0.10"
+
 # Firefly III (Laravel — personal finance engine)
 firefly_memory_limit: "{{ '512M' if target_env == 'prod' else '256M' }}"
 firefly_memory_reservation: "128M"

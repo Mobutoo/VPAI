@@ -6,8 +6,10 @@
 // DOCKER DISCOVERY
 // ============================================================
 
+// C3 security: Docker API routed through socket-proxy (read-only HAProxy filter)
+// Socket proxy runs in docker-compose-infra.yml — POST=0, CONTAINERS=1, EVENTS=1
 discovery.docker "containers" {
-  host             = "unix:///var/run/docker.sock"
+  host             = "tcp://socket-proxy:2375"
   refresh_interval = "30s"
 }
 
@@ -173,7 +175,7 @@ discovery.relabel "docker_logs" {
 // ============================================================
 
 loki.source.docker "containers" {
-  host       = "unix:///var/run/docker.sock"
+  host       = "tcp://socket-proxy:2375"
   targets    = discovery.relabel.docker_logs.output
   forward_to = [loki.process.docker.receiver]
 }

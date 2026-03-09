@@ -518,13 +518,16 @@ services:
     cap_add:
       - DAC_OVERRIDE
       - FOWNER
+    environment:
+      # C3: Use socket proxy instead of direct Docker socket access
+      DOCKER_HOST: "tcp://socket-proxy:2375"
     command:
       - "--docker_only=true"
       - "--housekeeping_interval=30s"
       - "--disable_metrics=advtcp,cpu_topology,cpuset,hugetlb,memory_numa,process,referenced_memory,resctrl,sched,tcp,udp"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /run/containerd/containerd.sock:/run/containerd/containerd.sock:ro
+      # Docker socket replaced by socket-proxy (C3 security)
+      # containerd, /sys, /var/lib/docker still needed for cgroup/filesystem metrics
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
     networks:
@@ -633,7 +636,7 @@ services:
       - DAC_READ_SEARCH
     volumes:
       - /opt/{{ project_name }}/configs/alloy/config.alloy:/etc/alloy/config.alloy:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Docker socket replaced by socket-proxy (C3 security) — see config.alloy.j2
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /var/log:/var/log:ro
@@ -708,10 +711,15 @@ services:
     environment:
       TZ: "{{ timezone }}"
       CONFIG: "/diun.yml"
+      # C3: Use socket proxy instead of direct Docker socket access
+      DOCKER_HOST: "tcp://socket-proxy:2375"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Docker socket replaced by socket-proxy (C3 security)
       - /opt/{{ project_name }}/data/diun:/data
       - /opt/{{ project_name }}/configs/diun/diun.yml:/diun.yml:ro
+    networks:
+      - monitoring
+      - egress
     deploy:
       resources:
         limits:

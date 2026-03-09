@@ -32,8 +32,7 @@ openclaw_compaction_mode: "default"
 openclaw_compaction_reserve_tokens: 24000
 # AGENTS.md / SOUL.md sections re-injected after compaction (match exact headings)
 openclaw_compaction_sections: '["Regles Systeme", "Discipline"]'
-# Model for internal compaction summarization (use cheap model — invisible to user)
-openclaw_compaction_model: "custom-litellm/deepseek-v3-free"
+# Note: compaction uses the agent's own model (no separate model override in v2026.3.7)
 
 # Memory flush: save important context to Qdrant BEFORE compaction runs
 # This prevents losing critical facts during summarization.

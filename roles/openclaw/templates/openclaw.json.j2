@@ -57,7 +57,6 @@
         "mode": "{{ openclaw_compaction_mode | default('default') }}",
         "reserveTokensFloor": {{ openclaw_compaction_reserve_tokens | default(24000) }},
         "postCompactionSections": {{ openclaw_compaction_sections | default('["Regles Systeme", "Discipline"]') }},
-        "model": "{{ openclaw_compaction_model | default(openclaw_default_model) }}",
         "memoryFlush": {
           "enabled": {{ openclaw_memory_flush_enabled | default(true) | lower }},
           "softThresholdTokens": {{ openclaw_memory_flush_threshold | default(6000) }},

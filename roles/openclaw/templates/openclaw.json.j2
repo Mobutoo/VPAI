@@ -23,7 +23,13 @@
       "workspace": "{{ openclaw_system_dir }}/workspace",
       "userTimezone": "{{ timezone }}",
       "model": {
-        "primary": "{{ openclaw_default_model }}"
+        "primary": "{{ openclaw_default_model }}",
+        "fallbacks": {{ openclaw_default_fallbacks }},
+        "failover": {
+          "enabled": {{ openclaw_failover_enabled | default(true) | lower }},
+          "retryPrimaryAfterSeconds": {{ openclaw_failover_retry_seconds | default(900) }},
+          "on": {{ openclaw_failover_triggers | default('["rate_limit", "auth_cooldown", "provider_unavailable", "timeout"]') }}
+        }
       },
       "sandbox": {
         "mode": "{{ openclaw_sandbox_mode | default('non-main') }}",
@@ -79,14 +85,16 @@
           "placeholder": "[Ancien resultat d'outil supprime — relancer si necessaire]"
         }
       },
-      "bootstrapPromptTruncationWarning": "once"
+      "bootstrapPromptTruncationWarning": "once",
+      "timeoutSeconds": {{ openclaw_agent_timeout | default(300) }}
     },
     "list": [
       {
         "id": "{{ openclaw_agent_concierge_name }}",
         "default": true,
         "model": {
-          "primary": "{{ openclaw_concierge_model }}"
+          "primary": "{{ openclaw_concierge_model }}",
+          "fallbacks": {{ openclaw_default_fallbacks }}
         },
         "workspace": "{{ openclaw_system_dir }}/workspace",
         "subagents": {
@@ -110,7 +118,8 @@
       {
         "id": "{{ openclaw_agent_builder_name }}",
         "model": {
-          "primary": "{{ openclaw_builder_model }}"
+          "primary": "{{ openclaw_builder_model }}",
+          "fallbacks": {{ openclaw_code_fallbacks }}
         },
         "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_builder_name }}",
         "subagents": {
@@ -128,7 +137,8 @@
       {
         "id": "{{ openclaw_agent_writer_name }}",
         "model": {
-          "primary": "{{ openclaw_writer_model }}"
+          "primary": "{{ openclaw_writer_model }}",
+          "fallbacks": {{ openclaw_default_fallbacks }}
         },
         "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_writer_name }}",
         "subagents": {
@@ -142,7 +152,8 @@
       {
         "id": "{{ openclaw_agent_artist_name }}",
         "model": {
-          "primary": "{{ openclaw_artist_model }}"
+          "primary": "{{ openclaw_artist_model }}",
+          "fallbacks": {{ openclaw_default_fallbacks }}
         },
         "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_artist_name }}",
         "subagents": {
@@ -156,7 +167,8 @@
       {
         "id": "{{ openclaw_agent_tutor_name }}",
         "model": {
-          "primary": "{{ openclaw_tutor_model }}"
+          "primary": "{{ openclaw_tutor_model }}",
+          "fallbacks": {{ openclaw_default_fallbacks }}
         },
         "workspace": "{{ openclaw_system_dir }}/workspace/tutor",
         "subagents": {
@@ -170,7 +182,8 @@
       {
         "id": "{{ openclaw_agent_explorer_name }}",
         "model": {
-          "primary": "{{ openclaw_explorer_model }}"
+          "primary": "{{ openclaw_explorer_model }}",
+          "fallbacks": {{ openclaw_default_fallbacks }}
         },
         "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_explorer_name }}",
         "sandbox": {
@@ -190,7 +203,8 @@
       {
         "id": "{{ openclaw_agent_marketer_name }}",
         "model": {
-          "primary": "{{ openclaw_marketer_model }}"
+          "primary": "{{ openclaw_marketer_model }}",
+          "fallbacks": {{ openclaw_default_fallbacks }}
         },
         "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_marketer_name }}",
         "subagents": {
@@ -204,7 +218,8 @@
       {
         "id": "{{ openclaw_agent_cfo_name }}",
         "model": {
-          "primary": "{{ openclaw_cfo_model }}"
+          "primary": "{{ openclaw_cfo_model }}",
+          "fallbacks": {{ openclaw_reasoning_fallbacks }}
         },
         "workspace": "{{ openclaw_system_dir }}/workspace/finance",
         "subagents": {
@@ -218,7 +233,8 @@
       {
         "id": "{{ openclaw_agent_maintainer_name }}",
         "model": {
-          "primary": "{{ openclaw_maintainer_model }}"
+          "primary": "{{ openclaw_maintainer_model }}",
+          "fallbacks": {{ openclaw_code_fallbacks }}
         },
         "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_maintainer_name }}",
         "subagents": {
@@ -236,7 +252,8 @@
       {
         "id": "{{ openclaw_agent_messenger_name }}",
         "model": {
-          "primary": "{{ openclaw_messenger_model }}"
+          "primary": "{{ openclaw_messenger_model }}",
+          "fallbacks": {{ openclaw_code_fallbacks }}
         },
         "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_messenger_name }}",
         "sandbox": {
@@ -253,7 +270,7 @@
             "env": {
               "PLANE_API_URL": "http://plane-api:8000",
               "PLANE_WORKSPACE_SLUG": "{{ plane_workspace_slug | default('ewutelo') }}",
-{% for agent in plane_agent_names | default(['concierge','imhotep','thot','basquiat','r2d2','piccolo','cfo','maintainer','hermes','marketer']) %}
+{% for agent in plane_agent_names %}
               "PLANE_CRED_{{ agent | upper }}": "{{ vault_plane_agent_tokens[agent] | default('PROVISION_PENDING') }}"{{ ',' if not loop.last else '' }}
 {% endfor %}
             }
@@ -459,6 +476,13 @@
         "cacheTtlMinutes": 15,
         "maxRedirects": 3
       }
+    },
+    "loopDetection": {
+      "enabled": {{ openclaw_loop_detection_enabled | default(true) | lower }},
+      "warningThreshold": {{ openclaw_loop_warning_threshold | default(10) }},
+      "criticalThreshold": {{ openclaw_loop_critical_threshold | default(20) }},
+      "globalCircuitBreakerThreshold": {{ openclaw_loop_breaker_threshold | default(30) }},
+      "historySize": {{ openclaw_loop_history_size | default(30) }}
     }
   },
   "channels": {
@@ -475,7 +499,13 @@
         { "command": "tasks", "description": "Lister mes taches en cours" },
         { "command": "budget", "description": "Budget IA 24h" },
         { "command": "projects", "description": "Lister les projets actifs" }
-      ]{{ ',' if openclaw_telegram_topic_routing | default(false) and telegram_openclaw_group_id | default('') | length > 0 else '' }}
+      ],
+      "retry": {
+        "attempts": {{ openclaw_telegram_retry_attempts | default(5) }},
+        "minDelayMs": {{ openclaw_telegram_retry_min_delay | default(1000) }},
+        "maxDelayMs": {{ openclaw_telegram_retry_max_delay | default(10000) }},
+        "jitter": {{ openclaw_telegram_retry_jitter | default(0.3) }}
+      }{{ ',' if openclaw_telegram_topic_routing | default(false) and telegram_openclaw_group_id | default('') | length > 0 else '' }}
 {% if openclaw_telegram_topic_routing | default(false) and telegram_openclaw_group_id | default('') | length > 0 %}
       "groups": {
         "{{ telegram_openclaw_group_id }}": {

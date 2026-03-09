@@ -289,3 +289,37 @@ plane_agent_names:
   - "{{ openclaw_agent_messenger_name }}"
 
 plane_workspace_slug: "ewutelo"
+
+# --- Circuit Breaker & Model Failover ---
+# When primary model fails (rate limit, auth, timeout), try fallbacks in order.
+# Last fallback uses openai/ direct (bypasses LiteLLM) for maximum resilience.
+openclaw_failover_enabled: true
+openclaw_failover_retry_seconds: 900  # 15 min before retrying primary
+openclaw_failover_triggers: '["rate_limit", "auth_cooldown", "provider_unavailable", "timeout"]'
+
+# Fallback chains by model family
+# deepseek-v3-free primary → qwen3-coder → openai/gpt-4o-mini (direct)
+openclaw_default_fallbacks: '["custom-litellm/qwen3-coder", "openai/gpt-4o-mini"]'
+# qwen3-coder primary → deepseek-v3-free → openai/gpt-4o-mini (direct)
+openclaw_code_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
+# deepseek-r1-free primary → deepseek-v3-free → openai/gpt-4o-mini (direct)
+openclaw_reasoning_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
+
+# Agent timeout per turn (seconds) — aborts if exceeded
+openclaw_agent_timeout: 300
+
+# --- Tool Loop Detection ---
+# Detects and stops stuck agents repeating the same tool calls.
+# globalCircuitBreakerThreshold = hard stop (aborts agent turn).
+openclaw_loop_detection_enabled: true
+openclaw_loop_warning_threshold: 10
+openclaw_loop_critical_threshold: 20
+openclaw_loop_breaker_threshold: 30
+openclaw_loop_history_size: 30
+
+# --- Telegram Retry Policy ---
+# Auto-reconnect on polling failures (without this, Telegram dies after ~8 min).
+openclaw_telegram_retry_attempts: 5
+openclaw_telegram_retry_min_delay: 1000
+openclaw_telegram_retry_max_delay: 10000
+openclaw_telegram_retry_jitter: 0.3

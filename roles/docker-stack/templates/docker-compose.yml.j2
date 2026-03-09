@@ -46,6 +46,9 @@ services:
     image: {{ litellm_image }}
     container_name: {{ project_name }}_litellm
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=50M
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -544,16 +547,14 @@ services:
     image: {{ victoriametrics_image }}
     container_name: {{ project_name }}_victoriametrics
     restart: unless-stopped
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp:size=10M
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-      - DAC_OVERRIDE
-      - FOWNER
     command:
       - "-storageDataPath=/storage"
       - "-retentionPeriod=30d"
@@ -616,6 +617,10 @@ services:
     image: {{ alloy_image }}
     container_name: {{ project_name }}_alloy
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=10M
+      - /data-alloy:size=50M
     security_opt:
       - no-new-privileges:true
     cap_drop:

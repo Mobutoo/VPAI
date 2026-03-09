@@ -78,6 +78,18 @@
 }
 {% endif %}
 
+# Security headers — imported by all site blocks
+(security_headers) {
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+        -Server
+    }
+}
+
 # === PUBLIC DOMAIN - Admin Portal ===
 {{ caddy_domain }} {
     # /health endpoint — VPN-only quand le mode est active (Uptime Kuma est sur le mesh)
@@ -120,13 +132,9 @@
     import vpn_error_page
 {% endif %}
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        -Server
-    }
+    import security_headers
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    header X-Frame-Options "DENY"
 }
 
 # === OpenClaw - dedicated subdomain (javisi) ===
@@ -158,12 +166,7 @@ BOOTSTRAP 200
         }
     }
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        -Server
-    }
+    import security_headers
 }
 
 # === Grafana - dedicated subdomain (tala) ===
@@ -175,12 +178,7 @@ BOOTSTRAP 200
 
     reverse_proxy grafana:3000
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        -Server
-    }
+    import security_headers
 }
 {% endif %}
 
@@ -193,12 +191,7 @@ BOOTSTRAP 200
 
     reverse_proxy n8n:5678
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        -Server
-    }
+    import security_headers
 }
 {% endif %}
 
@@ -211,12 +204,7 @@ BOOTSTRAP 200
 
     reverse_proxy litellm:4000
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        -Server
-    }
+    import security_headers
 }
 {% endif %}
 
@@ -229,12 +217,7 @@ BOOTSTRAP 200
 
     reverse_proxy qdrant:6333
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        -Server
-    }
+    import security_headers
 }
 {% endif %}
 
@@ -244,6 +227,8 @@ BOOTSTRAP 200
     import vpn_error_page
 
     reverse_proxy palais:{{ palais_port | default(3300) }}
+
+    import security_headers
 }
 
 # === Firefly III (personal finance engine) — lola.<domain> ===
@@ -254,12 +239,7 @@ BOOTSTRAP 200
 
     reverse_proxy firefly-iii:{{ firefly_web_port | default(8080) }}
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        -Server
-    }
+    import security_headers
 }
 {% endif %}
 
@@ -271,12 +251,7 @@ BOOTSTRAP 200
 
     reverse_proxy zimboo:{{ zimboo_port | default(3000) }}
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        -Server
-    }
+    import security_headers
 }
 {% endif %}
 
@@ -288,12 +263,7 @@ BOOTSTRAP 200
 
     reverse_proxy nocodb:8080
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        -Server
-    }
+    import security_headers
 }
 {% endif %}
 
@@ -345,12 +315,7 @@ work.{{ domain_name }} {
 
     import vpn_error_page
 
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "SAMEORIGIN"
-        -Server
-    }
+    import security_headers
 }
 
 # === CouchDB (Obsidian LiveSync) — Public HTTPS, auth CouchDB ===
@@ -369,13 +334,12 @@ work.{{ domain_name }} {
     reverse_proxy {{ vpn_tailscale_ip }}:{{ couchdb_port | default(5984) }} {
         header_up Host {host}
     }
+    import security_headers
     header {
         Access-Control-Allow-Origin *
         Access-Control-Allow-Methods "GET, PUT, POST, HEAD, DELETE, OPTIONS"
         Access-Control-Allow-Headers "accept, authorization, content-type, origin, referer, x-csrf-token"
         Access-Control-Allow-Credentials true
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
-        -Server
     }
 }
 {% endif %}

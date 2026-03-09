@@ -8,9 +8,10 @@
   ansible.builtin.file:
     path: "{{ victoriametrics_data_dir }}"
     state: directory
-    owner: "1000"
-    group: "1000"
+    owner: "65534"
+    group: "65534"
     mode: "0755"
+    recurse: true
   become: true
 
 - name: Create Loki config directory

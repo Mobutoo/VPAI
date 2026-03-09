@@ -48,6 +48,7 @@ services:
     image: {{ redis_image }}
     container_name: {{ project_name }}_redis
     restart: unless-stopped
+    read_only: true
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -56,6 +57,8 @@ services:
       - CHOWN
       - SETGID
       - SETUID
+    tmpfs:
+      - /tmp:size=10M
     volumes:
       - /opt/{{ project_name }}/data/redis:/data
       - /opt/{{ project_name }}/configs/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro

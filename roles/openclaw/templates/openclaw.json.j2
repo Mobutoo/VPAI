@@ -89,7 +89,7 @@
         "model": {
           "primary": "{{ openclaw_builder_model }}"
         },
-        "workspace": "{{ openclaw_system_dir }}/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_builder_name }}",
         "subagents": {
           "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
         },
@@ -107,7 +107,7 @@
         "model": {
           "primary": "{{ openclaw_writer_model }}"
         },
-        "workspace": "{{ openclaw_system_dir }}/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_writer_name }}",
         "subagents": {
           "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
         },
@@ -121,7 +121,7 @@
         "model": {
           "primary": "{{ openclaw_artist_model }}"
         },
-        "workspace": "{{ openclaw_system_dir }}/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_artist_name }}",
         "subagents": {
           "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
         },
@@ -149,7 +149,7 @@
         "model": {
           "primary": "{{ openclaw_explorer_model }}"
         },
-        "workspace": "{{ openclaw_system_dir }}/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_explorer_name }}",
         "sandbox": {
           "mode": "all",
           "docker": {
@@ -169,7 +169,7 @@
         "model": {
           "primary": "{{ openclaw_marketer_model }}"
         },
-        "workspace": "{{ openclaw_system_dir }}/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_marketer_name }}",
         "subagents": {
           "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
         },
@@ -197,7 +197,7 @@
         "model": {
           "primary": "{{ openclaw_maintainer_model }}"
         },
-        "workspace": "{{ openclaw_system_dir }}/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_maintainer_name }}",
         "subagents": {
           "allowAgents": ["{{ openclaw_agent_messenger_name }}"]
         },
@@ -215,7 +215,7 @@
         "model": {
           "primary": "{{ openclaw_messenger_model }}"
         },
-        "workspace": "{{ openclaw_system_dir }}/workspace",
+        "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_messenger_name }}",
         "sandbox": {
           "mode": "all",
           "workspaceAccess": "ro",

@@ -280,9 +280,12 @@
   when: openclaw_volume_isolation | default(false)
   notify: Restart openclaw stack
 
-# Deploy concierge IDENTITY.md to workspace root
-# OpenClaw injects workspace/IDENTITY.md into the system prompt for the default agent.
-# agents/<id>/IDENTITY.md is only used for subagent spawn contexts.
+# Deploy IDENTITY.md to each agent's workspace root.
+# OpenClaw injects workspace/IDENTITY.md into the system prompt for the primary agent.
+# When topic routing bypasses the concierge, each agent acts as primary in its own
+# workspace and needs its own IDENTITY.md. Without this, all agents inherit the
+# concierge identity from the shared workspace root. REX topic-routing.
+# Concierge keeps workspace root; others get workspace/<agent-name>/.
 - name: Deploy concierge persona to workspace root
   ansible.builtin.template:
     src: "agents/{{ openclaw_agent_concierge_name }}/IDENTITY.md.j2"
@@ -291,6 +294,47 @@
     group: "1000"
     mode: "0644"
   become: true
+  when: openclaw_volume_isolation | default(false)
+  notify: Restart openclaw stack
+
+- name: Create per-agent workspace directories
+  ansible.builtin.file:
+    path: "{{ openclaw_workspace_dir }}/{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  loop:
+    - "{{ openclaw_agent_builder_name }}"
+    - "{{ openclaw_agent_writer_name }}"
+    - "{{ openclaw_agent_artist_name }}"
+    - "{{ openclaw_agent_tutor_name }}"
+    - "{{ openclaw_agent_explorer_name }}"
+    - "{{ openclaw_agent_marketer_name }}"
+    - "{{ openclaw_agent_cfo_name }}"
+    - "{{ openclaw_agent_maintainer_name }}"
+    - "{{ openclaw_agent_messenger_name }}"
+  when: openclaw_volume_isolation | default(false)
+
+- name: Deploy per-agent workspace IDENTITY.md
+  ansible.builtin.template:
+    src: "agents/{{ item.agent }}/IDENTITY.md.j2"
+    dest: "{{ openclaw_workspace_dir }}/{{ item.dir }}/IDENTITY.md"
+    owner: "1000"
+    group: "1000"
+    mode: "0644"
+  become: true
+  loop:
+    - { agent: "{{ openclaw_agent_builder_name }}", dir: "{{ openclaw_agent_builder_name }}" }
+    - { agent: "{{ openclaw_agent_writer_name }}", dir: "{{ openclaw_agent_writer_name }}" }
+    - { agent: "{{ openclaw_agent_artist_name }}", dir: "{{ openclaw_agent_artist_name }}" }
+    - { agent: "{{ openclaw_agent_tutor_name }}", dir: "tutor" }
+    - { agent: "{{ openclaw_agent_explorer_name }}", dir: "{{ openclaw_agent_explorer_name }}" }
+    - { agent: "{{ openclaw_agent_marketer_name }}", dir: "{{ openclaw_agent_marketer_name }}" }
+    - { agent: "{{ openclaw_agent_cfo_name }}", dir: "finance" }
+    - { agent: "{{ openclaw_agent_maintainer_name }}", dir: "{{ openclaw_agent_maintainer_name }}" }
+    - { agent: "{{ openclaw_agent_messenger_name }}", dir: "{{ openclaw_agent_messenger_name }}" }
   when: openclaw_volume_isolation | default(false)
   notify: Restart openclaw stack
 

@@ -239,6 +239,8 @@ openclaw_telegram_topics:
 # whatsapp_tutor_enabled and phone set in main.yml
 
 # --- Heartbeat (v2026.3.7 native support — REX 11.19 resolved) ---
-# lightContext: true = only HEARTBEAT.md injected (saves tokens, no full bootstrap)
-openclaw_heartbeat_enabled: true
+# DÉSACTIVÉ : le heartbeat consomme des tokens LLM via le concierge agent.
+# Les checks infra sont assurés par n8n stack-health (localhost, 0 tokens).
+# Réactiver si besoin : openclaw_heartbeat_enabled: true
+openclaw_heartbeat_enabled: false
 openclaw_heartbeat_light_context: true

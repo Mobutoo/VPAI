@@ -510,12 +510,25 @@
   "plugins": {
     "entries": {
 {% if telegram_openclaw_bot_token | default('') | length > 0 %}
-      "telegram": { "enabled": true }{{ ',' if whatsapp_tutor_enabled | default(false) else '' }}
+      "telegram": {
+        "enabled": true,
+        "hooks": {
+          "before_prompt_build": {
+            "prependSystemContext": "## Regles Systeme {{ project_name | upper }}\n\n- Projet : {{ project_name }} — stack IA auto-hebergee ({{ domain_name }})\n- Langue : francais par defaut, anglais technique si demande\n- Budget : mode eco actif, privilegier modeles gratuits (DeepSeek, Qwen)\n- Securite : ne jamais exposer secrets, cles API, tokens ou mots de passe\n- Fiabilite : verifier avant d'affirmer, zero hallucination toleree\n- Actions : demander confirmation avant toute action destructrice\n- Format : reponses concises, structurees, actionnables\n- Delegation : utiliser les skills et sous-agents plutot que repondre hors domaine\n",
+            "appendSystemContext": "## Discipline\n\n- Reponds dans la langue de l'utilisateur\n- Pas de disclaimer inutile ni d'excuses\n- Si tu ne sais pas, dis-le au lieu d'inventer\n- Cite tes sources quand c'est pertinent\n"
+          }
+        }
+      }{{ ',' if whatsapp_tutor_enabled | default(false) else '' }}
 {% endif %}
 {% if whatsapp_tutor_enabled | default(false) %}
       "whatsapp": { "enabled": true }
 {% endif %}
     }
+  },
+  "heartbeat": {
+    "enabled": {{ openclaw_heartbeat_enabled | default(false) | lower }},
+    "lightContext": {{ openclaw_heartbeat_light_context | default(true) | lower }},
+    "intervalMinutes": 60
   },
   "logging": {
     "level": "info"

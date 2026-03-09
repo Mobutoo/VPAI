@@ -319,11 +319,12 @@ general_settings:
   # Les alertes 70%/90% sont gérées par n8n (cron 1h → PostgreSQL → Telegram)
   max_budget: {{ litellm_budget_global_daily }}
   budget_duration: "1d"
-  # REX: health_check_interval appartient à general_settings, PAS router_settings.
-  # LiteLLM v1.81.3 lève ValueError si mis dans router_settings → crash loop.
-  # Perplexity Sonar Pro seul a coûté $11.64 en 16h (1488 health checks à $0.01/check).
-  # Désactivé globalement — pannes détectées via fallbacks et métriques Prometheus.
-  health_check_interval: 0
+  # REX: health_check_interval=0 NE désactive PAS les health checks — LiteLLM
+  # l'interprète comme "interval de 0s" = check permanent (~2500 appels/jour/modèle).
+  # Coût constaté : $10.66/semaine en health checks parasites (mars 2026).
+  # Solution : supprimer health_check_interval + background_health_checks: false.
+  # Pannes détectées via fallbacks et métriques Prometheus.
+  background_health_checks: false
   # Credit error alerting — webhook → n8n → Telegram (monitoring bot)
   # alert_types limite au strict nécessaire : llm_exceptions (402/RateLimit) + budget_alerts
   # Le workflow n8n filtre en plus les patterns crédit avant d'envoyer (double filtre).

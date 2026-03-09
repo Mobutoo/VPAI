@@ -338,8 +338,10 @@
   when: openclaw_volume_isolation | default(false)
   notify: Restart openclaw stack
 
-# Deploy HEARTBEAT.md to workspace root
+# Deploy HEARTBEAT.md to workspace root (only when heartbeat is enabled)
 # OpenClaw reads workspace/HEARTBEAT.md on each heartbeat activation.
+# REX: heartbeat consomme des tokens LLM — désactivé par défaut (mars 2026).
+# Infra checks assurés par n8n stack-health (localhost, 0 tokens).
 - name: Deploy heartbeat instructions to workspace root
   ansible.builtin.template:
     src: "HEARTBEAT.md.j2"
@@ -348,7 +350,19 @@
     group: "1000"
     mode: "0644"
   become: true
-  when: openclaw_volume_isolation | default(false)
+  when:
+    - openclaw_volume_isolation | default(false)
+    - openclaw_heartbeat_enabled | default(false)
+  notify: Restart openclaw stack
+
+- name: Remove heartbeat instructions when disabled
+  ansible.builtin.file:
+    path: "{{ openclaw_workspace_dir }}/HEARTBEAT.md"
+    state: absent
+  become: true
+  when:
+    - openclaw_volume_isolation | default(false)
+    - not (openclaw_heartbeat_enabled | default(false))
   notify: Restart openclaw stack
 
 # Deploy skill directories (OpenClaw expects skills/<name>/SKILL.md)

@@ -1899,6 +1899,69 @@ sleep 180
 
 ---
 
+## 50. LiteLLM — `health_check_interval: 0` ne désactive PAS les health checks (REX mars 2026)
+
+**Symptôme** : Dashboard OpenRouter montre des appels vers GLM-5, Perplexity Sonar Pro,
+MiniMax M1 et tous les modèles configurés, sans aucune requête utilisateur.
+
+**Cause** : `health_check_interval: 0` est interprété par LiteLLM comme "interval = 0 secondes"
+(check permanent), pas comme "désactivé". Résultat : ~2500 health checks/jour/modèle.
+
+**Impact constaté (7 jours)** :
+- perplexity/sonar-pro : $5.84 (766 appels)
+- gpt-4o : $2.91 (17 308 appels)
+- deepseek-r1 : $0.76 (876 appels)
+- z-ai/glm-5 : $0.53 (864 appels)
+- minimax/minimax-m1 : $0.29 (784 appels)
+- **Total : ~$10.66/semaine en health checks parasites**
+
+**Aggravant** : des modèles ajoutés via l'UI LiteLLM (perplexity/sonar-pro, minimax/minimax-m1)
+étaient stockés dans `LiteLLM_ProxyModelTable` et health-checkés même absents du fichier config.
+
+**Solution** :
+```yaml
+# MAUVAIS — 0 = check permanent, pas désactivé
+health_check_interval: 0
+
+# BON — désactive explicitement les health checks en background
+background_health_checks: false
+# Et NE PAS mettre health_check_interval du tout
+```
+
+**Vérification** :
+```sql
+-- Health checks des 5 dernières minutes (doit retourner 0 rows)
+SELECT model, count(*) FROM "LiteLLM_SpendLogs"
+WHERE "startTime" >= NOW() - INTERVAL '5 minutes'
+AND metadata->>'user_api_key_alias' = 'litellm-internal-health-check'
+GROUP BY model;
+```
+
+**Nettoyage DB** :
+```sql
+-- Supprimer les modèles fantômes ajoutés via l'UI
+DELETE FROM "LiteLLM_ProxyModelTable" WHERE model_name NOT IN ('claude-opus', 'claude-sonnet', ...);
+```
+
+---
+
+## 51. OpenClaw — Heartbeat consomme des tokens LLM
+
+**Symptôme** : Appels LLM réguliers sans interaction utilisateur.
+
+**Cause** : `openclaw_heartbeat_enabled: true` exécute un agent IA (concierge)
+pour vérifier la santé infra. Chaque heartbeat consomme des tokens du modèle concierge.
+
+**Solution** : Désactiver le heartbeat OpenClaw. Les checks infra sont assurés par
+le workflow n8n `stack-health` (toutes les 15 min, appels localhost, 0 tokens).
+
+```yaml
+# roles/openclaw/defaults/main.yml
+openclaw_heartbeat_enabled: false
+```
+
+---
+
 ## 99. Archive — Kaneo (remplacé par Palais en Phase 16, 2026-02-25)
 
 > Les sections 11.14, 11.15, 11.20, 11.21, 11.22 du chapitre OpenClaw/Kaneo sont marquées

@@ -217,10 +217,27 @@ openclaw_budget_commands:
 # telegram_openclaw_bot_token is in main.yml (from vault)
 # telegram_openclaw_chat_id is in main.yml (from vault)
 
+# --- Telegram Topic Routing (v2026.3.7 — per-topic agent binding) ---
+# Enable to route Telegram forum topics to specific agents (bypass concierge).
+# Requires a Telegram supergroup with Forum Topics enabled.
+# Set telegram_openclaw_group_id and topic IDs in main.yml after creating the group.
+openclaw_telegram_topic_routing: false
+# Topic IDs are assigned by Telegram when creating forum topics.
+# After creating topics in the group, get IDs via Bot API getForumTopicEdited or logs.
+# Map: topic_id → agent_id (from openclaw_agent_*_name variables)
+openclaw_telegram_topics:
+  general: { topic_id: "{{ telegram_openclaw_topic_ids.general | default('') }}", agent: "{{ openclaw_agent_concierge_name }}" }
+  code: { topic_id: "{{ telegram_openclaw_topic_ids.code | default('') }}", agent: "{{ openclaw_agent_builder_name }}" }
+  finance: { topic_id: "{{ telegram_openclaw_topic_ids.finance | default('') }}", agent: "{{ openclaw_agent_cfo_name }}" }
+  ops: { topic_id: "{{ telegram_openclaw_topic_ids.ops | default('') }}", agent: "{{ openclaw_agent_maintainer_name }}" }
+  recherche: { topic_id: "{{ telegram_openclaw_topic_ids.recherche | default('') }}", agent: "{{ openclaw_agent_explorer_name }}" }
+  ecriture: { topic_id: "{{ telegram_openclaw_topic_ids.ecriture | default('') }}", agent: "{{ openclaw_agent_writer_name }}" }
+  ecole: { topic_id: "{{ telegram_openclaw_topic_ids.ecole | default('') }}", agent: "{{ openclaw_agent_tutor_name }}" }
+
 # --- WhatsApp (Tutor channel — child tablet) ---
 # whatsapp_tutor_enabled and phone set in main.yml
 
-# --- Heartbeat (v2026.3.1 native support — REX 11.19 resolved) ---
+# --- Heartbeat (v2026.3.7 native support — REX 11.19 resolved) ---
 # lightContext: true = only HEARTBEAT.md injected (saves tokens, no full bootstrap)
 openclaw_heartbeat_enabled: true
 openclaw_heartbeat_light_context: true

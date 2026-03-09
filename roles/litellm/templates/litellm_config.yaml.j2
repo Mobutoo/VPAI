@@ -90,19 +90,6 @@ model_list:
         tier: "ultra-low"
         tags: ["concierge", "agent", "tool-calling", "multimodal"]
 
-  # MiniMax M2.5 — Review standard, bulk, concierge fallback
-  # 230B MoE (10B active), SWE-Bench 80.2%, Function Calling #1 (76.8%)
-  - model_name: "minimax-m25"
-    litellm_params:
-      model: "openrouter/minimax/minimax-m1"
-      api_key: "os.environ/OPENROUTER_API_KEY"
-      max_tokens: 4096
-    model_info:
-      max_output_tokens: 4096
-      metadata:
-        tier: "ultra-low"
-        tags: ["bulk", "review-standard", "data", "cheap", "fallback"]
-
   # DeepSeek R1 — Math, chain of reasoning, infra code
   - model_name: "deepseek-r1"
     litellm_params:
@@ -150,18 +137,6 @@ model_list:
       metadata:
         tier: "ultra-low"
         tags: ["search", "web", "agent", "tool-calling"]
-
-  # Perplexity Sonar Pro — Premium search with citations, agentic research
-  - model_name: "perplexity-pro"
-    litellm_params:
-      model: "openrouter/perplexity/sonar-pro"
-      api_key: "os.environ/OPENROUTER_API_KEY"
-      max_tokens: 4096
-    model_info:
-      max_output_tokens: 4096
-      metadata:
-        tier: "medium"
-        tags: ["search-premium", "research", "citations"]
 
   # Seedream 4.5 — Image generation via OpenRouter
   - model_name: "seedream"
@@ -273,12 +248,10 @@ litellm_settings:
 {% if openrouter_api_key | default('') | length > 0 %}
     - claude-sonnet: ["gpt-4o", "glm-5"]
     - kimi-k2: ["glm-5", "deepseek-v3-free"]
-    - minimax-m25: ["glm-5", "deepseek-v3-free"]
     - deepseek-r1: ["deepseek-r1-free", "qwen3-coder"]
     - deepseek-v3: ["deepseek-v3-free", "qwen3-coder"]
     - glm-5: ["deepseek-v3-free", "qwen3-coder"]
-    - grok-search: ["perplexity-pro", "claude-haiku"]
-    - perplexity-pro: ["grok-search", "claude-sonnet"]
+    - grok-search: ["claude-haiku", "deepseek-v3-free"]
     - qwen3-coder: ["deepseek-v3-free", "glm-5"]
     - deepseek-v3-free: ["qwen3-coder", "claude-haiku"]
     - deepseek-r1-free: ["qwen3-coder", "deepseek-v3-free"]

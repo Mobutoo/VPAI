@@ -51,7 +51,12 @@
       },
       "memorySearch": {
         "enabled": {{ 'true' if litellm_master_key | default('') | length > 0 else 'false' }}
-      }
+      },
+      "compaction": {
+        "postCompactionSections": ["Regles critiques", "Protocole standard", "Discipline"],
+        "recentTurnsPreserve": 4
+      },
+      "bootstrapPromptTruncationWarning": "once"
     },
     "list": [
       {
@@ -359,14 +364,6 @@
             "maxTokens": 8192
           },
           {
-            "id": "minimax-m25",
-            "name": "MiniMax M2.5 (bulk/review)",
-            "reasoning": false,
-            "input": ["text"],
-            "contextWindow": 1048576,
-            "maxTokens": 16384
-          },
-          {
             "id": "deepseek-r1",
             "name": "DeepSeek R1 (reasoning)",
             "reasoning": true,
@@ -396,14 +393,6 @@
             "reasoning": false,
             "input": ["text"],
             "contextWindow": 131072,
-            "maxTokens": 8192
-          },
-          {
-            "id": "perplexity-pro",
-            "name": "Perplexity Sonar Pro (research premium)",
-            "reasoning": false,
-            "input": ["text"],
-            "contextWindow": 127000,
             "maxTokens": 8192
           },
 {% endif %}
@@ -458,14 +447,26 @@
 {% if telegram_openclaw_chat_id | default('') | length > 0 %}
       "dmPolicy": "allowlist",
       "allowFrom": ["{{ telegram_openclaw_chat_id }}"],
-{% else %}
-      "dmPolicy": "pairing",
 {% endif %}
       "customCommands": [
         { "command": "tasks", "description": "Lister mes taches en cours" },
         { "command": "budget", "description": "Budget IA 24h" },
         { "command": "projects", "description": "Lister les projets actifs" }
-      ]
+      ]{{ ',' if openclaw_telegram_topic_routing | default(false) and telegram_openclaw_group_id | default('') | length > 0 else '' }}
+{% if openclaw_telegram_topic_routing | default(false) and telegram_openclaw_group_id | default('') | length > 0 %}
+      "groups": {
+        "{{ telegram_openclaw_group_id }}": {
+          "topics": {
+{% for name, cfg in openclaw_telegram_topics.items() if cfg.topic_id | default('') | length > 0 %}
+            "{{ cfg.topic_id }}": {
+              "agentId": "{{ cfg.agent }}",
+              "requireMention": false
+            }{{ ',' if not loop.last else '' }}
+{% endfor %}
+          }
+        }
+      }
+{% endif %}
     }{{ ',' if whatsapp_tutor_enabled | default(false) else '' }}
 {% endif %}
 {% if whatsapp_tutor_enabled | default(false) %}
@@ -478,12 +479,27 @@
   "bindings": [
 {% if telegram_openclaw_bot_token | default('') | length > 0 %}
     {
+      "type": "route",
       "agentId": "{{ openclaw_agent_concierge_name }}",
       "match": { "channel": "telegram" }
-    }{{ ',' if whatsapp_tutor_enabled | default(false) else '' }}
+    }{{ ',' if (openclaw_telegram_topic_routing | default(false) and telegram_openclaw_group_id | default('') | length > 0) or whatsapp_tutor_enabled | default(false) else '' }}
+{% if openclaw_telegram_topic_routing | default(false) and telegram_openclaw_group_id | default('') | length > 0 %}
+{% for name, cfg in openclaw_telegram_topics.items() if cfg.topic_id | default('') | length > 0 %}
+    {
+      "type": "route",
+      "agentId": "{{ cfg.agent }}",
+      "match": {
+        "channel": "telegram",
+        "accountId": "default",
+        "peer": { "kind": "group", "id": "{{ telegram_openclaw_group_id }}:topic:{{ cfg.topic_id }}" }
+      }
+    }{{ ',' if not loop.last or whatsapp_tutor_enabled | default(false) else '' }}
+{% endfor %}
+{% endif %}
 {% endif %}
 {% if whatsapp_tutor_enabled | default(false) %}
     {
+      "type": "route",
       "agentId": "{{ openclaw_agent_tutor_name }}",
       "match": { "channel": "whatsapp" }
     }

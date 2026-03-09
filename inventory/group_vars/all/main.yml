@@ -80,6 +80,13 @@ telegram_monitoring_chat_id: "{{ vault_telegram_monitoring_chat_id | default('')
 # Telegram OpenClaw bot (dedicated)
 telegram_openclaw_bot_token: "{{ vault_telegram_openclaw_bot_token | default('') }}"
 telegram_openclaw_chat_id: "{{ vault_telegram_openclaw_chat_id | default('') }}"
+# Telegram supergroup ID for topic routing (v2026.3.7)
+# Create a supergroup with Forum Topics enabled, add the bot as admin.
+# Get the group ID from bot logs or via @userinfobot.
+telegram_openclaw_group_id: "{{ vault_telegram_openclaw_group_id | default('') }}"
+# Topic IDs dict (from vault) — keys match openclaw_telegram_topics in defaults
+# vault format: { general: "1", code: "3", finance: "5", ops: "7", ... }
+telegram_openclaw_topic_ids: "{{ vault_telegram_openclaw_topic_ids | default({}) }}"
 
 # Webhook URL kept for Discord/Slack backward compatibility
 notification_webhook_url: "{{ vault_notification_webhook_url | default('') }}"

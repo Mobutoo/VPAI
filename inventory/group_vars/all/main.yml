@@ -29,9 +29,9 @@ subdomain_preprod: "preprod"
 caddy_vpn_enforce: true
 
 # --- SSH Hardening ---
-# REVERTED after lockout incident 2026-03-09: sshd failed to bind Tailscale IP
-# Keep true until root cause is investigated via journalctl -xeu ssh.service
-hardening_ssh_force_open: true
+# false = UFW restricts SSH to VPN network + Seko-VPN (trusted IP) only
+# sshd listens on 0.0.0.0 — no lockout risk (UFW controls access)
+hardening_ssh_force_open: false
 
 # --- VPS Production ---
 prod_provider: "ovh"

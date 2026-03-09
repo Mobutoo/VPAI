@@ -2,8 +2,9 @@
 # hardening — defaults
 
 # --- SSH ---
+# sshd always listens on 0.0.0.0 — access control is done by UFW.
+# This prevents lockout if Tailscale IP changes or VPN goes down.
 hardening_ssh_port: "{{ prod_ssh_port_target | default(prod_ssh_port) }}"
-hardening_ssh_listen_address: "{{ vps_tailscale_ip }}"
 hardening_ssh_allowed_user: "{{ prod_user }}"
 hardening_ssh_max_auth_tries: 3
 hardening_ssh_login_grace_time: 30
@@ -11,12 +12,18 @@ hardening_ssh_client_alive_interval: 300
 hardening_ssh_client_alive_count_max: 2
 hardening_ssh_authorized_keys: "{{ ssh_authorized_keys }}"
 
-# --- Anti-lockout ---
-# Force SSH to listen on all interfaces and allow SSH from anywhere.
-# Use this for first deploy or debug sessions when VPN is not yet ready.
-# Set to true to bypass VPN-only SSH restriction.
+# --- UFW SSH access control ---
+# Controls whether UFW restricts SSH to VPN network + trusted IPs only.
+# true = UFW allows SSH from anywhere (first deploy, debug)
+# false = UFW restricts SSH to VPN network + trusted IPs (production hardening)
 # DEFAULT: true for safety - set to false ONLY after confirming VPN works
 hardening_ssh_force_open: true
+
+# Trusted IPs/CIDRs that can always SSH (backup access if VPN is down).
+# Used when hardening_ssh_force_open=false (VPN lockdown mode).
+# Default: Seko-VPN public IP — jump host if Tailscale goes down.
+hardening_ssh_trusted_ips:
+  - "{{ vpn_server_public_ip }}"
 
 # --- Fail2Ban ---
 hardening_fail2ban_bantime: 3600

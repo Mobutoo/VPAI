@@ -13,9 +13,10 @@
     state: present
   become: true
 
-# === ANTI-LOCKOUT GUARD ===
-# Detect if Tailscale VPN is connected before restricting SSH.
-# If VPN is down or force_open is set, SSH stays open on all interfaces.
+# === UFW VPN GUARD ===
+# Detect if Tailscale VPN is connected before restricting SSH via UFW.
+# sshd always listens on 0.0.0.0 — access control is done at firewall level.
+# If VPN is down or force_open is set, UFW allows SSH from anywhere.
 - name: "GUARD: Check Tailscale connectivity"
   ansible.builtin.command:
     cmd: tailscale status --json
@@ -24,34 +25,21 @@
   failed_when: false
   register: hardening_tailscale_check
 
-- name: "GUARD: Verify VPS Tailscale IP is assigned to an interface"
-  ansible.builtin.command:
-    cmd: "ip addr show"
-  become: true
-  changed_when: false
-  failed_when: false
-  register: hardening_ip_addr_check
-  when:
-    - not hardening_ssh_force_open
-    - hardening_tailscale_check.rc == 0
-
-- name: "GUARD: Determine SSH lockdown mode"
+- name: "GUARD: Determine UFW SSH lockdown mode"
   ansible.builtin.set_fact:
     hardening_vpn_ready: >-
       {{ (not hardening_ssh_force_open) and
          (hardening_tailscale_check.rc == 0) and
-         (hardening_tailscale_check.stdout | from_json).BackendState | default('') == 'Running' and
-         (hardening_ip_addr_check.stdout | default('') is search(hardening_ssh_listen_address)) }}
+         (hardening_tailscale_check.stdout | from_json).BackendState | default('') == 'Running' }}
 
-- name: "GUARD: SSH lockdown status"
+- name: "GUARD: UFW SSH lockdown status"
   ansible.builtin.debug:
     msg: >-
-      {{ 'SSH LOCKDOWN: VPN active, restricting SSH to VPN only (ListenAddress '
-         ~ hardening_ssh_listen_address ~ ')'
+      {{ 'UFW LOCKDOWN: VPN active, UFW restricts SSH to VPN network only ('
+         ~ hardening_ufw_vpn_network ~ '). sshd listens on 0.0.0.0.'
          if hardening_vpn_ready | bool else
-         'SSH OPEN: VPN not ready, force_open=true, or listen IP not found on interfaces. '
-         ~ 'SSH listens on 0.0.0.0 (all interfaces). '
-         ~ 'Run with hardening_ssh_force_open=false once VPN is confirmed working.' }}
+         'UFW OPEN: VPN not ready or force_open=true, UFW allows SSH from anywhere. '
+         ~ 'Set hardening_ssh_force_open=false once VPN is confirmed working.' }}
 
 # === SSH ===
 - name: Deploy SSH authorized keys
@@ -229,7 +217,7 @@
       Webhooks Meta via relay Seko-VPN (hook.<domain>).
   when: hardening_vpn_only_mode | default(false) | bool
 
-- name: UFW — Allow SSH from VPN only (locked down)
+- name: UFW — Allow SSH from VPN network (locked down)
   community.general.ufw:
     rule: allow
     port: "{{ hardening_ssh_port }}"
@@ -239,6 +227,19 @@
   when:
     - not (common_molecule_mode | default(false))
     - hardening_vpn_ready | bool
+
+- name: UFW — Allow SSH from trusted IPs (backup access)
+  community.general.ufw:
+    rule: allow
+    port: "{{ hardening_ssh_port }}"
+    proto: tcp
+    from_ip: "{{ item }}"
+  loop: "{{ hardening_ssh_trusted_ips }}"
+  become: true
+  when:
+    - not (common_molecule_mode | default(false))
+    - hardening_vpn_ready | bool
+    - hardening_ssh_trusted_ips | length > 0
 
 - name: UFW — Allow SSH from anywhere (open mode)
   community.general.ufw:

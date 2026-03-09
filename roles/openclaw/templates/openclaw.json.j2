@@ -52,9 +52,33 @@
       "memorySearch": {
         "enabled": {{ 'true' if litellm_master_key | default('') | length > 0 else 'false' }}
       },
+      "contextTokens": {{ openclaw_context_tokens | default(128000) }},
       "compaction": {
-        "postCompactionSections": ["Regles critiques", "Protocole standard", "Discipline"],
-        "recentTurnsPreserve": 4
+        "mode": "{{ openclaw_compaction_mode | default('default') }}",
+        "reserveTokensFloor": {{ openclaw_compaction_reserve_tokens | default(24000) }},
+        "postCompactionSections": {{ openclaw_compaction_sections | default('["Regles Systeme", "Discipline"]') }},
+        "model": "{{ openclaw_compaction_model | default(openclaw_default_model) }}",
+        "memoryFlush": {
+          "enabled": {{ openclaw_memory_flush_enabled | default(true) | lower }},
+          "softThresholdTokens": {{ openclaw_memory_flush_threshold | default(6000) }},
+          "systemPrompt": "Session pres de la compaction. Sauvegarde les informations importantes dans la memoire (Qdrant) avant qu'elles ne soient resumees.",
+          "prompt": "Ecris des notes durables en memoire pour les faits, decisions et contexte importants de cette session qui ne doivent pas etre perdus lors de la compaction."
+        }
+      },
+      "contextPruning": {
+        "mode": "{{ openclaw_context_pruning_mode | default('cache-ttl') }}",
+        "ttl": "{{ openclaw_context_pruning_ttl | default('1h') }}",
+        "keepLastAssistants": {{ openclaw_context_pruning_keep | default(3) }},
+        "minPrunableToolChars": {{ openclaw_context_pruning_min_chars | default(50000) }},
+        "softTrim": {
+          "maxChars": 4000,
+          "headChars": 1500,
+          "tailChars": 1500
+        },
+        "hardClear": {
+          "enabled": true,
+          "placeholder": "[Ancien resultat d'outil supprime — relancer si necessaire]"
+        }
       },
       "bootstrapPromptTruncationWarning": "once"
     },
@@ -508,6 +532,9 @@
 {% endif %}
   ],
   "plugins": {
+    "slots": {
+      "contextEngine": "{{ openclaw_context_engine | default('legacy') }}"
+    },
     "entries": {
 {% if telegram_openclaw_bot_token | default('') | length > 0 %}
       "telegram": { "enabled": true }{{ ',' if whatsapp_tutor_enabled | default(false) else '' }}

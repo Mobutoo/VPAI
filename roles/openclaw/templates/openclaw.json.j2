@@ -478,12 +478,9 @@
   },
   "bindings": [
 {% if telegram_openclaw_bot_token | default('') | length > 0 %}
-    {
-      "type": "route",
-      "agentId": "{{ openclaw_agent_concierge_name }}",
-      "match": { "channel": "telegram" }
-    }{{ ',' if (openclaw_telegram_topic_routing | default(false) and telegram_openclaw_group_id | default('') | length > 0) or whatsapp_tutor_enabled | default(false) else '' }}
 {% if openclaw_telegram_topic_routing | default(false) and telegram_openclaw_group_id | default('') | length > 0 %}
+{# Topic-specific bindings FIRST — OpenClaw uses first-match routing.
+   Catch-all must come LAST or it swallows all messages → concierge only. #}
 {% for name, cfg in openclaw_telegram_topics.items() if cfg.topic_id | default('') | length > 0 %}
     {
       "type": "route",
@@ -493,9 +490,14 @@
         "accountId": "default",
         "peer": { "kind": "group", "id": "{{ telegram_openclaw_group_id }}:topic:{{ cfg.topic_id }}" }
       }
-    }{{ ',' if not loop.last or whatsapp_tutor_enabled | default(false) else '' }}
+    },
 {% endfor %}
 {% endif %}
+    {
+      "type": "route",
+      "agentId": "{{ openclaw_agent_concierge_name }}",
+      "match": { "channel": "telegram" }
+    }{{ ',' if whatsapp_tutor_enabled | default(false) else '' }}
 {% endif %}
 {% if whatsapp_tutor_enabled | default(false) %}
     {

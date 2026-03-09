@@ -209,8 +209,8 @@
   become: true
   notify: Restart openclaw stack
 
-# Create agent directories in system/ for persona files
-- name: Create agent persona directories
+# Create agent directories in system/ (pre-exist for :ro parent mount overlay)
+- name: Create agent persona directories in system dir
   ansible.builtin.file:
     path: "{{ openclaw_system_dir }}/agents/{{ item }}"
     state: directory
@@ -231,11 +231,37 @@
     - "{{ openclaw_agent_marketer_name }}"
   when: openclaw_volume_isolation | default(false)
 
-# Deploy agent IDENTITY.md files (only with volume isolation)
+# Create agent directories in state/ (rw overlay — what the container actually sees)
+# Docker mounts state/agents over system/agents. Identity files must be deployed
+# here, not in system/agents, or they are hidden by the overlay. REX topic-routing.
+- name: Create agent persona directories in state dir
+  ansible.builtin.file:
+    path: "{{ openclaw_state_dir }}/agents/{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+  loop:
+    - "{{ openclaw_agent_concierge_name }}"
+    - "{{ openclaw_agent_builder_name }}"
+    - "{{ openclaw_agent_writer_name }}"
+    - "{{ openclaw_agent_artist_name }}"
+    - "{{ openclaw_agent_tutor_name }}"
+    - "{{ openclaw_agent_explorer_name }}"
+    - "{{ openclaw_agent_cfo_name }}"
+    - "{{ openclaw_agent_maintainer_name }}"
+    - "{{ openclaw_agent_messenger_name }}"
+    - "{{ openclaw_agent_marketer_name }}"
+  when: openclaw_volume_isolation | default(false)
+
+# Deploy agent IDENTITY.md files to state/agents/ (rw overlay visible in container)
+# NOTE: state_dir/agents is mounted over system_dir/agents inside the container.
+# Deploying to system_dir/agents/ would be hidden by the overlay. REX topic-routing.
 - name: Deploy agent persona files
   ansible.builtin.template:
     src: "agents/{{ item }}/IDENTITY.md.j2"
-    dest: "{{ openclaw_system_dir }}/agents/{{ item }}/IDENTITY.md"
+    dest: "{{ openclaw_state_dir }}/agents/{{ item }}/IDENTITY.md"
     owner: "1000"
     group: "1000"
     mode: "0644"

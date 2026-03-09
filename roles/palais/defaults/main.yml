@@ -20,9 +20,10 @@ palais_qdrant_collection: "palais_memory"
 palais_qdrant_vector_size: 1536
 
 # Auth
-palais_api_key: "{{ vault_palais_api_key | default('changeme') }}"
-palais_admin_password: "{{ vault_palais_admin_password | default('admin') }}"
-palais_session_secret: "{{ vault_palais_session_secret | default('changeme') }}"
+# SECURITY: no insecure defaults — vault variables are mandatory
+palais_api_key: "{{ vault_palais_api_key }}"
+palais_admin_password: "{{ vault_palais_admin_password }}"
+palais_session_secret: "{{ vault_palais_session_secret }}"
 
 # Resources
 palais_memory_limit: "256M"

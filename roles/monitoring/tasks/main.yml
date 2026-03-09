@@ -77,7 +77,7 @@
     dest: "{{ alloy_config_dir }}/config.alloy"
     owner: "{{ prod_user }}"
     group: "{{ prod_user }}"
-    mode: "0644"
+    mode: "0600"
   become: true
   notify: Restart alloy stack
 
@@ -89,7 +89,7 @@
     dest: "{{ grafana_provisioning_dir }}/datasources/datasources.yaml"
     owner: "472"
     group: "472"
-    mode: "0644"
+    mode: "0600"
   become: true
   notify: Restart grafana stack
 

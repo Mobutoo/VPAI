@@ -62,6 +62,7 @@
     cmd: bash {{ couchdb_scripts_dir }}/init-couchdb.sh
     executable: /bin/bash
   become: true
+  no_log: true
   register: _couchdb_init
   changed_when: "'created' in _couchdb_init.stdout"
   failed_when: _couchdb_init.rc != 0

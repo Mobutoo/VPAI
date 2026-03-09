@@ -247,7 +247,7 @@ else
 fi
 
 # Redis
-REDIS_PING=$(docker exec "${PROJECT}_redis" redis-cli -a "{{ redis_password }}" ping 2>/dev/null) || REDIS_PING=""
+REDIS_PING=$(docker exec "${PROJECT}_redis" sh -c 'REDISCLI_AUTH="{{ redis_password }}" redis-cli ping' 2>/dev/null) || REDIS_PING=""
 if [ "${REDIS_PING}" = "PONG" ]; then
   echo "PASS  Redis connectivity (PONG)"
 else

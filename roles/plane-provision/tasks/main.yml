@@ -64,6 +64,7 @@
     return_content: true
     status_code: [200, 401, 403]
   register: plane_workspace_check
+  no_log: true
   when: not (common_molecule_mode | default(false))
   # Plane API not available in molecule
   tags: [plane-provision]
@@ -81,6 +82,7 @@
       slug: "{{ plane_workspace_slug }}"
     status_code: [201, 409]
   register: plane_workspace_create
+  no_log: true
   when:
     - not (common_molecule_mode | default(false))
     # Plane API not available in molecule
@@ -99,6 +101,7 @@
     return_content: true
     status_code: [200, 404]
   register: plane_work_item_types
+  no_log: true
   when: not (common_molecule_mode | default(false))
   # Plane API not available in molecule
   tags: [plane-provision]

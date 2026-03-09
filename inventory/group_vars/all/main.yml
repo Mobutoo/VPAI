@@ -28,6 +28,11 @@ subdomain_preprod: "preprod"
 # Set to true to enforce VPN-only access (production hardening)
 caddy_vpn_enforce: true
 
+# --- SSH Hardening ---
+# REVERTED after lockout incident 2026-03-09: sshd failed to bind Tailscale IP
+# Keep true until root cause is investigated via journalctl -xeu ssh.service
+hardening_ssh_force_open: true
+
 # --- VPS Production ---
 prod_provider: "ovh"
 prod_hostname: "{{ vault_prod_hostname | default('vps-prod-01') }}"

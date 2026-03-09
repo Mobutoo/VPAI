@@ -25,7 +25,7 @@ echo "[$(date)] PostgreSQL dump completed"
 # === Redis BGSAVE ===
 echo "[$(date)] Triggering Redis BGSAVE..."
 docker exec "${PROJECT}_redis" \
-  redis-cli -a "{{ redis_password }}" BGSAVE
+  sh -c 'REDISCLI_AUTH="{{ redis_password }}" redis-cli BGSAVE'
 # Wait for background save to complete
 sleep 5
 cp "/opt/${PROJECT}/data/redis/dump.rdb" \

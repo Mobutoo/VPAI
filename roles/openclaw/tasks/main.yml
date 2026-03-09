@@ -338,6 +338,20 @@
   when: openclaw_volume_isolation | default(false)
   notify: Restart openclaw stack
 
+# Deploy SOUL.md to workspace root — project rules + discipline injected into
+# the stable system prompt prefix. Providers (Anthropic -90%, OpenAI -50%)
+# cache this prefix across turns, reducing token cost.
+- name: Deploy SOUL.md with project rules to workspace root
+  ansible.builtin.template:
+    src: "SOUL.md.j2"
+    dest: "{{ openclaw_workspace_dir }}/SOUL.md"
+    owner: "1000"
+    group: "1000"
+    mode: "0644"
+  become: true
+  when: openclaw_volume_isolation | default(false)
+  notify: Restart openclaw stack
+
 # Deploy HEARTBEAT.md to workspace root (only when heartbeat is enabled)
 # OpenClaw reads workspace/HEARTBEAT.md on each heartbeat activation.
 # REX: heartbeat consomme des tokens LLM — désactivé par défaut (mars 2026).

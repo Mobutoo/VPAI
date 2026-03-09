@@ -24,12 +24,24 @@
   failed_when: false
   register: hardening_tailscale_check
 
+- name: "GUARD: Verify VPS Tailscale IP is assigned to an interface"
+  ansible.builtin.command:
+    cmd: "ip addr show"
+  become: true
+  changed_when: false
+  failed_when: false
+  register: hardening_ip_addr_check
+  when:
+    - not hardening_ssh_force_open
+    - hardening_tailscale_check.rc == 0
+
 - name: "GUARD: Determine SSH lockdown mode"
   ansible.builtin.set_fact:
     hardening_vpn_ready: >-
       {{ (not hardening_ssh_force_open) and
          (hardening_tailscale_check.rc == 0) and
-         (hardening_tailscale_check.stdout | from_json).BackendState | default('') == 'Running' }}
+         (hardening_tailscale_check.stdout | from_json).BackendState | default('') == 'Running' and
+         (hardening_ip_addr_check.stdout | default('') is search(hardening_ssh_listen_address)) }}
 
 - name: "GUARD: SSH lockdown status"
   ansible.builtin.debug:
@@ -37,7 +49,8 @@
       {{ 'SSH LOCKDOWN: VPN active, restricting SSH to VPN only (ListenAddress '
          ~ hardening_ssh_listen_address ~ ')'
          if hardening_vpn_ready | bool else
-         'SSH OPEN: VPN not ready or force_open=true, SSH listens on 0.0.0.0 (all interfaces). '
+         'SSH OPEN: VPN not ready, force_open=true, or listen IP not found on interfaces. '
+         ~ 'SSH listens on 0.0.0.0 (all interfaces). '
          ~ 'Run with hardening_ssh_force_open=false once VPN is confirmed working.' }}
 
 # === SSH ===

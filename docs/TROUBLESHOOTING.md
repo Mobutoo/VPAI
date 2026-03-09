@@ -2029,3 +2029,29 @@ LiteLLM → surveiller dans le dashboard OpenAI.
 
 **Telegram retry** : Sans cette config, le long-polling Telegram meurt apres ~8 min sans
 auto-reconnexion. Avec `retry: { attempts: 5, jitter: 0.3 }`, operation continue 23h+.
+
+---
+
+## 50. SSH Lockout — hardening_ssh_listen_address (2026-03-09)
+
+**Symptome** : sshd crash au restart, serveur inaccessible (SSH refuse sur toutes les interfaces).
+
+**Root cause** : `hardening_ssh_listen_address: "{{ vpn_headscale_ip }}"` utilisait l'IP du
+**serveur Headscale** (100.64.0.1) au lieu de l'IP Tailscale **du VPS** (100.64.0.14).
+sshd essayait de binder sur une IP inexistante localement → "control process exited with error code".
+
+**Fix** :
+1. Variable corrigee : `{{ vpn_headscale_ip }}` → `{{ vps_tailscale_ip }}`
+2. GUARD renforce : `ip addr show` verifie que l'IP existe sur une interface AVANT lockdown
+3. Handler anti-lockout : si sshd echoue, fallback automatique `ListenAddress 0.0.0.0`
+
+**Recovery** (KVM OVH) :
+```bash
+sudo sed -i 's/^ListenAddress .*/ListenAddress 0.0.0.0/' /etc/ssh/sshd_config
+sudo systemctl restart ssh
+```
+
+**Prevention** :
+- Toujours garder `hardening_ssh_force_open: true` jusqu'a validation VPN complete
+- Le handler sshd inclut maintenant un fallback automatique
+- Le GUARD verifie `ip addr show` en plus de `tailscale status --json`

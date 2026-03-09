@@ -1,12 +1,24 @@
 ---
 # hardening — handlers
 
+# ANTI-LOCKOUT: If sshd fails to restart (e.g. cannot bind ListenAddress),
+# automatically fall back to 0.0.0.0 to prevent SSH lockout.
 - name: Restart sshd
-  ansible.builtin.systemd:
-    name: sshd
-    state: restarted
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -uo pipefail
+      if systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null; then
+        echo "sshd restarted successfully"
+      else
+        echo "[EMERGENCY] sshd failed to restart — applying fallback ListenAddress 0.0.0.0"
+        sed -i 's/^ListenAddress .*/ListenAddress 0.0.0.0/' /etc/ssh/sshd_config
+        systemctl restart sshd 2>/dev/null || systemctl restart ssh
+        echo "[RECOVERED] sshd restarted with fallback ListenAddress 0.0.0.0"
+      fi
   become: true
   when: not (common_molecule_mode | default(false))
+  changed_when: true
 
 - name: Restart fail2ban
   ansible.builtin.systemd:

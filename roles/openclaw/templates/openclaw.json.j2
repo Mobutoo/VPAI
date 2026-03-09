@@ -488,6 +488,7 @@
   "channels": {
 {% if telegram_openclaw_bot_token | default('') | length > 0 %}
     "telegram": {
+      "enabled": true,
       "botToken": "${TELEGRAM_BOT_TOKEN}",
       "reactionNotifications": "own",
       "reactionLevel": "minimal",

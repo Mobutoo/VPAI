@@ -87,6 +87,8 @@ telegram_openclaw_group_id: "{{ vault_telegram_openclaw_group_id | default('') }
 # Topic IDs dict (from vault) — keys match openclaw_telegram_topics in defaults
 # vault format: { general: "1", code: "3", finance: "5", ops: "7", ... }
 telegram_openclaw_topic_ids: "{{ vault_telegram_openclaw_topic_ids | default({}) }}"
+# Enable per-topic agent routing (requires group_id + topic_ids above)
+openclaw_telegram_topic_routing: true
 
 # Webhook URL kept for Discord/Slack backward compatibility
 notification_webhook_url: "{{ vault_notification_webhook_url | default('') }}"

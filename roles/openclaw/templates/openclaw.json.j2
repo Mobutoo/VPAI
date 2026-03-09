@@ -56,7 +56,12 @@
         "postCompactionSections": ["Regles critiques", "Protocole standard", "Discipline"],
         "recentTurnsPreserve": 4
       },
-      "bootstrapPromptTruncationWarning": "once"
+      "bootstrapPromptTruncationWarning": "once",
+      "heartbeat": {
+        "enabled": {{ openclaw_heartbeat_enabled | default(false) | lower }},
+        "lightContext": {{ openclaw_heartbeat_light_context | default(true) | lower }},
+        "intervalMinutes": 60
+      }
     },
     "list": [
       {
@@ -524,11 +529,6 @@
       "whatsapp": { "enabled": true }
 {% endif %}
     }
-  },
-  "heartbeat": {
-    "enabled": {{ openclaw_heartbeat_enabled | default(false) | lower }},
-    "lightContext": {{ openclaw_heartbeat_light_context | default(true) | lower }},
-    "intervalMinutes": 60
   },
   "logging": {
     "level": "info"

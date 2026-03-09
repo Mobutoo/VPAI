@@ -13,7 +13,7 @@
 3. [Redeploy Cible (sans downtime)](#3-redeploy-cible-sans-downtime)
 4. [Zerobyte Backup Configuration (Seko-VPN)](#4-zerobyte-backup-configuration-seko-vpn)
 5. [Uptime Kuma Configuration (Seko-VPN)](#5-uptime-kuma-configuration-seko-vpn)
-6. [OpenClaw — Gestion des Modeles et Agents](#6-openclaw--gestion-des-modeles-et-agents) *(incl. Makefile + menu CLI + devices)*
+6. [OpenClaw — Gestion des Modeles et Agents](#6-openclaw--gestion-des-modeles-et-agents) *(incl. profils modeles, Makefile + menu CLI + devices)*
 7. [Ajout d'un Nouveau Modele LiteLLM](#7-ajout-dun-nouveau-modele-litellm)
 8. [Secret Rotation](#8-secret-rotation)
 9. [Restore from Backup](#9-restore-from-backup)
@@ -277,13 +277,35 @@ Pour chaque job Restic : Keep Daily=7, Weekly=4, Monthly=6, Yearly=2, Auto-prune
 **Modeles payants** (credits OpenRouter requis) : `minimax-m25`, `glm-5`, `kimi-k2`, `grok-search`, `perplexity-pro`.
 Si les credits OpenRouter sont vides, l'erreur `"No API key found for provider openrouter"` apparait dans les logs — c'est un message trompeur pour une erreur 402 (voir TROUBLESHOOTING 11.12).
 
-### 6.2 Changer le Modele d'un Agent
+### 6.2 Basculer le Profil de Modeles (eco/balanced/premium)
+
+Changer TOUS les agents d'un coup :
+
+```bash
+# Via Makefile (recommande)
+make openclaw-profile PROFILE=premium    # eco | balanced | premium
+
+# Via Ansible direct
+ansible-playbook playbooks/site.yml --tags openclaw \
+  -e "target_env=prod" -e "openclaw_model_profile=premium"
+```
+
+| Profil | Default | Code | Reasoning | Cout/jour |
+|--------|---------|------|-----------|-----------|
+| **eco** | deepseek-v3-free | qwen3-coder | deepseek-r1-free | $0 |
+| **balanced** | glm-5 | qwen3-coder | deepseek-r1 | ~$1-2 |
+| **premium** | claude-haiku | claude-sonnet | claude-opus | ~$3-5 |
+
+Chaque profil inclut des fallback chains adaptes (premium → mid-tier → free).
+
+### 6.3 Changer le Modele d'un Agent Individuellement
 
 1. Editer `roles/openclaw/defaults/main.yml` — variable `openclaw_<agent>_model`
-2. Deployer : `ansible-playbook playbooks/site.yml --tags openclaw -e "target_env=prod"`
+   (override le profil actif pour cet agent uniquement)
+2. Deployer : `make deploy-role ROLE=openclaw ENV=prod`
 3. Verifier : `docker exec javisi_openclaw cat /home/node/.openclaw/openclaw.json | jq '.agents'`
 
-### 6.3 Verifier les Skills Charges
+### 6.4 Verifier les Skills Charges
 
 ```bash
 docker exec javisi_openclaw node --input-type=module -e \
@@ -292,21 +314,21 @@ docker exec javisi_openclaw node --input-type=module -e \
   console.log(r.skills.length,r.diagnostics)"
 ```
 
-### 6.4 Approuver le Pairing Telegram (si necessaire)
+### 6.5 Approuver le Pairing Telegram (si necessaire)
 
 ```bash
 # Si dmPolicy=pairing, approuver le code envoye par le bot
 docker exec javisi_openclaw node openclaw.mjs pairing approve telegram <CODE>
 ```
 
-### 6.5 Bootstrap Token (premier acces UI)
+### 6.6 Bootstrap Token (premier acces UI)
 
 ```
 https://<admin_subdomain>.<domain>/__bootstrap__
 # Injecte le gateway token dans localStorage et redirige vers l'UI
 ```
 
-### 6.6 Gestion des Devices (Pairing Browser)
+### 6.7 Gestion des Devices (Pairing Browser)
 
 **Via le Makefile (depuis `/opt/javisi/`) :**
 

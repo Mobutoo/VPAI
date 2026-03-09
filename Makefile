@@ -154,6 +154,22 @@ deploy-role: ## Déployer un rôle spécifique (usage: make deploy-role ROLE=n8n
 		--tags "$(ROLE)" \
 		--diff
 
+.PHONY: openclaw-profile
+openclaw-profile: ## Basculer le profil modèle OpenClaw (usage: make openclaw-profile PROFILE=premium)
+	@if [ -z "$(PROFILE)" ]; then \
+		echo "$(RED)>>> Usage: make openclaw-profile PROFILE=<eco|balanced|premium>$(NC)"; \
+		echo "$(YELLOW)>>>   eco      = modèles gratuits (DeepSeek, Qwen) — $$0/jour$(NC)"; \
+		echo "$(YELLOW)>>>   balanced = mid-tier (GLM-5, DeepSeek R1) — ~$$1-2/jour$(NC)"; \
+		echo "$(YELLOW)>>>   premium  = qualité max (Claude, GPT-4o) — ~$$3-5/jour$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(YELLOW)>>> Switching OpenClaw to profile: $(PROFILE)$(NC)"
+	$(ANSIBLE_PLAYBOOK) playbooks/site.yml \
+		-e "target_env=prod" \
+		-e "openclaw_model_profile=$(PROFILE)" \
+		--tags "openclaw" \
+		--diff
+
 .PHONY: smoke-test
 smoke-test: ## Lancer les smoke tests
 	@if [ -z "$(URL)" ]; then \

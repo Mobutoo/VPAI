@@ -1,0 +1,243 @@
+{
+  "name": "GitHub — Auto-Review PR (VPAI Standards)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "auto-review-pr",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ar-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate GitHub HMAC signature (X-Hub-Signature-256)\nconst crypto = require('crypto');\nconst secret = process.env.GITHUB_WEBHOOK_SECRET || '';\n\nif (!secret) {\n  throw new Error('GITHUB_WEBHOOK_SECRET not configured — HMAC validation cannot be bypassed.');\n}\n\nconst body = JSON.stringify($input.first().json);\nconst sig256 = $input.first().headers['x-hub-signature-256'] || '';\n\nif (!sig256) {\n  throw new Error('Missing X-Hub-Signature-256 header.');\n}\n\nconst expected = 'sha256=' + crypto.createHmac('sha256', secret).update(body).digest('hex');\nconst expectedBuf = Buffer.from(expected, 'utf8');\nconst receivedBuf = Buffer.from(sig256, 'utf8');\n\nif (expectedBuf.length !== receivedBuf.length || !crypto.timingSafeEqual(expectedBuf, receivedBuf)) {\n  throw new Error('HMAC signature validation failed.');\n}\n\nreturn $input.all();"
+      },
+      "id": "ar-0001-0000-0000-0000-000000000002",
+      "name": "Validate HMAC",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"accepted\" }"
+      },
+      "id": "ar-0001-0000-0000-0000-000000000003",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 460]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-pr-event",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "opened",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "ar-0001-0000-0000-0000-000000000004",
+      "name": "PR opened or sync?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json;\nconst pr = payload.pull_request || {};\nconst repo = payload.repository || {};\n\n// Skip draft PRs\nif (pr.draft) {\n  throw new Error('Draft PR — skipping review');\n}\n\n// Skip PRs with 'no-review' label\nconst labels = (pr.labels || []).map(l => l.name);\nif (labels.includes('no-review')) {\n  throw new Error('PR has no-review label — skipping');\n}\n\nreturn [{ json: {\n  pr_number: pr.number,\n  pr_title: pr.title || '',\n  pr_body: (pr.body || '').slice(0, 1000),\n  pr_branch: pr.head?.ref || '',\n  pr_base: pr.base?.ref || 'main',\n  repo_full: repo.full_name || '',\n  repo_url: repo.html_url || '',\n  diff_url: pr.diff_url || '',\n  pr_user: pr.user?.login || '',\n  pr_url: pr.html_url || '',\n  changed_files: pr.changed_files || 0,\n  additions: pr.additions || 0,\n  deletions: pr.deletions || 0\n}}];"
+      },
+      "id": "ar-0001-0000-0000-0000-000000000005",
+      "name": "Parse PR data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.github.com/repos/{{ $json.repo_full }}/pulls/{{ $json.pr_number }}/files",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.GITHUB_TOKEN }}" },
+            { "name": "Accept", "value": "application/vnd.github.v3+json" },
+            { "name": "User-Agent", "value": "javisi-auto-review" }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "ar-0001-0000-0000-0000-000000000006",
+      "name": "Fetch PR files",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1140, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build review prompt from PR files + VPAI checklist\nconst prData = $('Parse PR data').first().json;\nconst files = $input.first().json;\n\n// Only review Ansible/Docker/Jinja2/YAML files (skip binaries, dashboards, etc.)\nconst REVIEW_EXTENSIONS = ['.yml', '.yaml', '.j2', '.py', '.sh', '.json', '.cfg', '.conf', '.toml'];\nconst SKIP_PATTERNS = [/dashboards\\/.*\\.json$/, /molecule\\//, /\\.lock$/, /node_modules/];\n\nconst reviewFiles = (Array.isArray(files) ? files : []).filter(f => {\n  const name = f.filename || '';\n  if (SKIP_PATTERNS.some(p => p.test(name))) return false;\n  return REVIEW_EXTENSIONS.some(ext => name.endsWith(ext));\n});\n\n// Build context with patches (truncate large diffs)\nconst patches = reviewFiles.map(f => {\n  const patch = (f.patch || '').slice(0, 3000);\n  return `### ${f.filename} (${f.status}, +${f.additions}/-${f.deletions})\\n\\`\\`\\`diff\\n${patch}\\n\\`\\`\\``;\n}).join('\\n\\n');\n\nconst prompt = `Tu es un revieweur de code specialise dans les projets Ansible/Docker/Jinja2.\nReview cette Pull Request selon les criteres VPAI suivants:\n\n## Criteres VPAI\n### Ansible\n- FQCN obligatoire (ansible.builtin.xxx, jamais le module court)\n- changed_when/failed_when explicites sur command/shell\n- set -euo pipefail + executable: /bin/bash sur les taches shell\n- Pas de command/shell si un module Ansible existe\n- Idempotence (0 changed a la 2eme execution)\n- Pas de become: yes global\n\n### Docker\n- Jamais :latest/:stable — images pinnees\n- cap_drop: ALL + cap_add minimal\n- restart: unless-stopped\n- Healthchecks sur chaque service\n- Limites memoire/CPU\n\n### Securite\n- Aucun secret en clair (vault uniquement)\n- Aucun nom hardcode (variables Jinja2)\n- Extension .j2 pour les templates\n\n## PR: ${prData.pr_title}\n**Branche**: ${prData.pr_branch} -> ${prData.pr_base}\n**Fichiers modifies**: ${reviewFiles.length} (sur ${prData.changed_files} total)\n**Additions**: +${prData.additions} / Deletions: -${prData.deletions}\n\n## Diff\n${patches.slice(0, 12000)}\n\n## Instructions\nReponds UNIQUEMENT avec un JSON valide:\n{\n  \"status\": \"PASS\" ou \"FAIL\",\n  \"summary\": \"resume en 1-2 phrases\",\n  \"critical\": [\"liste des problemes bloquants\"],\n  \"warnings\": [\"liste des avertissements\"],\n  \"suggestions\": [\"liste des suggestions\"]\n}`;\n\nreturn [{ json: { ...prData, prompt, reviewFileCount: reviewFiles.length } }];"
+      },
+      "id": "ar-0001-0000-0000-0000-000000000007",
+      "name": "Build review prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://litellm:4000/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.LITELLM_MASTER_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"custom-litellm/deepseek-v3\",\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"Tu es un expert Ansible/Docker/DevOps qui fait des code reviews. Reponds uniquement en JSON valide.\" },\n    { \"role\": \"user\", \"content\": {{ JSON.stringify($json.prompt) }} }\n  ],\n  \"max_tokens\": 2000,\n  \"temperature\": 0.1\n}",
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "ar-0001-0000-0000-0000-000000000008",
+      "name": "LiteLLM Review",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1580, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse LiteLLM response + build PR comment\nconst prData = $('Build review prompt').first().json;\nconst llmResponse = $input.first().json;\n\nlet review;\ntry {\n  const content = llmResponse.choices?.[0]?.message?.content || '';\n  // Extract JSON from response (handle markdown code blocks)\n  const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n  review = JSON.parse(jsonMatch ? jsonMatch[0] : content);\n} catch (e) {\n  review = {\n    status: 'UNKNOWN',\n    summary: 'Failed to parse LLM response',\n    critical: [],\n    warnings: [],\n    suggestions: []\n  };\n}\n\nconst statusEmoji = review.status === 'PASS' ? '✅' : review.status === 'FAIL' ? '❌' : '⚠️';\nconst model = llmResponse.model || 'unknown';\nconst tokens = (llmResponse.usage?.total_tokens || 0);\n\n// Build GitHub PR comment in Markdown\nconst lines = [\n  `## ${statusEmoji} Auto-Review VPAI — ${review.status}`,\n  '',\n  `**Résumé**: ${review.summary || 'N/A'}`,\n  `**Fichiers analysés**: ${prData.reviewFileCount} | **Modèle**: \\`${model}\\` | **Tokens**: ${tokens}`,\n  ''\n];\n\nif (review.critical && review.critical.length > 0) {\n  lines.push('### 🔴 Problèmes critiques (bloquants)');\n  review.critical.forEach(c => lines.push(`- ${c}`));\n  lines.push('');\n}\n\nif (review.warnings && review.warnings.length > 0) {\n  lines.push('### 🟡 Avertissements');\n  review.warnings.forEach(w => lines.push(`- ${w}`));\n  lines.push('');\n}\n\nif (review.suggestions && review.suggestions.length > 0) {\n  lines.push('### 💡 Suggestions');\n  review.suggestions.forEach(s => lines.push(`- ${s}`));\n  lines.push('');\n}\n\nlines.push('---');\nlines.push('*Review automatique par [Javisi Auto-Review](https://github.com/Mobutoo/VPAI) via LiteLLM*');\n\nconst comment = lines.join('\\n');\nconst isPass = review.status === 'PASS';\n\nreturn [{ json: {\n  ...prData,\n  review_status: review.status,\n  review_pass: isPass,\n  review_comment: comment,\n  review_model: model,\n  review_tokens: tokens,\n  critical_count: (review.critical || []).length,\n  warning_count: (review.warnings || []).length\n}}];"
+      },
+      "id": "ar-0001-0000-0000-0000-000000000009",
+      "name": "Parse review + build comment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.github.com/repos/{{ $json.repo_full }}/issues/{{ $json.pr_number }}/comments",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.GITHUB_TOKEN }}" },
+            { "name": "Accept", "value": "application/vnd.github.v3+json" },
+            { "name": "User-Agent", "value": "javisi-auto-review" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"body\": {{ JSON.stringify($json.review_comment) }}\n}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "ar-0001-0000-0000-0000-000000000010",
+      "name": "Post PR comment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2020, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text", "value": "={{ ($('Parse review + build comment').first().json.review_pass ? '✅' : '❌') + ' Auto-Review PR #' + $('Parse review + build comment').first().json.pr_number + ' — ' + $('Parse review + build comment').first().json.pr_title + '\\n\\nStatut: ' + $('Parse review + build comment').first().json.review_status + ' (🔴' + $('Parse review + build comment').first().json.critical_count + ' 🟡' + $('Parse review + build comment').first().json.warning_count + ')\\n' + $('Parse review + build comment').first().json.pr_url }}" },
+            { "name": "parse_mode", "value": "HTML" }
+          ]
+        },
+        "options": {},
+        "continueOnFail": true
+      },
+      "id": "ar-0001-0000-0000-0000-000000000011",
+      "name": "Telegram notify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2240, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// PR action is not 'opened' — skip\nreturn [{ json: { status: 'skipped', reason: 'Not a PR open event' } }];"
+      },
+      "id": "ar-0001-0000-0000-0000-000000000012",
+      "name": "Skip (not PR open)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 420]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [[
+        { "node": "Validate HMAC", "type": "main", "index": 0 },
+        { "node": "Webhook Response", "type": "main", "index": 0 }
+      ]]
+    },
+    "Validate HMAC": { "main": [[{ "node": "PR opened or sync?", "type": "main", "index": 0 }]] },
+    "PR opened or sync?": {
+      "main": [
+        [{ "node": "Parse PR data", "type": "main", "index": 0 }],
+        [{ "node": "Skip (not PR open)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parse PR data": { "main": [[{ "node": "Fetch PR files", "type": "main", "index": 0 }]] },
+    "Fetch PR files": { "main": [[{ "node": "Build review prompt", "type": "main", "index": 0 }]] },
+    "Build review prompt": { "main": [[{ "node": "LiteLLM Review", "type": "main", "index": 0 }]] },
+    "LiteLLM Review": { "main": [[{ "node": "Parse review + build comment", "type": "main", "index": 0 }]] },
+    "Parse review + build comment": { "main": [[{ "node": "Post PR comment", "type": "main", "index": 0 }]] },
+    "Post PR comment": { "main": [[{ "node": "Telegram notify", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "github" }, { "name": "code-review" }, { "name": "auto-review" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-09T00:00:00.000Z",
+  "versionId": "1"
+}

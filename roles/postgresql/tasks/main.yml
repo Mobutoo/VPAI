@@ -95,7 +95,8 @@
 
       # REX: passer le SQL via stdin (docker exec -i) — pas besoin de monter
       # le dossier migrations dans le container. Le fichier reste sur l'hôte.
-      docker exec -i {{ project_name }}_postgresql \
+      docker exec -i -e PGPASSWORD='{{ postgresql_password }}' \
+        {{ project_name }}_postgresql \
         psql -U postgres -d postgres \
         < "$FILE" 2>&1
 

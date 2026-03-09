@@ -642,17 +642,18 @@
 
       N8N="{{ project_name }}_n8n"
       PG="{{ project_name }}_postgresql"
+      export PGPASSWORD='{{ postgresql_password }}'
 
       # Step 1: Deactivate all workflows via n8n CLI (best-effort)
       docker exec "$N8N" n8n unpublish:workflow --all 2>&1 || true
 
       # Step 2: Count workflows before nuke
-      BEFORE=$(docker exec "$PG" psql -U n8n -d n8n -t -c \
+      BEFORE=$(docker exec -e PGPASSWORD="${PGPASSWORD}" "$PG" psql -U n8n -d n8n -t -c \
         "SELECT COUNT(*) FROM workflow_entity;" 2>&1 | tr -d ' \n')
       echo "BEFORE:${BEFORE}"
 
       # Step 3: Delete all workflow data in FK dependency order
-      docker exec "$PG" psql -U n8n -d n8n -c "
+      docker exec -e PGPASSWORD="${PGPASSWORD}" "$PG" psql -U n8n -d n8n -c "
         DELETE FROM webhook_entity;
         DELETE FROM workflows_tags;
         DELETE FROM workflow_statistics;

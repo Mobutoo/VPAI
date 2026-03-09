@@ -244,3 +244,19 @@ openclaw_telegram_topics:
 # Réactiver si besoin : openclaw_heartbeat_enabled: true
 openclaw_heartbeat_enabled: false
 openclaw_heartbeat_light_context: true
+
+# --- Plane Integration (OpenClaw → Plane API) ---
+# Agent names for Plane API tokens (must match openclaw_agent_*_name variables)
+plane_agent_names:
+  - "{{ openclaw_agent_concierge_name }}"
+  - "{{ openclaw_agent_builder_name }}"
+  - "{{ openclaw_agent_writer_name }}"
+  - "{{ openclaw_agent_artist_name }}"
+  - "{{ openclaw_agent_tutor_name }}"
+  - "{{ openclaw_agent_explorer_name }}"
+  - "{{ openclaw_agent_marketer_name }}"
+  - "{{ openclaw_agent_cfo_name }}"
+  - "{{ openclaw_agent_maintainer_name }}"
+  - "{{ openclaw_agent_messenger_name }}"
+
+plane_workspace_slug: "ewutelo"

@@ -11,8 +11,8 @@ openclaw_gateway_port: 18789
 # "lan" required for Docker (container must accept connections from Caddy network)
 openclaw_gateway_bind: "lan"
 
-# Default agent model — via LiteLLM proxy (budget control + routing)
-openclaw_default_model: "custom-litellm/deepseek-v3-free"
+# Default agent model (resolved from active profile, overridable)
+openclaw_default_model: "{{ openclaw_model_profiles[openclaw_model_profile].default }}"
 
 # Node.js heap size in MB (prevents OOM crashes on large context windows)
 openclaw_node_heap_mb: 768
@@ -140,30 +140,58 @@ openclaw_agents_list:
     type: "messenger"
     model: "{{ openclaw_messenger_model }}"
 
-# Model assignments per agent/task (routed through LiteLLM)
-# Strategy: open-source first, Anthropic/OpenAI only when precision demands it
-# Review: builder uses qwen3-coder, review by different family (GLM-5 or gpt-codex)
-# NOTE: kimi-k2 ecarté du concierge/tutor — tokens tool_call_begin/end fuient en texte brut
-# via OpenRouter (bug upstream kimi-k2 tool calling).
-# NOTE: Basculé sur OpenAI direct — bypass LiteLLM pour résilience (plus de dépendance crédits).
-# OpenClaw appelle OpenAI en direct via provider "openai" (openclaw.json.j2).
-# Budget tracking LiteLLM non actif pour ces appels → surveiller dans le dashboard OpenAI.
-# Pour revenir via LiteLLM : remplacer "openai/" par "custom-litellm/" ci-dessous.
-# Modeles via LiteLLM proxy (custom-litellm/<id> = routing + budget control)
-# Voir openclaw.json.j2 section "custom-litellm" pour les IDs disponibles
-openclaw_concierge_model: "custom-litellm/deepseek-v3-free"
-openclaw_builder_model: "custom-litellm/qwen3-coder"
-openclaw_writer_model: "custom-litellm/deepseek-v3-free"
-openclaw_artist_model: "custom-litellm/deepseek-v3-free"
-openclaw_tutor_model: "custom-litellm/deepseek-v3-free"
-openclaw_explorer_model: "custom-litellm/deepseek-v3-free"
-openclaw_marketer_model: "custom-litellm/deepseek-v3-free"
-openclaw_cfo_model: "custom-litellm/deepseek-r1-free"
-openclaw_maintainer_model: "custom-litellm/qwen3-coder"
-openclaw_code_model: "custom-litellm/qwen3-coder"
-openclaw_quick_model: "custom-litellm/deepseek-v3-free"
-openclaw_cheap_model: "custom-litellm/deepseek-v3-free"
-openclaw_messenger_model: "custom-litellm/qwen3-coder"
+# --- Model Profiles ---
+# Switch ALL agent models at once by changing openclaw_model_profile.
+# eco      = free models only ($0/day — DeepSeek, Qwen via OpenRouter)
+# balanced = mid-tier paid models (GLM-5, DeepSeek R1 — ~$1-2/day)
+# premium  = best quality models (Claude, GPT-4o — ~$3-5/day)
+#
+# Switch method: Ansible redeploy, or via Palais dashboard (live profile switch).
+# Individual agent models can still be overridden in group_vars/all/main.yml.
+# NOTE: kimi-k2 ecarté — tokens tool_call_begin/end fuient en texte brut (bug upstream).
+# NOTE: openai/ provider = OpenAI direct (bypass LiteLLM, pas de budget tracking).
+openclaw_model_profile: "eco"
+
+openclaw_model_profiles:
+  eco:
+    default: "custom-litellm/deepseek-v3-free"
+    code: "custom-litellm/qwen3-coder"
+    reasoning: "custom-litellm/deepseek-r1-free"
+    quick: "custom-litellm/deepseek-v3-free"
+    default_fallbacks: '["custom-litellm/qwen3-coder", "openai/gpt-4o-mini"]'
+    code_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
+    reasoning_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
+  balanced:
+    default: "custom-litellm/glm-5"
+    code: "custom-litellm/qwen3-coder"
+    reasoning: "custom-litellm/deepseek-r1"
+    quick: "custom-litellm/deepseek-v3"
+    default_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
+    code_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
+    reasoning_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
+  premium:
+    default: "custom-litellm/claude-haiku"
+    code: "custom-litellm/claude-sonnet"
+    reasoning: "custom-litellm/claude-opus"
+    quick: "custom-litellm/gpt-4o-mini"
+    default_fallbacks: '["custom-litellm/glm-5", "custom-litellm/deepseek-v3-free"]'
+    code_fallbacks: '["custom-litellm/qwen3-coder", "custom-litellm/deepseek-v3-free"]'
+    reasoning_fallbacks: '["custom-litellm/deepseek-r1", "custom-litellm/deepseek-v3-free"]'
+
+# Per-agent model assignments (resolved from active profile, overridable individually)
+openclaw_concierge_model: "{{ openclaw_model_profiles[openclaw_model_profile].default }}"
+openclaw_builder_model: "{{ openclaw_model_profiles[openclaw_model_profile].code }}"
+openclaw_writer_model: "{{ openclaw_model_profiles[openclaw_model_profile].default }}"
+openclaw_artist_model: "{{ openclaw_model_profiles[openclaw_model_profile].default }}"
+openclaw_tutor_model: "{{ openclaw_model_profiles[openclaw_model_profile].default }}"
+openclaw_explorer_model: "{{ openclaw_model_profiles[openclaw_model_profile].default }}"
+openclaw_marketer_model: "{{ openclaw_model_profiles[openclaw_model_profile].default }}"
+openclaw_cfo_model: "{{ openclaw_model_profiles[openclaw_model_profile].reasoning }}"
+openclaw_maintainer_model: "{{ openclaw_model_profiles[openclaw_model_profile].code }}"
+openclaw_code_model: "{{ openclaw_model_profiles[openclaw_model_profile].code }}"
+openclaw_quick_model: "{{ openclaw_model_profiles[openclaw_model_profile].quick }}"
+openclaw_cheap_model: "{{ openclaw_model_profiles[openclaw_model_profile].quick }}"
+openclaw_messenger_model: "{{ openclaw_model_profiles[openclaw_model_profile].code }}"
 
 # --- Skills ---
 # Centralized list of all OpenClaw skills (used in 3 task loops: dirs, deploy, cleanup)
@@ -297,13 +325,13 @@ openclaw_failover_enabled: true
 openclaw_failover_retry_seconds: 900  # 15 min before retrying primary
 openclaw_failover_triggers: '["rate_limit", "auth_cooldown", "provider_unavailable", "timeout"]'
 
-# Fallback chains by model family
-# deepseek-v3-free primary → qwen3-coder → openai/gpt-4o-mini (direct)
-openclaw_default_fallbacks: '["custom-litellm/qwen3-coder", "openai/gpt-4o-mini"]'
-# qwen3-coder primary → deepseek-v3-free → openai/gpt-4o-mini (direct)
-openclaw_code_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
-# deepseek-r1-free primary → deepseek-v3-free → openai/gpt-4o-mini (direct)
-openclaw_reasoning_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
+# Fallback chains (resolved from active profile — each tier falls back differently)
+# eco:     free → free alt → openai direct
+# balanced: mid-tier → free → openai direct
+# premium: premium → mid-tier → free
+openclaw_default_fallbacks: "{{ openclaw_model_profiles[openclaw_model_profile].default_fallbacks }}"
+openclaw_code_fallbacks: "{{ openclaw_model_profiles[openclaw_model_profile].code_fallbacks }}"
+openclaw_reasoning_fallbacks: "{{ openclaw_model_profiles[openclaw_model_profile].reasoning_fallbacks }}"
 
 # Agent timeout per turn (seconds) — aborts if exceeded
 openclaw_agent_timeout: 300

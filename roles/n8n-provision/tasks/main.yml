@@ -60,7 +60,7 @@
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
-      set -o pipefail
+      set -euo pipefail
       docker exec {{ project_name }}_n8n sh -c '
         curl -sf -o /dev/null -w "%{http_code}" \
           -X POST http://localhost:5678/rest/owner/setup \
@@ -107,7 +107,7 @@
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
-      set -o pipefail
+      set -euo pipefail
       cat > /tmp/n8n-cred-pg.js << 'CREDSCRIPT'
       const http = require('http');
       const [email, pw, pgPass] = process.argv.slice(2);
@@ -215,7 +215,7 @@
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
-      set -o pipefail
+      set -euo pipefail
       PI_IP="{{ workstation_pi_tailscale_ip | default('') }}"
       if [ -z "$PI_IP" ]; then
         echo "SKIP: workstation_pi_tailscale_ip not configured"
@@ -223,7 +223,7 @@
       fi
       # Scan host key and add to n8n container known_hosts
       KNOWN_HOSTS=$(docker exec {{ project_name }}_n8n sh -c \
-        "ssh-keyscan -T 5 $PI_IP 2>/dev/null")
+        "ssh-keyscan -T 5 $PI_IP 2>/dev/null" || true)
       if [ -z "$KNOWN_HOSTS" ]; then
         echo "WARN: ssh-keyscan returned nothing for $PI_IP — container may not reach Pi yet"
         exit 0
@@ -310,8 +310,8 @@
       if [ -f "$CHECKSUM_DIR/{{ item.file }}.md5" ]; then
         OLD_MD5=$(cat "$CHECKSUM_DIR/{{ item.file }}.md5")
       fi
-      # Store checksum now — file is guaranteed to exist (md5sum would have failed otherwise)
-      echo "$NEW_MD5" > "$CHECKSUM_DIR/{{ item.file }}.md5"
+      # NOTE: Do NOT store checksum here — "Store workflow checksums" task handles this
+      # AFTER successful import. Writing here would mask import failures on next run.
       if [ "$NEW_MD5" = "$OLD_MD5" ]; then
         echo "UNCHANGED"
       else
@@ -384,12 +384,12 @@
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
-      set -o pipefail
+      set -euo pipefail
       WORKFLOW_NAME="{{ item.item.name }}"
 
-      # Get workflow ID from list
+      # Get workflow ID from list (grep -F returns 1 if not found, || true prevents set -e exit)
       WORKFLOW_ID=$(docker exec {{ project_name }}_n8n n8n list:workflow 2>/dev/null | \
-        grep -F "$WORKFLOW_NAME" | head -1 | cut -d'|' -f1 | xargs)
+        grep -F "$WORKFLOW_NAME" | head -1 | cut -d'|' -f1 | xargs || true)
 
       if [ -z "$WORKFLOW_ID" ]; then
         echo "NEW: Workflow '$WORKFLOW_NAME' does not exist yet"

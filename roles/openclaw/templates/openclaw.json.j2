@@ -112,7 +112,9 @@
 {# --- Swarm Mode: build allowAgents lists per agent (messenger + swarm graph extras) --- #}
 {% set _swarm = openclaw_swarm_enabled | default(false) %}
 {% set _sg = openclaw_swarm_graph | default({}) %}
-{% macro agent_allow(agent_key) %}[{{ (['"' + openclaw_agent_messenger_name + '"'] + (_sg[agent_key] | default([]) | map('regex_replace', '^(.*)$', '"\\1"') | list) if _swarm else ['"' + openclaw_agent_messenger_name + '"']) | join(', ') }}]{% endmacro %}
+{%- macro agent_allow(agent_key) -%}
+{{ ([openclaw_agent_messenger_name] + (_sg[agent_key] | default([])) if _swarm else [openclaw_agent_messenger_name]) | to_json }}
+{%- endmacro -%}
       {
         "id": "{{ openclaw_agent_builder_name }}",
         "model": {

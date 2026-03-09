@@ -51,7 +51,7 @@ openclaw_context_pruning_min_chars: 50000
 # Modes: "off" (no sandbox), "non-main" (sandbox subagents only), "all" (full isolation)
 openclaw_sandbox_mode: "non-main"
 openclaw_sandbox_image: "openclaw-sandbox:bookworm-slim"
-openclaw_sandbox_memory: "1g"
+openclaw_sandbox_memory: "512m"
 openclaw_sandbox_cpus: 1
 # Extra APT packages to install in sandbox (e.g., redis-tools for redis-cli)
 openclaw_sandbox_extra_packages:
@@ -350,8 +350,7 @@ openclaw_swarm_graph:
     - "{{ openclaw_agent_writer_name }}"       # Content creation for campaigns
     - "{{ openclaw_agent_artist_name }}"       # Visuals for campaigns
     - "{{ openclaw_agent_explorer_name }}"     # Market research
-  maintainer:
-    - "{{ openclaw_agent_builder_name }}"      # Fix issues found during health check
+  maintainer: []    # No lateral spawn — escalates to Concierge for fixes (prevents builder↔maintainer fork bomb cycle)
   cfo:
     - "{{ openclaw_agent_explorer_name }}"     # Research pricing/providers
 

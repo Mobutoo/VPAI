@@ -1973,3 +1973,59 @@ openclaw_heartbeat_enabled: false
 > Le rôle Ansible `roles/kaneo/` est conservé en archive mais désactivé dans `playbooks/site.yml`.
 > La DB Kaneo est conservée en lecture seule (`docker exec postgresql psql -U kaneo -d kaneo`).
 > Un backup final est disponible dans le répertoire backup Zerobyte.
+
+---
+
+## 52. OpenClaw — `agents.defaults.model` n'accepte que `{ primary }`
+
+**Symptome** : `agents.defaults.model: Invalid input` au demarrage, crash-loop.
+
+**Cause** : Le schéma `agents.defaults.model` accepte UNIQUEMENT `{ "primary": "model-id" }`.
+Les clés `fallbacks` et `failover` ne sont valides que dans les blocs per-agent (`agents.list[].model`).
+
+**Fix** : Retirer `fallbacks` et `failover` de `agents.defaults.model`. Les ajouter dans chaque
+`agents.list[].model` individuellement.
+
+**REX** : Les clés valides per-agent mais pas dans defaults :
+- `model.fallbacks` (array de model IDs)
+- `model.failover` (`{ enabled, retryPrimaryAfterSeconds, on }`)
+
+Les clés valides dans defaults ET per-agent :
+- `model.primary` (string)
+- `timeoutSeconds` (number)
+- `contextTokens`, `compaction`, `contextPruning`, etc.
+
+---
+
+## 53. OpenClaw — Circuit Breaker : cles config validees v2026.3.7
+
+**Contexte** : Phase 5 du plan d'amelioration — resilience et failover.
+
+**Cles VALIDES** (testees en prod) :
+
+| Clé | Niveau | Description |
+|-----|--------|-------------|
+| `agents.list[].model.fallbacks` | per-agent | Array de model IDs, essayes dans l'ordre |
+| `agents.list[].model.failover` | per-agent | `{ enabled, retryPrimaryAfterSeconds, on }` |
+| `agents.defaults.timeoutSeconds` | defaults | Timeout par turn agent (default 600s) |
+| `tools.loopDetection` | global | `{ enabled, warningThreshold, criticalThreshold, globalCircuitBreakerThreshold, historySize }` |
+| `channels.telegram.retry` | channel | `{ attempts, minDelayMs, maxDelayMs, jitter }` |
+
+**Cles INVALIDES** (crash-loop) :
+
+| Clé | Erreur |
+|-----|--------|
+| `agents.defaults.model.fallbacks` | `Invalid input` |
+| `agents.defaults.model.failover` | `Invalid input` |
+
+**Strategie fallback** :
+- deepseek-v3-free → qwen3-coder → openai/gpt-4o-mini (direct, bypass LiteLLM)
+- qwen3-coder → deepseek-v3-free → openai/gpt-4o-mini (direct)
+- deepseek-r1-free → deepseek-v3-free → openai/gpt-4o-mini (direct)
+
+Le dernier fallback utilise le provider `openai` direct (pas `custom-litellm`) pour survivre
+a un crash LiteLLM. Attention : les appels openai/ direct ne passent PAS par le budget tracking
+LiteLLM → surveiller dans le dashboard OpenAI.
+
+**Telegram retry** : Sans cette config, le long-polling Telegram meurt apres ~8 min sans
+auto-reconnexion. Avec `retry: { attempts: 5, jitter: 0.3 }`, operation continue 23h+.

@@ -23,13 +23,7 @@
       "workspace": "{{ openclaw_system_dir }}/workspace",
       "userTimezone": "{{ timezone }}",
       "model": {
-        "primary": "{{ openclaw_default_model }}",
-        "fallbacks": {{ openclaw_default_fallbacks }},
-        "failover": {
-          "enabled": {{ openclaw_failover_enabled | default(true) | lower }},
-          "retryPrimaryAfterSeconds": {{ openclaw_failover_retry_seconds | default(900) }},
-          "on": {{ openclaw_failover_triggers | default('["rate_limit", "auth_cooldown", "provider_unavailable", "timeout"]') }}
-        }
+        "primary": "{{ openclaw_default_model }}"
       },
       "sandbox": {
         "mode": "{{ openclaw_sandbox_mode | default('non-main') }}",

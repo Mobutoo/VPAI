@@ -212,6 +212,7 @@ openclaw_skills:
   - finance-personal
   - idea-planning
   - palais-bridge
+  - swarm-coordinator
 
 # Skills supprimés — Ansible les supprime du répertoire global sur le VPS
 # Ajouter ici les skills obsolètes pour nettoyage automatique
@@ -317,6 +318,42 @@ plane_agent_names:
   - "{{ openclaw_agent_messenger_name }}"
 
 plane_workspace_slug: "ewutelo"
+
+# --- Swarm Mode (multi-agent collaboration) ---
+# When enabled, agents can spawn each other directly (not just via concierge).
+# The inter-agent graph defines who can call whom — controlled, not open-bar.
+# Concierge remains the orchestrator but agents can collaborate laterally.
+openclaw_swarm_enabled: true
+
+# Max concurrent subagents per parent (raised from 4 for swarm tasks)
+openclaw_swarm_max_concurrent: 6
+
+# Archive idle subagent sessions after N minutes (frees memory)
+openclaw_swarm_archive_minutes: 90
+
+# Swarm coordination timeout (seconds) — fan-out tasks auto-cancel after this
+openclaw_swarm_coordination_timeout: 600
+
+# Inter-agent collaboration graph (who can spawn whom, beyond just messenger)
+# Only listed pairs are authorized — keeps security boundary tight.
+# Format: agent_id -> list of agents they can spawn (in addition to messenger)
+openclaw_swarm_graph:
+  builder:
+    - "{{ openclaw_agent_explorer_name }}"     # Research before coding
+    - "{{ openclaw_agent_maintainer_name }}"   # Check infra health post-deploy
+  writer:
+    - "{{ openclaw_agent_artist_name }}"       # Request illustrations for content
+    - "{{ openclaw_agent_explorer_name }}"     # Research for articles
+  artist:
+    - "{{ openclaw_agent_explorer_name }}"     # Reference images/inspiration
+  marketer:
+    - "{{ openclaw_agent_writer_name }}"       # Content creation for campaigns
+    - "{{ openclaw_agent_artist_name }}"       # Visuals for campaigns
+    - "{{ openclaw_agent_explorer_name }}"     # Market research
+  maintainer:
+    - "{{ openclaw_agent_builder_name }}"      # Fix issues found during health check
+  cfo:
+    - "{{ openclaw_agent_explorer_name }}"     # Research pricing/providers
 
 # --- Circuit Breaker & Model Failover ---
 # When primary model fails (rate limit, auth, timeout), try fallbacks in order.

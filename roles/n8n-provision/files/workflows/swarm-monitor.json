@@ -1,0 +1,143 @@
+{
+  "name": "OpenClaw — Swarm Monitor (10min)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/10 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "swm-0001-0000-0000-0000-000000000001",
+      "name": "Cron 10min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "swarm-status",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "swm-0001-0000-0000-0000-000000000002",
+      "name": "Webhook status",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Query Loki for SWARM_TASK and sessions_spawn activity in the last 10 min\nconst LOKI_URL = 'http://loki:3100';\nconst WINDOW_MIN = 10;\nconst END = new Date();\nconst START = new Date(END.getTime() - WINDOW_MIN * 60 * 1000);\n\n// Query 1: SWARM_TASK tagged messages (structured swarm patterns)\nconst swarmQuery = '{container=\"javisi_openclaw\"} |~ `SWARM_TASK` !~ `handshake timeout`';\n// Query 2: sessions_spawn calls (all agent spawning activity)\nconst spawnQuery = '{container=\"javisi_openclaw\"} |~ `sessions_spawn|subagent.started|subagent.finished|agent.spawn` !~ `handshake timeout`';\n\nasync function queryLoki(query) {\n  const url = `${LOKI_URL}/loki/api/v1/query_range?query=${encodeURIComponent(query)}&start=${Math.floor(START.getTime() / 1000)}&end=${Math.floor(END.getTime() / 1000)}&limit=200`;\n  const resp = await fetch(url);\n  if (!resp.ok) return [];\n  const data = await resp.json();\n  const results = data?.data?.result || [];\n  const lines = [];\n  for (const stream of results) {\n    for (const [ts, line] of (stream.values || [])) {\n      lines.push({\n        timestamp: new Date(parseInt(ts.slice(0, 13))).toISOString(),\n        line: line.slice(0, 500)\n      });\n    }\n  }\n  return lines;\n}\n\nconst [swarmLines, spawnLines] = await Promise.all([\n  queryLoki(swarmQuery),\n  queryLoki(spawnQuery)\n]);\n\n// Parse swarm patterns from tagged messages\nconst swarmTasks = {};\nfor (const entry of swarmLines) {\n  const match = entry.line.match(/SWARM_TASK\\s+(fan-out|pipeline|broadcast|loop):([\\w-]+)/);\n  if (match) {\n    const [, pattern, id] = match;\n    if (!swarmTasks[id]) swarmTasks[id] = { pattern, id, count: 0, firstSeen: entry.timestamp, lastSeen: entry.timestamp };\n    swarmTasks[id].count++;\n    swarmTasks[id].lastSeen = entry.timestamp;\n  }\n}\n\n// Count agent spawn activity by agent name\nconst agentActivity = {};\nfor (const entry of spawnLines) {\n  // Try to extract agent IDs from spawn logs\n  const agentMatch = entry.line.match(/(?:agentId|agent)[\"':\\s]+([a-z_-]+)/i);\n  if (agentMatch) {\n    const agent = agentMatch[1];\n    agentActivity[agent] = (agentActivity[agent] || 0) + 1;\n  }\n}\n\nreturn [{ json: {\n  window_minutes: WINDOW_MIN,\n  timestamp: END.toISOString(),\n  swarm_tasks: Object.values(swarmTasks),\n  swarm_task_count: Object.keys(swarmTasks).length,\n  spawn_events: spawnLines.length,\n  agent_activity: agentActivity,\n  total_swarm_lines: swarmLines.length,\n  total_spawn_lines: spawnLines.length\n}}];"
+      },
+      "id": "swm-0001-0000-0000-0000-000000000003",
+      "name": "Query Loki swarm activity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Detect anomalies in swarm activity\nconst data = $input.first().json;\nconst alerts = [];\n\n// Check for stuck swarm tasks (same task seen >20 times in 10min = possible loop)\nfor (const task of (data.swarm_tasks || [])) {\n  if (task.count > 20) {\n    alerts.push({\n      severity: 'critical',\n      type: 'swarm_loop',\n      message: `Swarm task ${task.pattern}:${task.id} has ${task.count} events in ${data.window_minutes}min — possible infinite loop`,\n      task\n    });\n  } else if (task.count > 10) {\n    alerts.push({\n      severity: 'warning',\n      type: 'swarm_high_activity',\n      message: `Swarm task ${task.pattern}:${task.id} has ${task.count} events in ${data.window_minutes}min — high activity`,\n      task\n    });\n  }\n}\n\n// Check for excessive spawn events (>30 in 10min = token burn risk)\nif (data.spawn_events > 30) {\n  alerts.push({\n    severity: 'warning',\n    type: 'excessive_spawns',\n    message: `${data.spawn_events} agent spawn events in ${data.window_minutes}min — high token consumption risk`\n  });\n}\n\n// Check for single agent domination (>60% of all spawns)\nconst totalSpawns = Object.values(data.agent_activity || {}).reduce((a, b) => a + b, 0);\nfor (const [agent, count] of Object.entries(data.agent_activity || {})) {\n  if (totalSpawns > 5 && count / totalSpawns > 0.6) {\n    alerts.push({\n      severity: 'info',\n      type: 'agent_domination',\n      message: `Agent '${agent}' accounts for ${Math.round(count/totalSpawns*100)}% of spawn activity (${count}/${totalSpawns})`\n    });\n  }\n}\n\nconst hasAlerts = alerts.some(a => a.severity === 'critical' || a.severity === 'warning');\n\n// Update staticData with latest stats for status endpoint\nconst $static = $getWorkflowStaticData('global');\n$static.lastCheck = data.timestamp;\n$static.lastStats = {\n  swarm_tasks: data.swarm_task_count,\n  spawn_events: data.spawn_events,\n  agent_activity: data.agent_activity,\n  alerts_count: alerts.length\n};\n\nreturn [{ json: { ...data, alerts, hasAlerts, alert_count: alerts.length } }];"
+      },
+      "id": "swm-0001-0000-0000-0000-000000000004",
+      "name": "Detect anomalies",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-alerts",
+              "leftValue": "={{ $json.hasAlerts }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "swm-0001-0000-0000-0000-000000000005",
+      "name": "Has alerts?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Format Telegram alert for swarm anomalies\nconst data = $input.first().json;\nconst alerts = data.alerts || [];\nconst critical = alerts.filter(a => a.severity === 'critical');\nconst warnings = alerts.filter(a => a.severity === 'warning');\n\nlet msg = '';\nif (critical.length > 0) {\n  msg += '🚨 <b>SWARM CRITICAL</b>\\n';\n  for (const a of critical) msg += `• ${a.message}\\n`;\n}\nif (warnings.length > 0) {\n  msg += '⚠️ <b>Swarm Warnings</b>\\n';\n  for (const a of warnings) msg += `• ${a.message}\\n`;\n}\n\nmsg += `\\n📊 <b>Stats ${data.window_minutes}min</b>: ${data.swarm_task_count} swarm tasks, ${data.spawn_events} spawn events`;\n\n// Top agents\nconst sorted = Object.entries(data.agent_activity || {}).sort((a, b) => b[1] - a[1]).slice(0, 5);\nif (sorted.length > 0) {\n  msg += '\\n🤖 Top agents: ' + sorted.map(([a, c]) => `${a}(${c})`).join(', ');\n}\n\nreturn [{ json: { message: msg } }];"
+      },
+      "id": "swm-0001-0000-0000-0000-000000000006",
+      "name": "Format alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id",    "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text",       "value": "={{ $json.message }}" },
+            { "name": "parse_mode", "value": "HTML" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "swm-0001-0000-0000-0000-000000000007",
+      "name": "Telegram swarm alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Return swarm status for webhook endpoint\nconst $static = $getWorkflowStaticData('global');\nconst stats = $static.lastStats || {};\nreturn [{ json: {\n  status: 'ok',\n  lastCheck: $static.lastCheck || null,\n  swarm_tasks: stats.swarm_tasks || 0,\n  spawn_events: stats.spawn_events || 0,\n  agent_activity: stats.agent_activity || {},\n  alerts_count: stats.alerts_count || 0\n}}];"
+      },
+      "id": "swm-0001-0000-0000-0000-000000000008",
+      "name": "Build status response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 500]
+    }
+  ],
+  "connections": {
+    "Cron 10min":              { "main": [[{ "node": "Query Loki swarm activity", "type": "main", "index": 0 }]] },
+    "Webhook status":          { "main": [[{ "node": "Build status response",     "type": "main", "index": 0 }]] },
+    "Query Loki swarm activity": { "main": [[{ "node": "Detect anomalies",        "type": "main", "index": 0 }]] },
+    "Detect anomalies":        { "main": [[{ "node": "Has alerts?",               "type": "main", "index": 0 }]] },
+    "Has alerts?": {
+      "main": [
+        [{ "node": "Format alert",    "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Format alert":            { "main": [[{ "node": "Telegram swarm alert",      "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "openclaw" }, { "name": "swarm" }, { "name": "monitoring" }],
+  "triggerCount": 2,
+  "updatedAt": "2026-03-09T00:00:00.000Z",
+  "versionId": "1"
+}

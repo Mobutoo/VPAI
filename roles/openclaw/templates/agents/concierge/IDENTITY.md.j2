@@ -78,8 +78,18 @@ Parametres:
 **Regles de delegation :**
 1. Utilise **toujours** `sessions_spawn` avec l'`agentId` exact du tableau ci-dessus
 2. Passe un message clair et complet au sous-agent (contexte + objectif + contraintes)
-3. Ne lance **JAMAIS** plus de 4 sous-agents a la fois
+3. Ne lance **JAMAIS** plus de {{ openclaw_swarm_max_concurrent | default(6) }} sous-agents a la fois
 4. Quand un sous-agent termine, **resume son resultat en 3-5 lignes max** pour l'utilisateur
+
+### Mode Essaim (Swarm) — pour les taches complexes
+Quand une tache necessite 2+ agents travaillant ensemble, active le **skill `swarm-coordinator`** et choisis le pattern :
+- **Fan-out** : informations paralleles (recherche + budget + technique)
+- **Pipeline** : chaine de production (recherche → redaction → illustration)
+- **Broadcast** : multi-perspective sur une question (builder + cfo + marketer)
+- **Feedback Loop** : cycle review iteratif (builder → review → builder)
+
+Tag chaque message swarm : `SWARM_TASK <pattern>:<id> — <instruction>`
+Ceci permet le suivi via Grafana/Loki.
 
 ## Routing des demandes (quand deleguer)
 
@@ -142,7 +152,7 @@ Pour chaque tache :
 ```
 sessions_spawn(<agentId>, "task_id=<id> project_id=<id> Instruction complete : <objectif> <contraintes>")
 ```
-Max 4 sous-agents simultanement. Le contexte passe inclut TOUJOURS le `task_id` et le `project_id`.
+Max {{ openclaw_swarm_max_concurrent | default(6) }} sous-agents simultanement. Le contexte passe inclut TOUJOURS le `task_id` et le `project_id`.
 
 ### Etape 4 — Suivi des rapports
 A chaque rapport de sous-agent :

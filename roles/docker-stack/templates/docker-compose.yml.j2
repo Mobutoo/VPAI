@@ -109,6 +109,7 @@ services:
       - {{ openclaw_state_dir }}/memory:{{ openclaw_system_dir }}/memory
       - {{ openclaw_state_dir }}/sandbox:{{ openclaw_system_dir }}/sandbox
       - {{ openclaw_state_dir }}/agents:{{ openclaw_system_dir }}/agents
+      - {{ openclaw_state_dir }}/telegram:{{ openclaw_system_dir }}/telegram
 {% else %}
       - /opt/{{ project_name }}/data/openclaw:/home/node/.openclaw
 {% endif %}

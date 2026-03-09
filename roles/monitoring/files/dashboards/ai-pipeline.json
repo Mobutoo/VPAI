@@ -26,6 +26,17 @@
       "title": "Qdrant Collections Detail",
       "type": "link",
       "url": "/d/qdrant-collections"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": true,
+      "title": "OpenClaw Agents",
+      "type": "link",
+      "url": "/d/openclaw-agents"
     }
   ],
   "panels": [

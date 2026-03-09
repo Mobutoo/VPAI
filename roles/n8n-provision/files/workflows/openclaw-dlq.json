@@ -1,0 +1,234 @@
+{
+  "name": "OpenClaw — Dead Letter Queue (5min)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/5 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000001",
+      "name": "Cron 5min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Query Loki for OpenClaw error logs from the last 5 minutes\n// Exclude WS handshake noise which is normal polling behavior\nconst LOKI_URL = 'http://loki:3100';\nconst QUERY = '{container=\"javisi_openclaw\"} |~ `(?i)(error|fail|crash|panic|EROFS|timeout|429|500|reject|rate.limit|circuit.break|fallback.exhaust)` !~ `handshake timeout` !~ `closed before connect`';\nconst END = new Date();\nconst START = new Date(END.getTime() - 5 * 60 * 1000);\n\nconst url = `${LOKI_URL}/loki/api/v1/query_range?query=${encodeURIComponent(QUERY)}&start=${Math.floor(START.getTime() / 1000)}&end=${Math.floor(END.getTime() / 1000)}&limit=100`;\n\nconst resp = await fetch(url);\nif (!resp.ok) {\n  return [{ json: { errors: [], count: 0, lokiError: `HTTP ${resp.status}` } }];\n}\n\nconst data = await resp.json();\nconst results = data?.data?.result || [];\nconst errors = [];\n\nfor (const stream of results) {\n  for (const [ts, line] of (stream.values || [])) {\n    errors.push({\n      timestamp: new Date(parseInt(ts.slice(0, 13))).toISOString(),\n      line: line.slice(0, 500),\n      labels: stream.stream\n    });\n  }\n}\n\nreturn [{ json: { errors, count: errors.length } }];"
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000002",
+      "name": "Query Loki errors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-has-errors",
+              "leftValue": "={{ $json.count }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000003",
+      "name": "Has errors?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { errors } = $input.first().json;\nconst crypto = require('crypto');\n\n// Get DLQ state from staticData\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.dlq) staticData.dlq = {};\nif (!staticData.stats) staticData.stats = { totalProcessed: 0, totalNew: 0, lastRun: null };\n\n// Classification rules\nfunction classify(line) {\n  const lower = line.toLowerCase();\n  if (lower.match(/crash|panic|fatal|segfault|oom/)) return 'critical';\n  if (lower.match(/429|rate.limit|budget|circuit.break|fallback.exhaust/)) return 'high';\n  if (lower.match(/timeout|500|fail|reject/)) return 'high';\n  if (lower.match(/error|erofs|warn/)) return 'medium';\n  return 'low';\n}\n\n// Deduplicate: hash the error line (stripped of timestamps and UUIDs)\nfunction hashError(line) {\n  const normalized = line\n    .replace(/\\d{4}-\\d{2}-\\d{2}T[\\d:.+Z-]+/g, 'TS')\n    .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, 'UUID')\n    .replace(/conn=[\\w-]+/g, 'conn=X')\n    .trim();\n  return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);\n}\n\nconst newErrors = [];\nconst now = Date.now();\nconst TTL = 60 * 60 * 1000; // 1 hour dedup window\n\n// Clean expired entries\nfor (const [hash, entry] of Object.entries(staticData.dlq)) {\n  if (now - entry.lastSeen > TTL) {\n    delete staticData.dlq[hash];\n  }\n}\n\nfor (const err of errors) {\n  const hash = hashError(err.line);\n  const severity = classify(err.line);\n\n  if (staticData.dlq[hash]) {\n    // Already seen — increment count\n    staticData.dlq[hash].count += 1;\n    staticData.dlq[hash].lastSeen = now;\n  } else {\n    // New error — add to DLQ\n    staticData.dlq[hash] = {\n      firstSeen: now,\n      lastSeen: now,\n      count: 1,\n      severity,\n      sample: err.line.slice(0, 300)\n    };\n    newErrors.push({ hash, severity, line: err.line, timestamp: err.timestamp });\n  }\n}\n\n// Stats\nconst dlqSize = Object.keys(staticData.dlq).length;\nconst criticalCount = Object.values(staticData.dlq).filter(e => e.severity === 'critical').length;\nconst highCount = Object.values(staticData.dlq).filter(e => e.severity === 'high').length;\nconst mediumCount = Object.values(staticData.dlq).filter(e => e.severity === 'medium').length;\n\nstaticData.stats.totalProcessed += errors.length;\nstaticData.stats.totalNew += newErrors.length;\nstaticData.stats.lastRun = new Date().toISOString();\n\nreturn [{ json: {\n  newErrors,\n  newCount: newErrors.length,\n  dlqSize,\n  criticalCount,\n  highCount,\n  mediumCount,\n  stats: staticData.stats\n}}];"
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000004",
+      "name": "Classify & deduplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-has-new",
+              "leftValue": "={{ $json.newCount }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000005",
+      "name": "New errors?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1140, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { newErrors, dlqSize, criticalCount, highCount, mediumCount } = $input.first().json;\n\nconst sevEmoji = { critical: '🔴', high: '🟠', medium: '🟡', low: '⚪' };\nconst lines = [];\n\n// Header\nif (criticalCount > 0) {\n  lines.push('🚨 <b>DLQ CRITICAL</b> — OpenClaw');\n} else if (highCount > 0) {\n  lines.push('⚠️ <b>DLQ Alert</b> — OpenClaw');\n} else {\n  lines.push('ℹ️ <b>DLQ Update</b> — OpenClaw');\n}\nlines.push('');\n\n// New errors summary\nlines.push(`<b>${newErrors.length}</b> nouvelle(s) erreur(s) detectee(s):`);\nlines.push('');\n\nfor (const err of newErrors.slice(0, 5)) {\n  const emoji = sevEmoji[err.severity] || '⚪';\n  const shortLine = err.line.length > 120 ? err.line.slice(0, 120) + '...' : err.line;\n  lines.push(`${emoji} [${err.severity.toUpperCase()}] <code>${shortLine}</code>`);\n}\n\nif (newErrors.length > 5) {\n  lines.push(`... et ${newErrors.length - 5} autre(s)`);\n}\n\n// DLQ depth\nlines.push('');\nlines.push(`📊 DLQ depth: ${dlqSize} (🔴${criticalCount} 🟠${highCount} 🟡${mediumCount})`);\n\nreturn [{ json: { message: lines.join('\\n'), shouldAlert: criticalCount > 0 || highCount > 0 } }];"
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000006",
+      "name": "Format alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-should-alert",
+              "leftValue": "={{ $json.shouldAlert }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000007",
+      "name": "Severity alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1580, 100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id", "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text", "value": "={{ $json.message }}" },
+            { "name": "parse_mode", "value": "HTML" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000008",
+      "name": "Telegram DLQ alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1800, 40]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Medium-only: log silently, no Telegram alert\nreturn [{ json: { status: 'logged', message: 'Medium-severity errors logged to DLQ, no alert sent' } }];"
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000009",
+      "name": "Log only (medium)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// No new errors — just update stats silently\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.stats) staticData.stats = { totalProcessed: 0, totalNew: 0, lastRun: null };\nstaticData.stats.lastRun = new Date().toISOString();\nreturn [{ json: { status: 'clean', dlqSize: Object.keys(staticData.dlq || {}).length } }];"
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000010",
+      "name": "No new errors",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// No errors at all in the last 5 min\nconst staticData = $getWorkflowStaticData('global');\nif (!staticData.stats) staticData.stats = { totalProcessed: 0, totalNew: 0, lastRun: null };\nstaticData.stats.lastRun = new Date().toISOString();\nreturn [{ json: { status: 'healthy', message: 'No errors in OpenClaw logs' } }];"
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000011",
+      "name": "All clear",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 420]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "dlq-status",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000012",
+      "name": "DLQ Status Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 560]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Return DLQ status for Grafana or external monitoring\nconst staticData = $getWorkflowStaticData('global');\nconst dlq = staticData.dlq || {};\nconst stats = staticData.stats || { totalProcessed: 0, totalNew: 0, lastRun: null };\n\nconst entries = Object.entries(dlq).map(([hash, e]) => ({\n  hash,\n  severity: e.severity,\n  count: e.count,\n  sample: e.sample,\n  firstSeen: new Date(e.firstSeen).toISOString(),\n  lastSeen: new Date(e.lastSeen).toISOString()\n}));\n\n// Sort by severity then count\nconst sevOrder = { critical: 0, high: 1, medium: 2, low: 3 };\nentries.sort((a, b) => (sevOrder[a.severity] - sevOrder[b.severity]) || (b.count - a.count));\n\nconst critical = entries.filter(e => e.severity === 'critical').length;\nconst high = entries.filter(e => e.severity === 'high').length;\nconst medium = entries.filter(e => e.severity === 'medium').length;\n\nreturn [{ json: {\n  dlqSize: entries.length,\n  critical,\n  high,\n  medium,\n  entries: entries.slice(0, 20),\n  stats,\n  timestamp: new Date().toISOString()\n}}];"
+      },
+      "id": "dlq-0001-0000-0000-0000-000000000013",
+      "name": "Build DLQ status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 560]
+    }
+  ],
+  "connections": {
+    "Cron 5min": { "main": [[{ "node": "Query Loki errors", "type": "main", "index": 0 }]] },
+    "Query Loki errors": { "main": [[{ "node": "Has errors?", "type": "main", "index": 0 }]] },
+    "Has errors?": {
+      "main": [
+        [{ "node": "Classify & deduplicate", "type": "main", "index": 0 }],
+        [{ "node": "All clear", "type": "main", "index": 0 }]
+      ]
+    },
+    "Classify & deduplicate": { "main": [[{ "node": "New errors?", "type": "main", "index": 0 }]] },
+    "New errors?": {
+      "main": [
+        [{ "node": "Format alert", "type": "main", "index": 0 }],
+        [{ "node": "No new errors", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format alert": { "main": [[{ "node": "Severity alert?", "type": "main", "index": 0 }]] },
+    "Severity alert?": {
+      "main": [
+        [{ "node": "Telegram DLQ alert", "type": "main", "index": 0 }],
+        [{ "node": "Log only (medium)", "type": "main", "index": 0 }]
+      ]
+    },
+    "DLQ Status Webhook": { "main": [[{ "node": "Build DLQ status", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": {
+    "global": {
+      "dlq": {},
+      "stats": { "totalProcessed": 0, "totalNew": 0, "lastRun": null }
+    }
+  },
+  "tags": [{ "name": "monitoring" }, { "name": "dlq" }, { "name": "openclaw" }],
+  "triggerCount": 2,
+  "updatedAt": "2026-03-09T00:00:00.000Z",
+  "versionId": "1"
+}

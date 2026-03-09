@@ -120,6 +120,84 @@ groups:
         labels:
           severity: critical
 
+      - uid: openclaw-crash-loop
+        title: "OpenClaw container restart loop"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: VictoriaMetrics
+            model:
+              expr: "changes(container_start_time_seconds{name=\"javisi_openclaw\"}[15m])"
+              intervalMs: 30000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 900
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [2]
+        for: 0s
+        annotations:
+          summary: "OpenClaw container has restarted more than 2 times in 15 minutes — possible crash loop"
+          dashboard_uid: "openclaw-agents"
+        labels:
+          severity: critical
+          service: openclaw
+
+      - uid: openclaw-memory-high
+        title: "OpenClaw memory > 768MB for 5 min"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: VictoriaMetrics
+            model:
+              expr: "container_memory_usage_bytes{name=\"javisi_openclaw\"}"
+              intervalMs: 30000
+              maxDataPoints: 43200
+          - refId: B
+            relativeTimeRange:
+              from: 300
+              to: 0
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: gt
+                    params: [805306368]
+        for: 5m
+        annotations:
+          summary: "OpenClaw memory usage is above 768MB for 5 minutes — approaching 1GB limit"
+          dashboard_uid: "openclaw-agents"
+        labels:
+          severity: warning
+          service: openclaw
+
       - uid: container-restarts
         title: "Container restarts > 3 in 15 min"
         condition: C

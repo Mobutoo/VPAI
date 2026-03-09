@@ -460,6 +460,222 @@
     {
       "collapsed": false,
       "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "id": 104,
+      "title": "Dead Letter Queue",
+      "type": "row"
+    },
+    {
+      "title": "DLQ — Error Rate by Severity",
+      "description": "Rate of errors by severity class (critical/high/medium) — same patterns as DLQ workflow",
+      "type": "timeseries",
+      "id": 40,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "loki", "uid": "Loki" },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({container=\"javisi_openclaw\"} |~ `(?i)(crash|panic|fatal|oom)` !~ `handshake timeout` [$__interval]))",
+          "legendFormat": "🔴 Critical",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(count_over_time({container=\"javisi_openclaw\"} |~ `(?i)(429|rate.limit|timeout|500|fail|reject|circuit.break)` !~ `handshake timeout` !~ `closed before connect` [$__interval]))",
+          "legendFormat": "🟠 High",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(count_over_time({container=\"javisi_openclaw\"} |~ `(?i)(error|EROFS|warn)` !~ `(?i)(crash|panic|fatal|oom|429|rate.limit|timeout|500|fail|reject)` !~ `handshake timeout` !~ `closed before connect` [$__interval]))",
+          "legendFormat": "🟡 Medium",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "linear",
+            "fillOpacity": 70,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true,
+            "lineWidth": 1,
+            "stacking": { "mode": "normal", "group": "A" },
+            "axisPlacement": "auto",
+            "thresholdsStyle": { "mode": "off" }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "🔴 Critical" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "🟠 High" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "🟡 Medium" },
+            "properties": [
+              { "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["sum", "mean", "max"] }
+      }
+    },
+    {
+      "title": "DLQ — Cumulative Error Count (24h)",
+      "description": "Running total of DLQ-eligible errors over 24 hours by severity",
+      "type": "stat",
+      "id": 41,
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 24 },
+      "datasource": { "type": "loki", "uid": "Loki" },
+      "targets": [
+        {
+          "expr": "count_over_time({container=\"javisi_openclaw\"} |~ `(?i)(crash|panic|fatal|oom)` !~ `handshake timeout` [24h])",
+          "legendFormat": "Critical",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "color": { "mode": "thresholds" },
+          "displayName": "🔴 Critical (24h)"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "DLQ — High Errors (24h)",
+      "description": "High severity errors in last 24 hours",
+      "type": "stat",
+      "id": 42,
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 24 },
+      "datasource": { "type": "loki", "uid": "Loki" },
+      "targets": [
+        {
+          "expr": "count_over_time({container=\"javisi_openclaw\"} |~ `(?i)(429|rate.limit|timeout|500|fail|reject|circuit.break)` !~ `handshake timeout` !~ `closed before connect` [24h])",
+          "legendFormat": "High",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 10 }
+            ]
+          },
+          "color": { "mode": "thresholds" },
+          "displayName": "🟠 High (24h)"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "DLQ — Medium Errors (24h)",
+      "description": "Medium severity errors in last 24 hours",
+      "type": "stat",
+      "id": 43,
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 24 },
+      "datasource": { "type": "loki", "uid": "Loki" },
+      "targets": [
+        {
+          "expr": "count_over_time({container=\"javisi_openclaw\"} |~ `(?i)(error|EROFS|warn)` !~ `(?i)(crash|panic|fatal|oom|429|rate.limit|timeout|500|fail|reject)` !~ `handshake timeout` !~ `closed before connect` [24h])",
+          "legendFormat": "Medium",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 5 },
+              { "color": "orange", "value": 20 }
+            ]
+          },
+          "color": { "mode": "thresholds" },
+          "displayName": "🟡 Medium (24h)"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "title": "DLQ — Error Details",
+      "description": "DLQ-eligible error log lines (critical + high severity only)",
+      "type": "logs",
+      "id": 44,
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 28 },
+      "datasource": { "type": "loki", "uid": "Loki" },
+      "targets": [
+        {
+          "expr": "{container=\"javisi_openclaw\"} |~ `(?i)(crash|panic|fatal|oom|429|rate.limit|timeout|500|fail|reject|circuit.break)` !~ `handshake timeout` !~ `closed before connect`",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "sortOrder": "Descending",
+        "dedupStrategy": "signature"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 32 },
       "id": 103,
       "title": "Container Resources",
       "type": "row"
@@ -469,7 +685,7 @@
       "description": "OpenClaw container CPU usage trend",
       "type": "timeseries",
       "id": 30,
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
       "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "targets": [
         {
@@ -514,7 +730,7 @@
       "description": "OpenClaw container RAM usage trend with limit line",
       "type": "timeseries",
       "id": 31,
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
       "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "targets": [
         {
@@ -565,7 +781,7 @@
       "description": "OpenClaw container network traffic (RX/TX)",
       "type": "timeseries",
       "id": 32,
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 41 },
       "datasource": { "type": "prometheus", "uid": "VictoriaMetrics" },
       "targets": [
         {
@@ -614,7 +830,7 @@
       "description": "Complete OpenClaw log output (excluding WS handshake noise)",
       "type": "logs",
       "id": 33,
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 41 },
       "datasource": { "type": "loki", "uid": "Loki" },
       "targets": [
         {

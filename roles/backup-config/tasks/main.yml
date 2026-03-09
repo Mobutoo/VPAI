@@ -47,7 +47,7 @@
     dest: "/opt/{{ project_name }}/scripts/pre-backup.sh"
     owner: "{{ prod_user }}"
     group: "{{ prod_user }}"
-    mode: "0750"
+    mode: "0700"
   become: true
 
 # === CLEANUP SCRIPT ===
@@ -58,7 +58,7 @@
     dest: "/opt/{{ project_name }}/scripts/backup-cleanup.sh"
     owner: "{{ prod_user }}"
     group: "{{ prod_user }}"
-    mode: "0750"
+    mode: "0700"
   become: true
 
 # === CRON JOBS ===

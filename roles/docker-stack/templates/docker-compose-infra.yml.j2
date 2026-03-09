@@ -20,10 +20,8 @@ services:
       - SETUID
       - DAC_OVERRIDE
       - FOWNER
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: "{{ postgresql_password }}"
-      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale={{ locale | regex_replace('_', '-') | regex_replace('\..*', '') }} --locale=C"
+    env_file:
+      - /opt/{{ project_name }}/configs/postgresql/postgresql.env
     volumes:
       - /opt/{{ project_name }}/data/postgresql:/var/lib/postgresql
       - /opt/{{ project_name }}/configs/postgresql/postgresql.conf:/etc/postgresql/postgresql.conf:ro
@@ -92,8 +90,8 @@ services:
       - SETUID
       - DAC_OVERRIDE
       - FOWNER
-    environment:
-      QDRANT__SERVICE__API_KEY: "{{ qdrant_api_key }}"
+    env_file:
+      - /opt/{{ project_name }}/configs/qdrant/qdrant.env
     volumes:
       - /opt/{{ project_name }}/data/qdrant/storage:/qdrant/storage
       - /opt/{{ project_name }}/data/qdrant/snapshots:/qdrant/snapshots

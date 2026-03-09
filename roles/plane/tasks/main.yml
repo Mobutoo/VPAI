@@ -39,3 +39,13 @@
     group: "{{ prod_user }}"
   notify: Restart plane stack
   tags: [plane]
+
+- name: Deploy Plane MinIO env file
+  ansible.builtin.template:
+    src: plane-minio.env.j2
+    dest: "{{ plane_config_dir }}/plane-minio.env"
+    mode: "0600"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+  notify: Restart plane stack
+  tags: [plane]

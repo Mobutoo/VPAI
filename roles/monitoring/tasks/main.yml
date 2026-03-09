@@ -93,6 +93,16 @@
   become: true
   notify: Restart grafana stack
 
+- name: Deploy Grafana env file
+  ansible.builtin.template:
+    src: grafana.env.j2
+    dest: "{{ grafana_config_dir }}/grafana.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart grafana stack
+
 - name: Deploy Grafana dashboard provisioning config
   ansible.builtin.template:
     src: grafana/provisioning/dashboards.yaml.j2

@@ -282,9 +282,9 @@ couchdb_memory_limit: "512M"
 obsidian_git_repo: "git@github-seko:Mobutoo/obsidian-vault.git"
 # Limite de messages parsés par session .jsonl → note Obsidian
 obsidian_collector_max_session_messages: 20
-# Passer à true pour basculer CouchDB en VPN-only (nécessite WireGuard iOS)
-# Voir ARCHITECTURE.md section "Basculer en VPN-only" pour la procédure
-couchdb_vpn_enforce: false
+# SECURITY: CouchDB VPN-only — protège contre brute-force et vulns CouchDB
+# Obsidian sync iOS nécessite Tailscale/WireGuard installé sur le device
+couchdb_vpn_enforce: true
 
 # === n8n-MCP Documentation Server (RPi, Docker HTTP/SSE) ===
 # Docs-only mode : SQLite embarqué, zéro requête web, zéro N8N_API_URL

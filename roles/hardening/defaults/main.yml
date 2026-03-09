@@ -58,7 +58,7 @@ hardening_ufw_tailscale_port: "41641"
 hardening_crowdsec_collections:
   - crowdsecurity/linux
   - crowdsecurity/sshd
-  - crowdsecurity/nginx
+  - crowdsecurity/caddy
   - crowdsecurity/http-cve
 
 # --- Unattended upgrades ---

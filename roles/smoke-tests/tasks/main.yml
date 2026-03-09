@@ -17,7 +17,7 @@
     dest: "{{ smoke_test_script_path }}"
     owner: "{{ prod_user }}"
     group: "{{ prod_user }}"
-    mode: "0750"
+    mode: "0700"
   become: true
 
 - name: Wait for Phase B services to finish health checks

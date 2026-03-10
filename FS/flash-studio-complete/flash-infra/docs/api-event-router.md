@@ -466,7 +466,7 @@ Create or update a client-to-Zammad-customer mapping. Requires admin API key.
 {
   "client_id": "client-42",
   "zammad_customer_id": 5,
-  "email": "client-42@clients.flash-studio.io",
+  "email": "client-42@clients.paultaffe.com",
   "name": "Client 42 — Acme Corp"
 }
 ```
@@ -484,7 +484,7 @@ Create or update a client-to-Zammad-customer mapping. Requires admin API key.
 {
   "client_id": "client-42",
   "zammad_customer_id": 5,
-  "email": "client-42@clients.flash-studio.io",
+  "email": "client-42@clients.paultaffe.com",
   "name": "Client 42 — Acme Corp"
 }
 ```
@@ -728,7 +728,7 @@ curl http://event-router:8092/api/tickets/client-42
 curl -X POST http://event-router:8092/api/client-customers \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <admin-api-key>" \
-  -d '{"client_id":"client-42","zammad_customer_id":5,"email":"client-42@clients.flash-studio.io","name":"Acme Corp"}'
+  -d '{"client_id":"client-42","zammad_customer_id":5,"email":"client-42@clients.paultaffe.com","name":"Acme Corp"}'
 
 # Get client-customer mapping
 curl http://event-router:8092/api/client-customers/client-42

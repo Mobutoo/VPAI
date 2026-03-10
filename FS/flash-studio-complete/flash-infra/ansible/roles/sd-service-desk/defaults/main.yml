@@ -2,7 +2,7 @@
 # sd-service-desk — defaults
 
 sd_project_name: service-desk
-sd_domain: jemeforme.ai
+sd_domain: paultaffe.com
 sd_deploy_dir: "/opt/{{ sd_project_name }}"
 
 # --- Service versions (pinned, NO latest) ---

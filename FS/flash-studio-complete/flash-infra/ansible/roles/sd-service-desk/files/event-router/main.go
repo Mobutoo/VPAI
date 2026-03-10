@@ -716,7 +716,7 @@ func sendBrevoEmail(to string, event Event) {
 	}
 
 	body, _ := json.Marshal(map[string]interface{}{
-		"sender":  map[string]string{"name": "Flash Studio", "email": "support@flash-studio.io"},
+		"sender":  map[string]string{"name": "Paul Taffe", "email": "noreply@paultaffe.com"},
 		"to":      []map[string]string{{"email": to}},
 		"subject": fmt.Sprintf("[%s] %s", strings.ToUpper(event.Type), event.Title),
 		"htmlContent": fmt.Sprintf("<h3>%s</h3><p>%s</p><p><em>Client: %s</em></p>",
@@ -1688,7 +1688,7 @@ func resolveZammadCustomer(ctx context.Context, clientID string) (int64, error) 
 		return 0, fmt.Errorf("Zammad not configured")
 	}
 
-	email := fmt.Sprintf("%s@clients.flash-studio.io", clientID)
+	email := fmt.Sprintf("%s@clients.paultaffe.com", clientID)
 
 	// Search in Zammad
 	customerID = searchZammadCustomer(ctx, zammadURL, token, email)

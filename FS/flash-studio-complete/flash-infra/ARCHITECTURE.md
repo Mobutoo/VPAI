@@ -124,24 +124,52 @@ VM Souveraine (CX33 — 4vCPU, 8GB, 80GB)
 │   └── restic              (BSD)     — Backups → S3
 ├── NetBird client (self-hosted, enrollment SSO ou setup key)
 ├── SOPS + age (secrets chiffrés)
+├── Caddy (reverse proxy, auto-TLS, routes base + custom)
+│   ├── /etc/caddy/Caddyfile           — Base (Ansible, read-only)
+│   └── /mnt/data/caddy/custom/*.caddy — Custom (client, via dashboard)
 └── flash-agent (Go binary)
     ├── Heartbeat → flash-master
     ├── Métriques → Prometheus
     ├── Auto-update compose
     ├── Backup trigger
-    └── Exec remote
+    ├── Exec remote
+    └── Caddy route manager (API pour le dashboard)
+```
+
+### DNS par client (créés au provisioning par Master API via OVH)
+
+```
+# Exemple pour le client "acme42" (IP Sovereign = 1.2.3.4)
+acme42.paultaffe.fr      A    1.2.3.4    # base domain → direct Sovereign
+*.acme42.paultaffe.fr    A    1.2.3.4    # wildcard sub-subdomains → direct Sovereign
+```
+
+Le trafic client va **directement** vers la VM Sovereign (pas via Gateway).
+Le wildcard `*.paultaffe.fr` sur la Gateway = catch-all parking page uniquement.
+
+### Domaines custom (gérés par le client via dashboard)
+
+Le client peut ajouter son propre nom de domaine (ex: `api.mycorp.com`)
+via le dashboard (`app.paultaffe.com` → section "Domaines").
+
+```
+1. Client ajoute "api.mycorp.com" dans le dashboard
+2. Dashboard → Master API → flash-agent (via NetBird)
+3. flash-agent écrit /mnt/data/caddy/custom/mycorp.caddy
+4. Caddy reload → certificat TLS auto-provisionné (Let's Encrypt)
+5. Le client configure son DNS : api.mycorp.com A <IP_SOVEREIGN>
 ```
 
 ### Ports exposés (via Caddy)
 
 | Service | Sous-domaine | Port interne |
 |---------|-------------|-------------|
-| Activepieces | `flow.domaine.tld` | 8080 |
-| OpenClaw | `agent.domaine.tld` | 3000 |
-| LiteLLM | `llm.domaine.tld` | 4000 |
-| Firefly III | `finance.domaine.tld` | 8082 |
-| Vaultwarden | `vault.domaine.tld` | 8081 |
-| Grafana | `monitor.domaine.tld` | 3001 |
+| Activepieces | `flow.{client_id}.paultaffe.fr` | 8080 |
+| OpenClaw | `agent.{client_id}.paultaffe.fr` | 3000 |
+| LiteLLM | `llm.{client_id}.paultaffe.fr` | 4000 |
+| Firefly III | `finance.{client_id}.paultaffe.fr` | 8082 |
+| Vaultwarden | `vault.{client_id}.paultaffe.fr` | 8081 |
+| Grafana | `monitor.{client_id}.paultaffe.fr` | 3001 |
 
 ---
 
@@ -389,19 +417,28 @@ flash-infra/
 Client paie (Stripe Checkout)
         │
         ▼
-Webhook Stripe → Activepieces workflow
+Webhook Stripe → Master API
         │
-        ├─► Hetzner API : créer VM Souveraine
-        ├─► Hetzner API : créer VM Production + Volume
-        ├─► DNS API : créer wildcard *.client.flash-studio.io
+        ├─► 1. Zitadel : créer user client (SSO)
+        ├─► 2. Hetzner API : créer VM Souveraine (IP fixe)
+        ├─► 3. Hetzner API : créer VM Production + Volume
+        ├─► 4. OVH DNS API :
+        │       acme42.paultaffe.fr      A  <IP_SOVEREIGN>
+        │       *.acme42.paultaffe.fr    A  <IP_SOVEREIGN>
+        ├─► 5. NetBird Management API :
+        │       POST /api/groups      → Group "client-acme42"
+        │       POST /api/policies    → client-acme42 ↔ infra (ALLOW)
+        │       POST /api/policies    → client-acme42 ↔ client-acme42 (ALLOW)
+        │       POST /api/setup-keys  → Setup key (single-use, 24h, auto-group)
+        │       PUT  /api/users/{id}  → User auto-groups = ["client-acme42"]
         │
         ▼
-Ansible playbook (déclenché par webhook)
+Ansible playbook (déclenché par Master)
         │
         ├─► Role common (SSH, users, firewall)
         ├─► Role docker
-        ├─► Role netbird-client
-        ├─► Role caddy
+        ├─► Role netbird-client (setup key du step 5)
+        ├─► Role caddy (Caddyfile base + import custom/*.caddy)
         ├─► Role sovereign-compose (docker-compose up)
         ├─► Role studio-compose (docker-compose up --profile=base,{plan})
         ├─► Role grafana
@@ -410,7 +447,7 @@ Ansible playbook (déclenché par webhook)
         ▼
 Post-deploy
         │
-        ├─► Email client : accès, URLs, guide démarrage
+        ├─► Email client : accès, URLs, install NetBird (devices perso), guide démarrage
         ├─► NocoDB : création entrée client
         ├─► Grafana : dashboard client activé
         ├─► OpenClaw : message bienvenue Telegram/Discord
@@ -418,6 +455,8 @@ Post-deploy
 ```
 
 **Temps total : < 30 minutes, zéro intervention humaine.**
+Le client a immédiatement accès à `acme42.paultaffe.fr` + tous les sub-subdomains.
+Il peut ajouter des domaines custom depuis son dashboard (`app.paultaffe.com`).
 
 ---
 

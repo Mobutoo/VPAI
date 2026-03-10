@@ -303,10 +303,12 @@ DNS interne : *.netbird.selfhosted (via NetBird Management, résolu par le clien
 | VPN | NetBird **self-hosted** (WireGuard, zero-trust, mesh, controller sur Master) |
 | TLS | Caddy auto-renew Let's Encrypt |
 | Firewall | Hetzner Cloud Firewall API (22, 80, 443 only) |
-| SSH | Clé ED25519 uniquement, no password |
+| SSH | User `studio` (pas root), clé ED25519 uniquement, no password |
+| Fichiers critiques | `chattr +i` (immutable) + AppArmor (MAC) — voir section 17 |
 | Docker | Non-root containers, read-only rootfs quand possible |
 | Backups | Restic (chiffré AES-256, dédupliqué, versionné) |
 | OS | Debian 13 (Trixie), unattended-upgrades |
+| Audit | `auditd` sur les fichiers protégés, logs → Event Router |
 
 ---
 
@@ -1019,3 +1021,355 @@ POST /api/studios (Master API)
 **Point critique :** les tunnels WireGuard P2P survivent à un crash du Management.
 Le Management est nécessaire uniquement pour les changements (ajout peer, modification
 policy). Le data plane est entièrement décentralisé.
+
+---
+
+## 17. Accès client — SSH, Console KVM, Rescue
+
+### Principe IaaS
+
+Flash Studio est un IaaS : le client a accès à son infrastructure. Il peut SSH,
+ouvrir une console KVM, et utiliser le mode Rescue. Mais le plan de gestion
+Flash Studio (flash-agent, NetBird, Caddy base, kernel) doit rester intègre.
+
+**Philosophie : le client peut tout casser chez lui, mais pas ce qui nous permet de le gérer.**
+
+### 3 modes d'accès
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Mode 1 : SSH (usage quotidien)                                   │
+│   User: studio (pas root)                                        │
+│   Via: NetBird VPN (IP privée) ou IP publique Sovereign          │
+│   Peut: docker, custom caddy, /mnt/data, apt install             │
+│   Ne peut pas: modifier flash-agent, netbird, caddy base, kernel │
+│                                                                   │
+│ Mode 2 : Console KVM (urgence)                                   │
+│   Via: Dashboard → Hetzner API → WebSocket VNC                   │
+│   Peut: tout ce que SSH fait + recovery si SSH cassé             │
+│   Même restrictions user studio (login console = user studio)    │
+│                                                                   │
+│ Mode 3 : Rescue (disaster recovery)                              │
+│   Via: Dashboard → Hetzner API → reboot rescue                   │
+│   Peut: accès disque complet, réparer boot, fsck                 │
+│   Risque: peut toucher les fichiers protégés (accès physique)    │
+│   Mitigation: détection par absence de heartbeat → alerte auto   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Mode 1 : SSH — User `studio`
+
+#### Permissions
+
+```
+User: studio
+Groups: docker, studio
+Shell: /bin/bash
+Home: /home/studio
+SSH: clé ED25519 uniquement (pas de mot de passe)
+```
+
+| Action | Autorisé | Comment |
+|--------|----------|---------|
+| Gérer ses containers | ✅ | `docker compose up/down/logs/exec` |
+| Installer des paquets | ✅ | `sudo apt install` (via sudoers whitelist) |
+| Lire/écrire ses données | ✅ | `/mnt/data/` (volume persistant) |
+| Configurer Caddy custom | ✅ | `/mnt/data/caddy/custom/*.caddy` |
+| Redémarrer un service Docker | ✅ | `sudo systemctl restart docker` |
+| Recharger Caddy | ✅ | `sudo systemctl reload caddy` |
+| Consulter les logs système | ✅ | `journalctl` (lecture) |
+| Modifier flash-agent | ❌ | Immutable (`chattr +i`) |
+| Modifier NetBird config | ❌ | Immutable (`chattr +i`) |
+| Modifier Caddy base | ❌ | Immutable (`chattr +i`) |
+| Modifier sshd_config | ❌ | Immutable (`chattr +i`) |
+| Stopper flash-agent | ❌ | AppArmor + systemd protection |
+| Devenir root | ❌ | Pas dans sudoers (sudo limité) |
+
+#### Sudoers whitelist (`/etc/sudoers.d/studio`)
+
+```
+# Commandes autorisées sans mot de passe
+studio ALL=(ALL) NOPASSWD: /usr/bin/apt, /usr/bin/apt-get
+studio ALL=(ALL) NOPASSWD: /usr/bin/docker, /usr/bin/docker-compose
+studio ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart docker
+studio ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload caddy
+studio ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart caddy
+studio ALL=(ALL) NOPASSWD: /usr/bin/journalctl
+
+# Explicitement interdit
+studio ALL=(ALL) !ALL
+```
+
+### Mode 2 : Console KVM (Hetzner VNC)
+
+Accessible depuis le dashboard client (`app.paultaffe.com` → section "Console").
+
+```
+Client clique "Console" dans le dashboard
+  │
+  ├─► Dashboard → Master API (POST /api/studios/{id}/console)
+  ├─► Master → Hetzner API (POST /servers/{hetzner_id}/request_console)
+  │     → Retourne : wss_url (WebSocket VNC, valide 1 min)
+  │     → Retourne : password (pour le login VNC)
+  │
+  ├─► Dashboard ouvre un iframe noVNC avec le wss_url
+  └─► Client voit la console de son serveur (comme devant l'écran)
+```
+
+**Cas d'usage :**
+- SSH cassé (mauvaise config réseau, firewall bloqué)
+- Boot qui ne finit pas (kernel panic, fsck interactif)
+- Reset mot de passe user studio (oublié sa clé SSH → recovery)
+
+**Sécurité :** la console ouvre un login standard → user `studio`. Le client
+n'a pas le mot de passe root. Les mêmes restrictions `chattr +i` s'appliquent.
+
+### Mode 3 : Rescue (Hetzner Rescue System)
+
+Le mode Rescue boot un Debian live en RAM. Le client peut monter les disques
+et réparer son système. C'est l'équivalent d'un CD de recovery.
+
+```
+Client clique "Rescue" dans le dashboard
+  │
+  ├─► Dashboard affiche un avertissement :
+  │   "Le mode Rescue donne un accès complet au disque.
+  │    Les services seront arrêtés pendant la durée du rescue.
+  │    Le monitoring sera suspendu."
+  │
+  ├─► Client confirme → Master API (POST /api/studios/{id}/rescue)
+  ├─► Master → Hetzner API :
+  │     POST /servers/{id}/actions/enable_rescue (ssh_keys: [client_key])
+  │     POST /servers/{id}/actions/reset (reboot)
+  │
+  ├─► Le serveur boot en rescue (Debian live, RAM)
+  ├─► Client SSH vers IP Sovereign → rescue@... (root dans le rescue)
+  │
+  │   # Monter le disque
+  │   mount /dev/sda1 /mnt
+  │   # Réparer
+  │   chroot /mnt
+  │   ...
+  │
+  └─► Client clique "Quitter Rescue" → Master reboot en mode normal
+      → flash-agent reprend → heartbeat → monitoring reprend
+```
+
+**Cas d'usage :**
+- Filesystem corrompu (fsck requis)
+- Kernel cassé (grub repair)
+- Récupération de données après mauvaise manipulation
+- Réinstallation de paquets systèmes cassés
+
+**Risque :** en rescue, le client a un accès root au disque. Il PEUT :
+- Retirer les flags `chattr +i` et modifier les fichiers protégés
+- Lire les credentials NetBird (setup key expirée, mais config locale)
+- Modifier le flash-agent
+
+**Mitigations :**
+
+| Risque | Mitigation |
+|--------|-----------|
+| Client modifie flash-agent | Heartbeat cesse → alerte auto → ticket auto "Agent tampered" |
+| Client casse NetBird | VPN down → Master le détecte (peer offline) → alerte |
+| Client modifie Caddy base | Ansible re-déploie au prochain update → écrase les modifications |
+| Client lit des secrets | Les secrets sensibles (Master JWT) sont en mémoire, pas sur disque |
+| Abus prolongé du rescue | Timeout rescue configurable (4h max) → reboot auto en mode normal |
+
+**Acceptation du risque :** le rescue mode est un accès physique virtuel.
+Comme tout IaaS (AWS, Hetzner, OVH), on accepte que le client a le contrôle
+ultime sur sa machine. Notre protection est basée sur la **détection**, pas
+l'empêchement absolu. Si le client sabote son agent, il perd son monitoring
+et son support — c'est un problème pour lui, pas pour nous.
+
+### Protection des fichiers Flash Studio
+
+#### Couche 1 : Immutable flags (`chattr +i`)
+
+```bash
+# Appliqué par Ansible au déploiement (rôle common)
+chattr +i /usr/local/bin/flash-agent
+chattr +i /etc/systemd/system/flash-agent.service
+chattr +i /etc/netbird/config.json
+chattr +i /etc/caddy/Caddyfile
+chattr +i /etc/ssh/sshd_config
+chattr +i /etc/sudoers.d/studio
+chattr +i /etc/apparmor.d/flash-agent
+
+# Les logs sont append-only (chattr +a)
+chattr +a /var/log/flash-agent.log
+```
+
+**Effet :** même root ne peut pas modifier ces fichiers sans d'abord
+exécuter `chattr -i`, ce qui est :
+- Impossible pour le user `studio` (pas dans sudoers pour chattr)
+- Détectable par `auditd` (règle sur les appels chattr)
+- Possible uniquement en rescue mode (risque accepté)
+
+#### Couche 2 : AppArmor (Mandatory Access Control)
+
+```
+# /etc/apparmor.d/flash-agent — profil AppArmor
+profile flash-agent /usr/local/bin/flash-agent {
+    # Réseau : peut contacter Master + Event Router via NetBird
+    network inet stream,
+    network inet dgram,
+
+    # Lecture système
+    /etc/flash-agent/** r,
+    /etc/netbird/config.json r,
+    /proc/stat r,
+    /proc/meminfo r,
+    /proc/diskstats r,
+    /sys/class/net/** r,
+
+    # Écriture limitée
+    /var/log/flash-agent.log a,          # append-only
+    /mnt/data/caddy/custom/** rw,        # gestion routes Caddy
+    /tmp/flash-agent-* rw,               # fichiers temporaires
+
+    # Docker socket (pour health checks containers)
+    /var/run/docker.sock rw,
+
+    # Deny explicite
+    deny /etc/shadow r,
+    deny /etc/sudoers* rw,
+    deny /root/** rwx,
+    deny /home/studio/.ssh/** rw,
+}
+```
+
+**Effet :** flash-agent ne peut accéder qu'à ce qui est listé. Si le binaire
+est compromis (supply chain attack), il ne peut pas lire les clés SSH client,
+les mots de passe, ou escalader ses privilèges.
+
+#### Couche 3 : systemd hardening
+
+```ini
+# /etc/systemd/system/flash-agent.service (extrait)
+[Service]
+ExecStart=/usr/local/bin/flash-agent
+User=flash-agent
+Group=flash-agent
+Restart=always
+RestartSec=5
+
+# Hardening
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+LockPersonality=yes
+RestrictRealtime=yes
+MemoryDenyWriteExecute=yes
+
+# Le service ne peut PAS être arrêté par le user studio
+# (systemctl stop flash-agent → access denied)
+```
+
+#### Couche 4 : Audit trail (`auditd`)
+
+```bash
+# /etc/audit/rules.d/flash-studio.rules
+
+# Surveiller les tentatives de modification des fichiers protégés
+-w /usr/local/bin/flash-agent -p wa -k flash-agent-tamper
+-w /etc/netbird/ -p wa -k netbird-tamper
+-w /etc/caddy/Caddyfile -p wa -k caddy-base-tamper
+-w /etc/ssh/sshd_config -p wa -k sshd-tamper
+
+# Surveiller l'usage de chattr (tentative de retirer immutable)
+-a always,exit -F arch=b64 -S ioctl -F a1=0x40086602 -k chattr-change
+
+# Les logs audit → flash-agent → Event Router → alerte Telegram
+```
+
+**Effet :** toute tentative de toucher aux fichiers protégés (même échouée)
+génère un événement audit → flash-agent le capte → Event Router → ticket auto.
+
+### Arbre de décision des accès
+
+```
+Client veut faire X
+  │
+  ├─► X = gérer ses containers ? → SSH (studio) ✅
+  ├─► X = ajouter un domaine ?   → Dashboard ✅
+  ├─► X = installer un paquet ?  → SSH (sudo apt) ✅
+  ├─► X = voir les logs ?        → SSH (journalctl) ou Dashboard ✅
+  ├─► X = SSH cassé ?            → Console KVM (Dashboard) ✅
+  ├─► X = boot cassé ?           → Rescue (Dashboard) ✅
+  ├─► X = accès root ?           → ❌ Non fourni (sécurité plan de gestion)
+  ├─► X = modifier flash-agent ? → ❌ Immutable + AppArmor
+  └─► X = modifier NetBird ?     → ❌ Immutable
+```
+
+### Dashboard — Section "Accès serveur"
+
+```
+app.paultaffe.com → Dashboard client → "Mon serveur"
+
+┌─────────────────────────────────────────────────────┐
+│  Mon serveur — acme42                               │
+│                                                      │
+│  IP publique : 1.2.3.4                               │
+│  IP NetBird : 100.64.x.x                            │
+│  Status : ● En ligne                                 │
+│                                                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐          │
+│  │ SSH      │  │ Console  │  │ Rescue   │          │
+│  │ Clés SSH │  │   KVM    │  │  Mode    │          │
+│  └──────────┘  └──────────┘  └──────────┘          │
+│                                                      │
+│  Clés SSH autorisées :                               │
+│  ┌──────────────────────────────────────────┐       │
+│  │ 🔑 macbook-pro (ed25519, ajouté 10/03)  │ [×]  │
+│  │ 🔑 desktop-pc (ed25519, ajouté 12/03)   │ [×]  │
+│  │              [+ Ajouter une clé]          │       │
+│  └──────────────────────────────────────────┘       │
+│                                                      │
+│  Domaines configurés :                               │
+│  ┌──────────────────────────────────────────┐       │
+│  │ acme42.paultaffe.fr      ● TLS OK       │       │
+│  │ api.acme42.paultaffe.fr  ● TLS OK       │ [×]  │
+│  │ api.mycorp.com           ● TLS OK       │ [×]  │
+│  │              [+ Ajouter un domaine]       │       │
+│  └──────────────────────────────────────────┘       │
+└─────────────────────────────────────────────────────┘
+```
+
+### Rôle Ansible correspondant
+
+| Rôle | Contenu |
+|------|---------|
+| `common` | User `studio`, sudoers whitelist, `chattr +i` sur fichiers protégés, AppArmor profiles, auditd rules, fail2ban |
+| `flash-agent` | Binaire, systemd unit hardened, AppArmor profil dédié |
+| `netbird-client` | Config + immutable flag post-enrollment |
+
+### Résumé de la protection
+
+```
+                    ┌─────────────────────────┐
+                    │   Fichiers Flash Studio  │
+                    └───────────┬──────────────┘
+                                │
+              ┌─────────────────┼─────────────────┐
+              │                 │                  │
+         chattr +i         AppArmor          auditd
+         (filesystem)       (kernel MAC)      (détection)
+              │                 │                  │
+              └─────────────────┼─────────────────┘
+                                │
+              ┌─────────────────┼─────────────────┐
+              ▼                 ▼                  ▼
+        User studio      flash-agent          Event Router
+        ne peut pas      ne peut pas          alerte si
+        modifier         être tué/modifié     tentative détectée
+```
+
+**Defense in depth :** 3 couches indépendantes. Chaque couche seule est contournable
+(root peut chattr, rescue peut tout). Mais les 3 ensemble créent un modèle où
+toute action malveillante est **détectée et alertée** avant de causer des dommages.

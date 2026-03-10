@@ -502,6 +502,10 @@ services:
       TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
       GATUS_CONFIG_PATH: /gatus-config/config.yaml
       GATUS_CONTAINER_NAME: sd_gatus
+      LITELLM_URL: ${LITELLM_URL}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL:-claude-sonnet-4-6}
+      ADMIN_API_KEY: ${ADMIN_API_KEY}
     volumes:
       - ./gatus:/gatus-config
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -513,6 +517,7 @@ services:
     networks:
       - frontend
       - backend
+      - ai
     profiles:
       - proactive
       - full

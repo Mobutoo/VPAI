@@ -44,6 +44,7 @@ sd_smtp_port: "587"
 sd_smtp_user: "noreply@{{ sd_domain }}"
 sd_smtp_password: "placeholder-configure-brevo"
 sd_brevo_api_key: "placeholder-configure-brevo"
+sd_admin_api_key: ""
 
 # --- Ports (host-side, bound to 127.0.0.1) ---
 sd_zammad_port: "8080"

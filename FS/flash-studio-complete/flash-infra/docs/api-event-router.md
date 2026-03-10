@@ -302,6 +302,211 @@ Permanently delete a monitoring endpoint. Triggers Gatus config sync.
 
 ---
 
+## Smart Ticket Creation
+
+Intelligent ticket creation pipeline with LLM extraction, deduplication,
+and automatic Zammad routing. Used by agents (openclaw, Go VPS, Claude)
+and voice interfaces.
+
+### Authentication
+
+Ticket creation endpoints require an API key via `Authorization: Bearer <key>` header.
+Keys are stored as SHA-256 hashes in the `api_keys` table. The `client_id` in the token
+must match the `client_id` in the request payload (agents can only create tickets for their own client).
+
+Admin endpoints (`POST /api/client-customers`) require the `ADMIN_API_KEY` environment variable.
+
+### POST /api/tickets
+
+Create a structured support ticket from an agent message. Runs through a 10-step pipeline:
+idempotency check, rate limiting, LLM extraction, category cooldown, hash dedup,
+semantic dedup, Zammad customer resolution, enrichment, ticket creation, and mapping storage.
+
+**Headers:**
+
+| Header        | Required | Description                |
+|---------------|----------|----------------------------|
+| Authorization | yes      | `Bearer <api-key>`         |
+
+**Request body:**
+
+```json
+{
+  "client_id": "client-42",
+  "message": "Mon backup echoue chaque nuit depuis 3 jours",
+  "source": "agent",
+  "language": "fr",
+  "event_id": "evt-20260310-001",
+  "metadata": {
+    "host": "srv-prod-01",
+    "agent_version": "1.2.0"
+  }
+}
+```
+
+| Field     | Type   | Required | Default   | Description                                         |
+|-----------|--------|----------|-----------|-----------------------------------------------------|
+| client_id | string | yes      | —         | Client identifier                                   |
+| message   | string | yes      | —         | Free-text description (max 10,000 chars)             |
+| source    | string | no       | `agent`   | Origin: `agent`, `voice`, `monitor`, `openclaw`      |
+| language  | string | no       | auto      | ISO 639-1 language hint (auto-detected by LLM)       |
+| event_id  | string | no       | —         | Idempotency key (prevents duplicate processing)      |
+| metadata  | object | no       | —         | Arbitrary key-value context                          |
+
+**Response:** `201 Created`
+
+```json
+{
+  "status": "created",
+  "ticket_id": 42,
+  "zammad_ticket_id": 1234,
+  "correlation_id": "a1b2c3d4e5f6"
+}
+```
+
+**Error responses:**
+
+| Code | Condition | Body |
+|------|-----------|------|
+| 400  | Missing fields or message > 10,000 chars | `{"error": "message is required"}` |
+| 401  | Invalid or missing API key | `{"error": "unauthorized"}` |
+| 409  | Duplicate (idempotency or semantic) | `{"status": "duplicate", "duplicate_of": 1233}` |
+| 429  | Rate limit exceeded (10/hour/client) | `{"error": "rate limit exceeded"}` |
+
+---
+
+### POST /api/voice-ticket
+
+Create a ticket from a voice transcription. Same pipeline as `/api/tickets`
+but with LLM prompt optimized for speech patterns (informal phrasing, minor errors).
+
+**Headers:**
+
+| Header        | Required | Description                |
+|---------------|----------|----------------------------|
+| Authorization | yes      | `Bearer <api-key>`         |
+
+**Request body:**
+
+```json
+{
+  "client_id": "client-42",
+  "message": "Bonjour je narrive pas a me connecter depuis ce matin ca me dit mot de passe incorrect",
+  "language": "fr"
+}
+```
+
+| Field     | Type   | Required | Default | Description                                   |
+|-----------|--------|----------|---------|-----------------------------------------------|
+| client_id | string | yes      | —       | Client identifier                             |
+| message   | string | yes      | —       | Raw voice transcription (max 10,000 chars)     |
+| language  | string | no       | auto    | Language hint for better LLM extraction        |
+
+**Response:** `201 Created` — Same format as `POST /api/tickets`.
+
+---
+
+### GET /api/tickets/{clientID}
+
+List ticket mappings for a client. Returns correlation between internal events
+and Zammad tickets.
+
+**Path parameters:**
+
+| Param    | Type   | Description     |
+|----------|--------|-----------------|
+| clientID | string | Client ID       |
+
+**Query parameters:**
+
+| Param  | Type | Default | Description             |
+|--------|------|---------|-------------------------|
+| limit  | int  | 50      | Max results (1-200)     |
+| offset | int  | 0       | Pagination offset       |
+
+**Response:** `200 OK`
+
+```json
+[
+  {
+    "id": 1,
+    "event_id": "evt-20260310-001",
+    "client_id": "client-42",
+    "zammad_ticket_id": 1234,
+    "correlation_id": "a1b2c3d4e5f6",
+    "source": "agent",
+    "category": "backup",
+    "priority": "high",
+    "language": "fr",
+    "created_at": "2026-03-10T14:30:00Z"
+  }
+]
+```
+
+---
+
+## Client-Customer Mapping
+
+Map internal `client_id` to Zammad customer IDs. Used to route tickets
+to the correct Zammad customer.
+
+### POST /api/client-customers
+
+Create or update a client-to-Zammad-customer mapping. Requires admin API key.
+
+**Headers:**
+
+| Header        | Required | Description                          |
+|---------------|----------|--------------------------------------|
+| Authorization | yes      | `Bearer <admin-api-key>`             |
+
+**Request body:**
+
+```json
+{
+  "client_id": "client-42",
+  "zammad_customer_id": 5,
+  "email": "client-42@clients.flash-studio.io",
+  "name": "Client 42 — Acme Corp"
+}
+```
+
+| Field              | Type   | Required | Description                     |
+|--------------------|--------|----------|---------------------------------|
+| client_id          | string | yes      | Internal client identifier       |
+| zammad_customer_id | int    | yes      | Zammad customer ID               |
+| email              | string | no       | Customer email in Zammad         |
+| name               | string | no       | Customer display name            |
+
+**Response:** `200 OK`
+
+```json
+{
+  "client_id": "client-42",
+  "zammad_customer_id": 5,
+  "email": "client-42@clients.flash-studio.io",
+  "name": "Client 42 — Acme Corp"
+}
+```
+
+---
+
+### GET /api/client-customers/{clientID}
+
+Get the Zammad customer mapping for a client.
+
+**Path parameters:**
+
+| Param    | Type   | Description     |
+|----------|--------|-----------------|
+| clientID | string | Client ID       |
+
+**Response:** `200 OK` — Same format as POST response.
+
+**Error:** `404` if no mapping exists.
+
+---
+
 ## Health
 
 ### GET /health
@@ -346,6 +551,10 @@ Static endpoints defined in the Ansible template (before the marker) are never m
 | BREVO_API_KEY          | —                      | Brevo transactional email API key  |
 | TELEGRAM_BOT_TOKEN     | —                      | Telegram bot token                 |
 | TELEGRAM_CHAT_ID       | —                      | Telegram chat/channel ID           |
+| LITELLM_URL            | —                      | LiteLLM proxy URL for LLM calls   |
+| LITELLM_API_KEY        | —                      | LiteLLM API key                    |
+| LLM_MODEL              | `claude-sonnet-4-6`    | Model for ticket extraction        |
+| ADMIN_API_KEY          | —                      | Admin API key for protected routes |
 | PORT                   | `8092`                 | HTTP server port                   |
 
 ### Gatus Condition Syntax
@@ -389,4 +598,55 @@ curl -X PUT http://event-router:8092/api/gatus/endpoints/1 \
 
 # Delete an endpoint permanently
 curl -X DELETE http://event-router:8092/api/gatus/endpoints/1
+
+# --- Smart Ticket Creation ---
+
+# Create a ticket from an agent
+curl -X POST http://event-router:8092/api/tickets \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <api-key>" \
+  -d '{"client_id":"client-42","message":"Mon backup echoue chaque nuit","source":"agent","event_id":"evt-001"}'
+
+# Create a ticket from voice transcription
+curl -X POST http://event-router:8092/api/voice-ticket \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <api-key>" \
+  -d '{"client_id":"client-42","message":"Bonjour je narrive pas a me connecter","language":"fr"}'
+
+# List ticket mappings for a client
+curl http://event-router:8092/api/tickets/client-42
+
+# Upsert client-customer mapping (admin)
+curl -X POST http://event-router:8092/api/client-customers \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <admin-api-key>" \
+  -d '{"client_id":"client-42","zammad_customer_id":5,"email":"client-42@clients.flash-studio.io","name":"Acme Corp"}'
+
+# Get client-customer mapping
+curl http://event-router:8092/api/client-customers/client-42
 ```
+
+### Ticket Pipeline Architecture
+
+When a ticket is created via `POST /api/tickets` or `POST /api/voice-ticket`,
+it goes through a 10-step pipeline:
+
+| Step | Name              | Mechanism                         | Protection              |
+|------|-------------------|-----------------------------------|-------------------------|
+| 1    | Idempotency       | Redis SETNX on event_id (1h TTL)  | Replay attacks          |
+| 2    | Rate Limit        | Redis sorted set (10/h per client)| Flood attacks           |
+| 3    | LLM Extraction    | LiteLLM structured prompt         | Extracts title/category |
+| 4    | Category Cooldown | Redis SET (5 min per category)    | Category spam           |
+| 5    | Hash Dedup        | SHA-256 of message (24h Redis)    | Identical messages      |
+| 6    | Semantic Dedup    | Embedding cosine similarity >=0.92| Reformulated duplicates |
+| 7    | Customer Resolve  | DB cache -> Zammad search/create  | Customer mapping        |
+| 8    | Enrichment        | Health score + recent events      | Context for support     |
+| 9    | Zammad Create     | POST /api/v1/tickets with routing | Ticket creation         |
+| 10   | Store Mapping     | PostgreSQL + Redis cache          | Audit trail             |
+
+**Resilience features:**
+- Circuit breaker on LiteLLM (opens after 3 failures, 60s reset)
+- Dead-letter queue for failed Zammad creations (retry every 5 min, max 5 retries)
+- Fallback extraction when LLM is unavailable (truncated title, "general" category)
+- Priority capping by source (only "monitor" can create "urgent" tickets)
+- Body sanitization (strips token/key/password patterns before sending to Zammad)

@@ -300,15 +300,19 @@ DNS interne : *.netbird.selfhosted (via NetBird Management, résolu par le clien
 |--------|-----------|
 | Secrets | SOPS + age (chiffrés au repos, déchiffrés au deploy) |
 | Mots de passe | Vaultwarden (auto-hébergé, E2E chiffré) |
-| VPN | NetBird **self-hosted** (WireGuard, zero-trust, mesh, controller sur Master) |
-| TLS | Caddy auto-renew Let's Encrypt |
-| Firewall | Hetzner Cloud Firewall API (22, 80, 443 only) |
+| VPN | NetBird **self-hosted** (WireGuard + **Rosenpass post-quantique**, zero-trust, mesh, controller sur Master) — section 16 |
+| Chiffrement disque | **LUKS2 AES-256-XTS** sur `/mnt/data` (clé gérée par Master, délivrée via NetBird) — section 19.2 |
+| TLS | Caddy auto-renew Let's Encrypt (TLS 1.3) |
+| Firewall | Hetzner Cloud Firewall API + **nftables** egress filtering — section 19.5 |
 | SSH | User `studio` (pas root), clé ED25519 uniquement, no password |
-| Fichiers critiques | `chattr +i` (immutable) + AppArmor (MAC) — voir section 17 |
-| Docker | Non-root containers, read-only rootfs quand possible |
+| Fichiers critiques | `chattr +i` (immutable) + AppArmor (MAC) — section 17 |
+| Runtime | **Tetragon eBPF** (détection + kill kernel-level, container-aware) — section 19.1 |
+| Docker | Non-root containers, read-only rootfs, **réseaux isolés** (frontend/backend/monitoring) — section 19.5 |
+| Identité | Zitadel SSO + MFA + **Posture Checks NetBird** (vérification continue device) — section 19.3 |
+| Supply chain | **Cosign keyless** (binaires signés Sigstore) + **SBOM** (SPDX) — section 19.4 |
 | Backups | Restic (chiffré AES-256, dédupliqué, versionné) |
 | OS | Debian 13 (Trixie), unattended-upgrades |
-| Audit | `auditd` sur les fichiers protégés, logs → Event Router |
+| Audit | Tetragon events + `auditd` → flash-agent → Event Router |
 
 ---
 
@@ -328,17 +332,18 @@ flash-infra/
 │   │   ├── backup.yml             # backup on-demand
 │   │   └── update-stack.yml       # mise à jour compose
 │   └── roles/
-│       ├── common/                # base Debian, users, SSH, ufw
+│       ├── common/                # base Debian, users, SSH, nftables, cosign
 │       ├── docker/                # Docker Engine + compose
-│       ├── netbird-client/        # NetBird VPN
+│       ├── netbird-client/        # NetBird VPN + Rosenpass
 │       ├── caddy/                 # reverse proxy + TLS
 │       ├── postgres/              # PostgreSQL 16
-│       ├── sovereign-compose/     # docker-compose sovereign
-│       ├── studio-compose/        # docker-compose production
+│       ├── tetragon/              # eBPF runtime security + policies
+│       ├── sovereign-compose/     # docker-compose sovereign (réseaux isolés)
+│       ├── studio-compose/        # docker-compose production (réseaux isolés)
 │       ├── grafana/               # monitoring stack
 │       ├── vaultwarden/           # gestionnaire mdp
 │       ├── backup/                # Restic + S3 + cron
-│       └── hetzner-volume/        # montage volume persistant
+│       └── hetzner-volume/        # montage volume persistant + LUKS
 │
 ├── docker/
 │   ├── sovereign/
@@ -429,19 +434,23 @@ Webhook Stripe → Master API
         │       *.acme42.paultaffe.fr    A  <IP_SOVEREIGN>
         ├─► 5. NetBird Management API :
         │       POST /api/groups      → Group "client-acme42"
-        │       POST /api/policies    → client-acme42 ↔ infra (ALLOW)
-        │       POST /api/policies    → client-acme42 ↔ client-acme42 (ALLOW)
+        │       POST /api/policies    → client-acme42 ↔ infra (ALLOW, posture check)
+        │       POST /api/policies    → client-acme42 ↔ client-acme42 (ALLOW, posture check)
         │       POST /api/setup-keys  → Setup key (single-use, 24h, auto-group)
         │       PUT  /api/users/{id}  → User auto-groups = ["client-acme42"]
+        │       POST /api/posture-checks → Baseline (OS version, NetBird version)
         │
         ▼
 Ansible playbook (déclenché par Master)
         │
-        ├─► Role common (SSH, users, firewall)
+        ├─► Role common (SSH, users, nftables, cosign install)
         ├─► Role docker
-        ├─► Role netbird-client (setup key du step 5)
+        ├─► Role hetzner-volume (LUKS2 format + mount chiffré)
+        ├─► Role netbird-client (setup key + Rosenpass)
+        ├─► Role tetragon (eBPF policies : protect files, block reverse shell)
         ├─► Role caddy (Caddyfile base + import custom/*.caddy)
-        ├─► Role sovereign-compose (docker-compose up)
+        ├─► Role flash-agent (cosign verify + deploy signé + LUKS mount service)
+        ├─► Role sovereign-compose (docker-compose up, réseaux isolés)
         ├─► Role studio-compose (docker-compose up --profile=base,{plan})
         ├─► Role grafana
         ├─► Role backup
@@ -1022,6 +1031,51 @@ POST /api/studios (Master API)
 Le Management est nécessaire uniquement pour les changements (ajout peer, modification
 policy). Le data plane est entièrement décentralisé.
 
+### Post-Quantum Cryptography (Rosenpass)
+
+NetBird intègre nativement **Rosenpass**, un protocole post-quantique qui génère un
+pre-shared key (PSK) toutes les 2 minutes via **Classic McEliece + Kyber**, injecté
+dans le slot PSK de WireGuard. Le protocole WireGuard lui-même n'est pas modifié.
+
+```
+Sans Rosenpass :                       Avec Rosenpass :
+WireGuard (Curve25519)                 WireGuard (Curve25519)
+  → Vulnérable "harvest now,            + PSK post-quantique (Rosenpass)
+    decrypt later"                       → Résistant aux ordinateurs quantiques
+```
+
+**Menace :** un attaquant enregistre le trafic WireGuard chiffré aujourd'hui et le
+déchiffre quand les ordinateurs quantiques seront viables ("harvest now, decrypt later").
+Rosenpass élimine ce risque en ajoutant une couche de chiffrement post-quantique.
+
+**Activation :**
+
+```bash
+# Sur chaque peer — cloud-init du VPS client :
+netbird up --setup-key <key> --enable-rosenpass --rosenpass-permissive
+
+# Sur les VMs infra (Master, SD, Gateway) — via Ansible :
+netbird up --enable-rosenpass --rosenpass-permissive
+```
+
+Le flag `--rosenpass-permissive` permet un rollout progressif : les peers avec
+Rosenpass utilisent le PSK post-quantique entre eux, les peers sans Rosenpass
+continuent à fonctionner normalement (WireGuard classique). Aucune coupure.
+
+**Rôle Ansible (update) :**
+
+```yaml
+# roles/netbird-client/tasks/main.yml
+- name: Start NetBird with Rosenpass
+  ansible.builtin.command:
+    cmd: >
+      netbird up
+      --setup-key {{ netbird_setup_key }}
+      --management-url https://vpn.paultaffe.net
+      --enable-rosenpass
+      --rosenpass-permissive
+```
+
 ---
 
 ## 17. Accès client — SSH, Console KVM, Rescue
@@ -1598,3 +1652,521 @@ POST /api/studios (Master API)
 | VPS down = pas d'internet | Si le VPS crash et Exit Node actif, devices perdent l'accès | NetBird auto-reconnect + alerte Event Router |
 | AdGuard down = pas de DNS | Résolution bloquée pour tous les clients | Failover : DNS secondaire configuré dans NetBird (ex: Quad9 direct) |
 | Bande passante VPS | Le trafic des devices consomme la BP du VPS | Monitoring Gatus + alertes seuils |
+
+---
+
+## 19. Hardening V1 — Sécurité avancée
+
+6 améliorations sécuritaires implémentées en V1, classées par priorité.
+
+### 19.1 Tetragon — eBPF Runtime Security
+
+Tetragon (CNCF, par les créateurs de Cilium) fait de la **détection + enforcement
+directement dans le kernel Linux via eBPF**, remplaçant auditd pour la détection
+runtime et complétant AppArmor pour l'enforcement.
+
+```
+             Avant (section 17)              Après (Tetragon)
+             ──────────────────              ─────────────────
+Détection    auditd (fichiers seuls)         eBPF kernel-level (fichiers + réseau + process)
+Enforcement  AppArmor (profils statiques)    AppArmor + Tetragon (kill en temps réel)
+Overhead     ~2-5% (auditd user-space)       < 1% (eBPF in-kernel)
+Containers   Non-aware                       Container-aware (namespace, cgroup)
+Exfiltration Invisible                       Détecté (process → IP inconnue)
+```
+
+**Cas concret :** un container Docker compromis tente un reverse shell.
+- **Avant :** auditd ne voit rien (pas de fichier touché). AppArmor bloque si profil.
+- **Après :** Tetragon détecte le `connect()` syscall vers une IP externe non-whitelistée
+  et **kill le process avant que la connexion ne s'établisse**.
+
+**Déploiement sur chaque VM (Sovereign + Production) :**
+
+```yaml
+# Docker Compose — ajouté à la stack Sovereign
+tetragon:
+  image: quay.io/cilium/tetragon:v1.3
+  container_name: tetragon
+  restart: unless-stopped
+  pid: host
+  privileged: true
+  volumes:
+    - /sys/kernel/btf:/sys/kernel/btf:ro
+    - /sys/kernel/security:/sys/kernel/security
+    - /sys/fs/bpf:/sys/fs/bpf
+    - tetragon-policies:/etc/tetragon/tetragon.tp.d
+  command:
+    - --export-stdout
+    - --export-filename /var/log/tetragon/events.log
+  networks:
+    - backend
+```
+
+**Policies Tetragon (YAML) :**
+
+```yaml
+# /etc/tetragon/tetragon.tp.d/01-protect-critical-files.yaml
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: protect-flash-studio-files
+spec:
+  kprobes:
+    - call: sys_openat
+      syscall: true
+      args:
+        - index: 1
+          type: string
+      selectors:
+        - matchArgs:
+            - index: 1
+              operator: Prefix
+              values:
+                - /usr/local/bin/flash-agent
+                - /etc/netbird/
+                - /etc/caddy/Caddyfile
+                - /etc/ssh/sshd_config
+          matchActions:
+            - action: Sigkill    # Kill le process immédiatement
+            - action: NotifyEnforcer
+```
+
+```yaml
+# /etc/tetragon/tetragon.tp.d/02-block-reverse-shell.yaml
+apiVersion: cilium.io/v1alpha1
+kind: TracingPolicy
+metadata:
+  name: block-reverse-shell
+spec:
+  kprobes:
+    - call: sys_connect
+      syscall: true
+      args:
+        - index: 1
+          type: sockaddr
+      selectors:
+        - matchBinaries:
+            - operator: NotIn
+              values:
+                - /usr/local/bin/flash-agent
+                - /usr/bin/caddy
+                - /usr/bin/netbird
+                - /usr/bin/docker
+          matchActions:
+            - action: NotifyEnforcer
+            # Log + alerte (pas kill — trop de faux positifs réseau)
+```
+
+**Intégration Event Router :**
+
+```
+Tetragon (events.log) → flash-agent (tail + parse) → Event Router
+  → Alerte Telegram : "ALERT: process /bin/bash (PID 4521, container n8n)
+     tenté d'ouvrir /etc/netbird/config.json — KILLED"
+```
+
+**Rôle Ansible :** `tetragon` — install binaire ou container, policies YAML, logrotate.
+
+### 19.2 LUKS — Chiffrement disque au repos
+
+Les VPS Hetzner n'ont **pas de chiffrement disque par défaut**. Si un attaquant
+accède au stockage physique (ou Hetzner est compromis), tout est lisible :
+base de données, tokens API, clés NetBird, modèles ComfyUI.
+
+Hetzner ne supporte pas AMD SEV / Intel TDX (Confidential Computing). LUKS2
+est la meilleure option disponible pour le chiffrement at-rest.
+
+```
+                  Sans LUKS                   Avec LUKS
+                  ─────────                   ──────────
+/mnt/data         Clair sur disque            Chiffré AES-256-XTS (LUKS2)
+Accès physique    Tout lisible                Chiffré, illisible sans clé
+Performance       Baseline                    ~2-5% overhead (AES-NI hardware)
+Rescue mode       Montage direct              Nécessite la clé LUKS
+```
+
+**Architecture :**
+
+```
+VM boot
+  │
+  ├─► systemd unit : flash-luks-mount.service (Before=docker.service)
+  │     │
+  │     ├─► 1. Récupère la clé LUKS via NetBird :
+  │     │       curl -s https://master.netbird.selfhosted/api/internal/luks-key \
+  │     │         -H "Authorization: Bearer ${FLASH_AGENT_TOKEN}"
+  │     │
+  │     ├─► 2. cryptsetup luksOpen /dev/sdb1 data_crypt --key-file=-
+  │     │
+  │     ├─► 3. mount /dev/mapper/data_crypt /mnt/data
+  │     │
+  │     └─► 4. Efface la clé de la mémoire (shred)
+  │
+  └─► Docker démarre → monte /mnt/data/* pour les volumes
+```
+
+**Clé LUKS :**
+- Générée au provisioning par le Master (256 bits, random)
+- Stockée dans la base Master (chiffrée SOPS)
+- Délivrée au VPS via NetBird (API interne, TLS, authentifié par token flash-agent)
+- Jamais écrite sur disque du VPS (in-memory only, shred après mount)
+- Le client n'a **pas accès** à la clé LUKS (protection plan de gestion)
+
+**Provisioning (ajout au flux existant) :**
+
+```
+Ansible playbook
+  │
+  ├─► Role hetzner-volume (existant)
+  │     ├─► Créer volume Hetzner
+  │     ├─► Partitionner (GPT)
+  │     ├─► cryptsetup luksFormat /dev/sdb1 --key-file=<clé_master>
+  │     ├─► cryptsetup luksOpen → mount /mnt/data
+  │     └─► mkfs.ext4 /dev/mapper/data_crypt
+  │
+  ├─► Role flash-agent
+  │     └─► flash-luks-mount.service (systemd, Before=docker)
+  │
+  └─► Master API : stocker la clé LUKS associée au client
+```
+
+**Impact Rescue mode :** en mode Rescue, le client ne peut **pas** monter
+`/mnt/data` sans la clé LUKS. C'est une protection supplémentaire : même avec
+un accès Rescue, les données restent chiffrées. Le client doit contacter le
+support pour un unlock assisté (vérification identité → clé temporaire).
+
+**Rôle Ansible :** `hetzner-volume` (update) + `flash-agent` (update pour le mount service).
+
+### 19.3 Posture Checks — Authentification continue
+
+Le Zero Trust classique vérifie l'identité **une seule fois** (au login). En 2026,
+le standard est la **vérification continue** : identité + état du device + contexte.
+
+NetBird supporte les **Posture Checks** nativement. Ils sont évalués **à chaque
+connexion** et **périodiquement** pour les peers déjà connectés.
+
+```
+Peer tente de se connecter
+  │
+  ├─► 1. Authentification Zitadel (SSO) ✅
+  │
+  ├─► 2. Posture Checks NetBird :
+  │     ├─► OS version ≥ minimum ? (ex: macOS 14+, Windows 11 23H2+, Ubuntu 22.04+)
+  │     ├─► NetBird client ≥ version minimum ? (ex: v0.35+)
+  │     ├─► Peer approuvé ? (pas en quarantaine)
+  │     │
+  │     ├─► ✅ Tout OK → connexion autorisée
+  │     └─► ❌ Check échoué → connexion REFUSÉE + notification client
+  │
+  └─► 3. Re-évaluation périodique (toutes les heures)
+        → Si le device ne passe plus → déconnexion automatique
+```
+
+**Configuration via NetBird Management API (au provisioning) :**
+
+```
+POST /api/posture-checks
+{
+  "name": "flash-studio-baseline",
+  "checks": {
+    "nb_version_check": {
+      "min_version": "0.35.0"
+    },
+    "os_version_check": {
+      "linux": { "min_kernel_version": "5.15" },
+      "darwin": { "min_version": "14.0" },
+      "windows": { "min_kernel_version": "10.0.22631" }
+    },
+    "peer_network_range_check": {
+      "action": "allow",
+      "ranges": ["0.0.0.0/0"]
+    }
+  }
+}
+```
+
+Les posture checks sont associés aux **Policies**. Un peer qui ne passe pas
+le check perd l'accès aux ressources de la policy correspondante.
+
+**Zitadel — Session re-evaluation :**
+
+En complément, Zitadel (SSO) est configuré pour :
+- **Session lifetime** : 8h (après : re-auth obligatoire)
+- **Idle timeout** : 1h (inactivité : re-auth)
+- **MFA obligatoire** : TOTP ou WebAuthn pour le dashboard (`app.paultaffe.com`)
+
+**Rôle Ansible :** `netbird-server` (update) — posture checks créés au provisioning.
+
+### 19.4 Cosign + SBOM — Supply Chain Security
+
+Tous les binaires Flash Studio (flash-agent, event-router, support-agent) sont
+buildés dans GitHub Actions puis déployés via Ansible. Sans vérification de
+signature, un binaire compromis pourrait être injecté à n'importe quelle étape.
+
+```
+                Avant                           Après
+                ─────                           ─────
+Build     go build → binaire                  go build → binaire → cosign sign
+Deploy    scp binaire → serveur               scp binaire + sig → cosign verify → deploy
+SBOM      Aucun                               syft → SBOM (SPDX) → attestation cosign
+Confiance "On fait confiance au CI"           Vérification cryptographique à chaque deploy
+```
+
+**Pipeline CI/CD (GitHub Actions) :**
+
+```yaml
+# .github/workflows/build.yml
+jobs:
+  build:
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build binary
+        run: CGO_ENABLED=0 go build -o flash-agent ./cmd/agent
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          artifact-name: flash-agent.spdx.json
+
+      - name: Sign binary with Cosign (keyless / Sigstore)
+        uses: sigstore/cosign-installer@v3
+      - run: cosign sign-blob --yes flash-agent --bundle flash-agent.bundle
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: flash-agent-signed
+          path: |
+            flash-agent
+            flash-agent.bundle
+            flash-agent.spdx.json
+```
+
+**Vérification au déploiement (Ansible) :**
+
+```yaml
+# roles/flash-agent/tasks/main.yml
+- name: Download signed binary from release
+  ansible.builtin.get_url:
+    url: "{{ flash_agent_release_url }}"
+    dest: /tmp/flash-agent
+    checksum: "sha256:{{ flash_agent_sha256 }}"
+
+- name: Download signature bundle
+  ansible.builtin.get_url:
+    url: "{{ flash_agent_bundle_url }}"
+    dest: /tmp/flash-agent.bundle
+
+- name: Verify Cosign signature
+  ansible.builtin.command:
+    cmd: >
+      cosign verify-blob /tmp/flash-agent
+      --bundle /tmp/flash-agent.bundle
+      --certificate-identity-regexp "github.com/Mobutoo/flash-infra"
+      --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+  register: cosign_verify
+  failed_when: cosign_verify.rc != 0
+
+- name: Deploy verified binary
+  ansible.builtin.copy:
+    src: /tmp/flash-agent
+    dest: /usr/local/bin/flash-agent
+    mode: "0755"
+    remote_src: true
+  when: cosign_verify.rc == 0
+
+- name: Set immutable flag
+  ansible.builtin.command:
+    cmd: chattr +i /usr/local/bin/flash-agent
+```
+
+**Cosign keyless (Sigstore) :** pas de clé privée à gérer. L'identité du signataire
+est liée au workflow GitHub Actions via OIDC. Impossible de signer depuis un laptop
+compromis — seul le CI peut signer.
+
+**SBOM :** inventaire complet des dépendances Go (modules + versions). Utile pour :
+- Réponse rapide si une CVE touche une dépendance
+- Audit de conformité
+- Transparence client (disponible dans le dashboard si demandé)
+
+### 19.5 Micro-segmentation Docker (nftables)
+
+Par défaut, Docker crée un bridge `docker0` où **tous les containers peuvent
+communiquer entre eux**. Un container compromis peut scanner et attaquer les autres.
+
+```
+Sans micro-segmentation :          Avec micro-segmentation :
+
+┌─────────────────────┐            ┌─────────────────────┐
+│     docker0 bridge  │            │  Réseau "frontend"  │
+│                     │            │  ┌──────┐  ┌──────┐ │
+│ n8n ↔ ComfyUI ↔ PG │            │  │ n8n  │  │Caddy │ │
+│  ↔ Caddy ↔ Grafana  │            │  └──┬───┘  └──────┘ │
+│                     │            │     │                │
+│ TOUT communique     │            ├─────┼────────────────┤
+│ avec TOUT           │            │  Réseau "backend"   │
+└─────────────────────┘            │  ┌──────┐  ┌──────┐ │
+                                   │  │  PG  │  │Qdrant│ │
+                                   │  └──────┘  └──────┘ │
+                                   └─────────────────────┘
+                                   n8n → PG ✅  (backend)
+                                   Caddy → n8n ✅ (frontend)
+                                   ComfyUI → PG ❌ (pas même réseau)
+```
+
+**Docker Compose — réseaux isolés :**
+
+```yaml
+# docker-compose.yml (Sovereign / Production)
+networks:
+  frontend:
+    driver: bridge
+    internal: false    # accès internet (Caddy, n8n pour webhooks)
+  backend:
+    driver: bridge
+    internal: true     # PAS d'accès internet (BDD, services internes)
+  monitoring:
+    driver: bridge
+    internal: true     # Isolé (Prometheus, Grafana interne)
+
+services:
+  caddy:
+    networks: [frontend]
+
+  n8n:
+    networks: [frontend, backend]   # Accès web + accès BDD
+
+  postgres:
+    networks: [backend]             # Isolé, pas d'accès internet
+
+  qdrant:
+    networks: [backend]
+
+  comfyui:
+    networks: [frontend]            # Accès web pour l'UI, pas de BDD
+
+  grafana:
+    networks: [monitoring, frontend]  # UI accessible + métriques internes
+
+  prometheus:
+    networks: [monitoring]          # Isolé
+
+  tetragon:
+    network_mode: host              # Nécessaire pour eBPF
+```
+
+**nftables — Egress filtering sur la VM :**
+
+```bash
+#!/usr/sbin/nft -f
+# /etc/nftables.conf — Sovereign VM
+
+table inet filter {
+  chain input {
+    type filter hook input priority 0; policy drop;
+    ct state established,related accept
+    iif lo accept
+    tcp dport { 22, 80, 443 } accept        # SSH + HTTP/S
+    ip saddr 100.64.0.0/10 accept            # NetBird mesh
+    drop
+  }
+
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+    # Docker gère ses propres règles via iptables/nftables
+    ct state established,related accept
+    # Interdire le forwarding inter-containers sauf via Docker networks
+    iifname "docker0" oifname "docker0" drop
+  }
+
+  chain output {
+    type filter hook output priority 0; policy accept;
+    # Log les connexions sortantes inattendues (debug)
+    # En production : restreindre aux IPs connues si nécessaire
+  }
+}
+```
+
+**Rôle Ansible :** `common` (update) — nftables rules + Docker network config.
+`sovereign-compose` et `studio-compose` (update) — réseaux isolés dans les Compose files.
+
+### Résumé Hardening V1
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                  FLASH STUDIO — Security Stack V1                │
+│                                                                  │
+│  ┌─ Couche 1 : Chiffrement ──────────────────────────────────┐  │
+│  │  WireGuard + Rosenpass (post-quantique)   [section 16]    │  │
+│  │  LUKS2 AES-256-XTS (disque at-rest)       [section 19.2]  │  │
+│  │  SOPS + age (secrets Ansible)             [section 6]     │  │
+│  │  TLS 1.3 (Caddy, auto-renew)             [section 6]     │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌─ Couche 2 : Identité & Accès ─────────────────────────────┐  │
+│  │  Zitadel SSO + MFA (TOTP/WebAuthn)        [section 6]     │  │
+│  │  NetBird Posture Checks (device state)    [section 19.3]  │  │
+│  │  Session re-evaluation continue           [section 19.3]  │  │
+│  │  User studio (sudoers whitelist)          [section 17]    │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌─ Couche 3 : Runtime Protection ───────────────────────────┐  │
+│  │  Tetragon eBPF (détection + kill kernel)  [section 19.1]  │  │
+│  │  AppArmor (MAC statique)                  [section 17]    │  │
+│  │  systemd hardening (ProtectSystem=strict)  [section 17]   │  │
+│  │  chattr +i (fichiers immutables)          [section 17]    │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌─ Couche 4 : Réseau ───────────────────────────────────────┐  │
+│  │  NetBird Groups + deny-by-default         [section 16]    │  │
+│  │  Docker networks isolés (frontend/backend) [section 19.5] │  │
+│  │  nftables egress filtering                [section 19.5]  │  │
+│  │  AdGuard Home DNS privé                   [section 18]    │  │
+│  │  Exit Node full-tunnel (optionnel)        [section 18]    │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌─ Couche 5 : Supply Chain ─────────────────────────────────┐  │
+│  │  Cosign keyless (Sigstore) — binaires signés [section 19.4]│ │
+│  │  SBOM (SPDX) — inventaire dépendances     [section 19.4]  │  │
+│  │  Verify at deploy — Ansible reject si !sig [section 19.4] │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  ┌─ Couche 6 : Détection & Réponse ──────────────────────────┐  │
+│  │  Tetragon events → flash-agent → Event Router [section 19.1]│ │
+│  │  auditd → flash-agent → Event Router      [section 17]    │  │
+│  │  Gatus health checks + alertes             [section 11]   │  │
+│  │  Alertes Telegram (temps réel)             [section 11]   │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Nouveaux rôles Ansible (récapitulatif)
+
+| Rôle | Machine | Contenu |
+|------|---------|---------|
+| `tetragon` | Sovereign, Production | Container Tetragon, policies YAML (protect files, block reverse shell), logrotate |
+| `hetzner-volume` (update) | Sovereign, Production | LUKS2 format + cryptsetup au provisioning |
+| `flash-agent` (update) | Sovereign, Production | Service systemd `flash-luks-mount` (unlock au boot via Master API) |
+| `netbird-server` (update) | Master | Posture checks baseline, Rosenpass config |
+| `netbird-client` (update) | Toutes les VMs | `--enable-rosenpass --rosenpass-permissive` |
+| `common` (update) | Toutes les VMs | nftables rules, cosign install |
+| `sovereign-compose` (update) | Sovereign | Docker networks isolés (frontend/backend/monitoring) |
+| `studio-compose` (update) | Production | Docker networks isolés |
+
+### Provisioning (étapes ajoutées au flux section 9)
+
+```
+Ansible playbook (après les étapes existantes)
+  │
+  ├─► Role hetzner-volume : LUKS format + mount
+  ├─► Role netbird-client : --enable-rosenpass --rosenpass-permissive
+  ├─► Role tetragon : install + policies
+  ├─► Role common : nftables + cosign
+  ├─► Role flash-agent : cosign verify + deploy signé + LUKS mount service
+  ├─► Role sovereign-compose : Docker networks isolés
+  │
+  └─► Master API (NetBird) :
+        POST /api/posture-checks → baseline (OS version, NetBird version)
+        Associer les posture checks aux policies du client
+```

@@ -1,0 +1,518 @@
+---
+# {{ sd_project_name }} — Docker Compose
+# Managed by Ansible — DO NOT EDIT MANUALLY
+# Deploiement progressif par phase (A, B, C, D)
+# Profiles: intelligence, experience, proactive, full
+
+name: {{ sd_project_name }}
+
+networks:
+  frontend:
+    name: sd_frontend
+  backend:
+    name: sd_backend
+  ai:
+    name: sd_ai
+
+volumes:
+  postgres_data:
+  redis_data:
+  elasticsearch_data:
+  zammad_storage:
+  zammad_backup:
+  discourse_data:
+  discourse_sidekiq_data:
+  caddy_data:
+  caddy_config:
+  qdrant_data:
+  typesense_data:
+  gatus_data:
+
+x-shared:
+  zammad-service: &zammad-service
+    environment: &zammad-environment
+      MEMCACHE_SERVERS: zammad-memcached:11211
+      POSTGRESQL_DB: ${ZAMMAD_DB_NAME}
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_USER: ${ZAMMAD_DB_USER}
+      POSTGRESQL_PASS: ${ZAMMAD_DB_PASSWORD}
+      POSTGRESQL_PORT: "5432"
+      POSTGRESQL_OPTIONS: "?pool=50"
+      POSTGRESQL_DB_CREATE: "false"
+      REDIS_URL: "redis://redis:6379/0"
+      ELASTICSEARCH_HOST: elasticsearch
+      ELASTICSEARCH_PORT: "9200"
+      ELASTICSEARCH_SCHEMA: http
+      ELASTICSEARCH_NAMESPACE: zammad
+      ELASTICSEARCH_REINDEX: "true"
+      ELASTICSEARCH_ENABLED: "true"
+      ZAMMAD_FQDN: ${ZAMMAD_FQDN:-help.{{ sd_domain }}}
+      ZAMMAD_HTTP_TYPE: https
+      NGINX_SERVER_SCHEME: https
+      RAILS_TRUSTED_PROXIES: "127.0.0.1,::1,caddy"
+      TZ: ${TZ:-Europe/Paris}
+      BACKUP_DIR: /var/tmp/zammad
+      BACKUP_TIME: "03:00"
+      HOLD_DAYS: "10"
+    image: ghcr.io/zammad/zammad:${ZAMMAD_VERSION:-{{ sd_zammad_version }}}
+    restart: unless-stopped
+    volumes:
+      - zammad_backup:/var/tmp/zammad
+      - zammad_storage:/opt/zammad/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      zammad-memcached:
+        condition: service_started
+    networks:
+      - backend
+
+services:
+
+  # ===========================================================================
+  # PHASE A — SOCLE
+  # ===========================================================================
+
+  postgres:
+    image: pgvector/pgvector:${POSTGRES_VERSION:-{{ sd_postgres_version }}}
+    container_name: sd_postgres
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./initdb/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    environment:
+      POSTGRES_USER: ${POSTGRES_ADMIN_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      ZAMMAD_DB_USER: ${ZAMMAD_DB_USER}
+      ZAMMAD_DB_PASSWORD: ${ZAMMAD_DB_PASSWORD}
+      ZAMMAD_DB_NAME: ${ZAMMAD_DB_NAME}
+      DISCOURSE_DB_USER: ${DISCOURSE_DB_USER}
+      DISCOURSE_DB_PASSWORD: ${DISCOURSE_DB_PASSWORD}
+      DISCOURSE_DB_NAME: ${DISCOURSE_DB_NAME}
+      SERVICEDESK_DB_USER: ${SERVICEDESK_DB_USER:-servicedesk}
+      SERVICEDESK_DB_PASSWORD: ${SERVICEDESK_DB_PASSWORD}
+      SERVICEDESK_DB_NAME: ${SERVICEDESK_DB_NAME:-servicedesk}
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:${REDIS_VERSION:-{{ sd_redis_version }}}
+    container_name: sd_redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: elasticsearch:${ELASTICSEARCH_VERSION:-{{ sd_elasticsearch_version }}}
+    container_name: sd_elasticsearch
+    restart: unless-stopped
+    environment:
+      - cluster.name=sd-elasticsearch
+      - node.name=sd-elasticsearch-node1
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+      - xpack.ml.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # --- Zammad services ---
+
+  zammad-init:
+    <<: *zammad-service
+    container_name: sd_zammad_init
+    command: ["zammad-init"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: on-failure
+    user: 0:0
+
+  zammad-memcached:
+    image: memcached:${MEMCACHED_VERSION:-{{ sd_memcached_version }}}
+    container_name: sd_zammad_memcached
+    command: memcached -m 256M
+    restart: unless-stopped
+    networks:
+      - backend
+
+  zammad-nginx:
+    <<: *zammad-service
+    container_name: sd_zammad_nginx
+    command: ["zammad-nginx"]
+    ports:
+      - "127.0.0.1:${ZAMMAD_PORT:-{{ sd_zammad_port }}}:8080"
+    networks:
+      - backend
+      - frontend
+    depends_on:
+      - zammad-railsserver
+
+  zammad-railsserver:
+    <<: *zammad-service
+    container_name: sd_zammad_rails
+    command: ["zammad-railsserver"]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      zammad-init:
+        condition: service_completed_successfully
+
+  zammad-scheduler:
+    <<: *zammad-service
+    container_name: sd_zammad_scheduler
+    command: ["zammad-scheduler"]
+    depends_on:
+      zammad-init:
+        condition: service_completed_successfully
+
+  zammad-websocket:
+    <<: *zammad-service
+    container_name: sd_zammad_websocket
+    command: ["zammad-websocket"]
+    depends_on:
+      zammad-init:
+        condition: service_completed_successfully
+
+  zammad-backup:
+    <<: *zammad-service
+    container_name: sd_zammad_backup
+    command: ["zammad-backup"]
+    volumes:
+      - zammad_backup:/var/tmp/zammad
+      - zammad_storage:/opt/zammad/storage
+    user: 0:0
+
+  # Discourse — Plateforme communautaire
+  discourse:
+    image: bitnamilegacy/discourse:${DISCOURSE_VERSION:-{{ sd_discourse_version }}}
+    container_name: sd_discourse
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${DISCOURSE_PORT:-{{ sd_discourse_port }}}:3000"
+    environment:
+      DISCOURSE_HOST: ${DISCOURSE_HOST:-agence.{{ sd_domain }}}
+      DISCOURSE_DATABASE_HOST: postgres
+      DISCOURSE_DATABASE_PORT_NUMBER: "5432"
+      DISCOURSE_DATABASE_USER: ${DISCOURSE_DB_USER}
+      DISCOURSE_DATABASE_PASSWORD: ${DISCOURSE_DB_PASSWORD}
+      DISCOURSE_DATABASE_NAME: ${DISCOURSE_DB_NAME}
+      DISCOURSE_REDIS_HOST: redis
+      DISCOURSE_REDIS_PORT_NUMBER: "6379"
+      DISCOURSE_REDIS_PASSWORD: ""
+      ALLOW_EMPTY_PASSWORD: "yes"
+      DISCOURSE_USERNAME: ${DISCOURSE_ADMIN_USER:-admin}
+      DISCOURSE_PASSWORD: ${DISCOURSE_ADMIN_PASSWORD}
+      DISCOURSE_EMAIL: ${DISCOURSE_ADMIN_EMAIL:-infra@{{ sd_domain }}}
+      DISCOURSE_SITENAME: "Flash Studio Agence"
+      DISCOURSE_SMTP_HOST: ${SMTP_HOST:-{{ sd_smtp_host }}}
+      DISCOURSE_SMTP_PORT: ${SMTP_PORT:-{{ sd_smtp_port }}}
+      DISCOURSE_SMTP_USER: ${SMTP_USER:-{{ sd_smtp_user }}}
+      DISCOURSE_SMTP_PASSWORD: ${SMTP_PASSWORD:-placeholder}
+      DISCOURSE_SMTP_PROTOCOL: tls
+      POSTGRESQL_CLIENT_DATABASE_HOST: postgres
+      POSTGRESQL_CLIENT_POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRESQL_CLIENT_POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      POSTGRESQL_CLIENT_CREATE_DATABASE_NAME: ${DISCOURSE_DB_NAME:-discourse}
+      POSTGRESQL_CLIENT_CREATE_DATABASE_OWNER: ${DISCOURSE_DB_USER:-discourse}
+      POSTGRESQL_CLIENT_CREATE_DATABASE_EXTENSIONS: "hstore,pg_trgm"
+      BITNAMI_DEBUG: "false"
+    volumes:
+      - discourse_data:/bitnami/discourse
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - frontend
+      - backend
+
+  discourse-sidekiq:
+    image: bitnamilegacy/discourse:${DISCOURSE_VERSION:-{{ sd_discourse_version }}}
+    container_name: sd_discourse_sidekiq
+    restart: unless-stopped
+    command: /opt/bitnami/scripts/discourse-sidekiq/run.sh
+    environment:
+      DISCOURSE_HOST: ${DISCOURSE_HOST:-agence.{{ sd_domain }}}
+      DISCOURSE_DATABASE_HOST: postgres
+      DISCOURSE_DATABASE_PORT_NUMBER: "5432"
+      DISCOURSE_DATABASE_USER: ${DISCOURSE_DB_USER}
+      DISCOURSE_DATABASE_PASSWORD: ${DISCOURSE_DB_PASSWORD}
+      DISCOURSE_DATABASE_NAME: ${DISCOURSE_DB_NAME}
+      DISCOURSE_REDIS_HOST: redis
+      DISCOURSE_REDIS_PORT_NUMBER: "6379"
+      DISCOURSE_REDIS_PASSWORD: ""
+      ALLOW_EMPTY_PASSWORD: "yes"
+      DISCOURSE_SMTP_HOST: ${SMTP_HOST:-{{ sd_smtp_host }}}
+      DISCOURSE_SMTP_PORT: ${SMTP_PORT:-{{ sd_smtp_port }}}
+      DISCOURSE_SMTP_USER: ${SMTP_USER:-{{ sd_smtp_user }}}
+      DISCOURSE_SMTP_PASSWORD: ${SMTP_PASSWORD:-placeholder}
+      DISCOURSE_SMTP_PROTOCOL: tls
+      POSTGRESQL_CLIENT_DATABASE_HOST: postgres
+      POSTGRESQL_CLIENT_POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRESQL_CLIENT_POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      POSTGRESQL_CLIENT_CREATE_DATABASE_NAME: ${DISCOURSE_DB_NAME:-discourse}
+      POSTGRESQL_CLIENT_CREATE_DATABASE_OWNER: ${DISCOURSE_DB_USER:-discourse}
+      POSTGRESQL_CLIENT_CREATE_DATABASE_EXTENSIONS: "hstore,pg_trgm"
+    volumes:
+      - discourse_sidekiq_data:/bitnamilegacy/discourse
+    depends_on:
+      - discourse
+    networks:
+      - backend
+
+  # Caddy — Reverse proxy + TLS auto (HTTP-01)
+  caddy:
+    image: caddy:{{ sd_caddy_version }}-alpine
+    container_name: sd_caddy
+    restart: unless-stopped
+    ports:
+      - "0.0.0.0:80:80"
+      - "0.0.0.0:443:443"
+      - "0.0.0.0:443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - frontend
+    depends_on:
+      - zammad-nginx
+      - discourse
+
+  # ===========================================================================
+  # PHASE B — INTELLIGENCE
+  # ===========================================================================
+
+  qdrant:
+    image: qdrant/qdrant:${QDRANT_VERSION:-{{ sd_qdrant_version }}}
+    container_name: sd_qdrant
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${QDRANT_PORT:-{{ sd_qdrant_port }}}:6333"
+      - "127.0.0.1:6334:6334"
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY}
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - ai
+      - backend
+    profiles:
+      - intelligence
+      - full
+
+  typesense:
+    image: typesense/typesense:${TYPESENSE_VERSION:-{{ sd_typesense_version }}}
+    container_name: sd_typesense
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${TYPESENSE_PORT:-{{ sd_typesense_port }}}:8108"
+    command: ["--data-dir", "/data", "--api-key=${TYPESENSE_API_KEY}", "--enable-cors"]
+    volumes:
+      - typesense_data:/data
+    networks:
+      - ai
+      - backend
+    profiles:
+      - intelligence
+      - full
+
+  embedding-worker:
+    build:
+      context: ./embedding-worker
+      dockerfile: Dockerfile
+    container_name: sd_embedding_worker
+    restart: unless-stopped
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      TYPESENSE_URL: http://typesense:8108
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY}
+      REDIS_URL: redis://redis:6379/2
+      LITELLM_URL: ${LITELLM_URL}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-small}
+      CHUNK_SIZE: "512"
+      CHUNK_OVERLAP: "64"
+    depends_on:
+      - qdrant
+      - typesense
+    networks:
+      - ai
+      - backend
+    profiles:
+      - intelligence
+      - full
+
+  reranker:
+    build:
+      context: ./reranker
+      dockerfile: Dockerfile
+    container_name: sd_reranker
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${RERANKER_PORT:-{{ sd_reranker_port }}}:8090"
+    environment:
+      MODEL_NAME: cross-encoder/ms-marco-MiniLM-L-6-v2
+      MAX_BATCH_SIZE: "32"
+    networks:
+      - ai
+    profiles:
+      - intelligence
+      - full
+
+  support-agent:
+    build:
+      context: ./support-agent
+      dockerfile: Dockerfile
+    container_name: sd_support_agent
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SUPPORT_AGENT_PORT:-{{ sd_support_agent_port }}}:8091"
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      RERANKER_URL: http://reranker:8090
+      ZAMMAD_URL: http://zammad-nginx:8080
+      ZAMMAD_API_TOKEN: ${ZAMMAD_API_TOKEN}
+      LITELLM_URL: ${LITELLM_URL}
+      LITELLM_API_KEY: ${LITELLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL:-claude-sonnet-4-6}
+      REDIS_URL: redis://redis:6379/2
+      CONFIDENCE_AUTO_CLOSE: "0.9"
+      CONFIDENCE_DRAFT: "0.5"
+    depends_on:
+      - qdrant
+      - reranker
+    networks:
+      - ai
+      - backend
+    profiles:
+      - intelligence
+      - full
+
+  # ===========================================================================
+  # PHASE C — EXPERIENCE
+  # ===========================================================================
+
+  gatus:
+    image: twinproduction/gatus:${GATUS_VERSION:-{{ sd_gatus_version }}}
+    container_name: sd_gatus
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${GATUS_PORT:-{{ sd_gatus_port }}}:8080"
+    volumes:
+      - ./gatus/config.yaml:/config/config.yaml
+      - gatus_data:/data
+    networks:
+      - frontend
+      - backend
+      - ai
+    profiles:
+      - experience
+      - full
+
+  portail:
+    build:
+      context: ./portail
+      dockerfile: Dockerfile
+    container_name: sd_portail
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PORTAIL_PORT:-{{ sd_portail_port }}}:3000"
+    environment:
+      NEXT_PUBLIC_ZAMMAD_URL: https://help.{{ sd_domain }}
+      NEXT_PUBLIC_DISCOURSE_URL: https://agence.{{ sd_domain }}
+      NEXT_PUBLIC_GATUS_URL: https://status.{{ sd_domain }}
+      ZAMMAD_API_URL: http://zammad-nginx:8080
+      ZAMMAD_API_TOKEN: ${ZAMMAD_API_TOKEN}
+      DISCOURSE_API_URL: http://discourse:3000
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY}
+      TYPESENSE_URL: http://typesense:8108
+      TYPESENSE_API_KEY: ${TYPESENSE_API_KEY}
+      GATUS_API_URL: http://gatus:8080
+      EVENT_ROUTER_URL: http://event-router:8092
+      ZITADEL_ISSUER: ${ZITADEL_ISSUER:-https://auth.{{ sd_domain }}}
+      ZITADEL_CLIENT_ID: ${ZITADEL_SD_CLIENT_ID}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: https://portail.{{ sd_domain }}
+    networks:
+      - frontend
+      - ai
+    profiles:
+      - experience
+      - full
+
+  # ===========================================================================
+  # PHASE D — PROACTIVITE
+  # ===========================================================================
+
+  event-router:
+    build:
+      context: ./event-router
+      dockerfile: Dockerfile
+    container_name: sd_event_router
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${EVENT_ROUTER_PORT:-{{ sd_event_router_port }}}:8092"
+    environment:
+      DATABASE_URL: postgres://${SERVICEDESK_DB_USER}:${SERVICEDESK_DB_PASSWORD}@postgres:5432/${SERVICEDESK_DB_NAME}?sslmode=disable
+      REDIS_URL: redis://redis:6379/2
+      ZAMMAD_URL: http://zammad-nginx:8080
+      ZAMMAD_API_TOKEN: ${ZAMMAD_API_TOKEN}
+      BREVO_API_KEY: ${BREVO_API_KEY}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      GATUS_CONFIG_PATH: /gatus-config/config.yaml
+      GATUS_CONTAINER_NAME: sd_gatus
+    volumes:
+      - ./gatus:/gatus-config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - frontend
+      - backend
+    profiles:
+      - proactive
+      - full

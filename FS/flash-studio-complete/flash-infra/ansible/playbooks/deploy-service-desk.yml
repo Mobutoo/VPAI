@@ -1,0 +1,179 @@
+---
+# deploy-service-desk.yml — Full deployment: provision → bootstrap → deploy
+# Usage:
+#   ansible-playbook playbooks/deploy-service-desk.yml \
+#     -i inventory/hosts.yml \
+#     -e @secrets.yml
+#
+# Skip provisioning (deploy to existing server):
+#   ansible-playbook playbooks/deploy-service-desk.yml \
+#     -i inventory/hosts.yml \
+#     -e @secrets.yml \
+#     --start-at-task="Play 2"
+#     # or use tags: --tags bootstrap,deploy
+
+# =============================================================================
+# PLAY 1 — PROVISION (Hetzner Cloud API)
+# =============================================================================
+- name: "Play 1: Provision Hetzner infrastructure"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [provision]
+
+  vars:
+    sd_hetzner_token: "{{ lookup('env', 'HETZNER_TOKEN') }}"
+    sd_server_type: cx43
+    sd_datacenter: nbg1-dc3
+    sd_image: debian-13
+    sd_ssh_key_name: flash-studio-waza
+    sd_volume_size: 100
+    sd_server_name: service-desk
+
+  tasks:
+    - name: Validate Hetzner token
+      ansible.builtin.fail:
+        msg: "HETZNER_TOKEN env variable is required"
+      when: sd_hetzner_token == ""
+
+    # --- Get SSH key ID ---
+    - name: Get SSH key from Hetzner
+      ansible.builtin.uri:
+        url: "https://api.hetzner.cloud/v1/ssh_keys?name={{ sd_ssh_key_name }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ sd_hetzner_token }}"
+        return_content: true
+      register: sd_ssh_keys
+
+    - name: Extract SSH key ID
+      ansible.builtin.set_fact:
+        sd_ssh_key_id: "{{ sd_ssh_keys.json.ssh_keys[0].id }}"
+
+    # --- Create volume ---
+    - name: Create Hetzner volume
+      ansible.builtin.uri:
+        url: "https://api.hetzner.cloud/v1/volumes"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ sd_hetzner_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          size: "{{ sd_volume_size }}"
+          name: "{{ sd_server_name }}-data"
+          location: "nbg1"
+          automount: false
+          format: "ext4"
+        status_code: [201, 409]
+        return_content: true
+      register: sd_volume_result
+
+    - name: Get existing volume if already created
+      ansible.builtin.uri:
+        url: "https://api.hetzner.cloud/v1/volumes?name={{ sd_server_name }}-data"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ sd_hetzner_token }}"
+        return_content: true
+      register: sd_volume_existing
+      when: sd_volume_result.status == 409
+
+    - name: Set volume ID
+      ansible.builtin.set_fact:
+        sd_volume_id: >-
+          {{ sd_volume_result.json.volume.id
+             if sd_volume_result.status == 201
+             else sd_volume_existing.json.volumes[0].id }}
+
+    # --- Create server ---
+    - name: Create Hetzner server
+      ansible.builtin.uri:
+        url: "https://api.hetzner.cloud/v1/servers"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ sd_hetzner_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "{{ sd_server_name }}"
+          server_type: "{{ sd_server_type }}"
+          image: "{{ sd_image }}"
+          datacenter: "{{ sd_datacenter }}"
+          ssh_keys:
+            - "{{ sd_ssh_key_id | int }}"
+          volumes:
+            - "{{ sd_volume_id | int }}"
+          start_after_create: true
+        status_code: [201, 409]
+        return_content: true
+      register: sd_server_result
+
+    - name: Get existing server if already created
+      ansible.builtin.uri:
+        url: "https://api.hetzner.cloud/v1/servers?name={{ sd_server_name }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ sd_hetzner_token }}"
+        return_content: true
+      register: sd_server_existing
+      when: sd_server_result.status == 409
+
+    - name: Set server IP
+      ansible.builtin.set_fact:
+        sd_server_ip: >-
+          {{ sd_server_result.json.server.public_net.ipv4.ip
+             if sd_server_result.status == 201
+             else sd_server_existing.json.servers[0].public_net.ipv4.ip }}
+
+    - name: Display server IP
+      ansible.builtin.debug:
+        msg: "Server IP: {{ sd_server_ip }}"
+
+    # --- Wait for SSH ---
+    - name: Wait for SSH to become available
+      ansible.builtin.wait_for:
+        host: "{{ sd_server_ip }}"
+        port: 22
+        delay: 10
+        timeout: 300
+
+    # --- Add to dynamic inventory ---
+    - name: Add server to inventory
+      ansible.builtin.add_host:
+        name: "{{ sd_server_ip }}"
+        groups: service_desk
+        ansible_user: root
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+
+# =============================================================================
+# PLAY 2 — BOOTSTRAP (system, Docker, volume)
+# =============================================================================
+- name: "Play 2: Bootstrap server"
+  hosts: service_desk
+  become: true
+  gather_facts: true
+  tags: [bootstrap]
+
+  vars:
+    sd_system_user: flash
+
+  roles:
+    - role: sd-common
+    - role: sd-docker
+    - role: sd-hetzner-volume
+
+# =============================================================================
+# PLAY 3 — DEPLOY (Docker stack)
+# =============================================================================
+- name: "Play 3: Deploy Service Desk stack"
+  hosts: service_desk
+  become: true
+  gather_facts: false
+  tags: [deploy]
+
+  vars:
+    sd_system_user: flash
+
+  roles:
+    - role: sd-service-desk

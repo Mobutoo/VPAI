@@ -1,0 +1,55 @@
+#!/bin/bash
+# init-databases.sh — Create service-desk databases and users
+# Managed by Ansible — DO NOT EDIT MANUALLY
+# Runs once on first PostgreSQL start via /docker-entrypoint-initdb.d/
+set -euo pipefail
+
+create_db_and_user() {
+  local db_user="$1"
+  local db_password="$2"
+  local db_name="$3"
+
+  echo "Creating user '$db_user' and database '$db_name'..."
+
+  psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    DO \$\$
+    BEGIN
+      IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${db_user}') THEN
+        CREATE ROLE "${db_user}" WITH LOGIN PASSWORD '${db_password}';
+      END IF;
+    END
+    \$\$;
+
+    SELECT 'CREATE DATABASE "${db_name}" OWNER "${db_user}"'
+    WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${db_name}')\gexec
+
+    GRANT ALL PRIVILEGES ON DATABASE "${db_name}" TO "${db_user}";
+EOSQL
+
+  # Enable pgvector extension in the new database
+  psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$db_name" <<-EOSQL
+    CREATE EXTENSION IF NOT EXISTS vector;
+EOSQL
+
+  echo "Database '$db_name' ready."
+}
+
+# Zammad database
+create_db_and_user \
+  "${ZAMMAD_DB_USER}" \
+  "${ZAMMAD_DB_PASSWORD}" \
+  "${ZAMMAD_DB_NAME}"
+
+# Discourse database
+create_db_and_user \
+  "${DISCOURSE_DB_USER}" \
+  "${DISCOURSE_DB_PASSWORD}" \
+  "${DISCOURSE_DB_NAME}"
+
+# Service Desk application database (Event Router, Health Score, etc.)
+create_db_and_user \
+  "${SERVICEDESK_DB_USER}" \
+  "${SERVICEDESK_DB_PASSWORD}" \
+  "${SERVICEDESK_DB_NAME}"
+
+echo "All service-desk databases initialized."

@@ -1,0 +1,81 @@
+---
+# sd-docker — Docker CE installation via official APT repo
+
+- name: Check if Docker is already installed
+  ansible.builtin.command:
+    cmd: docker --version
+  changed_when: false
+  failed_when: false
+  register: sd_docker_check
+
+- name: Install Docker prerequisites
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - ca-certificates
+      - curl
+      - gnupg
+    state: present
+  become: true
+  when: sd_docker_check.rc != 0
+
+- name: Add Docker GPG key
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+  become: true
+  changed_when: true
+  when: sd_docker_check.rc != 0
+
+- name: Add Docker APT repository
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+        https://download.docker.com/linux/debian \
+        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+        > /etc/apt/sources.list.d/docker.list
+  become: true
+  changed_when: true
+  when: sd_docker_check.rc != 0
+
+- name: Update apt cache for Docker repo
+  ansible.builtin.apt:
+    update_cache: true
+  become: true
+  when: sd_docker_check.rc != 0
+
+- name: Install Docker packages
+  ansible.builtin.apt:
+    name: "{{ sd_docker_packages }}"
+    state: present
+  become: true
+  when: sd_docker_check.rc != 0
+
+- name: Enable and start Docker
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+  become: true
+
+- name: Add deployment user to docker group
+  ansible.builtin.user:
+    name: "{{ sd_system_user }}"
+    groups: docker
+    append: true
+  become: true
+
+- name: Verify Docker version
+  ansible.builtin.command:
+    cmd: docker --version
+  changed_when: false
+  register: sd_docker_version
+  become: true
+
+- name: Display Docker version
+  ansible.builtin.debug:
+    msg: "{{ sd_docker_version.stdout }}"

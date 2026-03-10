@@ -1,0 +1,89 @@
+# Gatus — Status page configuration
+# Managed by Ansible — DO NOT EDIT MANUALLY
+
+storage:
+  type: sqlite
+  path: /data/gatus.db
+
+ui:
+  title: "{{ sd_domain | capitalize }} — Status"
+  description: "Real-time platform status"
+  logo: ""
+
+endpoints:
+  # --- Service Desk services ---
+  - name: "Zammad (Ticketing)"
+    group: "Service Desk"
+    url: "http://zammad-nginx:8080/"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 5000"
+
+  - name: "Discourse (Community)"
+    group: "Service Desk"
+    url: "http://discourse:3000/srv/status"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 5000"
+
+  - name: "Elasticsearch"
+    group: "Service Desk"
+    url: "http://elasticsearch:9200/_cluster/health"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: "PostgreSQL"
+    group: "Service Desk"
+    url: "tcp://postgres:5432"
+    interval: 30s
+    conditions:
+      - "[CONNECTED] == true"
+
+  - name: "Redis"
+    group: "Service Desk"
+    url: "tcp://redis:6379"
+    interval: 30s
+    conditions:
+      - "[CONNECTED] == true"
+
+  # --- Intelligence layer (Phase B) ---
+  - name: "Qdrant (Vector DB)"
+    group: "Intelligence"
+    url: "http://qdrant:6333/healthz"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: "Typesense (Search)"
+    group: "Intelligence"
+    url: "http://typesense:8108/health"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: "Reranker"
+    group: "Intelligence"
+    url: "http://reranker:8090/health"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  - name: "Support Agent"
+    group: "Intelligence"
+    url: "http://support-agent:8091/health"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  # --- Experience layer (Phase C) ---
+  - name: "Event Router"
+    group: "Experience"
+    url: "http://event-router:8092/health"
+    interval: 60s
+    conditions:
+      - "[STATUS] == 200"
+
+  # --- Dynamic (API-managed) ---

@@ -1,0 +1,67 @@
+---
+# sd-hetzner-volume — Mount Hetzner persistent volume
+
+- name: Check if volume device exists
+  ansible.builtin.stat:
+    path: "{{ sd_volume_device }}"
+  register: sd_vol_device
+  become: true
+
+- name: Check if volume has filesystem
+  ansible.builtin.command:
+    cmd: "blkid -s TYPE -o value {{ sd_volume_device }}"
+  register: sd_vol_fstype
+  changed_when: false
+  failed_when: false
+  become: true
+  when: sd_vol_device.stat.exists
+
+- name: Format volume as ext4 if no filesystem
+  ansible.builtin.command:
+    cmd: "mkfs.ext4 -F {{ sd_volume_device }}"
+  become: true
+  changed_when: true
+  when:
+    - sd_vol_device.stat.exists
+    - sd_vol_fstype.stdout | default('') == ''
+
+- name: Create mount point
+  ansible.builtin.file:
+    path: "{{ sd_volume_mount }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Mount volume
+  ansible.builtin.command:
+    cmd: "mount {{ sd_volume_device }} {{ sd_volume_mount }}"
+  become: true
+  register: sd_mount_result
+  changed_when: sd_mount_result.rc == 0
+  failed_when:
+    - sd_mount_result.rc != 0
+    - "'already mounted' not in sd_mount_result.stderr | default('')"
+    - "'busy' not in sd_mount_result.stderr | default('')"
+  when: sd_vol_device.stat.exists
+
+- name: Add volume to fstab
+  ansible.builtin.lineinfile:
+    path: /etc/fstab
+    regexp: "^{{ sd_volume_device }}"
+    line: "{{ sd_volume_device }} {{ sd_volume_mount }} {{ sd_volume_fstype }} discard,nofail,defaults 0 0"
+    state: present
+  become: true
+  when: sd_vol_device.stat.exists
+
+- name: Verify volume mount
+  ansible.builtin.command:
+    cmd: "df -h {{ sd_volume_mount }}"
+  changed_when: false
+  register: sd_vol_df
+  become: true
+
+- name: Display volume info
+  ansible.builtin.debug:
+    msg: "{{ sd_vol_df.stdout }}"

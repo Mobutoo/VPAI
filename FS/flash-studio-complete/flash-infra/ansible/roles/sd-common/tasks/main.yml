@@ -1,0 +1,141 @@
+---
+# sd-common — Base system setup for Debian 13
+
+# --- Debian 13 repos fix ---
+- name: Check Debian repos completeness
+  ansible.builtin.command:
+    cmd: apt-cache policy gnupg
+  changed_when: false
+  failed_when: false
+  register: sd_repo_check
+  become: true
+
+- name: Fix Debian 13 minimal repos if needed
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/debian.sources
+    content: |
+      Types: deb
+      URIs: http://deb.debian.org/debian
+      Suites: trixie trixie-updates
+      Components: main contrib non-free non-free-firmware
+      Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+
+      Types: deb
+      URIs: http://deb.debian.org/debian-security
+      Suites: trixie-security
+      Components: main contrib non-free non-free-firmware
+      Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+    mode: "0644"
+  become: true
+  when: >
+    (sd_repo_check.rc != 0) or
+    ('Candidate: (none)' in sd_repo_check.stdout | default(''))
+  notify: Update apt cache
+
+- name: Flush handlers to update apt cache
+  ansible.builtin.meta: flush_handlers
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+
+- name: Install common packages
+  ansible.builtin.apt:
+    name: "{{ sd_common_packages }}"
+    state: present
+  become: true
+
+# --- Deployment user ---
+- name: Create deployment user
+  ansible.builtin.user:
+    name: "{{ sd_system_user }}"
+    shell: /bin/bash
+    groups: sudo
+    append: true
+    create_home: true
+    state: present
+  become: true
+
+# --- Timezone ---
+- name: Set timezone
+  ansible.builtin.command:
+    cmd: "timedatectl set-timezone {{ sd_timezone }}"
+  changed_when: false
+  become: true
+
+# --- Hostname ---
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ sd_hostname }}"
+  become: true
+
+# --- Sysctl ---
+- name: Configure sysctl parameters
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-service-desk.conf
+    content: |
+      {% for key, value in sd_sysctl_settings.items() %}
+      {{ key }} = {{ value }}
+      {% endfor %}
+    mode: "0644"
+  become: true
+  register: sd_sysctl_result
+
+- name: Apply sysctl settings
+  ansible.builtin.command:
+    cmd: sysctl --system
+  changed_when: false
+  become: true
+  when: sd_sysctl_result.changed
+
+# --- UFW Firewall ---
+- name: Reset UFW to defaults
+  ansible.builtin.command:
+    cmd: ufw --force reset
+  changed_when: false
+  become: true
+
+- name: Set UFW default deny incoming
+  ansible.builtin.command:
+    cmd: ufw default deny incoming
+  changed_when: false
+  become: true
+
+- name: Set UFW default allow outgoing
+  ansible.builtin.command:
+    cmd: ufw default allow outgoing
+  changed_when: false
+  become: true
+
+- name: Allow UFW ports
+  ansible.builtin.command:
+    cmd: "ufw allow {{ item }}/tcp"
+  changed_when: false
+  loop: "{{ sd_ufw_allowed_ports }}"
+  become: true
+
+- name: Enable UFW
+  ansible.builtin.command:
+    cmd: ufw --force enable
+  changed_when: false
+  become: true
+
+# --- Fail2ban ---
+- name: Enable and start fail2ban
+  ansible.builtin.service:
+    name: fail2ban
+    state: started
+    enabled: true
+  become: true
+
+# --- Project directory ---
+- name: Create project base directory
+  ansible.builtin.file:
+    path: "/opt/{{ sd_project_name }}"
+    state: directory
+    owner: "{{ sd_system_user }}"
+    group: "{{ sd_system_user }}"
+    mode: "0755"
+  become: true

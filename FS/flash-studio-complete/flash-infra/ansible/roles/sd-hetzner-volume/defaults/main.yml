@@ -1,0 +1,6 @@
+---
+# sd-hetzner-volume — defaults
+
+sd_volume_device: /dev/sdb
+sd_volume_mount: /mnt/data
+sd_volume_fstype: ext4

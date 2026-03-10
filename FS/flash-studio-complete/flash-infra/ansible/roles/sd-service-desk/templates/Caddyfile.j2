@@ -1,0 +1,27 @@
+# Caddyfile — {{ sd_project_name }} reverse proxy
+# Managed by Ansible — DO NOT EDIT MANUALLY
+# TLS via HTTP-01 challenge (automatic HTTPS)
+
+{
+    email infra@{{ sd_domain }}
+}
+
+# --- help.{{ sd_domain }} — Zammad (ticketing) ---
+help.{{ sd_domain }} {
+    reverse_proxy zammad-nginx:8080
+}
+
+# --- agence.{{ sd_domain }} — Discourse (community) ---
+agence.{{ sd_domain }} {
+    reverse_proxy discourse:3000
+}
+
+# --- status.{{ sd_domain }} — Gatus (status page) ---
+status.{{ sd_domain }} {
+    reverse_proxy gatus:8080
+}
+
+# --- portail.{{ sd_domain }} — Next.js help center ---
+portail.{{ sd_domain }} {
+    reverse_proxy portail:3000
+}

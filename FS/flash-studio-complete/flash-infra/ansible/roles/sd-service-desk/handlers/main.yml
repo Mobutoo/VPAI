@@ -1,0 +1,12 @@
+---
+# sd-service-desk — handlers
+
+- name: Restart docker stack
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      cd {{ sd_deploy_dir }}
+      docker compose --profile full down --remove-orphans 2>/dev/null || true
+      docker compose --profile full up -d
+  become: true
+  changed_when: true

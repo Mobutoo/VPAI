@@ -1,0 +1,338 @@
+---
+# sd-service-desk — Phased Docker stack deployment
+# Pattern: mobutoo-infra/core-docker-stack (health checks + diagnostic logs)
+
+# === DIRECTORY STRUCTURE ===
+- name: Create service-desk directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ sd_system_user }}"
+    group: "{{ sd_system_user }}"
+    mode: "0755"
+  loop:
+    - "{{ sd_deploy_dir }}"
+    - "{{ sd_deploy_dir }}/caddy"
+    - "{{ sd_deploy_dir }}/initdb"
+    - "{{ sd_deploy_dir }}/gatus"
+    - "{{ sd_deploy_dir }}/embedding-worker"
+    - "{{ sd_deploy_dir }}/reranker"
+    - "{{ sd_deploy_dir }}/support-agent"
+    - "{{ sd_deploy_dir }}/event-router"
+    - "{{ sd_deploy_dir }}/portail"
+    - "{{ sd_deploy_dir }}/portail/public"
+    - "{{ sd_deploy_dir }}/portail/src"
+    - "{{ sd_deploy_dir }}/portail/src/app"
+  become: true
+
+# === COPY BUILD CONTEXTS (source files for custom Docker images) ===
+- name: Copy embedding-worker files
+  ansible.builtin.copy:
+    src: "embedding-worker/"
+    dest: "{{ sd_deploy_dir }}/embedding-worker/"
+    owner: "{{ sd_system_user }}"
+    group: "{{ sd_system_user }}"
+    mode: "0644"
+  become: true
+
+- name: Copy reranker files
+  ansible.builtin.copy:
+    src: "reranker/"
+    dest: "{{ sd_deploy_dir }}/reranker/"
+    owner: "{{ sd_system_user }}"
+    group: "{{ sd_system_user }}"
+    mode: "0644"
+  become: true
+
+- name: Copy support-agent files
+  ansible.builtin.copy:
+    src: "support-agent/"
+    dest: "{{ sd_deploy_dir }}/support-agent/"
+    owner: "{{ sd_system_user }}"
+    group: "{{ sd_system_user }}"
+    mode: "0644"
+  become: true
+
+- name: Copy event-router files
+  ansible.builtin.copy:
+    src: "event-router/"
+    dest: "{{ sd_deploy_dir }}/event-router/"
+    owner: "{{ sd_system_user }}"
+    group: "{{ sd_system_user }}"
+    mode: "0644"
+  become: true
+
+- name: Copy portail files
+  ansible.builtin.copy:
+    src: "portail/"
+    dest: "{{ sd_deploy_dir }}/portail/"
+    owner: "{{ sd_system_user }}"
+    group: "{{ sd_system_user }}"
+    mode: "0644"
+  become: true
+
+# === RENDER TEMPLATES ===
+- name: Deploy docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ sd_deploy_dir }}/docker-compose.yml"
+    owner: "{{ sd_system_user }}"
+    group: "{{ sd_system_user }}"
+    mode: "0644"
+  become: true
+
+- name: Deploy .env file
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ sd_deploy_dir }}/.env"
+    owner: "{{ sd_system_user }}"
+    group: "{{ sd_system_user }}"
+    mode: "0600"
+  become: true
+
+- name: Deploy Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ sd_deploy_dir }}/caddy/Caddyfile"
+    owner: "{{ sd_system_user }}"
+    group: "{{ sd_system_user }}"
+    mode: "0644"
+  become: true
+
+- name: Deploy init-databases.sh
+  ansible.builtin.template:
+    src: init-databases.sh.j2
+    dest: "{{ sd_deploy_dir }}/initdb/init-databases.sh"
+    owner: "{{ sd_system_user }}"
+    group: "{{ sd_system_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy gatus config
+  ansible.builtin.template:
+    src: gatus-config.yaml.j2
+    dest: "{{ sd_deploy_dir }}/gatus/config.yaml"
+    owner: "{{ sd_system_user }}"
+    group: "{{ sd_system_user }}"
+    mode: "0644"
+  become: true
+
+# === PHASE A — CORE INFRASTRUCTURE ===
+- name: "Phase A: Start core services (postgres, redis, elasticsearch, memcached)"
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      cd {{ sd_deploy_dir }}
+      docker compose up -d postgres redis elasticsearch zammad-memcached 2>&1
+  become: true
+  changed_when: true
+
+# --- PostgreSQL health check ---
+- name: Wait for PostgreSQL to be healthy
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}'
+      sd_postgres
+  register: sd_pg_health
+  changed_when: false
+  retries: 20
+  delay: 5
+  until: sd_pg_health.stdout | default('') == 'healthy'
+  become: true
+  failed_when: false
+
+- name: Show PostgreSQL logs if unhealthy
+  ansible.builtin.command:
+    cmd: "docker logs sd_postgres --tail 30"
+  become: true
+  changed_when: false
+  when: sd_pg_health.stdout | default('') != 'healthy'
+
+- name: Fail if PostgreSQL is unhealthy
+  ansible.builtin.fail:
+    msg: "PostgreSQL failed to become healthy. Check logs above."
+  when: sd_pg_health.stdout | default('') != 'healthy'
+
+# --- Redis health check ---
+- name: Wait for Redis to be healthy
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}'
+      sd_redis
+  register: sd_redis_health
+  changed_when: false
+  retries: 10
+  delay: 3
+  until: sd_redis_health.stdout | default('') == 'healthy'
+  become: true
+  failed_when: false
+
+- name: Show Redis logs if unhealthy
+  ansible.builtin.command:
+    cmd: "docker logs sd_redis --tail 30"
+  become: true
+  changed_when: false
+  when: sd_redis_health.stdout | default('') != 'healthy'
+
+- name: Fail if Redis is unhealthy
+  ansible.builtin.fail:
+    msg: "Redis failed to become healthy. Check logs above."
+  when: sd_redis_health.stdout | default('') != 'healthy'
+
+# --- Elasticsearch health check ---
+- name: Wait for Elasticsearch to be healthy
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}'
+      sd_elasticsearch
+  register: sd_es_health
+  changed_when: false
+  retries: 30
+  delay: 10
+  until: sd_es_health.stdout | default('') == 'healthy'
+  become: true
+  failed_when: false
+
+- name: Show Elasticsearch logs if unhealthy
+  ansible.builtin.command:
+    cmd: "docker logs sd_elasticsearch --tail 30"
+  become: true
+  changed_when: false
+  when: sd_es_health.stdout | default('') != 'healthy'
+
+- name: Fail if Elasticsearch is unhealthy
+  ansible.builtin.fail:
+    msg: "Elasticsearch failed to become healthy. Check logs above."
+  when: sd_es_health.stdout | default('') != 'healthy'
+
+- name: Display Phase A health summary
+  ansible.builtin.debug:
+    msg: >-
+      Phase A: PG={{ sd_pg_health.stdout | default('?') }}
+      Redis={{ sd_redis_health.stdout | default('?') }}
+      ES={{ sd_es_health.stdout | default('?') }}
+
+# === ZAMMAD INITIALIZATION ===
+- name: "Zammad: Run database initialization"
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      cd {{ sd_deploy_dir }}
+      docker compose up -d zammad-init 2>&1
+  become: true
+  changed_when: true
+
+- name: Wait for Zammad init to complete
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      STATUS=$(docker inspect --format='{{ '{{' }}.State.Status{{ '}}' }}' sd_zammad_init 2>/dev/null)
+      if [ "$STATUS" = "exited" ]; then
+        EXIT_CODE=$(docker inspect --format='{{ '{{' }}.State.ExitCode{{ '}}' }}' sd_zammad_init 2>/dev/null)
+        echo "exited:$EXIT_CODE"
+      else
+        echo "running"
+      fi
+  register: sd_zammad_init_status
+  changed_when: false
+  retries: 60
+  delay: 10
+  until: sd_zammad_init_status.stdout is search('exited:')
+  become: true
+  failed_when: false
+
+- name: Show Zammad init logs if failed
+  ansible.builtin.command:
+    cmd: "docker logs sd_zammad_init --tail 30"
+  become: true
+  changed_when: false
+  when: sd_zammad_init_status.stdout | default('') == 'exited:1'
+
+- name: Fail if Zammad init failed
+  ansible.builtin.fail:
+    msg: "Zammad init failed. Check logs above."
+  when: sd_zammad_init_status.stdout | default('') == 'exited:1'
+
+# === ZAMMAD SERVICES + CADDY + DISCOURSE ===
+- name: "Phase A: Start Zammad services, Caddy, and Discourse"
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      cd {{ sd_deploy_dir }}
+      docker compose up -d \
+        zammad-nginx zammad-railsserver zammad-scheduler \
+        zammad-websocket zammad-backup \
+        caddy discourse discourse-sidekiq 2>&1
+  become: true
+  changed_when: true
+
+- name: Wait for Zammad nginx to respond
+  ansible.builtin.command:
+    cmd: "docker exec sd_zammad_nginx curl -sf http://localhost:8080/ -o /dev/null -w '%{http_code}'"
+  register: sd_zammad_http
+  changed_when: false
+  retries: 30
+  delay: 10
+  until: sd_zammad_http.rc == 0
+  become: true
+  failed_when: false
+
+- name: Display Zammad status
+  ansible.builtin.debug:
+    msg: "Zammad HTTP: {{ sd_zammad_http.stdout | default('not ready') }}"
+
+# === PHASE B — INTELLIGENCE ===
+- name: "Phase B: Build and start intelligence services"
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      cd {{ sd_deploy_dir }}
+      docker compose --profile intelligence up -d --build 2>&1
+  become: true
+  changed_when: true
+  register: sd_phase_b
+
+- name: Display Phase B status
+  ansible.builtin.debug:
+    msg: "Phase B: {{ 'OK' if sd_phase_b.rc == 0 else 'ERRORS — check logs' }}"
+
+# === PHASE C+D — EXPERIENCE + PROACTIVE ===
+- name: "Phase C+D: Build and start experience + proactive services"
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      cd {{ sd_deploy_dir }}
+      docker compose --profile full up -d --build 2>&1
+  become: true
+  changed_when: true
+  register: sd_phase_cd
+
+- name: Display Phase C+D status
+  ansible.builtin.debug:
+    msg: "Phase C+D: {{ 'OK' if sd_phase_cd.rc == 0 else 'ERRORS — check logs' }}"
+
+# === FINAL VERIFICATION ===
+- name: List all running containers
+  ansible.builtin.command:
+    cmd: >-
+      docker ps --format
+      'table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}'
+  register: sd_docker_ps
+  changed_when: false
+  become: true
+
+- name: Display final container status
+  ansible.builtin.debug:
+    msg: "{{ sd_docker_ps.stdout_lines }}"
+
+- name: Count running containers
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: "docker ps -q | wc -l"
+  register: sd_container_count
+  changed_when: false
+  become: true
+
+- name: Display container count
+  ansible.builtin.debug:
+    msg: "Total running containers: {{ sd_container_count.stdout | trim }}"

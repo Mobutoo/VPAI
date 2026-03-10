@@ -46,7 +46,7 @@ x-shared:
       ELASTICSEARCH_NAMESPACE: zammad
       ELASTICSEARCH_REINDEX: "true"
       ELASTICSEARCH_ENABLED: "true"
-      ZAMMAD_FQDN: ${ZAMMAD_FQDN:-help.{{ sd_domain }}}
+      ZAMMAD_FQDN: ${ZAMMAD_FQDN:-{{ sd_zammad_fqdn }}}
       ZAMMAD_HTTP_TYPE: https
       NGINX_SERVER_SCHEME: https
       RAILS_TRUSTED_PROXIES: "127.0.0.1,::1,caddy"
@@ -225,7 +225,7 @@ services:
     ports:
       - "127.0.0.1:${DISCOURSE_PORT:-{{ sd_discourse_port }}}:3000"
     environment:
-      DISCOURSE_HOST: ${DISCOURSE_HOST:-agence.{{ sd_domain }}}
+      DISCOURSE_HOST: ${DISCOURSE_HOST:-{{ sd_discourse_fqdn }}}
       DISCOURSE_DATABASE_HOST: postgres
       DISCOURSE_DATABASE_PORT_NUMBER: "5432"
       DISCOURSE_DATABASE_USER: ${DISCOURSE_DB_USER}
@@ -268,7 +268,7 @@ services:
     restart: unless-stopped
     command: /opt/bitnami/scripts/discourse-sidekiq/run.sh
     environment:
-      DISCOURSE_HOST: ${DISCOURSE_HOST:-agence.{{ sd_domain }}}
+      DISCOURSE_HOST: ${DISCOURSE_HOST:-{{ sd_discourse_fqdn }}}
       DISCOURSE_DATABASE_HOST: postgres
       DISCOURSE_DATABASE_PORT_NUMBER: "5432"
       DISCOURSE_DATABASE_USER: ${DISCOURSE_DB_USER}
@@ -457,9 +457,9 @@ services:
     ports:
       - "127.0.0.1:${PORTAIL_PORT:-{{ sd_portail_port }}}:3000"
     environment:
-      NEXT_PUBLIC_ZAMMAD_URL: https://help.{{ sd_domain }}
-      NEXT_PUBLIC_DISCOURSE_URL: https://agence.{{ sd_domain }}
-      NEXT_PUBLIC_GATUS_URL: https://status.{{ sd_domain }}
+      NEXT_PUBLIC_ZAMMAD_URL: https://{{ sd_zammad_fqdn }}
+      NEXT_PUBLIC_DISCOURSE_URL: https://{{ sd_discourse_fqdn }}
+      NEXT_PUBLIC_GATUS_URL: https://{{ sd_gatus_fqdn }}
       ZAMMAD_API_URL: http://zammad-nginx:8080
       ZAMMAD_API_TOKEN: ${ZAMMAD_API_TOKEN}
       DISCOURSE_API_URL: http://discourse:3000
@@ -469,10 +469,10 @@ services:
       TYPESENSE_API_KEY: ${TYPESENSE_API_KEY}
       GATUS_API_URL: http://gatus:8080
       EVENT_ROUTER_URL: http://event-router:8092
-      ZITADEL_ISSUER: ${ZITADEL_ISSUER:-https://auth.{{ sd_domain }}}
+      ZITADEL_ISSUER: ${ZITADEL_ISSUER:-{{ sd_zitadel_issuer }}}
       ZITADEL_CLIENT_ID: ${ZITADEL_SD_CLIENT_ID}
       NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
-      NEXTAUTH_URL: https://portail.{{ sd_domain }}
+      NEXTAUTH_URL: https://{{ sd_portail_fqdn }}
     networks:
       - frontend
       - ai

@@ -2,8 +2,22 @@
 # sd-service-desk — defaults
 
 sd_project_name: service-desk
-sd_domain: paultaffe.com
 sd_deploy_dir: "/opt/{{ sd_project_name }}"
+
+# --- Domains (see domain-strategy.md) ---
+# .com = client-facing (help, docs, status, app)
+# .net = infrastructure ops (auth, vpn, monitor, registry)
+# .fr  = per-client subdomains (isolation)
+sd_domain: paultaffe.com
+sd_infra_domain: paultaffe.net
+sd_client_domain: paultaffe.fr
+
+# --- Subdomain mapping (per domain-strategy.md) ---
+sd_zammad_fqdn: "help.{{ sd_domain }}"
+sd_discourse_fqdn: "docs.{{ sd_domain }}"
+sd_gatus_fqdn: "status.{{ sd_domain }}"
+sd_portail_fqdn: "app.{{ sd_domain }}"
+sd_zitadel_issuer: "https://auth.{{ sd_infra_domain }}"
 
 # --- Service versions (pinned, NO latest) ---
 sd_postgres_version: "pg16"

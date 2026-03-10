@@ -507,6 +507,113 @@ Get the Zammad customer mapping for a client.
 
 ---
 
+## API Key Management
+
+Administrative endpoints for managing per-agent API keys. All endpoints
+require the `ADMIN_API_KEY` via `Authorization: Bearer <admin-key>` header.
+
+Keys are generated with 32 bytes of cryptographic randomness (`sk-<64hex>`),
+stored as SHA-256 hashes. The raw key is returned **only once** at creation time.
+
+### POST /api/admin/keys
+
+Generate a new API key for a client agent.
+
+**Headers:**
+
+| Header        | Required | Description              |
+|---------------|----------|--------------------------|
+| Authorization | yes      | `Bearer <admin-api-key>` |
+
+**Request body:**
+
+```json
+{
+  "client_id": "client-42",
+  "name": "openclaw-agent"
+}
+```
+
+| Field     | Type   | Required | Default              | Description                     |
+|-----------|--------|----------|----------------------|---------------------------------|
+| client_id | string | yes      | —                    | Client this key belongs to      |
+| name      | string | no       | `{client_id}-agent`  | Descriptive name for the key    |
+
+**Response:** `201 Created`
+
+```json
+{
+  "key": "sk-a1b2c3d4e5f6...64hex",
+  "key_hash": "sha256hash...",
+  "client_id": "client-42",
+  "name": "openclaw-agent"
+}
+```
+
+> **Important:** The `key` field is returned **only once**. Store it securely.
+> The event-router only stores the SHA-256 hash and cannot recover the raw key.
+
+**Errors:** `401` if admin key invalid, `409` if hash collision.
+
+---
+
+### GET /api/admin/keys
+
+List all API keys (hashes only, no raw keys).
+
+**Headers:**
+
+| Header        | Required | Description              |
+|---------------|----------|--------------------------|
+| Authorization | yes      | `Bearer <admin-api-key>` |
+
+**Query parameters:**
+
+| Param     | Type   | Default | Description                    |
+|-----------|--------|---------|--------------------------------|
+| client_id | string | —       | Filter by client (optional)    |
+
+**Response:** `200 OK`
+
+```json
+[
+  {
+    "key_hash": "a1b2c3...",
+    "client_id": "client-42",
+    "name": "openclaw-agent",
+    "created_at": "2026-03-10T18:00:00Z"
+  }
+]
+```
+
+---
+
+### DELETE /api/admin/keys/{hash}
+
+Revoke an API key. The agent using this key will immediately lose access.
+
+**Headers:**
+
+| Header        | Required | Description              |
+|---------------|----------|--------------------------|
+| Authorization | yes      | `Bearer <admin-api-key>` |
+
+**Path parameters:**
+
+| Param | Type   | Description                          |
+|-------|--------|--------------------------------------|
+| hash  | string | SHA-256 hash of the key to revoke    |
+
+**Response:** `200 OK`
+
+```json
+{"status": "revoked"}
+```
+
+**Error:** `404` if key not found.
+
+---
+
 ## Health
 
 ### GET /health
@@ -624,6 +731,27 @@ curl -X POST http://event-router:8092/api/client-customers \
 
 # Get client-customer mapping
 curl http://event-router:8092/api/client-customers/client-42
+
+# --- API Key Management (admin) ---
+
+# Generate a new API key for a client
+curl -X POST http://event-router:8092/api/admin/keys \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <admin-api-key>" \
+  -d '{"client_id":"client-42","name":"openclaw-agent"}'
+# → Returns raw key (only time it's visible). STORE IT.
+
+# List all API keys (hashes only)
+curl http://event-router:8092/api/admin/keys \
+  -H "Authorization: Bearer <admin-api-key>"
+
+# List keys for a specific client
+curl "http://event-router:8092/api/admin/keys?client_id=client-42" \
+  -H "Authorization: Bearer <admin-api-key>"
+
+# Revoke an API key
+curl -X DELETE http://event-router:8092/api/admin/keys/<key-hash> \
+  -H "Authorization: Bearer <admin-api-key>"
 ```
 
 ### Ticket Pipeline Architecture
@@ -650,3 +778,142 @@ it goes through a 10-step pipeline:
 - Fallback extraction when LLM is unavailable (truncated title, "general" category)
 - Priority capping by source (only "monitor" can create "urgent" tickets)
 - Body sanitization (strips token/key/password patterns before sending to Zammad)
+
+### API Key Lifecycle
+
+Keys are generated per-client via the admin API and distributed to agents:
+
+```
+Admin: POST /api/admin/keys {"client_id":"client-42","name":"openclaw"}
+  → Returns sk-a1b2c3... (store in agent's .env or Vaultwarden)
+  → Event Router stores SHA-256(sk-a1b2c3...) in api_keys table
+
+Agent: POST /api/tickets
+  → Authorization: Bearer sk-a1b2c3...
+  → Event Router hashes token, matches against api_keys
+  → Enforces client_id from api_keys == client_id in payload
+```
+
+**Key format:** `sk-` prefix + 64 hex chars (32 bytes of cryptographic randomness).
+
+**Security model:**
+- Raw key visible **only once** at creation — store it immediately
+- Event-router stores only SHA-256 hashes — database breach doesn't expose keys
+- Each key is scoped to one `client_id` — agents cannot create tickets for other clients
+- Admin key (`ADMIN_API_KEY` env var) has full access to all endpoints
+- If no `ADMIN_API_KEY` is configured, ticket endpoints allow unauthenticated access (network isolation mode)
+
+---
+
+## User Guide — Client Onboarding
+
+### Step 1: Set Admin Key
+
+Configure `ADMIN_API_KEY` in the environment (Ansible `secrets.yml`):
+
+```yaml
+sd_admin_api_key: "admin-super-secret-key-change-me"
+```
+
+### Step 2: Generate Agent Key
+
+```bash
+curl -X POST http://event-router:8092/api/admin/keys \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer admin-super-secret-key-change-me" \
+  -d '{"client_id":"client-42","name":"openclaw-agent"}'
+```
+
+Response:
+```json
+{"key":"sk-a1b2c3d4...","key_hash":"abc123...","client_id":"client-42","name":"openclaw-agent"}
+```
+
+**Store `key` in the agent's configuration** (Vaultwarden, `.env`, or Ansible vault).
+
+### Step 3: Configure Agent
+
+In the client agent (OpenClaw, Go VPS agent, or Claude):
+
+```bash
+# Environment variable
+EVENT_ROUTER_URL=http://event-router:8092
+EVENT_ROUTER_API_KEY=sk-a1b2c3d4...
+```
+
+### Step 4: Agent Creates Tickets
+
+```bash
+curl -X POST $EVENT_ROUTER_URL/api/tickets \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $EVENT_ROUTER_API_KEY" \
+  -d '{
+    "client_id": "client-42",
+    "message": "Database backup failed after 3 retries",
+    "source": "agent",
+    "event_id": "evt-20260310-backup-fail"
+  }'
+```
+
+The pipeline automatically:
+1. Checks idempotency (prevents duplicate processing)
+2. Validates rate limit (max 10 tickets/hour per client)
+3. Extracts structured data via LLM (title, category, priority, language)
+4. Deduplicates against recent tickets (hash + semantic similarity)
+5. Resolves or creates Zammad customer
+6. Creates enriched Zammad ticket with routing to correct group
+7. Stores audit trail with correlation ID
+
+### Step 5: Voice Tickets (Optional)
+
+For voice-based ticket creation (transcribed speech):
+
+```bash
+curl -X POST $EVENT_ROUTER_URL/api/voice-ticket \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $EVENT_ROUTER_API_KEY" \
+  -d '{
+    "client_id": "client-42",
+    "message": "Bonjour je narrive pas a me connecter depuis ce matin",
+    "language": "fr"
+  }'
+```
+
+The LLM prompt is optimized for speech patterns — it fixes minor transcription
+errors and handles informal phrasing gracefully.
+
+### Key Rotation
+
+To rotate a client's API key:
+
+```bash
+# 1. Generate new key
+curl -X POST .../api/admin/keys \
+  -H "Authorization: Bearer $ADMIN_KEY" \
+  -d '{"client_id":"client-42","name":"openclaw-v2"}'
+
+# 2. Deploy new key to agent
+# (update .env, restart agent)
+
+# 3. Revoke old key
+curl -X DELETE .../api/admin/keys/<old-key-hash> \
+  -H "Authorization: Bearer $ADMIN_KEY"
+```
+
+---
+
+## Database Schema
+
+### Tables
+
+| Table              | Description                                    |
+|--------------------|------------------------------------------------|
+| events             | All events from flash-agents                   |
+| notification_prefs | Per-client notification preferences            |
+| health_scores      | Client health scores (0-100)                   |
+| announcements      | Status page announcements (Gatus)              |
+| gatus_endpoints    | Dynamic monitoring endpoints                   |
+| ticket_mappings    | Correlation: events to Zammad tickets          |
+| client_customers   | Mapping: client_id to Zammad customer          |
+| api_keys           | Per-agent API key hashes                       |
+| ticket_dlq         | Dead-letter queue for failed ticket creations  |

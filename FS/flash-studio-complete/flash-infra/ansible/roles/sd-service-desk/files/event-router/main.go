@@ -24,6 +24,10 @@
 // POST /api/client-customers  <- admin (upsert client→Zammad customer mapping)
 // GET  /api/client-customers/{clientID} <- admin (get mapping)
 //
+// POST   /api/admin/keys       <- admin (generate API key for a client agent)
+// GET    /api/admin/keys       <- admin (list API keys, ?client_id= filter)
+// DELETE /api/admin/keys/{hash} <- admin (revoke an API key)
+//
 //   -> PostgreSQL (events, announcements, gatus_endpoints, ticket_mappings, etc.)
 //   -> Gatus config file rewrite + container restart
 package main
@@ -269,6 +273,11 @@ func main() {
 	// Client-Customer Mapping
 	mux.HandleFunc("POST /api/client-customers", handleUpsertClientCustomer)
 	mux.HandleFunc("GET /api/client-customers/{clientID}", handleGetClientCustomer)
+
+	// API Key Management (admin only)
+	mux.HandleFunc("POST /api/admin/keys", handleCreateAPIKey)
+	mux.HandleFunc("GET /api/admin/keys", handleListAPIKeys)
+	mux.HandleFunc("DELETE /api/admin/keys/{hash}", handleRevokeAPIKey)
 
 	// Start DLQ retry goroutine
 	go retryDLQ()
@@ -2142,4 +2151,132 @@ func handleGetClientCustomer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, cc)
+}
+
+// --- HTTP Handlers: API Key Management (admin) ---
+
+// APIKeyRequest is the incoming payload for key creation.
+type APIKeyRequest struct {
+	ClientID string `json:"client_id"`
+	Name     string `json:"name"`
+}
+
+// APIKeyResponse is returned after key creation (only time raw key is visible).
+type APIKeyResponse struct {
+	Key      string `json:"key"`
+	KeyHash  string `json:"key_hash"`
+	ClientID string `json:"client_id"`
+	Name     string `json:"name"`
+}
+
+// APIKeyListItem is a single key in the list (no raw key).
+type APIKeyListItem struct {
+	KeyHash   string    `json:"key_hash"`
+	ClientID  string    `json:"client_id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	// Admin auth required
+	adminKey := os.Getenv("ADMIN_API_KEY")
+	auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if adminKey == "" || auth != adminKey {
+		writeError(w, "Unauthorized — admin key required", http.StatusUnauthorized)
+		return
+	}
+
+	var req APIKeyRequest
+	if err := decodeJSON(r, &req); err != nil {
+		writeError(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	if req.ClientID == "" {
+		writeError(w, "client_id required", http.StatusBadRequest)
+		return
+	}
+	if req.Name == "" {
+		req.Name = req.ClientID + "-agent"
+	}
+
+	// Generate 32 bytes of cryptographic randomness → 64 hex chars
+	rawKey := make([]byte, 32)
+	if _, err := rand.Read(rawKey); err != nil {
+		writeError(w, "Key generation failed", http.StatusInternalServerError)
+		return
+	}
+	keyStr := fmt.Sprintf("sk-%x", rawKey)
+	keyHash := fmt.Sprintf("%x", sha256.Sum256([]byte(keyStr)))
+
+	_, err := db.Exec(r.Context(),
+		`INSERT INTO api_keys (key_hash, client_id, name) VALUES ($1, $2, $3)`,
+		keyHash, req.ClientID, req.Name)
+	if err != nil {
+		writeError(w, "Key already exists or storage error", http.StatusConflict)
+		return
+	}
+
+	log.Printf("[keys] Created API key for %s (name=%s, hash=%s…)",
+		req.ClientID, req.Name, keyHash[:12])
+
+	writeJSON(w, http.StatusCreated, APIKeyResponse{
+		Key: keyStr, KeyHash: keyHash, ClientID: req.ClientID, Name: req.Name,
+	})
+}
+
+func handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
+	adminKey := os.Getenv("ADMIN_API_KEY")
+	auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if adminKey == "" || auth != adminKey {
+		writeError(w, "Unauthorized — admin key required", http.StatusUnauthorized)
+		return
+	}
+
+	clientFilter := r.URL.Query().Get("client_id")
+	query := `SELECT key_hash, client_id, name, created_at FROM api_keys`
+	args := []interface{}{}
+	if clientFilter != "" {
+		query += ` WHERE client_id = $1`
+		args = append(args, clientFilter)
+	}
+	query += ` ORDER BY created_at DESC`
+
+	rows, err := db.Query(r.Context(), query, args...)
+	if err != nil {
+		writeError(w, "Query error", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	results := make([]APIKeyListItem, 0)
+	for rows.Next() {
+		var item APIKeyListItem
+		rows.Scan(&item.KeyHash, &item.ClientID, &item.Name, &item.CreatedAt)
+		results = append(results, item)
+	}
+	writeJSON(w, http.StatusOK, results)
+}
+
+func handleRevokeAPIKey(w http.ResponseWriter, r *http.Request) {
+	adminKey := os.Getenv("ADMIN_API_KEY")
+	auth := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if adminKey == "" || auth != adminKey {
+		writeError(w, "Unauthorized — admin key required", http.StatusUnauthorized)
+		return
+	}
+
+	keyHash := r.PathValue("hash")
+	if keyHash == "" {
+		writeError(w, "Key hash required", http.StatusBadRequest)
+		return
+	}
+
+	tag, err := db.Exec(r.Context(), `DELETE FROM api_keys WHERE key_hash = $1`, keyHash)
+	if err != nil || tag.RowsAffected() == 0 {
+		writeError(w, "Key not found", http.StatusNotFound)
+		return
+	}
+
+	log.Printf("[keys] Revoked API key %s…", keyHash[:12])
+	writeJSON(w, http.StatusOK, map[string]string{"status": "revoked"})
 }

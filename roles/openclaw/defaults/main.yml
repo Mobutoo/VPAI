@@ -84,6 +84,7 @@ openclaw_state_subdirs:
   - memory
   - telegram
   - identity
+  - sandboxes
 
 # --- Multi-Agent Configuration ---
 # Agent names (placeholders — updated later when user chooses names)

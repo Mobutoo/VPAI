@@ -13,8 +13,14 @@ sd_infra_domain: paultaffe.net
 sd_client_domain: paultaffe.fr
 
 # --- Subdomain mapping (per domain-strategy.md) ---
+# help    = Zammad ticketing
+# terrasse = Discourse forum ("la terrasse" — où on discute)
+# agence  = Marketplace addons/tutos/profils ("l'agence" — où on se forme) [Phase 3]
+# status  = Gatus status page
+# app     = Dashboard client
 sd_zammad_fqdn: "help.{{ sd_domain }}"
-sd_discourse_fqdn: "docs.{{ sd_domain }}"
+sd_discourse_fqdn: "terrasse.{{ sd_domain }}"
+sd_marketplace_fqdn: "agence.{{ sd_domain }}"
 sd_gatus_fqdn: "status.{{ sd_domain }}"
 sd_portail_fqdn: "app.{{ sd_domain }}"
 sd_zitadel_issuer: "https://auth.{{ sd_infra_domain }}"

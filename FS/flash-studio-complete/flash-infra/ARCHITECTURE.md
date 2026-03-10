@@ -1373,3 +1373,228 @@ app.paultaffe.com → Dashboard client → "Mon serveur"
 **Defense in depth :** 3 couches indépendantes. Chaque couche seule est contournable
 (root peut chattr, rescue peut tout). Mais les 3 ensemble créent un modèle où
 toute action malveillante est **détectée et alertée** avant de causer des dommages.
+
+---
+
+## 18. Vie privée client — DNS privé et Exit Node
+
+### Problème
+
+Le VPN NetBird protège le **plan de gestion** (communication inter-infra), mais
+le client reste exposé sur le **plan web** :
+
+| Fuite | Détail |
+|-------|--------|
+| DNS résolution | L'ISP du client voit **tous les domaines** visités (requêtes DNS en clair) |
+| Trafic sortant (devices) | Le laptop/PC du client sort via son ISP → IP résidentielle visible |
+| Trafic sortant (VPS) | Le VPS fait du scraping/API → IP publique Hetzner traçable |
+
+NetBird est un **mesh VPN** (accès aux ressources), pas un **full-tunnel VPN**.
+Les devices du client accèdent au VPS et à l'infra Flash Studio via NetBird,
+mais leur navigation web sort en direct par l'ISP.
+
+### Brique 1 : DNS privé self-hosted
+
+Un resolver DNS privé hébergé sur le Master, accessible **uniquement via NetBird**.
+
+```
+Client device (laptop, PC, phone)
+  │
+  ├─► NetBird tunnel (WireGuard)
+  │     │
+  │     └─► AdGuard Home (Master, port 53 sur IP NetBird uniquement)
+  │           │
+  │           ├─► Filtrage publicité + trackers (listes communautaires)
+  │           ├─► Logs par client (audit, debugging)
+  │           ├─► Blocage domaines malveillants (sécurité)
+  │           │
+  │           └─► Upstream chiffré :
+  │                 DoH → https://dns.quad9.net/dns-query
+  │                 DoT → tls://dns.quad9.net (fallback)
+  │
+  └─► ISP du client ne voit AUCUNE requête DNS
+```
+
+**Configuration via NetBird DNS Management :**
+
+NetBird permet de définir un **DNS nameserver** par Group. Au provisioning,
+le Master configure automatiquement le resolver DNS pour le group `client-{id}` :
+
+```
+NetBird Management API :
+  PUT /api/dns/nameservers
+    → nameserver: IP NetBird du Master
+    → groups: ["client-{id}"]
+    → domains: [] (match-all = toutes les requêtes DNS)
+    → primary: true
+```
+
+Résultat : dès qu'un device rejoint le group via NetBird, **toutes ses requêtes
+DNS passent automatiquement par AdGuard Home** sur le Master. Zéro config côté client.
+
+**Pourquoi AdGuard Home :**
+
+| Critère | AdGuard Home | Pi-hole | Unbound |
+|---------|-------------|---------|---------|
+| Interface web | ✅ Intégrée | ✅ Intégrée | ❌ CLI only |
+| DoH/DoT upstream | ✅ Natif | ❌ Nécessite cloudflared | ✅ Natif |
+| Filtrage trackers | ✅ Built-in | ✅ Built-in | ❌ Pas de filtrage |
+| API REST | ✅ Complète | ⚠️ Limitée | ❌ Aucune |
+| Multi-client (logs séparés) | ✅ Par IP | ⚠️ Limité | ❌ Non |
+| Ressources | ~50 MB RAM | ~80 MB RAM | ~30 MB RAM |
+
+L'API REST d'AdGuard Home permet au Master de configurer les règles par client
+(blocklists personnalisées, domaines autorisés, etc.) depuis le dashboard.
+
+**Docker Compose sur Master :**
+
+```yaml
+adguard-home:
+  image: adguardteam/adguardhome:latest
+  container_name: adguard-home
+  restart: unless-stopped
+  volumes:
+    - adguard-work:/opt/adguardhome/work
+    - adguard-conf:/opt/adguardhome/conf
+  ports:
+    - "100.64.x.x:53:53/tcp"    # DNS — IP NetBird uniquement
+    - "100.64.x.x:53:53/udp"    # DNS — IP NetBird uniquement
+    - "127.0.0.1:3000:3000"     # Admin UI — localhost only (proxied par Caddy)
+  networks:
+    - backend
+```
+
+**Important :** Le port 53 est bindé sur l'**IP NetBird du Master uniquement**.
+Pas d'exposition sur l'IP publique. Seuls les peers NetBird peuvent résoudre.
+
+### Brique 2 : Exit Node (full-tunnel VPN)
+
+Le VPS du client devient sa **porte de sortie internet**. Tout le trafic web
+des devices du client sort par le VPS au lieu de l'ISP.
+
+```
+Sans Exit Node :                    Avec Exit Node :
+─────────────────                   ──────────────────
+
+Laptop ──► ISP ──► Internet          Laptop ──► NetBird tunnel ──► VPS ──► Internet
+│                                    │                              │
+├ DNS : ISP voit tout                ├ DNS : AdGuard (brique 1)
+├ IP : résidentielle du client       ├ IP : IP publique du VPS Hetzner
+├ ISP : voit domaines + contenus     ├ ISP : voit UNIQUEMENT du WireGuard chiffré
+└ Traçable → identité client         └ Traçable → IP VPS (pas le client)
+```
+
+**Configuration NetBird Exit Node :**
+
+Le VPS du client est configuré comme Exit Node via le provisioning :
+
+```
+# Sur le VPS client (cloud-init) :
+netbird up --setup-key <key>
+
+# Via NetBird Management API (Master) :
+POST /api/routes
+  → network: 0.0.0.0/0        (tout le trafic)
+  → peer: <peer_id du VPS>    (le VPS est la gateway)
+  → groups: ["client-{id}"]   (seulement les devices de ce client)
+  → enabled: true
+  → masquerade: true           (NAT : trafic sort avec l'IP du VPS)
+```
+
+**Ce que voit chaque acteur :**
+
+| Acteur | Sans Exit Node | Avec Exit Node |
+|--------|---------------|----------------|
+| ISP du client | Domaines visités, IPs contactées, volume | Tunnel WireGuard chiffré vers 1 IP (VPS) |
+| Sites web visités | IP résidentielle du client | IP Hetzner du VPS |
+| Hetzner | Trafic VPS uniquement | Trafic VPS + trafic sortant des devices |
+| Flash Studio | Rien (pas notre trafic) | Rien (trafic P2P client↔VPS) |
+
+**Activable par le client :** les deux briques (DNS privé et Exit Node) sont
+**optionnelles** et contrôlables depuis le dashboard. Désactivées par défaut,
+le client les active en 1 clic selon ses besoins.
+
+```
+Dashboard → "Mon serveur" → "Vie privée"
+  ┌─────────────────────────────────────────────────┐
+  │  Vie privée                                      │
+  │                                                   │
+  │  DNS privé        [○ OFF] / [● ON]               │
+  │  "Requêtes DNS chiffrées + filtrage trackers"     │
+  │  ✅ ISP ne voit plus vos sites visités            │
+  │  ✅ Publicités et trackers bloqués                │
+  │  Bloqué ce mois : 12 847 requêtes                │
+  │                                                   │
+  │  ──────────────────────────────────              │
+  │                                                   │
+  │  Exit Node         [○ OFF] / [● ON]              │
+  │  "Tout mon trafic internet passe par mon VPS"     │
+  │  ✅ Sites voient l'IP de votre VPS, pas la vôtre  │
+  │  ✅ ISP ne voit que du trafic chiffré             │
+  │  ⚠ Augmente la latence (~10-30ms)                │
+  └─────────────────────────────────────────────────┘
+```
+
+**Actions dashboard → Master API → NetBird Management API :**
+
+| Action client | Appel Master API | Appel NetBird API |
+|---------------|-----------------|-------------------|
+| Active DNS privé | `POST /api/studios/{id}/dns` `{"enabled": true}` | `PUT /api/dns/nameservers` → ajoute le nameserver AdGuard pour le group |
+| Désactive DNS privé | `POST /api/studios/{id}/dns` `{"enabled": false}` | `PUT /api/dns/nameservers` → retire le nameserver pour le group |
+| Active Exit Node | `POST /api/studios/{id}/exit-node` `{"enabled": true}` | `PUT /api/routes/{route_id}` `{"enabled": true}` |
+| Désactive Exit Node | `POST /api/studios/{id}/exit-node` `{"enabled": false}` | `PUT /api/routes/{route_id}` `{"enabled": false}` |
+
+### Résultat combiné
+
+```
+                    Avant                 Après (DNS privé + Exit Node)
+                    ─────                 ───────────────────────────────
+DNS résolution      ISP en clair          AdGuard Home via NetBird (chiffré)
+Navigation web      IP résidentielle      IP VPS Hetzner (full-tunnel)
+ISP voit            Tout                  Tunnel WireGuard opaque
+Tracking/pubs       Passent               Bloqués par AdGuard
+Scraping VPS        IP Hetzner directe    Idem (inchangé, déjà via VPS)
+```
+
+### Provisioning automatique
+
+Au provisioning d'un nouveau client, le Master ajoute automatiquement :
+
+```
+POST /api/studios (Master API)
+  │
+  ├─► ... (étapes existantes 1-5) ...
+  │
+  ├─► 6. NetBird DNS (pré-provisionné, désactivé) :
+  │       PUT /api/dns/nameservers
+  │         → nameserver: IP NetBird Master (AdGuard Home)
+  │         → groups: ["client-{id}"]
+  │         → enabled: false  (activable par le client via dashboard)
+  │
+  ├─► 7. NetBird Exit Node (pré-provisionné, désactivé) :
+  │       POST /api/routes
+  │         → network: 0.0.0.0/0
+  │         → peer: <peer_id du VPS>
+  │         → groups: ["client-{id}"]
+  │         → enabled: false  (activable par le client via dashboard)
+  │         → masquerade: true
+  │
+  └─► DNS privé et Exit Node pré-configurés, prêts en 1 clic
+      Le client active/désactive depuis Dashboard → "Vie privée"
+```
+
+### Rôles Ansible
+
+| Rôle | Machine | Contenu |
+|------|---------|---------|
+| `adguard-home` | Master | Docker Compose, config AdGuard (upstream DoH Quad9, listes filtrage), bind sur IP NetBird |
+| `netbird-server` (update) | Master | Ajouter DNS nameserver + route Exit Node dans le flux de provisioning |
+
+### Limites connues
+
+| Limite | Explication | Mitigation |
+|--------|------------|------------|
+| Exit Node = latence | +10-30ms sur toute la navigation | Optionnel, désactivable |
+| VPS down = pas d'internet | Si le VPS crash et Exit Node actif, devices perdent l'accès | NetBird auto-reconnect + alerte Event Router |
+| AdGuard down = pas de DNS | Résolution bloquée pour tous les clients | Failover : DNS secondaire configuré dans NetBird (ex: Quad9 direct) |
+| Bande passante VPS | Le trafic des devices consomme la BP du VPS | Monitoring Gatus + alertes seuils |

@@ -54,8 +54,8 @@ paultaffe.fr   → Per-client isolation (agents, webhooks, SEO)  → Gateway →
 - La VM Souveraine (per-client) est permanente, l'IP fixe sert de point d'entrée DNS
 - La VM Production (per-client) est destructible/reconstructible en 30 min via Ansible
 - Le volume persistant `/mnt/data` survit à la destruction de la VM Production
-- NetBird VPN connecte toutes les machines en mesh privé
-- Le Master n'a PAS d'IP publique dans les DNS — la Gateway proxie les endpoints publics
+- NetBird VPN **self-hosted** connecte toutes les machines en mesh privé (controller sur le Master)
+- Le Master n'a PAS d'IP publique dans les DNS **sauf** `vpn.paultaffe.net` (bootstrap NetBird) — la Gateway proxie les autres endpoints publics
 - SOPS + age pour le chiffrement de tous les secrets
 
 ---
@@ -122,7 +122,7 @@ VM Souveraine (CX33 — 4vCPU, 8GB, 80GB)
 │   ├── node-exporter                  — Métriques système
 │   ├── cadvisor                       — Métriques containers
 │   └── restic              (BSD)     — Backups → S3
-├── NetBird client (free tier)
+├── NetBird client (self-hosted, enrollment SSO ou setup key)
 ├── SOPS + age (secrets chiffrés)
 └── flash-agent (Go binary)
     ├── Heartbeat → flash-master
@@ -189,7 +189,7 @@ VM Production (CX33 — 4vCPU, 8GB, 80GB + Volume persistant)
 │   ├── /mnt/data/freqtrade
 │   └── /mnt/data/backups
 │
-├── NetBird client
+├── NetBird client (self-hosted, auto-enrollment via setup key)
 └── flash-agent (Go binary)
 ```
 
@@ -255,7 +255,7 @@ Activation : `COMPOSE_PROFILES=base,creation docker compose up -d`
     └───────────┘ └───────┘ └─────────┘
 
 Subnet : 100.64.0.0/10 (NetBird)
-DNS interne : *.netbird.cloud
+DNS interne : *.netbird.selfhosted (via NetBird Management, résolu par le client NetBird)
 ```
 
 **Flux :**
@@ -272,7 +272,7 @@ DNS interne : *.netbird.cloud
 |--------|-----------|
 | Secrets | SOPS + age (chiffrés au repos, déchiffrés au deploy) |
 | Mots de passe | Vaultwarden (auto-hébergé, E2E chiffré) |
-| VPN | NetBird (WireGuard, zero-trust, mesh) |
+| VPN | NetBird **self-hosted** (WireGuard, zero-trust, mesh, controller sur Master) |
 | TLS | Caddy auto-renew Let's Encrypt |
 | Firewall | Hetzner Cloud Firewall API (22, 80, 443 only) |
 | SSH | Clé ED25519 uniquement, no password |
@@ -617,12 +617,16 @@ api.paultaffe.com/api/billing/webhook {
 | Règle | Source | Port | Action |
 |-------|--------|------|--------|
 | NetBird VPN | 100.64.0.0/10 | ALL | ACCEPT |
-| Gateway proxy | 46.225.224.189/32 | 3000, 8080 | ACCEPT |
-| SSH admin | IP admin fixe | 22 | ACCEPT |
+| Gateway proxy | 46.225.224.189/32 | TCP 3000, 8080 | ACCEPT |
+| NetBird bootstrap | 0.0.0.0/0 | TCP 443 | ACCEPT |
+| NetBird STUN | 0.0.0.0/0 | UDP 3478 | ACCEPT |
+| SSH admin | IP admin fixe | TCP 22 | ACCEPT |
 | Tout le reste | 0.0.0.0/0 | ALL | DROP |
 
-Le Master n'apparaît dans aucun record DNS public. Son IP (178.104.31.134)
-n'est jamais exposée. Un attaquant ne peut pas le cibler directement.
+Le Master apparaît dans **un seul** record DNS public : `vpn.paultaffe.net`
+(bootstrap NetBird — les clients doivent le joindre AVANT d'être sur le VPN).
+TCP 443 sert uniquement les services NetBird (Management, Signal, Relay).
+Les services Master (API, Zitadel) restent derrière Gateway proxy.
 
 ### Résilience Master (disaster recovery)
 
@@ -766,3 +770,213 @@ docker compose --profile intelligence --profile experience down
 Pas de Cloudflare, pas de CDN externe. Tout est auto-hébergé, monitoré par
 Gatus, alerté par Telegram. Le scaling est déclenché par des métriques
 observées, pas par des projections.
+
+---
+
+## 16. NetBird VPN — Architecture self-hosted
+
+### Principe : 0 dépendance externe
+
+Flash Studio héberge **son propre contrôleur NetBird** sur le Master.
+Aucun appel à `api.netbird.io`. Zitadel (déjà sur le Master) sert de fournisseur
+d'identité OIDC. Le client NetBird sur chaque machine établit des tunnels
+WireGuard P2P chiffrés bout-en-bout.
+
+### Composants du contrôleur (sur le Master)
+
+```
+vpn.paultaffe.net (A → <IP_MASTER>)
+        │
+        ▼ TCP 443 + UDP 3478
+┌─────────────────────────────────────────────┐
+│  MASTER — NetBird Stack (Docker Compose)     │
+│                                              │
+│  ┌──────────────────┐  ┌─────────────────┐  │
+│  │ Management Server │  │  Signal Server  │  │  ← TCP 443 (HTTP/2 mux)
+│  │ • Peers, groupes  │  │  • Signalisation│  │
+│  │ • Policies, ACL   │  │  • WebRTC nego  │  │
+│  │ • Setup keys      │  │                 │  │
+│  │ • API REST        │  └─────────────────┘  │
+│  └──────┬───────────┘                        │
+│         │ OIDC                                │
+│  ┌──────▼───────────┐  ┌─────────────────┐  │
+│  │ Zitadel (IDP)     │  │  Relay Server   │  │  ← TCP 443 (WebSocket/QUIC)
+│  │ auth.paultaffe.net│  │  • Fallback P2P │  │
+│  │ (déjà déployé)    │  │  • STUN intégré │  │
+│  └──────────────────┘  └─────────────────┘  │
+│                                              │
+│  ┌──────────────────┐  ┌─────────────────┐  │
+│  │ Dashboard (React) │  │  Coturn (STUN)  │  │  ← UDP 3478
+│  │ vpn.paultaffe.net │  │  • NAT traversal│  │
+│  │ /admin            │  │  • Host network │  │
+│  └──────────────────┘  └─────────────────┘  │
+│                                              │
+│  Caddy (reverse proxy, déjà présent)         │
+│  → Route vpn.paultaffe.net vers les services │
+└─────────────────────────────────────────────┘
+```
+
+**Ports ouverts au public (Master) :**
+- TCP 443 : Management + Signal + Relay + Dashboard (muxés derrière Caddy)
+- UDP 3478 : STUN/Coturn (accès direct, host network — Caddy ne proxy pas l'UDP)
+
+**Pourquoi le Master :**
+- Control plane centralisé (VPN = contrôle, pas data plane)
+- Zitadel OIDC sur la même machine (intégration directe, 0 latence)
+- PostgreSQL partageable (Management stocke peers/groups/policies)
+- Le provisioning Master crée le studio + le group NetBird + la setup key en une seule transaction
+- `vpn.paultaffe.net` → Master IP (seul record DNS public du Master)
+
+### Modèle d'isolation — Multi-tenant, multi-device
+
+Chaque client a **son propre réseau privé** dans le mesh. Les devices du client
+(VPS, laptop, PC, téléphone) se voient entre eux et voient l'infra Flash Studio.
+Aucun client ne voit un autre client.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│              NetBird Mesh (100.64.0.0/10)                     │
+│                                                               │
+│  ┌─── Group: infra ───────────────────────────┐              │
+│  │  Master       100.64.0.1                    │              │
+│  │  Service Desk 100.64.0.2                    │              │
+│  │  Gateway      100.64.0.3                    │              │
+│  └─────────────────────────────────────────────┘              │
+│       ▲               ▲               ▲                       │
+│       │ ALLOW          │ ALLOW          │ ALLOW                │
+│       ▼               ▼               ▼                       │
+│  ┌─ client-42 ─┐ ┌─ client-43 ─┐ ┌─ client-44 ─┐           │
+│  │ VPS  100.64.│ │ VPS  100.64.│ │ VPS  100.64.│           │
+│  │ 💻  100.64.│ │ 💻  100.64.│ │              │           │
+│  │ 📱  100.64.│ │              │ │              │           │
+│  └─── ALLOW ───┘ └─── ALLOW ───┘ └──────────────┘           │
+│       intra-client    intra-client                            │
+│                                                               │
+│  client-42 ✖ client-43  (DENY — pas de policy)              │
+│  client-42 ✖ client-44  (DENY — pas de policy)              │
+│  client-43 ✖ client-44  (DENY — pas de policy)              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Policies NetBird (deny-by-default après suppression de la Default Policy) :**
+
+| Policy | Source | Destination | Direction | Ports |
+|--------|--------|-------------|-----------|-------|
+| `infra-to-self` | `infra` | `infra` | Bidirectionnelle | ALL |
+| `client-{id}-internal` | `client-{id}` | `client-{id}` | Bidirectionnelle | ALL |
+| `client-{id}-to-infra` | `client-{id}` | `infra` | Bidirectionnelle | ALL |
+
+**Pas de policy inter-clients = DENY total.** Un client ne peut pas scanner,
+pinger, ni même savoir que d'autres clients existent sur le mesh.
+
+### Enrollment des devices — 2 mécanismes
+
+#### 1. VPS client (automatique, au provisioning)
+
+```
+Master API (POST /api/studios)
+  │
+  ├─► Hetzner API : créer VPS
+  ├─► NetBird Management API :
+  │     1. Créer Group "client-{id}"
+  │     2. Créer Policy "client-{id}" ↔ "infra" = ALLOW
+  │     3. Créer Policy "client-{id}" ↔ "client-{id}" = ALLOW
+  │     4. Générer Setup Key (usage unique, expire 24h, auto-group "client-{id}")
+  │
+  ├─► Cloud-init du VPS :
+  │     curl -fsSL https://pkgs.netbird.io/install.sh | sh
+  │     netbird up --setup-key <SETUP_KEY> --management-url https://vpn.paultaffe.net
+  │
+  └─► VPS rejoint automatiquement le group "client-{id}"
+      → Tunnel WireGuard P2P vers Master + Service Desk
+      → flash-agent démarre, heartbeat via 100.64.x.x
+```
+
+**La setup key est à usage unique et expire en 24h.** Si le VPS ne s'enregistre
+pas dans ce délai, le Master en génère une nouvelle au prochain boot.
+
+#### 2. Devices personnels du client (SSO via Zitadel)
+
+```
+Client installe NetBird sur son laptop/PC/téléphone
+  │
+  ├─► netbird up --management-url https://vpn.paultaffe.net
+  │     → Ouvre le navigateur → auth.paultaffe.net (Zitadel SSO)
+  │     → Client se connecte avec ses identifiants Flash Studio
+  │
+  ├─► NetBird Management reçoit le token OIDC
+  │     → Identifie le user Zitadel → client-{id}
+  │     → Auto-assign le peer au Group "client-{id}" (User Auto-Groups)
+  │
+  └─► Device rejoint le mesh
+      → Voit le VPS du client (même group)
+      → Voit les autres devices du client (même group)
+      → Voit l'infra Flash Studio (policy client ↔ infra)
+      → Ne voit RIEN d'autre
+```
+
+**User Auto-Groups :** Au provisioning, le Master configure dans NetBird Management
+que tous les peers authentifiés avec l'email `user@client-{id}` sont automatiquement
+ajoutés au group `client-{id}`. Aucune action admin requise quand le client ajoute
+un device.
+
+### Ce que voit chaque machine
+
+| Machine | Voit son VPS | Voit ses devices perso | Voit Flash Studio infra | Voit autres clients |
+|---------|-------------|----------------------|------------------------|-------------------|
+| VPS client-42 | — | ✅ laptop, PC, phone | ✅ Master, SD, Gateway | ❌ |
+| Laptop client-42 | ✅ | ✅ PC, phone | ✅ Master, SD, Gateway | ❌ |
+| PC client-42 | ✅ | ✅ laptop, phone | ✅ Master, SD, Gateway | ❌ |
+| VPS client-43 | — | ✅ (ses propres devices) | ✅ Master, SD, Gateway | ❌ |
+| Master | ✅ tous les VPS | ✅ tous les devices | ✅ | — |
+
+### Cas d'usage client multi-device
+
+Le client peut :
+- **SSH vers son VPS** depuis son laptop via IP NetBird (pas d'IP publique nécessaire)
+- **Accéder à n8n, Grafana, LiteLLM** sur son VPS via IP privée (sans exposer publiquement)
+- **Utiliser Claude Code CLI** sur son laptop, connecté à LiteLLM du VPS via tunnel WireGuard
+- **Partager des fichiers** entre son PC et son VPS via le tunnel privé
+- **Monitorer son VPS** depuis son téléphone (Grafana via IP NetBird)
+
+Le tout sans exposer de port public sur le VPS au-delà de ce que Caddy sert.
+
+### Rôles Ansible
+
+| Rôle | Machine cible | Contenu |
+|------|--------------|---------|
+| `netbird-server` | Master uniquement | Docker Compose (management, signal, relay, coturn, dashboard), config Zitadel OIDC, initialisation PostgreSQL |
+| `netbird-client` | Service Desk, Gateway, chaque VPS client | Install client NetBird, registration (setup key ou SSO) |
+
+### Provisioning NetBird dans le flux Master
+
+```
+POST /api/studios (Master API)
+  │
+  ├─► 1. Créer user Zitadel (email: user@flash-studio.io)
+  ├─► 2. Créer VPS Hetzner
+  ├─► 3. NetBird Management API :
+  │       POST /api/groups       → Group "client-{id}"
+  │       POST /api/policies     → client-{id} ↔ infra (ALLOW)
+  │       POST /api/policies     → client-{id} ↔ client-{id} (ALLOW)
+  │       POST /api/setup-keys   → Setup key (single-use, 24h, auto-group)
+  │       PUT  /api/users/{id}   → User auto-groups = ["client-{id}"]
+  │
+  ├─► 4. Cloud-init avec setup key → VPS s'enregistre automatiquement
+  ├─► 5. Email client : identifiants + lien install NetBird pour devices perso
+  │
+  └─► Résultat : client-{id} a son réseau privé opérationnel en < 5 min
+```
+
+### Résilience NetBird
+
+| Scénario | Impact | Recovery |
+|----------|--------|----------|
+| Master down | Tunnels P2P existants **restent actifs** (WireGuard kernel) — seuls les nouveaux peers ne peuvent pas s'enregistrer | Rebuild Master → NetBird Management reprend depuis PostgreSQL |
+| Signal down | Nouveaux tunnels P2P impossibles, existants restent | Restart container |
+| Relay down | Peers derrière NAT strict perdent la connexion → fallback P2P direct si possible | Restart container |
+| Client reboot | `netbird up` au boot (systemd) → reconnexion automatique | Automatique |
+
+**Point critique :** les tunnels WireGuard P2P survivent à un crash du Management.
+Le Management est nécessaire uniquement pour les changements (ajout peer, modification
+policy). Le data plane est entièrement décentralisé.

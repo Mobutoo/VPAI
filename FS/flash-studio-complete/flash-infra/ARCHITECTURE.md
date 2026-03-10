@@ -640,3 +640,129 @@ ansible-playbook playbooks/master.yml -e target=new_vps_ip
 # → Redéploie la stack complète, restaure le dump PostgreSQL depuis S3
 # → Les agents se reconnectent automatiquement via NetBird (IP VPN stable)
 ```
+
+---
+
+## 15. Capacité Service Desk — Plan de scaling
+
+Le Service Desk héberge 20 containers sur une seule VM. Le plan de scaling est
+progressif : CX33 au lancement, CX43 quand les clients arrivent, puis split en
+2 VMs quand le trafic le justifie.
+
+### Inventaire des containers (mars 2026, idle)
+
+```
+Catégorie          Containers                              RAM idle   RAM load
+─────────────────────────────────────────────────────────────────────────────
+Zammad (ticketing) rails, scheduler, websocket,            ~2.3 GB    ~3.5 GB
+                   nginx, memcached, backup
+Elasticsearch      elasticsearch (ES_JAVA_OPTS 512m)       ~1.1 GB    ~1.5 GB
+Discourse (forum)  discourse, discourse-sidekiq             ~1.3 GB    ~2.5 GB
+PostgreSQL         pgvector/pgvector (shared)               ~200 MB    ~500 MB
+Redis              redis (maxmemory 256m)                   ~15 MB     ~256 MB
+AI / Intelligence  qdrant, typesense, embedding-worker,     ~860 MB    ~1.5 GB
+                   reranker, support-agent
+Experience         portail (Next.js), gatus                 ~70 MB     ~200 MB
+Core               caddy, event-router (Go)                 ~40 MB     ~80 MB
+─────────────────────────────────────────────────────────────────────────────
+TOTAL                                                      ~5.9 GB    ~10 GB
+OS + buffers                                               ~800 MB    ~1 GB
+─────────────────────────────────────────────────────────────────────────────
+BESOIN TOTAL                                               ~6.7 GB    ~11 GB
+```
+
+### Étape 1 — Lancement (CX33, 8 GB RAM, 5.49€/mois)
+
+Le CX33 suffit pour le lancement (0-10 clients, trafic faible).
+La RAM idle (6.7 GB / 8 GB = 84%) est serrée mais fonctionnelle.
+Pas de vitrine dédiée au lancement — la landing page est servie par le portail
+ou une page statique dans Caddy (~0 MB supplémentaire).
+
+**Optimisations appliquées :**
+- Elasticsearch : `ES_JAVA_OPTS=-Xms512m -Xmx512m` (déjà en place)
+- Redis : `maxmemory 256mb` (déjà en place)
+- Memcached : `memcached -m 256M` (déjà en place)
+- Profils Docker Compose : intelligence/experience/proactive activés à la demande
+
+**Alerte déclencheur pour upgrade :**
+- RAM > 90% pendant 10 min (Gatus/Telegram)
+- Swap activé (signe de saturation, pas de swap configuré volontairement)
+- Temps de réponse Zammad/Discourse > 2s
+
+### Étape 2 — Croissance (CX43, 16 GB RAM, 10.49€/mois)
+
+Upgrade quand les premiers clients actifs arrivent (~10-50 clients).
+Un seul `hcloud server change-type sd-prod cx43` — resize en place, downtime <2 min.
+
+```
+CX43 : 8 vCPU, 16 GB RAM, 160 GB NVMe
+Budget RAM : ~11 GB utilisé / 16 GB = 69% → confortable
+Marge : ~5 GB pour absorber les pics de trafic
+Suffisant pour ~100-200 utilisateurs actifs simultanés
+```
+
+### Étape 3 — Scale (split 2 VMs, ~11€/mois total)
+
+Split quand une catégorie de containers impacte les autres (ex: Elasticsearch
+OOM tue Discourse, ou le reranker sature le CPU et ralentit Zammad).
+
+```
+VM "sd-core" (CX33 — 8 GB)              VM "sd-edge" (CX33 — 8 GB)
+┌────────────────────────────┐          ┌────────────────────────────┐
+│ PostgreSQL (shared)         │          │ Portail (Next.js)          │
+│ Redis (shared)              │          │ Event Router (Go)          │
+│ Elasticsearch               │◄─────── │ Support Agent (Python)     │
+│ Zammad (5 containers)       │  réseau │ Reranker                   │
+│ Discourse (2 containers)    │ backend │ Embedding Worker           │
+│ Memcached                   │          │ Qdrant                     │
+│ Caddy (reverse proxy)       │          │ Typesense                  │
+│                              │          │ Gatus                      │
+│ RAM: ~5.4 GB idle            │          │ Caddy (reverse proxy)      │
+│ → Confortable sur 8 GB      │          │ Vitrine (statique)         │
+│ → Les apps lourdes ont de   │          │                             │
+│   la marge pour les pics     │          │ RAM: ~1.5 GB idle           │
+└────────────────────────────┘          │ → Très confortable sur 8 GB │
+                                         │ → Marge pour scaling AI     │
+Domaine : *.paultaffe.com               └────────────────────────────┘
+(help, terrasse)
+                                         Domaine : *.paultaffe.com
+                                         (app, status, agence)
+                                         + API internes (event-router)
+```
+
+**Avantages du split :**
+- Isolation des pannes : si le reranker OOM, Zammad/Discourse ne tombent pas
+- Scaling indépendant : upgrade sd-edge seul si l'AI stack grossit
+- Maintenance sans interruption : restart sd-edge sans couper le ticketing
+
+**Migration :**
+```bash
+# 1. Créer la VM sd-edge
+hcloud server create --name sd-edge --type cx33 --image debian-13
+
+# 2. Déployer le sous-ensemble de containers
+ansible-playbook playbooks/service-desk-edge.yml
+
+# 3. Caddy sd-core reverse_proxy les routes edge vers sd-edge (NetBird)
+# 4. OU DNS split : app/status/agence → sd-edge IP, help/terrasse → sd-core IP
+
+# 5. Couper les containers edge sur sd-core
+docker compose --profile intelligence --profile experience down
+```
+
+### Résumé du plan
+
+```
+Étape   Trigger                  VM         RAM    Coût       Durée
+──────────────────────────────────────────────────────────────────────
+  1     Lancement                CX33       8 GB   5.49€/mois  0-10 clients
+  2     RAM > 90% ou clients    CX43       16 GB  10.49€/mois 10-50 clients
+        actifs
+  3     Isolation nécessaire    2×CX33     2×8 GB ~11€/mois   50+ clients
+        (OOM, latence)
+──────────────────────────────────────────────────────────────────────
+```
+
+Pas de Cloudflare, pas de CDN externe. Tout est auto-hébergé, monitoré par
+Gatus, alerté par Telegram. Le scaling est déclenché par des métriques
+observées, pas par des projections.

@@ -2155,63 +2155,13 @@ func handleGetClientCustomer(w http.ResponseWriter, r *http.Request) {
 
 // --- HTTP Handlers: API Key Management (admin) ---
 
-// deriveKeyPrefix returns a short (2-8 char) lowercase prefix for API keys.
-// If an explicit prefix is provided and valid, it is used as-is.
-// Otherwise, a prefix is derived from the client_id:
-//
-//	"paul-taffe" → "pt", "openclaw" → "oc", "go-vps-agent" → "gva", "client-42" → "c42"
-func deriveKeyPrefix(explicit, clientID string) string {
-	// Validate explicit prefix: 2-8 lowercase alphanum only
-	if explicit != "" {
-		clean := strings.ToLower(strings.TrimSpace(explicit))
-		valid := true
-		for _, c := range clean {
-			if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
-				valid = false
-				break
-			}
-		}
-		if valid && len(clean) >= 2 && len(clean) <= 8 {
-			return clean
-		}
-	}
-	// Auto-derive from client_id segments (split on - and _)
-	parts := strings.FieldsFunc(strings.ToLower(clientID), func(r rune) bool {
-		return r == '-' || r == '_' || r == '.'
-	})
-	var prefix strings.Builder
-	for _, part := range parts {
-		if len(part) > 0 {
-			// Take first char, plus first digit if present
-			prefix.WriteByte(part[0])
-			for i := 1; i < len(part); i++ {
-				if part[i] >= '0' && part[i] <= '9' {
-					prefix.WriteByte(part[i])
-					break
-				}
-			}
-		}
-	}
-	result := prefix.String()
-	if len(result) < 2 {
-		// Fallback: first 2 chars of client_id
-		clean := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(clientID, "-", ""), "_", ""))
-		if len(clean) >= 2 {
-			return clean[:2]
-		}
-		return "ag" // ultimate fallback
-	}
-	if len(result) > 8 {
-		return result[:8]
-	}
-	return result
-}
+// apiKeyPrefix is the fixed platform prefix for all API keys (PaulTaffe).
+const apiKeyPrefix = "sk-pt"
 
 // APIKeyRequest is the incoming payload for key creation.
 type APIKeyRequest struct {
 	ClientID string `json:"client_id"`
 	Name     string `json:"name"`
-	Prefix   string `json:"prefix"` // optional short id (2-8 alphanum), e.g. "pt" for PaulTaffe
 }
 
 // APIKeyResponse is returned after key creation (only time raw key is visible).
@@ -2220,7 +2170,6 @@ type APIKeyResponse struct {
 	KeyHash  string `json:"key_hash"`
 	ClientID string `json:"client_id"`
 	Name     string `json:"name"`
-	Prefix   string `json:"prefix"`
 }
 
 // APIKeyListItem is a single key in the list (no raw key).
@@ -2253,16 +2202,13 @@ func handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		req.Name = req.ClientID + "-agent"
 	}
 
-	// Derive or validate prefix (2-8 lowercase alphanum)
-	prefix := deriveKeyPrefix(req.Prefix, req.ClientID)
-
 	// Generate 32 bytes of cryptographic randomness → 64 hex chars
 	rawKey := make([]byte, 32)
 	if _, err := rand.Read(rawKey); err != nil {
 		writeError(w, "Key generation failed", http.StatusInternalServerError)
 		return
 	}
-	keyStr := fmt.Sprintf("sk-%s-%x", prefix, rawKey)
+	keyStr := fmt.Sprintf("%s-%x", apiKeyPrefix, rawKey)
 	keyHash := fmt.Sprintf("%x", sha256.Sum256([]byte(keyStr)))
 
 	_, err := db.Exec(r.Context(),
@@ -2273,11 +2219,11 @@ func handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[keys] Created API key for %s (prefix=%s, name=%s, hash=%s…)",
-		req.ClientID, prefix, req.Name, keyHash[:12])
+	log.Printf("[keys] Created API key for %s (name=%s, hash=%s…)",
+		req.ClientID, req.Name, keyHash[:12])
 
 	writeJSON(w, http.StatusCreated, APIKeyResponse{
-		Key: keyStr, KeyHash: keyHash, ClientID: req.ClientID, Name: req.Name, Prefix: prefix,
+		Key: keyStr, KeyHash: keyHash, ClientID: req.ClientID, Name: req.Name,
 	})
 }
 

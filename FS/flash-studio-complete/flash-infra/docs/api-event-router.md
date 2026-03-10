@@ -512,10 +512,9 @@ Get the Zammad customer mapping for a client.
 Administrative endpoints for managing per-agent API keys. All endpoints
 require the `ADMIN_API_KEY` via `Authorization: Bearer <admin-key>` header.
 
-Keys are generated with 32 bytes of cryptographic randomness (`sk-{prefix}-{64hex}`),
+Keys are generated with 32 bytes of cryptographic randomness (`sk-pt-{64hex}`),
 stored as SHA-256 hashes. The raw key is returned **only once** at creation time.
-The prefix is a short (2-8 char) identifier for the client (e.g. `pt` for PaulTaffe,
-`oc` for OpenClaw), making keys visually identifiable without exposing the full token.
+All keys share the fixed `sk-pt` prefix (PaulTaffe platform identifier).
 
 ### POST /api/admin/keys
 
@@ -532,26 +531,23 @@ Generate a new API key for a client agent.
 ```json
 {
   "client_id": "client-42",
-  "name": "openclaw-agent",
-  "prefix": "oc"
+  "name": "openclaw-agent"
 }
 ```
 
-| Field     | Type   | Required | Default              | Description                         |
-|-----------|--------|----------|----------------------|-------------------------------------|
-| client_id | string | yes      | —                    | Client this key belongs to          |
-| name      | string | no       | `{client_id}-agent`  | Descriptive name for the key        |
-| prefix    | string | no       | auto-derived         | Short ID (2-8 alphanum) in key prefix. Auto-derived from client_id if omitted (e.g. `client-42` → `c42`, `paul-taffe` → `pt`) |
+| Field     | Type   | Required | Default              | Description                     |
+|-----------|--------|----------|----------------------|---------------------------------|
+| client_id | string | yes      | —                    | Client this key belongs to      |
+| name      | string | no       | `{client_id}-agent`  | Descriptive name for the key    |
 
 **Response:** `201 Created`
 
 ```json
 {
-  "key": "sk-oc-a1b2c3d4e5f6...64hex",
+  "key": "sk-pt-a1b2c3d4e5f6...64hex",
   "key_hash": "sha256hash...",
   "client_id": "client-42",
-  "name": "openclaw-agent",
-  "prefix": "oc"
+  "name": "openclaw-agent"
 }
 ```
 
@@ -789,18 +785,17 @@ it goes through a 10-step pipeline:
 Keys are generated per-client via the admin API and distributed to agents:
 
 ```
-Admin: POST /api/admin/keys {"client_id":"client-42","name":"openclaw","prefix":"oc"}
-  → Returns sk-oc-a1b2c3... (store in agent's .env or Vaultwarden)
-  → Event Router stores SHA-256(sk-oc-a1b2c3...) in api_keys table
+Admin: POST /api/admin/keys {"client_id":"client-42","name":"openclaw"}
+  → Returns sk-pt-a1b2c3... (store in agent's .env or Vaultwarden)
+  → Event Router stores SHA-256(sk-pt-a1b2c3...) in api_keys table
 
 Agent: POST /api/tickets
-  → Authorization: Bearer sk-oc-a1b2c3...
+  → Authorization: Bearer sk-pt-a1b2c3...
   → Event Router hashes token, matches against api_keys
   → Enforces client_id from api_keys == client_id in payload
 ```
 
-**Key format:** `sk-{prefix}-{64hex}` where prefix is a 2-8 char client identifier.
-Examples: `sk-pt-a1b2...` (PaulTaffe), `sk-oc-d4e5...` (OpenClaw), `sk-gva-f6a7...` (Go VPS Agent).
+**Key format:** `sk-pt-{64hex}` — fixed platform prefix + 64 hex chars (32 bytes of cryptographic randomness).
 
 **Security model:**
 - Raw key visible **only once** at creation — store it immediately
@@ -827,16 +822,13 @@ sd_admin_api_key: "admin-super-secret-key-change-me"
 curl -X POST http://event-router:8092/api/admin/keys \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer admin-super-secret-key-change-me" \
-  -d '{"client_id":"client-42","name":"openclaw-agent","prefix":"oc"}'
+  -d '{"client_id":"client-42","name":"openclaw-agent"}'
 ```
 
 Response:
 ```json
-{"key":"sk-oc-a1b2c3d4...","key_hash":"abc123...","client_id":"client-42","name":"openclaw-agent","prefix":"oc"}
+{"key":"sk-pt-a1b2c3d4...","key_hash":"abc123...","client_id":"client-42","name":"openclaw-agent"}
 ```
-
-> **Prefix auto-derivation:** If `prefix` is omitted, it is derived from `client_id`
-> (e.g. `paul-taffe` → `pt`, `go-vps-agent` → `gva`). You can override with any 2-8 lowercase alphanum string.
 
 **Store `key` in the agent's configuration** (Vaultwarden, `.env`, or Ansible vault).
 
@@ -847,7 +839,7 @@ In the client agent (OpenClaw, Go VPS agent, or Claude):
 ```bash
 # Environment variable
 EVENT_ROUTER_URL=http://event-router:8092
-EVENT_ROUTER_API_KEY=sk-oc-a1b2c3d4...
+EVENT_ROUTER_API_KEY=sk-pt-a1b2c3d4...
 ```
 
 ### Step 4: Agent Creates Tickets

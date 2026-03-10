@@ -83,6 +83,7 @@ openclaw_state_subdirs:
   - cron
   - memory
   - telegram
+  - identity
 
 # --- Multi-Agent Configuration ---
 # Agent names (placeholders — updated later when user chooses names)

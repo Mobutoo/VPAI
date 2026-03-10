@@ -58,6 +58,7 @@
     - cron
     - memory
     - telegram
+    - identity
   # These empty dirs must pre-exist in system_dir so Docker can overlay rw child
   # bind-mounts (workspace, state/*) on top of the :ro parent system_dir mount.
   # Docker cannot mkdirat inside a :ro bind-mount — pre-creating them avoids the

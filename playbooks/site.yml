@@ -84,6 +84,12 @@
       tags: [firefly, phase3]
     - role: zimboo
       tags: [zimboo, phase3]
+    - role: mealie
+      tags: [mealie, phase3]
+    - role: grocy
+      tags: [grocy, phase3]
+    - role: koodia
+      tags: [koodia, phase3]
 
     # Phase 4 — Observabilité
     - role: monitoring

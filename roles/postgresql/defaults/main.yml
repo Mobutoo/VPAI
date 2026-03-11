@@ -30,3 +30,7 @@ postgresql_databases:
     user: palais
     extensions:
       - uuid-ossp
+  - name: mealie
+    user: mealie
+    extensions:
+      - uuid-ossp

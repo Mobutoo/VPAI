@@ -1,0 +1,27 @@
+---
+# mealie — handlers
+# Pattern: grep-guard + state: present + recreate: always (env_file reload).
+
+- name: Check mealie service is in compose file
+  ansible.builtin.command:
+    cmd: grep -q "mealie" /opt/{{ project_name }}/docker-compose.yml
+  register: _mealie_in_compose
+  failed_when: false
+  changed_when: false
+  listen: Restart mealie stack
+
+- name: Restart mealie container
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - mealie
+    state: present
+    recreate: always
+  become: true
+  when:
+    - not ansible_check_mode
+    - _mealie_in_compose.rc | default(1) == 0
+    - not (common_molecule_mode | default(false))
+  listen: Restart mealie stack

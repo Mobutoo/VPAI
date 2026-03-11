@@ -49,6 +49,11 @@ firefly_image: "fireflyiii/core:version-6.5.3"
 # --- Zimboo Dashboard (Next.js financial cockpit) ---
 zimboo_image: "ghcr.io/mobutoo/zimboo:v1.14.0"
 
+# --- Food & Stock (Koodia) ---
+mealie_image: "ghcr.io/mealie-recipes/mealie:v3.12.0"
+grocy_image: "lscr.io/linuxserver/grocy:4.6.0"
+koodia_image: "ghcr.io/mobutoo/koodia:v0.1.0"
+
 # --- Workstation Pi (natif — pas Docker) ---
 # Caddy : binaire custom build via xcaddy (module dns.providers.ovh)
 # Version alignee avec le prod Docker (caddy_image ci-dessus)

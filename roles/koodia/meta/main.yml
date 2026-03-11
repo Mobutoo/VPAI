@@ -1,0 +1,16 @@
+---
+# koodia — role metadata
+
+galaxy_info:
+  role_name: koodia
+  author: Mobutoo
+  description: Deploy Koodia food cockpit (Next.js — Mealie + Grocy + AI)
+  license: AGPL-3.0
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

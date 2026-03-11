@@ -1,0 +1,31 @@
+---
+# koodia — tasks
+# Koodia food cockpit (Next.js — pre-built Docker image from GHCR)
+
+- name: Create Koodia config directory
+  ansible.builtin.file:
+    path: "{{ koodia_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create Koodia data directory
+  ansible.builtin.file:
+    path: "{{ koodia_data_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy Koodia environment file
+  ansible.builtin.template:
+    src: koodia.env.j2
+    dest: "{{ koodia_config_dir }}/koodia.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart koodia stack

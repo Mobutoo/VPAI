@@ -1,0 +1,31 @@
+---
+# grocy — tasks
+# Grocy household management / stock tracking (linuxserver Docker image)
+
+- name: Create Grocy config directory
+  ansible.builtin.file:
+    path: "{{ grocy_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create Grocy data directory
+  ansible.builtin.file:
+    path: "{{ grocy_data_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+
+- name: Deploy Grocy environment file
+  ansible.builtin.template:
+    src: grocy.env.j2
+    dest: "{{ grocy_config_dir }}/grocy.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart grocy stack

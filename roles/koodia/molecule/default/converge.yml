@@ -1,0 +1,25 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    common_molecule_mode: true
+    project_name: javisi
+    prod_user: molecule
+    domain_name: test.local
+    koodia_subdomain: koodia
+    koodia_session_secret: "molecule_test_session_secret"
+    litellm_master_key: "sk-test-key"
+    qdrant_api_key: "test_qdrant_key"
+    mealie_api_token: ""
+    grocy_api_key: ""
+    openclaw_webhook_secret: ""
+    timezone: "Europe/Paris"
+  pre_tasks:
+    - name: Create molecule test user (not present in geerlingguy Docker image)
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
+  roles:
+    - role: koodia

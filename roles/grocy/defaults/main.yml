@@ -1,0 +1,16 @@
+---
+# grocy — defaults
+# Grocy household management / stock tracking (PHP + SQLite via linuxserver image).
+# Runs as Docker container on Sese-AI.
+
+grocy_config_dir: "/opt/{{ project_name }}/configs/grocy"
+grocy_data_dir: "/opt/{{ project_name }}/data/grocy"
+
+# Internal web port (exposed via Caddy on garde.<domain>)
+grocy_web_port: 80
+
+# Subdomain (VPN-only, served by Caddy)
+# Overridden by grocy_subdomain in inventory/group_vars/all/main.yml
+grocy_subdomain: "garde"
+
+caddy_grocy_domain: "{{ grocy_subdomain | default('garde') }}.{{ domain_name }}"

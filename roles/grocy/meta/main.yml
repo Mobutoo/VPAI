@@ -1,0 +1,16 @@
+---
+# grocy — role metadata
+
+galaxy_info:
+  role_name: grocy
+  author: Mobutoo
+  description: Deploy Grocy household management and stock tracking
+  license: AGPL-3.0
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

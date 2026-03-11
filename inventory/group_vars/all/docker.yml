@@ -101,3 +101,18 @@ firefly_cpu_limit: "1.0"
 zimboo_memory_limit: "{{ '384M' if target_env == 'prod' else '256M' }}"
 zimboo_memory_reservation: "128M"
 zimboo_cpu_limit: "0.5"
+
+# Mealie (FastAPI + Vue.js recipe manager)
+mealie_memory_limit: "384M"
+mealie_memory_reservation: "128M"
+mealie_cpu_limit: "0.75"
+
+# Grocy (PHP + SQLite household/stock management)
+grocy_memory_limit: "128M"
+grocy_memory_reservation: "64M"
+grocy_cpu_limit: "0.25"
+
+# Koodia (Next.js food cockpit)
+koodia_memory_limit: "256M"
+koodia_memory_reservation: "128M"
+koodia_cpu_limit: "0.5"

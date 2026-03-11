@@ -255,6 +255,36 @@ BOOTSTRAP 200
 }
 {% endif %}
 
+# === Mealie (recipe manager) — miam.<domain> ===
+{% if mealie_subdomain | default('') | length > 0 %}
+{{ caddy_mealie_domain }} {
+    import vpn_only
+    import vpn_error_page
+    reverse_proxy mealie:{{ mealie_web_port | default(9000) }}
+    import security_headers
+}
+{% endif %}
+
+# === Grocy (inventory management) — garde.<domain> ===
+{% if grocy_subdomain | default('') | length > 0 %}
+{{ caddy_grocy_domain }} {
+    import vpn_only
+    import vpn_error_page
+    reverse_proxy grocy:{{ grocy_web_port | default(80) }}
+    import security_headers
+}
+{% endif %}
+
+# === Koodia (food cockpit) — koodia.<domain> ===
+{% if koodia_subdomain | default('') | length > 0 %}
+{{ caddy_koodia_domain }} {
+    import vpn_only
+    import vpn_error_page
+    reverse_proxy koodia:{{ koodia_port | default(3100) }}
+    import security_headers
+}
+{% endif %}
+
 # === NocoDB — pipeline production IA manga (hq.<domain>) ===
 {% if nocodb_subdomain | default('') | length > 0 %}
 {{ caddy_nocodb_domain }} {

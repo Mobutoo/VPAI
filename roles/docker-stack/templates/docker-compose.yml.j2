@@ -148,6 +148,126 @@ services:
       retries: 5
       start_period: 60s
 
+  # === FOOD MANAGEMENT (Koodia) ===
+{% if mealie_subdomain | default('') | length > 0 %}
+  mealie:
+    image: {{ mealie_image }}
+    container_name: {{ project_name }}_mealie
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+      - FOWNER
+    env_file:
+      - /opt/{{ project_name }}/configs/mealie/mealie.env
+    volumes:
+      - /opt/{{ project_name }}/data/mealie:/app/data
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ mealie_memory_limit }}
+          cpus: "{{ mealie_cpu_limit }}"
+        reservations:
+          memory: {{ mealie_memory_reservation }}
+    healthcheck:
+      test: ["CMD", "python", "/app/mealie/scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+{% endif %}
+
+{% if grocy_subdomain | default('') | length > 0 %}
+  grocy:
+    image: {{ grocy_image }}
+    container_name: {{ project_name }}_grocy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+      - FOWNER
+    env_file:
+      - /opt/{{ project_name }}/configs/grocy/grocy.env
+    volumes:
+      - /opt/{{ project_name }}/data/grocy:/config
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ grocy_memory_limit }}
+          cpus: "{{ grocy_cpu_limit }}"
+        reservations:
+          memory: {{ grocy_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+{% endif %}
+
+{% if koodia_subdomain | default('') | length > 0 %}
+  koodia:
+    image: {{ koodia_image }}
+    container_name: {{ project_name }}_koodia
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    env_file:
+      - /opt/{{ project_name }}/configs/koodia/koodia.env
+    volumes:
+      - /opt/{{ project_name }}/data/koodia:/app/data
+    networks:
+      - backend
+      - frontend
+      - egress
+    deploy:
+      resources:
+        limits:
+          memory: {{ koodia_memory_limit }}
+          cpus: "{{ koodia_cpu_limit }}"
+        reservations:
+          memory: {{ koodia_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:{{ koodia_port | default(3100) }}/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+{% endif %}
+
   # === PERSONAL FINANCE ===
   firefly-iii:
     image: {{ firefly_image }}

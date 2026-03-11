@@ -1,0 +1,31 @@
+---
+# mealie — tasks
+# Mealie recipe manager (FastAPI + Vue.js — Docker image from GHCR)
+
+- name: Create Mealie config directory
+  ansible.builtin.file:
+    path: "{{ mealie_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create Mealie data directory
+  ansible.builtin.file:
+    path: "{{ mealie_data_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+
+- name: Deploy Mealie environment file
+  ansible.builtin.template:
+    src: mealie.env.j2
+    dest: "{{ mealie_config_dir }}/mealie.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart mealie stack

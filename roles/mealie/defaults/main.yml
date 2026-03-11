@@ -1,0 +1,20 @@
+---
+# mealie — defaults
+# Mealie recipe manager (FastAPI + Vue.js).
+# Runs as Docker container on Sese-AI, shares PostgreSQL.
+
+mealie_config_dir: "/opt/{{ project_name }}/configs/mealie"
+mealie_data_dir: "/opt/{{ project_name }}/data/mealie"
+
+# Internal web port (exposed via Caddy on miam.<domain>)
+mealie_web_port: 9000
+
+# PostgreSQL connection (shared instance)
+mealie_db_name: "mealie"
+mealie_db_user: "mealie"
+
+# Subdomain (VPN-only, served by Caddy)
+# Overridden by mealie_subdomain in inventory/group_vars/all/main.yml
+mealie_subdomain: "miam"
+
+caddy_mealie_domain: "{{ mealie_subdomain | default('miam') }}.{{ domain_name }}"

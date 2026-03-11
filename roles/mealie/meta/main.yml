@@ -1,0 +1,16 @@
+---
+# mealie — role metadata
+
+galaxy_info:
+  role_name: mealie
+  author: Mobutoo
+  description: Deploy Mealie recipe manager
+  license: AGPL-3.0
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

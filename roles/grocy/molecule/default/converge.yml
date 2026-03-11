@@ -1,0 +1,19 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    common_molecule_mode: true
+    project_name: javisi
+    prod_user: molecule
+    domain_name: test.local
+    grocy_subdomain: garde
+    timezone: "Europe/Paris"
+  pre_tasks:
+    - name: Create molecule test user (not present in geerlingguy Docker image)
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
+  roles:
+    - role: grocy

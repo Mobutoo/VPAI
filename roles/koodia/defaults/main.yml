@@ -1,0 +1,19 @@
+---
+# koodia — defaults
+# Koodia food cockpit (Next.js — integrates Mealie + Grocy + LiteLLM + Qdrant).
+# Runs as Docker container (pre-built image from GHCR).
+
+koodia_config_dir: "/opt/{{ project_name }}/configs/koodia"
+koodia_data_dir: "/opt/{{ project_name }}/data/koodia"
+
+# Internal web port (exposed via Caddy on koodia.<domain>)
+koodia_port: 3100
+
+# LLM model for AI features (via LiteLLM proxy)
+koodia_llm_model: "deepseek-v3"
+
+# Subdomain (VPN-only, served by Caddy)
+# Overridden by koodia_subdomain in inventory/group_vars/all/main.yml
+koodia_subdomain: "koodia"
+
+caddy_koodia_domain: "{{ koodia_subdomain | default('koodia') }}.{{ domain_name }}"

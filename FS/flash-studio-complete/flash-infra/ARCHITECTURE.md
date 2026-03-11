@@ -334,9 +334,11 @@ flash-infra/
 │   └── roles/
 │       ├── common/                # base Debian, users, SSH, nftables, cosign
 │       ├── docker/                # Docker Engine + compose
-│       ├── netbird-client/        # NetBird VPN + Rosenpass
+│       ├── netbird-server/        # NetBird Management+Signal+Relay+Coturn+Dashboard, Zitadel OIDC, Rosenpass
+│       ├── netbird-client/        # NetBird client VPN + Rosenpass (--enable-rosenpass)
 │       ├── caddy/                 # reverse proxy + TLS
 │       ├── postgres/              # PostgreSQL 16
+│       ├── flash-agent/           # binaire Go, systemd hardening, cosign verify, LUKS mount service, auto-update
 │       ├── tetragon/              # eBPF runtime security + policies
 │       ├── sovereign-compose/     # docker-compose sovereign (réseaux isolés)
 │       ├── studio-compose/        # docker-compose production (réseaux isolés)
@@ -468,6 +470,10 @@ Post-deploy
 **Temps total : < 30 minutes, zéro intervention humaine.**
 Le client a immédiatement accès à `acme42.paultaffe.fr` + tous les sub-subdomains.
 Il peut ajouter des domaines custom depuis son dashboard (`app.paultaffe.com`).
+
+> **Hardening V1 :** les étapes de sécurité avancées (LUKS, Rosenpass, Tetragon,
+> Cosign, Posture Checks, réseaux Docker isolés) sont exécutées par Ansible
+> après les étapes ci-dessus. Voir **section 19.5** pour le détail complet.
 
 ---
 

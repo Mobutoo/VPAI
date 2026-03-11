@@ -2475,7 +2475,7 @@ automatique via snapshot Hetzner.
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  MAINTENANCE WINDOW : dimanche 02h00-04h00 (heure de Paris)      │
+│  MAINTENANCE WINDOW : vendredi→samedi 02h00-04h00 (heure Paris)  │
 │                                                                   │
 │  J-48h : Email + status page (app.paultaffe.com/status)          │
 │  J-2h  : Rappel email si update majeure                          │
@@ -2556,9 +2556,9 @@ Si smoke tests échouent après update :
 | Type | Fenêtre | Notification | Rollback |
 |------|---------|-------------|---------|
 | **Patch OS** (unattended-upgrades) | Continu, silencieux | Aucune | Auto (apt) |
-| **Update containers** (patch mineur) | Dimanche 02h-04h | Email J-48h | Docker image précédente |
-| **Update flash-agent** | Dimanche 02h-04h | Email J-48h | Cosign verify + rollback binaire |
-| **Update majeure** (breaking change) | Dimanche 02h-04h | Email J-7j + J-48h | Snapshot Hetzner |
+| **Update containers** (patch mineur) | Ven→Sam 02h-04h | Email J-48h | Docker image précédente |
+| **Update flash-agent** | Ven→Sam 02h-04h | Email J-48h | Cosign verify + rollback binaire |
+| **Update majeure** (breaking change) | Ven→Sam 02h-04h | Email J-7j + J-48h | Snapshot Hetzner |
 | **Patch sécurité critique** (CVE) | Hors fenêtre (< 4h) | Email immédiat | Snapshot pre-patch |
 
 ### Flash-Agent auto-update

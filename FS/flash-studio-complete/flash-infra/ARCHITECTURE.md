@@ -2170,3 +2170,587 @@ Ansible playbook (après les étapes existantes)
         POST /api/posture-checks → baseline (OS version, NetBird version)
         Associer les posture checks aux policies du client
 ```
+
+---
+
+## 20. Cycle de vie client — Dunning & Offboarding
+
+### Vue d'ensemble
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     CYCLE DE VIE D'UN CLIENT                        │
+│                                                                      │
+│  Stripe Checkout                                                     │
+│       │                                                              │
+│       ▼                                                              │
+│  ACTIF ──────────────────────────────────────────► CHURNÉ           │
+│    │         Paiement échoue                          │              │
+│    │              │                                   │              │
+│    │              ▼                                   ▼              │
+│    │         GRACE PERIOD (7j)              Export 30j disponible   │
+│    │              │                                   │              │
+│    │         ──── Si non régularisé ────►  Suppression totale       │
+│    │              │                                                  │
+│    │              ▼                                                  │
+│    │         SUSPENDU                                                │
+│    │              │                                                  │
+│    │         ──── Si 30j sans paiement ───► Suppression totale      │
+│    │                                                                 │
+│    └─── Annulation volontaire ──────────────► Export 30j            │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Dunning — Gestion des impayés
+
+**Déclencheur :** webhook Stripe `invoice.payment_failed`
+
+```
+invoice.payment_failed → Master API
+  │
+  ├─► Jour 0 (1er échec) :
+  │     ├─► Stripe lance ses retries automatiques (J+3, J+5, J+7)
+  │     ├─► Email client : "Problème avec votre paiement — régularisez dans 7 jours"
+  │     ├─► COUPER IMMÉDIATEMENT :
+  │     │     ├─► GPU RunPod (stopper les jobs en cours)
+  │     │     ├─► Services surfacturés (Bright Data, volume supplémentaire)
+  │     │     └─► Tout service à coût variable
+  │     └─► VM principale et données : INTACT (services de base continuent)
+  │
+  ├─► Jour 7 (grace period expirée, Stripe a échoué tous ses retries) :
+  │     ├─► Master API → docker stop sur tous les containers
+  │     ├─► VM suspendue (Hetzner poweroff)
+  │     ├─► Données préservées (/mnt/data intact)
+  │     ├─► DNS maintenu (pointe toujours vers Sovereign)
+  │     ├─► Email client : "Votre Studio est suspendu — 30 jours pour régulariser"
+  │     └─► Ticket Zammad : "Suspension client {id} — impayé J+7"
+  │
+  ├─► Jour 37 (30j après suspension sans paiement) :
+  │     └─► Déclenche la procédure d'offboarding complète (voir ci-dessous)
+  │
+  └─► Régularisation à tout moment (Stripe webhook invoice.paid) :
+        ├─► Master API → Hetzner poweron
+        ├─► docker start
+        ├─► Services GPU/Bright Data réactivés
+        └─► Email client : "Votre Studio est rétabli"
+```
+
+**Implémentation Stripe :**
+
+| Webhook | Action Master |
+|---------|--------------|
+| `invoice.payment_failed` | Couper services variables + email |
+| `invoice.payment_action_required` | Envoyer lien 3D Secure |
+| `customer.subscription.updated` (→ past_due) | Grace period J7 |
+| `customer.subscription.deleted` | Offboarding immédiat |
+| `invoice.paid` | Réactivation complète |
+
+**Paramétrage Stripe :**
+
+```
+Stripe Dashboard → Settings → Billing → Automatic collection
+  → Retry schedule : J+3, J+5, J+7
+  → Subscription pausing : enabled (pause au lieu de cancel)
+  → Final action after retries : mark subscription as unpaid
+                                  (pas de cancel auto → on gère nous-même)
+```
+
+### Offboarding — Annulation volontaire
+
+**Déclencheur :** client clique "Annuler mon abonnement" dans le dashboard
+ou webhook Stripe `customer.subscription.deleted`
+
+```
+Client confirme l'annulation (double confirmation dashboard)
+  │
+  ├─► Immédiat :
+  │     ├─► Stripe : subscription.cancel_at_period_end = true
+  │     │     (le client garde l'accès jusqu'à la fin de la période payée)
+  │     ├─► Email : "Annulation confirmée — accès jusqu'au {date_fin}"
+  │     └─► Ticket Zammad : "Offboarding client {id} — date effective {date}"
+  │
+  ├─► À la date effective d'annulation :
+  │     ├─► VM : docker stop (containers stoppés, pas supprimés)
+  │     ├─► Dashboard : mode "lecture seule + export"
+  │     ├─► Email : "Votre Studio est arrêté — 30 jours pour exporter vos données"
+  │     └─► Status page : accès dashboard maintenu pour l'export
+  │
+  ├─► J+30 après date effective :
+  │     ├─► Suppression VM Sovereign (Hetzner API)
+  │     ├─► Suppression VM Production (Hetzner API)
+  │     ├─► Suppression volume /mnt/data (Hetzner API)
+  │     ├─► Suppression DNS (OVH API : acme42.paultaffe.fr + *.acme42.paultaffe.fr)
+  │     ├─► Suppression peer NetBird (Management API)
+  │     ├─► Suppression user Zitadel (SSO API)
+  │     ├─► Suppression entrée NocoDB
+  │     ├─► Suppression dashboard Grafana client
+  │     ├─► Archivage tickets Zammad (90j) → suppression
+  │     ├─► Email final : "Vos données ont été supprimées — RGPD art.17"
+  │     └─► Log audit : suppression complète tracée (date, opérateur, confirmation)
+  │
+  └─► Export disponible pendant les 30j :
+        ├─► Dashboard → bouton "Exporter mes données"
+        ├─► Master API → génère un ZIP chiffré :
+        │     ├─► PostgreSQL dump (pg_dump → .sql.gz)
+        │     ├─► Qdrant export (collections JSON)
+        │     ├─► /mnt/data complète (tar.gz)
+        │     └─► Liste des domaines configurés
+        └─► Lien de téléchargement signé (S3, valide 24h) → email client
+```
+
+### Tableau récapitulatif
+
+| Situation | VM | Données | DNS | Durée |
+|-----------|----|---------|----|-------|
+| Actif | ✅ On | ✅ Intact | ✅ Actif | — |
+| Grace period (impayé J0→J7) | ✅ On (services var. OFF) | ✅ Intact | ✅ Actif | 7j |
+| Suspendu (impayé J7→J37) | ⏸ Off | ✅ Intact | ✅ Actif | 30j |
+| Annulé (export window) | ⏸ Off | ✅ Read-only | ✅ Actif | 30j |
+| Supprimé | ❌ | ❌ | ❌ | — |
+
+---
+
+## 21. Master — Disaster Recovery
+
+Le Master est le **single point of failure du control plane** : SSO (Zitadel),
+provisioning, billing, NetBird Management, AdGuard Home. Les VMs clients
+continuent à fonctionner (tunnels WireGuard P2P), mais toute opération
+de gestion est impossible tant que le Master est down.
+
+### RTO/RPO — Roadmap progressive
+
+| Version | RTO | RPO | Mécanisme |
+|---------|-----|-----|-----------|
+| **V1 (maintenant)** | 4h | 2h | Backup S3 (pg_dump restic) + rebuild Ansible manuel |
+| **V2 (50 clients)** | 1h | 15min | Snapshots Hetzner automatiques toutes les 15min |
+| **V3 (150+ clients)** | 15min | ~0 | Hot standby actif/passif (PostgreSQL streaming replication) |
+
+### V1 — Backup S3 + Rebuild Ansible
+
+```
+Master (cron 2h)
+  │
+  ├─► pg_dump (PostgreSQL) → restic → S3 Hetzner
+  ├─► Zitadel config export → restic → S3
+  ├─► NetBird config export → restic → S3
+  ├─► SOPS secrets → déjà dans git (chiffrés)
+  └─► /etc/caddy/, /etc/netbird/ → restic → S3
+
+Retention S3 : 7 jours daily, 4 semaines weekly
+```
+
+**Runbook V1 — Rebuild Master (< 4h) :**
+
+```
+1. [0:00] Créer nouvelle VM Master (Hetzner API) — même specs, même région
+2. [0:10] Ansible playbook master.yml (Zitadel, NetBird, AdGuard, Caddy, API)
+3. [0:40] Restaurer PostgreSQL depuis dernier backup S3 :
+           restic restore latest → pg_restore
+4. [1:00] Restaurer configs Zitadel, NetBird, AdGuard depuis S3
+5. [1:30] Mettre à jour DNS vpn.paultaffe.net → nouvelle IP Master (OVH)
+6. [2:00] Vérifier que les clients existants reconnectent (NetBird P2P → Management)
+7. [3:00] Smoke tests (provisioning, billing, SSO, monitoring)
+8. [4:00] Incident résolu — post-mortem dans 24h
+```
+
+**Alertes Master down :**
+
+```
+Gatus (Service Desk) surveille :
+  ├─► https://vpn.paultaffe.net/health  (NetBird)
+  ├─► https://auth.paultaffe.net/health (Zitadel)
+  └─► https://monitor.paultaffe.net     (Grafana)
+
+Si health check échoue > 2min → alerte Telegram ops immédiate
+```
+
+### V2 — Snapshots Hetzner automatiques (50 clients)
+
+```
+Master API → Hetzner API (cron toutes les 15min)
+  POST /servers/{master_id}/actions/create_image
+    → type: snapshot
+    → description: "master-auto-{timestamp}"
+
+Retention : garder les 48 derniers snapshots (12h de couverture)
+Coût estimé : ~5-10€/mois (snapshot ~20GB)
+
+Rebuild V2 :
+  1. Hetzner API : create server from snapshot (< 5min)
+  2. Mettre à jour DNS vpn.paultaffe.net
+  3. Vérifier reconnexion NetBird
+  Total : ~1h
+```
+
+### V3 — Hot Standby (150+ clients)
+
+```
+Master Primary ──── PostgreSQL streaming replication ────► Master Standby
+     │                                                           │
+     │                 (synchronous replication)                 │
+     │                                                           │
+     ▼                                                           ▼
+  En ligne                                               Chaud, prêt
+  vpn.paultaffe.net                               (bascule < 15min via DNS)
+```
+
+- PostgreSQL primary → standby (streaming replication synchrone)
+- Keepalived ou Corosync pour détection de panne
+- Bascule DNS automatique via script (OVH API) si primary down > 2min
+- Standby tourne en permanence (coût x2 pour le Master)
+
+---
+
+## 22. Abuse Policy
+
+### Critères de détection
+
+| Signal | Seuil | Source |
+|--------|-------|--------|
+| CPU > 90% | > 60 min continu | Prometheus + Alertmanager |
+| Bande passante sortante | > 1 TB/semaine | Hetzner metrics |
+| Connexions réseau sortantes | > 10 000/min | Tetragon eBPF |
+| Pattern crypto mining | GPU > 95% + pattern réseau (stratum protocol) | Tetragon |
+| Plainte Hetzner abuse | Tout signalement | Email ops@paultaffe.net |
+
+### Procédure automatique
+
+```
+Signal détecté (Prometheus / Tetragon / Hetzner abuse email)
+  │
+  ├─► Analyse automatique (flash-agent) :
+  │     ├─► ComfyUI actif ? → probablement légitime (rendu GPU)
+  │     ├─► Pattern stratum (port 3333, 4444, 9999) ? → crypto mining → ABUSE
+  │     ├─► 10 000+ connexions sortantes ? → scraping agressif → ABUSE
+  │     └─► Heure creuse + CPU 100% + pas de tâche planifiée ? → SUSPECT
+  │
+  ├─► Si ABUSE confirmé :
+  │     ├─► Email automatique au client :
+  │     │     "Nous avons détecté une activité inhabituellement élevée
+  │     │      sur votre serveur (CPU 95%+ depuis 2h, pattern réseau anormal).
+  │     │      Merci de nous répondre dans les 24h."
+  │     ├─► Ticket Zammad : "ABUSE — client {id} — {signal}"
+  │     └─► Alerte Telegram ops
+  │
+  ├─► Si pas de réponse en 24h :
+  │     ├─► VM suspendue (Hetzner poweroff)
+  │     ├─► Email : "Votre Studio a été suspendu — contactez le support"
+  │     └─► Ticket escaladé en CRITICAL
+  │
+  ├─► Si réponse et explication valide (ex: "rendu ComfyUI batch") :
+  │     ├─► Ticket résolu
+  │     └─► Si récurrent → suggérer upgrade plan
+  │
+  └─► Si plainte Hetzner reçue :
+        ├─► Suspension immédiate (Hetzner exige < 24h de réponse)
+        ├─► Email client
+        └─► Réponse à Hetzner sous 4h
+```
+
+### Acceptable Use Policy (résumé technique)
+
+Interdit sur les VMs Flash Studio :
+- **Crypto mining** (Bitcoin, Monero, etc.)
+- **Spam** (envoi email en masse non sollicité)
+- **DDoS** (participation à des attaques)
+- **Contenu illégal** (CSAM, contenu piraté, etc.)
+- **Scraping sans respect des robots.txt** au-delà des limites raisonnables
+- **Port scanning** sur des IPs externes non autorisées
+
+Autorisé :
+- Scraping web légal (avec respect des ToS des sites cibles)
+- GPU rendering intensif (ComfyUI, Remotion)
+- Bots Telegram, Discord (dans les limites des ToS des plateformes)
+- Serveurs de jeux, VPN personnel
+
+---
+
+## 23. Updates & Maintenance
+
+### Principe
+
+Les mises à jour de la stack (flash-agent, containers Docker, OS) sont déployées
+via **fenêtre de maintenance hebdomadaire** avec notification préalable et rollback
+automatique via snapshot Hetzner.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  MAINTENANCE WINDOW : dimanche 02h00-04h00 (heure de Paris)      │
+│                                                                   │
+│  J-48h : Email + status page (app.paultaffe.com/status)          │
+│  J-2h  : Rappel email si update majeure                          │
+│  02h00 : Début maintenance                                        │
+│  02h05 : Snapshot Hetzner de chaque VM (checkpoint rollback)     │
+│  02h15 : Ansible rolling update (1 VM à la fois)                 │
+│  03h30 : Smoke tests automatiques                                │
+│  04h00 : Fin maintenance / status page → OK                      │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Rolling update Ansible
+
+```bash
+# playbook update-stack.yml
+- name: Update client VMs (rolling, 1 at a time)
+  hosts: clients
+  serial: 1                     # 1 VM à la fois
+  max_fail_percentage: 10       # Arrête si > 10% des VMs échouent
+
+  pre_tasks:
+    - name: Snapshot Hetzner avant update
+      ansible.builtin.uri:
+        url: "https://api.hetzner.cloud/v1/servers/{{ hetzner_id }}/actions/create_image"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ hetzner_token }}"
+        body_format: json
+        body:
+          type: snapshot
+          description: "pre-update-{{ ansible_date_time.iso8601 }}"
+
+  tasks:
+    - name: Pull nouvelles images Docker
+      community.docker.docker_compose_v2_pull:
+        project_src: /opt/sovereign
+
+    - name: Redémarrer containers avec nouvelles images
+      community.docker.docker_compose_v2:
+        project_src: /opt/sovereign
+        recreate: always
+
+    - name: Vérifier health checks
+      ansible.builtin.uri:
+        url: "http://localhost:{{ item.port }}/health"
+        status_code: 200
+      loop: "{{ services_health_check }}"
+      register: health
+      retries: 5
+      delay: 10
+
+  post_tasks:
+    - name: Supprimer snapshot si update OK
+      # Garder 24h puis auto-clean (coût snapshot)
+      ansible.builtin.debug:
+        msg: "Update OK — snapshot sera supprimé dans 24h"
+```
+
+### Rollback
+
+```
+Si smoke tests échouent après update :
+  │
+  ├─► Ansible : docker compose down → docker compose up (version précédente)
+  │     (images précédentes encore en cache local)
+  │
+  ├─► Si rollback Docker échoue :
+  │     └─► Hetzner API : rebuild depuis snapshot pre-update
+  │           POST /servers/{id}/actions/rebuild
+  │             → image: {snapshot_id du pre-update}
+  │           → Temps : ~5 min
+  │
+  └─► Email client : "La maintenance a été annulée — aucune interruption de service"
+```
+
+### Types de mises à jour
+
+| Type | Fenêtre | Notification | Rollback |
+|------|---------|-------------|---------|
+| **Patch OS** (unattended-upgrades) | Continu, silencieux | Aucune | Auto (apt) |
+| **Update containers** (patch mineur) | Dimanche 02h-04h | Email J-48h | Docker image précédente |
+| **Update flash-agent** | Dimanche 02h-04h | Email J-48h | Cosign verify + rollback binaire |
+| **Update majeure** (breaking change) | Dimanche 02h-04h | Email J-7j + J-48h | Snapshot Hetzner |
+| **Patch sécurité critique** (CVE) | Hors fenêtre (< 4h) | Email immédiat | Snapshot pre-patch |
+
+### Flash-Agent auto-update
+
+Le flash-agent peut se mettre à jour lui-même en dehors de la fenêtre de
+maintenance pour les patches de sécurité critiques :
+
+```
+flash-agent (toutes les 6h) → GitHub Releases API
+  │
+  ├─► Nouvelle version disponible ?
+  │     ├─► Non → rien
+  │     └─► Oui → cosign verify-blob (signature Sigstore)
+  │               → Si OK : télécharger + remplacer binaire + systemctl restart
+  │               → Si signature invalide : alerte ops CRITIQUE + abort
+  │
+  └─► Log : "flash-agent updated v1.2.3 → v1.2.4 (cosign verified)"
+```
+
+---
+
+## 24. Incident Response
+
+### Niveaux de criticité
+
+| Niveau | Définition | SLA réponse | Exemple |
+|--------|-----------|------------|---------|
+| **P1 — Critical** | Plateforme entière down ou compromission confirmée | < 15 min | Master down, VM compromise avec exfiltration |
+| **P2 — High** | VM client down ou service dégradé > 10 clients | < 1h | Service Desk down, bug provisioning |
+| **P3 — Medium** | VM client individuelle avec problème | < 4h | Container crash, LUKS mount fail |
+| **P4 — Low** | Anomalie mineure, no impact | < 24h | Alerte CPU ponctuelle, log d'erreur isolé |
+
+### Procédure P1 — VM client compromise
+
+**Déclencheur :** Tetragon détecte comportement malveillant (reverse shell, exfiltration,
+modification fichier protégé) ou alerte Hetzner abuse.
+
+```
+Tetragon event → flash-agent (sur la VM compromise)
+  │
+  ├─► ISOLATION IMMÉDIATE (< 30 secondes) :
+  │     ├─► flash-agent → Master API : POST /api/studios/{id}/isolate
+  │     └─► Master API → NetBird Management API :
+  │               Modifier la policy du client :
+  │               client-{id} ↔ infra → DENY (suppression de la policy ALLOW)
+  │               client-{id} ↔ client-{id} → DENY
+  │               → La VM est coupée du mesh NetBird
+  │               → Seul le trafic web public (port 80/443) reste ouvert
+  │
+  ├─► SNAPSHOT FORENSIQUE (< 2 min) :
+  │     └─► Master API → Hetzner API :
+  │               POST /servers/{id}/actions/create_image
+  │                 description: "forensic-{timestamp}-{incident_id}"
+  │               → Préservation de l'état mémoire + disque pour analyse
+  │
+  ├─► NOTIFICATION (< 5 min) :
+  │     ├─► Email client :
+  │     │     "Nous avons détecté une activité anormale sur votre serveur.
+  │     │      Par mesure de sécurité, il a été isolé du réseau privé.
+  │     │      Ticket #{id} ouvert. Votre accès web public reste actif."
+  │     ├─► Ticket Zammad P1 : "SECURITY INCIDENT — client {id}"
+  │     └─► Alerte Telegram ops : 🚨 INCIDENT P1 — client {id} — {signal}
+  │
+  ├─► INVESTIGATION (< 1h) :
+  │     ├─► Analyse Tetragon events (logs eBPF)
+  │     ├─► Analyse auditd logs
+  │     ├─► Vérification si d'autres VMs sont touchées (lateral movement ?)
+  │     └─► Si compromission de l'infra Flash Studio confirmée → P1 global
+  │
+  └─► DÉCISION (avec le client) :
+        ├─► Faux positif → réintégration au mesh NetBird + post-mortem
+        ├─► Compromission client (sa faute) → rebuild VM depuis volume sain
+        │     → Le client décide
+        └─► Compromission infrastructure Flash Studio → P1 global :
+              ├─► Isoler TOUTES les VMs
+              ├─► Rotation de tous les secrets
+              ├─► Notification de tous les clients
+              └─► Analyse forensique complète
+```
+
+### Procédure P1 — Master down
+
+```
+Gatus détecte Master down > 2 min
+  │
+  ├─► Alerte Telegram ops immédiate
+  ├─► Vérifier si panne réseau Hetzner (status.hetzner.com)
+  │
+  ├─► Si panne Hetzner → attendre (pas d'action, SLA Hetzner 99.9%)
+  │
+  └─► Si panne Master uniquement → Runbook DR (section 21)
+        → RTO cible V1 : 4h
+        → Communication clients : status page + email
+```
+
+### Communication incidents
+
+```
+Status page (status.paultaffe.com — Gatus)
+  ├─► Mise à jour manuelle par ops pendant l'incident
+  ├─► Niveaux : Operational / Degraded / Partial Outage / Major Outage
+  └─► Historique 90 jours
+
+Email incident (Brevo) :
+  ├─► Début : "Nous sommes informés d'un incident affectant {service}"
+  ├─► Update toutes les 30min si incident > 30min
+  └─► Résolution : "L'incident est résolu. Post-mortem disponible dans 48h."
+
+Post-mortem (systématique pour P1/P2) :
+  ├─► Rédigé dans 48h après résolution
+  ├─► Publié sur terrasse.paultaffe.com (forum communauté)
+  └─► Format : Timeline / Root cause / Impact / Actions correctives
+```
+
+---
+
+## 25. RGPD — Conformité et procédures internes
+
+Flash Studio traite des données personnelles de ses clients (email, nom,
+données de facturation) et indirectement les données que les clients
+stockent sur leurs VMs.
+
+### Rôles de traitement
+
+| Rôle | Flash Studio est... | Données concernées |
+|------|---------------------|-------------------|
+| Clients Flash Studio | **Responsable de traitement** | Nom, email, données facturation |
+| Données clients des clients | **Sous-traitant** | Données stockées sur les VMs (définies par le client) |
+
+### Sous-traitants déclarés (Article 28 RGPD)
+
+| Sous-traitant | Rôle | Localisation données | DPA |
+|---------------|------|---------------------|-----|
+| **Hetzner** (VMs, stockage S3) | Hébergement | Allemagne (UE) | ✅ DPA Hetzner signé |
+| **Stripe** (billing) | Paiement | USA (SCCs) | ✅ DPA Stripe signé |
+| **Brevo** (emails) | Emails transactionnels | France (UE) | ✅ DPA Brevo signé |
+| **OVH** (DNS) | DNS | France (UE) | ✅ DPA OVH signé |
+| **Zitadel** (SSO) | Authentification | Self-hosted (Master, Allemagne) | — (self-hosted) |
+
+### Droits des personnes — Procédures
+
+**Droit d'accès (Art. 15) :**
+```
+Client envoie email à hello@paultaffe.com
+  → Réponse dans 30 jours
+  → Export : données compte (NocoDB), factures (Stripe), tickets (Zammad)
+  → Données VMs : le client accède directement (il en est responsable)
+```
+
+**Droit à l'effacement (Art. 17) — "droit à l'oubli" :**
+```
+Client demande suppression → Offboarding immédiat déclenché (section 20)
+  → Suppression dans 30 jours (ou immédiate si demande RGPD explicite)
+  → Confirmation par email avec log d'audit
+  → Données Stripe : conservées 10 ans (obligation légale comptable)
+  → Données Zammad : anonymisées (nom → "CLIENT SUPPRIMÉ")
+```
+
+**Droit à la portabilité (Art. 20) :**
+```
+Export ZIP disponible depuis le dashboard (section 20 — offboarding)
+  → Format ouvert : .sql.gz (PostgreSQL), JSON (Qdrant), tar.gz (/mnt/data)
+  → Disponible à tout moment (pas seulement à l'offboarding)
+```
+
+**Droit de rectification (Art. 16) :**
+```
+Client modifie ses informations depuis le dashboard (email, nom)
+  → Propagé vers Zitadel, NocoDB, Stripe (customer.update)
+```
+
+### Durées de conservation
+
+| Donnée | Durée | Justification |
+|--------|-------|--------------|
+| Données client actif | Durée abonnement | Exécution du contrat |
+| Données post-offboarding | 30 jours | Window export (puis suppression) |
+| Factures Stripe | 10 ans | Obligation légale comptable (Art. L123-22 C.com.) |
+| Tickets Zammad | 3 ans | Preuve contractuelle |
+| Logs techniques (Grafana/Prometheus) | 90 jours | Dépannage, sécurité |
+| Logs audit RGPD (suppressions) | 5 ans | Accountability (Art. 5.2) |
+| Données anonymisées | Indéfini | Plus de lien avec une personne |
+
+### Mentions légales & CGV — Points clés à couvrir
+
+Les documents légaux (CGV, Politique de confidentialité, Mentions légales)
+sont rédigés séparément. Ils doivent couvrir techniquement :
+
+- **SLA** : 99.5% uptime mensuel (hors maintenance planifiée)
+- **Données VMs** : Flash Studio est sous-traitant, le client est responsable de traitement
+- **Sous-traitants** : liste des sous-traitants avec localisation (Hetzner Allemagne, etc.)
+- **Mode Rescue** : accès Flash Studio au disque client en mode rescue → notifié dans CGV
+- **Abuse** : droit de suspension sans préavis si abuse confirmé (Hetzner plainte)
+- **Droit applicable** : Droit français, tribunal de compétence Paris
+- **Contact DPO** : hello@paultaffe.com (responsable de traitement = fondateur)

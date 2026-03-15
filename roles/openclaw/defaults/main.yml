@@ -15,7 +15,8 @@ openclaw_gateway_bind: "lan"
 openclaw_default_model: "{{ openclaw_model_profiles[openclaw_model_profile].default }}"
 
 # Node.js heap size in MB (prevents OOM crashes on large context windows)
-openclaw_node_heap_mb: 768
+# Raised from 768 to 1024 for v2026.3.13+ (plugin-sdk bundling + dashboard v2)
+openclaw_node_heap_mb: 1024
 
 # --- Context Engine & Compaction ---
 # Plugin slot: "legacy" (built-in) or plugin ID (e.g. "lossless-claw")

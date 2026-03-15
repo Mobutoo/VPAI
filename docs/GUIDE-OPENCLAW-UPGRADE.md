@@ -298,4 +298,5 @@ make deploy-role ROLE=openclaw ENV=prod
 | `2026.2.22` | 2026-02-23 | Remplace | Plugins bundled desactives par defaut (REX-45) |
 | `2026.2.23` | 2026-02-24 | Remplace | Pairing reset apres upgrade (paired.json vide) — docker-compose.yml gere par role docker-stack (make deploy-role ROLE=docker-stack si versions.yml change seul) |
 | `2026.3.7` | 2026-03-07 | Remplace | Swarm mode, circuit breaker, model profiles — pas de pieges |
-| `2026.3.8` | 2026-03-09 | **Actuelle** | Telegram DM dedup, session memory workspace alignment, token cache invalidation — EROFS warning cosmétique (plugin auto-enable vs ro mount, sans impact) |
+| `2026.3.8` | 2026-03-09 | Remplace | Telegram DM dedup, session memory workspace alignment, token cache invalidation — EROFS warning cosmétique (plugin auto-enable vs ro mount, sans impact) |
+| `2026.3.13-1` | 2026-03-15 | **Actuelle** | Tag Docker = `2026.3.13-1` (recovery release). WebSocket origin validation (3.11), workspace plugin auto-load disabled (3.12), plugin-sdk bundling fix (3.13), Chrome DevTools MCP attach, `OPENCLAW_TZ` env — alerte memoire relevee 768→1200MB |

@@ -9,7 +9,7 @@ redis_image: "redis:8.0-bookworm"  # 8.0.10 n'existe pas, utiliser 8.0
 qdrant_image: "qdrant/qdrant:v1.16.3"
 
 # --- Applications ---
-openclaw_image: "ghcr.io/openclaw/openclaw:2026.3.8"
+openclaw_image: "ghcr.io/openclaw/openclaw:2026.3.13-1"
 n8n_image: "docker.n8n.io/n8nio/n8n:2.7.3"
 litellm_image: "ghcr.io/berriai/litellm:v1.81.3-stable"
 nocodb_image: "nocodb/nocodb:0.301.2"
@@ -74,9 +74,23 @@ codex_cli_npm_version_pinned: "0.106.0"  # pinned 2026-02-27
 # gemini_cli_npm_version dans roles/gemini-cli/defaults/main.yml
 gemini_cli_npm_version_pinned: "0.30.0"  # updated 2026-02-27
 
+# --- Design Tools (natif — pas Docker) ---
+# OpenPencil : AI-native design editor, Figma alternative
+# Version = git tag/branch, pin après premier deploy valide
+openpencil_version_pinned: "master"  # TODO: pin to release tag after first deploy
+
+# --- Penpot (VPS éphémère Hetzner CX23) ---
+penpot_frontend_image: "penpotapp/frontend:2.6.1"
+penpot_backend_image: "penpotapp/backend:2.6.1"
+penpot_exporter_image: "penpotapp/exporter:2.6.1"
+penpot_valkey_image: "valkey/valkey:8.1-bookworm"
+penpot_pg_image: "postgres:15-bookworm"
+
 # --- MCP Servers Pi (Docker HTTP/SSE persistants) ---
 # Convention : un port dédié par service MCP, documenté ici
 # 3001 → n8n-mcp (documentation n8n nodes, SQLite embarqué, docs-only)
 # 3002 → réservé futur MCP server
+# 3150 → openpencil-mcp (design editor MCP)
+# 4401 → penpot-mcp (Penpot design tool MCP)
 n8n_mcp_image_version_pinned: "2.35.5"  # pinned 2026-02-27 (sans v — Docker metadata semver pattern)
 n8n_mcp_port_pi: 3001

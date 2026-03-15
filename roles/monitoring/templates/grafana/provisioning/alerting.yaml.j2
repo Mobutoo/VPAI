@@ -160,7 +160,7 @@ groups:
           service: openclaw
 
       - uid: openclaw-memory-high
-        title: "OpenClaw memory > 768MB for 5 min"
+        title: "OpenClaw memory > 1200MB for 5 min"
         condition: C
         data:
           - refId: A
@@ -189,10 +189,10 @@ groups:
               conditions:
                 - evaluator:
                     type: gt
-                    params: [805306368]
+                    params: [1258291200]
         for: 5m
         annotations:
-          summary: "OpenClaw memory usage is above 768MB for 5 minutes — approaching 1GB limit"
+          summary: "OpenClaw memory usage is above 1200MB for 5 minutes — approaching 1536MB container limit"
           dashboard_uid: "openclaw-agents"
         labels:
           severity: warning

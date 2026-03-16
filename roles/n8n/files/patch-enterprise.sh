@@ -80,11 +80,42 @@ if [ -n "$FRONTEND_SVC" ]; then
   fi
 fi
 
-# --- 4. Suppress "not licensed for production" banner text (editor-ui) ---
+# --- 4. Patch frontend router — neutralize banner push ---
+# The router checks settingsStore.isEnterpriseFeatureEnabled.showNonProdBanner and pushes
+# NON_PRODUCTION_LICENSE banner. Replace the condition with false directly in the bundle.
+ROUTER_FILE=$(find "$N8N_ROOT" -name "router-*.js" -path "*/assets/*" 2>/dev/null | head -1)
+if [ -n "$ROUTER_FILE" ]; then
+  echo "[patch-enterprise] Patching $ROUTER_FILE (banner push → disabled)"
+  sed -i 's/settingsStore\.isEnterpriseFeatureEnabled\.showNonProdBanner/false/g' "$ROUTER_FILE"
+  if grep -q "if (false) bannersStore.pushBannerToStack" "$ROUTER_FILE"; then
+    echo "[patch-enterprise] ✓ router banner push neutralized"
+  else
+    echo "[patch-enterprise] ✗ WARNING: router banner patch may not have applied"
+  fi
+fi
+
+# --- 5. Suppress "not licensed for production" i18n text (editor-ui) ---
 BANNER_FILE=$(find "$N8N_ROOT" -type f -name "*.js" -exec grep -l "not licensed for production" {} \; 2>/dev/null | head -1)
 if [ -n "$BANNER_FILE" ]; then
   echo "[patch-enterprise] Suppressing production banner text in $BANNER_FILE"
   sed -i 's/not licensed for production/licensed for production/g' "$BANNER_FILE" 2>/dev/null || true
+fi
+
+# --- 6. Prevent license SDK phone-home ---
+# Patch LicenseManager initialization to force offlineMode and disable auto-renewal.
+# This prevents n8n from contacting the official license server (license.n8n.io).
+if [ -n "$LICENSE_SVC" ]; then
+  echo "[patch-enterprise] Patching license init (offline mode + no auto-renew)"
+  # Force offlineMode = true regardless of instance type
+  sed -i 's/const offlineMode = !isMainInstance;/const offlineMode = true;/g' "$LICENSE_SVC"
+  # Force autoRenew to false
+  sed -i 's/autoRenewEnabled: shouldRenew/autoRenewEnabled: false/g' "$LICENSE_SVC"
+  sed -i 's/renewOnInit: shouldRenew/renewOnInit: false/g' "$LICENSE_SVC"
+  if grep -q "offlineMode = true" "$LICENSE_SVC"; then
+    echo "[patch-enterprise] ✓ license phone-home disabled (offline mode)"
+  else
+    echo "[patch-enterprise] ✗ WARNING: offline mode patch may not have applied"
+  fi
 fi
 
 echo "[patch-enterprise] Done. Enterprise features unlocked."

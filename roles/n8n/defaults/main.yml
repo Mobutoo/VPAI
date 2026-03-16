@@ -9,3 +9,28 @@ n8n_owner_email: ""
 n8n_owner_first_name: ""
 n8n_owner_last_name: ""
 # n8n_owner_password is in secrets.yml (vault)
+
+# --- Database ---
+n8n_db_pool_size: 10
+
+# --- Executions ---
+n8n_executions_max_age_hours: 336        # 14 days retention
+n8n_executions_max_count: 10000          # cap total stored executions
+n8n_execution_timeout: 3600              # 1h default timeout per workflow
+n8n_execution_timeout_max: 7200          # 2h max configurable via UI
+n8n_concurrency_limit: 20               # max concurrent production executions
+
+# --- Payload ---
+n8n_payload_size_max: 64                 # MiB — webhook/file upload limit
+
+# --- AI ---
+n8n_ai_timeout_max: 300000               # 5 min HTTP timeout for LLM nodes (ms)
+
+# --- Logging ---
+n8n_log_level: "info"
+
+# --- Insights ---
+n8n_insights_enabled: "true"
+
+# --- License (optional — set via vault for Pro/Business) ---
+# n8n_license_activation_key: ""

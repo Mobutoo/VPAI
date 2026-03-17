@@ -1,0 +1,184 @@
+{
+  "name": "CF Calendar Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cf-calendar-sync",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cal-0004-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 380],
+      "webhookId": "cal-webhook-0000-0000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate secret and extract action + data\nconst data = $input.first().json;\nconst body = data.body || data;\n\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\nif (!expectedSecret) throw new Error('N8N_WEBHOOK_HMAC_SECRET not configured');\n\nconst receivedSecret = (data.headers || {})['x-webhook-secret'] || body.secret || '';\nif (receivedSecret !== expectedSecret) throw new Error('Unauthorized: invalid webhook secret');\n\nconst action = body.action || 'sync_content';\nconst payload = body.data || body;\n\n// Valid actions\nconst VALID_ACTIONS = ['create_work_item', 'create_cycle', 'add_to_cycle', 'sync_content'];\nif (!VALID_ACTIONS.includes(action)) {\n  throw new Error(`Unknown action: ${action}. Valid: ${VALID_ACTIONS.join(', ')}`);\n}\n\nreturn [{ json: { action, data: payload } }];"
+      },
+      "id": "cal-0004-0000-0000-0000-000000000002",
+      "name": "Validate and Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 380]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create_work_item",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "create_work_item"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create_cycle",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "create_cycle"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add_to_cycle",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "add_to_cycle"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "sync_content",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "sync_content"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cal-0004-0000-0000-0000-000000000003",
+      "name": "Route Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [700, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create a Plane work item for a content entry\nconst { action, data } = $input.first().json;\n\nconst slug      = $env.PLANE_WORKSPACE_SLUG;\nconst projectId = $env.PLANE_CF_PROJECT_ID;\nconst moduleId  = $env.PLANE_CF_MODULE_ID;\nconst apiKey    = $env.PLANE_API_KEY;\nconst baseUrl   = $env.PLANE_PUBLIC_URL;\n\nif (!apiKey)    throw new Error('PLANE_API_KEY not configured');\nif (!slug)      throw new Error('PLANE_WORKSPACE_SLUG not configured');\nif (!projectId) throw new Error('PLANE_CF_PROJECT_ID not configured');\n\nconst workItem = await $http.request({\n  method: 'POST',\n  url: `${baseUrl}/api/v1/workspaces/${slug}/projects/${projectId}/work-items/`,\n  headers: {\n    'X-API-Key': apiKey,\n    'Content-Type': 'application/json'\n  },\n  body: {\n    name: data.title || data.name || `Content ${data.content_id}`,\n    description_html: `<p>Format: ${data.format || 'reel'}</p><p>Brief: ${data.brief_summary || data.brief || ''}</p>`,\n    start_date: data.created_date || null,\n    target_date: data.publish_date || null,\n    module: moduleId || undefined\n  }\n});\n\nreturn [{ json: { action, plane_response: workItem, work_item_id: workItem.id } }];"
+      },
+      "id": "cal-0004-0000-0000-0000-000000000004",
+      "name": "Create Work Item",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 160]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create a Plane cycle representing a content drop\nconst { action, data } = $input.first().json;\n\nconst slug      = $env.PLANE_WORKSPACE_SLUG;\nconst projectId = $env.PLANE_CF_PROJECT_ID;\nconst apiKey    = $env.PLANE_API_KEY;\nconst baseUrl   = $env.PLANE_PUBLIC_URL;\n\nif (!apiKey)    throw new Error('PLANE_API_KEY not configured');\nif (!slug)      throw new Error('PLANE_WORKSPACE_SLUG not configured');\nif (!projectId) throw new Error('PLANE_CF_PROJECT_ID not configured');\n\nif (!data.cycle_name) throw new Error('Missing required field: data.cycle_name');\n\nconst cycle = await $http.request({\n  method: 'POST',\n  url: `${baseUrl}/api/v1/workspaces/${slug}/projects/${projectId}/cycles/`,\n  headers: {\n    'X-API-Key': apiKey,\n    'Content-Type': 'application/json'\n  },\n  body: {\n    name: data.cycle_name,\n    start_date: data.start_date || null,\n    end_date:   data.end_date   || null\n  }\n});\n\nreturn [{ json: { action, plane_response: cycle, cycle_id: cycle.id } }];"
+      },
+      "id": "cal-0004-0000-0000-0000-000000000005",
+      "name": "Create Cycle",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Add work items to a Plane cycle\nconst { action, data } = $input.first().json;\n\nconst slug      = $env.PLANE_WORKSPACE_SLUG;\nconst projectId = $env.PLANE_CF_PROJECT_ID;\nconst apiKey    = $env.PLANE_API_KEY;\nconst baseUrl   = $env.PLANE_PUBLIC_URL;\n\nif (!apiKey)          throw new Error('PLANE_API_KEY not configured');\nif (!slug)            throw new Error('PLANE_WORKSPACE_SLUG not configured');\nif (!projectId)       throw new Error('PLANE_CF_PROJECT_ID not configured');\nif (!data.cycle_id)   throw new Error('Missing required field: data.cycle_id');\nif (!data.work_item_ids || !data.work_item_ids.length) throw new Error('Missing required field: data.work_item_ids');\n\nconst result = await $http.request({\n  method: 'POST',\n  url: `${baseUrl}/api/v1/workspaces/${slug}/projects/${projectId}/cycles/${data.cycle_id}/cycle-issues/`,\n  headers: {\n    'X-API-Key': apiKey,\n    'Content-Type': 'application/json'\n  },\n  body: {\n    issues: data.work_item_ids\n  }\n});\n\nreturn [{ json: { action, plane_response: result, cycle_id: data.cycle_id, added_count: data.work_item_ids.length } }];"
+      },
+      "id": "cal-0004-0000-0000-0000-000000000006",
+      "name": "Add to Cycle",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 600]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sync content: check if work item exists in Plane, create or update\n// Triggered by NocoDB webhook on content row creation\nconst { action, data } = $input.first().json;\n\nconst slug      = $env.PLANE_WORKSPACE_SLUG;\nconst projectId = $env.PLANE_CF_PROJECT_ID;\nconst moduleId  = $env.PLANE_CF_MODULE_ID;\nconst apiKey    = $env.PLANE_API_KEY;\nconst baseUrl   = $env.PLANE_PUBLIC_URL;\n\nif (!apiKey)    throw new Error('PLANE_API_KEY not configured');\nif (!slug)      throw new Error('PLANE_WORKSPACE_SLUG not configured');\nif (!projectId) throw new Error('PLANE_CF_PROJECT_ID not configured');\n\n// Read content from NocoDB via cf-read-content if content_id provided\nlet contentData = { ...data };\nif (data.content_id) {\n  try {\n    const contentResp = await $http.request({\n      method: 'POST',\n      url: 'http://localhost:5678/webhook/cf-read-content',\n      headers: { 'Content-Type': 'application/json' },\n      body: {\n        secret: $env.N8N_WEBHOOK_HMAC_SECRET,\n        action: 'read_content',\n        content_id: data.content_id\n      }\n    });\n    const content = contentResp.body || contentResp;\n    contentData = { ...contentData, ...content };\n  } catch (e) {\n    console.error('cf-read-content failed:', e.message);\n  }\n}\n\nconst itemName = contentData.title || contentData.name || `Content ${data.content_id}`;\n\n// Search for existing work item by name\nlet existingId = null;\ntry {\n  const listResp = await $http.request({\n    method: 'GET',\n    url: `${baseUrl}/api/v1/workspaces/${slug}/projects/${projectId}/work-items/?search=${encodeURIComponent(itemName)}`,\n    headers: { 'X-API-Key': apiKey }\n  });\n  const results = listResp.results || listResp;\n  if (Array.isArray(results) && results.length > 0) {\n    const match = results.find(r => r.name === itemName);\n    if (match) existingId = match.id;\n  }\n} catch (e) {\n  console.error('Plane search failed:', e.message);\n}\n\nconst itemPayload = {\n  name: itemName,\n  description_html: `<p>Format: ${contentData.format || 'reel'}</p><p>Content ID: ${data.content_id || ''}</p>`,\n  start_date: contentData.created_date || null,\n  target_date: contentData.publish_date || null,\n  module: moduleId || undefined\n};\n\nlet planeResponse;\nif (existingId) {\n  // Update existing work item\n  planeResponse = await $http.request({\n    method: 'PATCH',\n    url: `${baseUrl}/api/v1/workspaces/${slug}/projects/${projectId}/work-items/${existingId}/`,\n    headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },\n    body: itemPayload\n  });\n} else {\n  // Create new work item\n  planeResponse = await $http.request({\n    method: 'POST',\n    url: `${baseUrl}/api/v1/workspaces/${slug}/projects/${projectId}/work-items/`,\n    headers: { 'X-API-Key': apiKey, 'Content-Type': 'application/json' },\n    body: itemPayload\n  });\n}\n\nreturn [{ json: { action, plane_response: planeResponse, work_item_id: planeResponse.id, operation: existingId ? 'updated' : 'created' } }];"
+      },
+      "id": "cal-0004-0000-0000-0000-000000000007",
+      "name": "Sync Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 820]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ok', action: $json.action, plane_response: $json.plane_response } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "cal-0004-0000-0000-0000-000000000008",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1140, 380]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Validate and Route", "type": "main", "index": 0 }]] },
+    "Validate and Route": { "main": [[{ "node": "Route Action", "type": "main", "index": 0 }]] },
+    "Route Action": {
+      "main": [
+        [{ "node": "Create Work Item", "type": "main", "index": 0 }],
+        [{ "node": "Create Cycle",     "type": "main", "index": 0 }],
+        [{ "node": "Add to Cycle",     "type": "main", "index": 0 }],
+        [{ "node": "Sync Content",     "type": "main", "index": 0 }]
+      ]
+    },
+    "Create Work Item": { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] },
+    "Create Cycle":     { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] },
+    "Add to Cycle":     { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] },
+    "Sync Content":     { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "content-factory" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
+  "versionId": "1"
+}

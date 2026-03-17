@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2026.3
 milestone_name: Content Factory
 status: planning
-stopped_at: Completed 07-05-PLAN.md — all 8 CF workflows deployed and human-verified on Sese-AI
-last_updated: "2026-03-17T22:31:11.913Z"
+stopped_at: Completed 08-01-PLAN.md
+last_updated: "2026-03-17T23:10:30.979Z"
 last_activity: 2026-03-17 — Phase 6 complete, Plane synced
 progress:
-  total_phases: 3
+  total_phases: 5
   completed_phases: 3
-  total_plans: 11
-  completed_plans: 11
+  total_plans: 13
+  completed_plans: 12
   percent: 83
 ---
 
@@ -51,6 +51,7 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 | Phase 07-orchestration P04 | 5 | 2 tasks | 3 files |
 | Phase 07-orchestration P05 | 525547min | 2 tasks | 2 files |
 | Phase 07-orchestration P05 | 6min | 2 tasks | 2 files |
+| Phase 08 P01 | 4min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -98,6 +99,9 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 - [Phase 07-orchestration]: cf-kitsu-sync uses template task (not copy loop) — Jinja2 vars require ansible.builtin.template, not ansible.builtin.copy
 - [Phase 07-orchestration]: Plane IDs in n8n.env.j2 use Ansible variables with | default('') — not hardcoded (plane_cf_project_id, plane_cf_module_id)
 - [Phase 07-orchestration]: vault_plane_api_key added as alias for vault_plane_api_token; plane_cf_project_id/module_id promoted to main.yml; Tailscale IP used for Sese-AI deploy
+- [Phase 08]: SingleSelect changed to SingleLineText for NocoDB status/provider fields to avoid 422 errors
+- [Phase 08]: NocoDB table ID resolution uses env vars with meta API fallback for resilience
+- [Phase 08]: cf-scene extracts route_action before scene fields to avoid Pitfall 2 field name collision
 
 ### Kitsu IDs (downstream reference)
 
@@ -121,6 +125,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T22:27:56.483Z
-Stopped at: Completed 07-05-PLAN.md — all 8 CF workflows deployed and human-verified on Sese-AI
+Last session: 2026-03-17T23:10:30.973Z
+Stopped at: Completed 08-01-PLAN.md
 Resume file: None

@@ -21,7 +21,7 @@
 - [x] **DATA-03**: NocoDB table `scenes` with per-scene assets, provider, version, status
 - [x] **DATA-04**: Qdrant collection `brand-voice` with embedding pipeline (scripts via LiteLLM to Qdrant)
 - [x] **DATA-05**: Brand profile "Paul Taff" created (Flash-Studio colors, sarcastic tone, Instagram)
-- [ ] **DATA-06**: Kitsu project structure mapped (Production=brand, Episode=drop, Sequence=phase, Shot=content, Task=step)
+- [x] **DATA-06**: Kitsu project structure mapped (Production=brand, Episode=drop, Sequence=phase, Shot=content, Task=step)
 
 ### OpenClaw Skill
 
@@ -105,7 +105,7 @@
 | DATA-03 | Phase 5 | Complete |
 | DATA-04 | Phase 5 | Complete |
 | DATA-05 | Phase 5 | Complete |
-| DATA-06 | Phase 8 | Pending |
+| DATA-06 | Phase 8 | Complete |
 | SKILL-01 | Phase 6 | Complete |
 | SKILL-02 | Phase 6 | Complete |
 | SKILL-03 | Phase 6 | Complete |

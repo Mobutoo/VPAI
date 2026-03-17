@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2026.3
 milestone_name: Content Factory
 status: planning
-stopped_at: Completed 07-01-PLAN.md
-last_updated: "2026-03-17T21:49:48.797Z"
+stopped_at: Completed 07-03-PLAN.md — feedback loop workflows (invalidation-engine, kitsu-sync, kitsu-inbound)
+last_updated: "2026-03-17T21:51:33.505Z"
 last_activity: 2026-03-17 — Phase 6 complete, Plane synced
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 11
-  completed_plans: 8
+  completed_plans: 9
   percent: 83
 ---
 
@@ -47,6 +47,7 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 | 06 | 3 | 7min | 2.3min |
 | Phase 07-orchestration P02 | 8 | 2 tasks | 2 files |
 | Phase 07-orchestration P01 | 2 | 2 tasks | 2 files |
+| Phase 07 P03 | 4 | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,9 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 - [Phase 07-02]: cf-rough-cut validates ALL scenes ready before Remotion render to avoid partial renders
 - [Phase 07-orchestration]: gpt-4o-mini for creative steps (concept+hook, script writing); deepseek-v3 for all research/metadata steps
 - [Phase 07-orchestration]: Non-blocking try/catch on NocoDB/Kitsu sync steps — pipeline must not abort if storage fails
+- [Phase 07]: cf-kitsu-sync uses internal Docker URL http://kitsu:80 to avoid VPN/Caddy layer
+- [Phase 07]: Zou event handler re-authenticates every call (no token caching) per research Pitfall 2
+- [Phase 07]: event_handler.py uses stdlib only (urllib) -- no pip dependencies needed in Zou environment
 
 ### Kitsu IDs (downstream reference)
 
@@ -111,6 +115,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T21:49:48.792Z
-Stopped at: Completed 07-01-PLAN.md
+Last session: 2026-03-17T21:51:33.500Z
+Stopped at: Completed 07-03-PLAN.md — feedback loop workflows (invalidation-engine, kitsu-sync, kitsu-inbound)
 Resume file: None

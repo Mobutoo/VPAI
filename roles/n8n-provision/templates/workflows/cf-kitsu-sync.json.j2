@@ -1,0 +1,197 @@
+{% raw %}{
+  "name": "CF Kitsu Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cf-kitsu-sync",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cfks-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 380],
+      "webhookId": "cfks0001-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate secret and route to correct action handler\n// Kitsu URL (external): https://{% endraw %}{{ kitsu_subdomain }}{% raw %}.{% endraw %}{{ domain_name }}{% raw %} (for reference only -- internal uses http://kitsu:80)\nconst data = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nif (!expectedSecret) throw new Error('N8N_WEBHOOK_HMAC_SECRET not configured');\n\nconst headers = data.headers || {};\nconst body    = data.body    || data || {};\nconst receivedSecret = headers['x-webhook-secret'] || body.secret || '';\n\nif (receivedSecret !== expectedSecret) throw new Error('Invalid webhook secret');\n\nconst action     = body.action;\nconst content_id = body.content_id;\nconst payload    = body.data || {};\n\nconst VALID_ACTIONS = ['update_task_status', 'create_shot', 'upload_preview', 'add_comment'];\nif (!action || !VALID_ACTIONS.includes(action)) {\n  throw new Error(`Invalid action. Must be one of: ${VALID_ACTIONS.join(', ')}`);\n}\n\nif (!content_id) throw new Error('Missing required field: content_id');\n\nreturn [{ json: { action, content_id, data: payload } }];"
+      },
+      "id": "cfks-0001-0000-0000-0000-000000000002",
+      "name": "Validate and Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Authenticate with Kitsu (Zou API) -- re-authenticate every execution (no token caching)\n// Uses internal Docker network URL: http://kitsu:80\nconst { action, content_id, data } = $input.first().json;\n\nif (!$env.KITSU_BOT_EMAIL) throw new Error('KITSU_BOT_EMAIL not configured');\nif (!$env.KITSU_BOT_PASSWORD) throw new Error('KITSU_BOT_PASSWORD not configured');\n\nconst auth = await $http.request({\n  method: 'POST',\n  url: 'http://kitsu:80/api/auth/login',\n  headers: { 'Content-Type': 'application/json' },\n  body: {\n    email: $env.KITSU_BOT_EMAIL,\n    password: $env.KITSU_BOT_PASSWORD\n  }\n});\n\nconst token = auth.access_token;\nif (!token) throw new Error('Kitsu auth failed: no access_token in response');\n\nreturn [{ json: { action, content_id, data, kitsu_token: token } }];"
+      },
+      "id": "cfks-0001-0000-0000-0000-000000000003",
+      "name": "Authenticate with Kitsu",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 380]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "update_task_status",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "update_task_status"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create_shot",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "create_shot"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "upload_preview",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "upload_preview"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "add_comment",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "add_comment"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cfks-0001-0000-0000-0000-000000000004",
+      "name": "Route Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [920, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update Kitsu task status for the given content and step\n// Maps pipeline status to Kitsu task status\nconst { content_id, data, kitsu_token } = $input.first().json;\n\n// Status mapping: pipeline -> Kitsu status name\nconst STATUS_MAP = {\n  'wip':         'WIP',\n  'done':        'Done',\n  'retake':      'Retake',\n  'invalidated': 'Retake',\n  'generating':  'Generating',\n  'todo':        'Todo'\n};\n\nconst steps    = Array.isArray(data.steps) ? data.steps : [data.step];\nconst status   = data.status || 'wip';\nconst comment  = data.comment || `Status updated to ${status}`;\nconst kitsuStatus = STATUS_MAP[status] || 'WIP';\n\n// Fetch tasks for this content (shot)\nconst tasksResp = await $http.request({\n  method: 'GET',\n  url: `http://kitsu:80/api/data/tasks?project_id=${data.project_id || '19b9faf4-f7c4-4829-9739-cbf7c3181941'}`,\n  headers: {\n    'Authorization': `Bearer ${kitsu_token}`,\n    'Content-Type': 'application/json'\n  }\n});\n\nconst allTasks = tasksResp.data || tasksResp || [];\n\n// Find tasks related to content_id (match shot name or entity name)\nconst relatedTasks = allTasks.filter(t =>\n  (t.entity_name === content_id || t.name === content_id ||\n   t.entity_id === content_id) &&\n  (!data.steps || steps.includes(t.task_type_priority || t.priority))\n);\n\n// Fetch status IDs to map status name to ID\nconst statusesResp = await $http.request({\n  method: 'GET',\n  url: 'http://kitsu:80/api/data/task-status',\n  headers: { 'Authorization': `Bearer ${kitsu_token}` }\n});\n\nconst statuses = statusesResp.data || statusesResp || [];\nconst statusObj = statuses.find(s =>\n  s.name === kitsuStatus || s.short_name === kitsuStatus.toLowerCase()\n);\n\nconst task_status_id = statusObj ? statusObj.id : null;\nconst results = [];\n\nfor (const task of relatedTasks) {\n  try {\n    const resp = await $http.request({\n      method: 'POST',\n      url: `http://kitsu:80/api/actions/tasks/${task.id}/comment`,\n      headers: {\n        'Authorization': `Bearer ${kitsu_token}`,\n        'Content-Type': 'application/json'\n      },\n      body: {\n        task_status_id: task_status_id || task.task_status_id,\n        comment\n      }\n    });\n    results.push({ task_id: task.id, status: 'updated' });\n  } catch (err) {\n    results.push({ task_id: task.id, status: 'error', error: err.message });\n  }\n}\n\nreturn [{ json: { action: 'update_task_status', content_id, kitsu_status: kitsuStatus, tasks_updated: results.length, results } }];"
+      },
+      "id": "cfks-0001-0000-0000-0000-000000000005",
+      "name": "Update Task Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Create a new shot in Kitsu for the content\n// Called when a new content_id is created in the pipeline\nconst { content_id, data, kitsu_token } = $input.first().json;\n\nconst project_id   = data.project_id   || '19b9faf4-f7c4-4829-9739-cbf7c3181941';\nconst episode_id   = data.episode_id   || null;\nconst sequence_id  = data.sequence_id  || null;\nconst shot_name    = data.shot_name    || content_id;\nconst description  = data.description || '';\n\nconst shot_payload = {\n  project_id,\n  name: shot_name,\n  description\n};\nif (episode_id)  shot_payload.episode_id  = episode_id;\nif (sequence_id) shot_payload.sequence_id = sequence_id;\n\nconst resp = await $http.request({\n  method: 'POST',\n  url: `http://kitsu:80/api/data/projects/${project_id}/shots`,\n  headers: {\n    'Authorization': `Bearer ${kitsu_token}`,\n    'Content-Type': 'application/json'\n  },\n  body: shot_payload\n});\n\nreturn [{ json: { action: 'create_shot', content_id, shot_id: resp.id || resp.shot_id, kitsu_response: resp } }];"
+      },
+      "id": "cfks-0001-0000-0000-0000-000000000006",
+      "name": "Create Shot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Upload a preview file to Kitsu for a given task\nconst { content_id, data, kitsu_token } = $input.first().json;\n\nconst task_id     = data.task_id;\nconst preview_url = data.preview_url;\n\nif (!task_id)     throw new Error('Missing required field: data.task_id');\nif (!preview_url) throw new Error('Missing required field: data.preview_url');\n\n// Download asset from preview_url\nconst assetResp = await $http.request({\n  method: 'GET',\n  url: preview_url,\n  encoding: 'arraybuffer'\n});\n\n// Upload to Kitsu preview-files endpoint\nconst resp = await $http.request({\n  method: 'POST',\n  url: `http://kitsu:80/api/pictures/preview-files/${task_id}`,\n  headers: {\n    'Authorization': `Bearer ${kitsu_token}`,\n    'Content-Type': 'application/octet-stream'\n  },\n  body: assetResp\n});\n\nreturn [{ json: { action: 'upload_preview', content_id, task_id, preview_id: resp.id || resp.preview_id, kitsu_response: resp } }];"
+      },
+      "id": "cfks-0001-0000-0000-0000-000000000007",
+      "name": "Upload Preview",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 540]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Add a comment to a Kitsu task\nconst { content_id, data, kitsu_token } = $input.first().json;\n\nconst task_id = data.task_id;\nconst comment = data.comment || '';\nconst task_status_id = data.task_status_id || null;\n\nif (!task_id) throw new Error('Missing required field: data.task_id');\n\nconst payload = { comment };\nif (task_status_id) payload.task_status_id = task_status_id;\n\nconst resp = await $http.request({\n  method: 'POST',\n  url: `http://kitsu:80/api/actions/tasks/${task_id}/comment`,\n  headers: {\n    'Authorization': `Bearer ${kitsu_token}`,\n    'Content-Type': 'application/json'\n  },\n  body: payload\n});\n\nreturn [{ json: { action: 'add_comment', content_id, task_id, comment_id: resp.id || resp.comment_id, kitsu_response: resp } }];"
+      },
+      "id": "cfks-0001-0000-0000-0000-000000000008",
+      "name": "Add Comment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 720]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ok', action: $json.action, content_id: $json.content_id, kitsu_response: $json.kitsu_response || $json.results || null } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "cfks-0001-0000-0000-0000-000000000009",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1360, 460]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger":        { "main": [[{ "node": "Validate and Route",      "type": "main", "index": 0 }]] },
+    "Validate and Route":     { "main": [[{ "node": "Authenticate with Kitsu", "type": "main", "index": 0 }]] },
+    "Authenticate with Kitsu":{ "main": [[{ "node": "Route Action",            "type": "main", "index": 0 }]] },
+    "Route Action": {
+      "main": [
+        [{ "node": "Update Task Status", "type": "main", "index": 0 }],
+        [{ "node": "Create Shot",        "type": "main", "index": 0 }],
+        [{ "node": "Upload Preview",     "type": "main", "index": 0 }],
+        [{ "node": "Add Comment",        "type": "main", "index": 0 }]
+      ]
+    },
+    "Update Task Status": { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] },
+    "Create Shot":        { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] },
+    "Upload Preview":     { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] },
+    "Add Comment":        { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "content-factory" }, { "name": "kitsu" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
+  "versionId": "1",
+  "active": false
+}
+{% endraw %}

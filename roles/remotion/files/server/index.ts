@@ -17,7 +17,13 @@ const {
 const MAX_QUEUE_DEPTH = 10;
 
 // Allowlist of registered composition IDs
-const KNOWN_COMPOSITIONS = new Set(["HelloWorld"]);
+const KNOWN_COMPOSITIONS = new Set([
+  "HelloWorld",
+  "ReelMotionText",
+  "ReelMemeSkit",
+  "ReelFeatureShowcase",
+  "ReelTeaser",
+]);
 
 const RenderRequestSchema = z.object({
   compositionId: z.string().optional(),

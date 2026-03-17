@@ -309,3 +309,9 @@ n8n_mcp_auth_token: "{{ vault_n8n_mcp_auth_token }}"
 # --- Cle SSH deploy (utilisee par provision-hetzner) ---
 deploy_ssh_key_name: "{{ project_name }}-deploy"
 deploy_ssh_key_pub_path: "~/.ssh/id_ed25519.pub"
+
+# === CONTENT FACTORY (Phase 7) ===
+# Plane project/module IDs for editorial calendar sync (cf-calendar-sync workflow)
+plane_workspace_slug: "ewutelo"
+plane_cf_project_id: "e0cb95f0-0ea5-41b8-a3e3-aec45e8cc37e"
+plane_cf_module_id: "c04ac29e-9842-4eec-8ff6-6923e9fe75d7"

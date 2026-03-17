@@ -68,11 +68,12 @@ Plans:
   2. User sends `/ok`, `/adjust`, `/back`, `/preview`, `/impact` commands and each returns the correct pipeline state or modification
   3. Gate commands (`/lock-preprod`, `/lock-script`, `/ok-rough`, `/ok-final`, `/published`) advance content through the 4 production gates with appropriate validation
   4. Each Remotion composition (`reel-motion-text`, `reel-meme-skit`, `reel-feature-showcase`, `reel-teaser`) renders a 9:16 video on Waza, accepting `scenes[]`, `brand`, `audio` props
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
+- [ ] 06-01-PLAN.md — Remotion shared types + 4 Instagram Reel compositions (ReelMotionText, ReelMemeSkit, ReelFeatureShowcase, ReelTeaser) + Root.tsx + server registration + Ansible tasks
+- [ ] 06-02-PLAN.md — OpenClaw content-director SKILL.md.j2 (9 Telegram commands, invalidation matrix, n8n delegation) + skill registration + topic 7 routing
+- [ ] 06-03-PLAN.md — Deploy and verify (Ansible deploy to Sese-AI + Waza, smoke tests, human verification)
 
 ### Phase 7: Orchestration
 **Goal**: The full 14-step production pipeline works end-to-end from Telegram brief to rendered video with scene-level invalidation, Kitsu sync, and editorial calendar in Plane
@@ -98,5 +99,5 @@ Phases execute in numeric order: 5 -> 6 -> 7
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
 | 5. Foundation | 2/3 | In Progress|  | - |
-| 6. Building Blocks | Content Factory | 0/? | Not started | - |
+| 6. Building Blocks | Content Factory | 0/3 | Planned | - |
 | 7. Orchestration | Content Factory | 0/? | Not started | - |

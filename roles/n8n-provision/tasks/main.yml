@@ -261,6 +261,14 @@
   become: true
   when: not (common_molecule_mode | default(false))
 
+- name: Template cf-kitsu-sync workflow (resolves Kitsu URL variables)
+  ansible.builtin.template:
+    src: "workflows/cf-kitsu-sync.json.j2"
+    dest: "/tmp/n8n-workflow-cf-kitsu-sync.json"
+    mode: "0644"
+  become: true
+  when: not (common_molecule_mode | default(false))
+
 - name: Copy n8n workflow files to server
   ansible.builtin.copy:
     src: "workflows/{{ item }}.json"
@@ -297,6 +305,13 @@
     - palais-standup
     - palais-insight-alert
     - launch-claude-code
+    - cf-brief-to-concept
+    - cf-script-to-storyboard
+    - cf-generate-assets
+    - cf-rough-cut
+    - cf-invalidation-engine
+    - cf-calendar-sync
+    - cf-kitsu-inbound
 
 - name: Check workflow update status (checksum comparison)
   ansible.builtin.shell:
@@ -351,6 +366,14 @@
     - {file: "palais-standup", name: "Palais Daily Standup"}
     - {file: "palais-insight-alert", name: "Palais Insight Alert"}
     - {file: "launch-claude-code", name: "Palais Launch Claude Code"}
+    - {file: "cf-brief-to-concept", name: "CF Brief to Concept"}
+    - {file: "cf-script-to-storyboard", name: "CF Script to Storyboard"}
+    - {file: "cf-generate-assets", name: "CF Generate Assets"}
+    - {file: "cf-rough-cut", name: "CF Rough Cut"}
+    - {file: "cf-invalidation-engine", name: "CF Invalidation Engine"}
+    - {file: "cf-kitsu-sync", name: "CF Kitsu Sync"}
+    - {file: "cf-calendar-sync", name: "CF Calendar Sync"}
+    - {file: "cf-kitsu-inbound", name: "CF Kitsu Inbound"}
   loop_control:
     label: "{{ item.name }}"
   when: not (common_molecule_mode | default(false))
@@ -547,6 +570,14 @@
     - {file: "palais-standup", name: "Palais Daily Standup"}
     - {file: "palais-insight-alert", name: "Palais Insight Alert"}
     - {file: "launch-claude-code", name: "Palais Launch Claude Code"}
+    - {file: "cf-brief-to-concept", name: "CF Brief to Concept"}
+    - {file: "cf-script-to-storyboard", name: "CF Script to Storyboard"}
+    - {file: "cf-generate-assets", name: "CF Generate Assets"}
+    - {file: "cf-rough-cut", name: "CF Rough Cut"}
+    - {file: "cf-invalidation-engine", name: "CF Invalidation Engine"}
+    - {file: "cf-kitsu-sync", name: "CF Kitsu Sync"}
+    - {file: "cf-calendar-sync", name: "CF Calendar Sync"}
+    - {file: "cf-kitsu-inbound", name: "CF Kitsu Inbound"}
   loop_control:
     label: "{{ item.name }}"
   when: not (common_molecule_mode | default(false))
@@ -599,6 +630,14 @@
     - palais-standup
     - palais-insight-alert
     - launch-claude-code
+    - cf-brief-to-concept
+    - cf-script-to-storyboard
+    - cf-generate-assets
+    - cf-rough-cut
+    - cf-invalidation-engine
+    - cf-kitsu-sync
+    - cf-calendar-sync
+    - cf-kitsu-inbound
 
 - name: Display n8n workflow update results
   ansible.builtin.debug:

@@ -90,8 +90,8 @@ Plans:
 Plans:
 - [ ] 07-01-PLAN.md — Pipeline core: brief-to-concept + script-to-storyboard LLM chain workflows
 - [ ] 07-02-PLAN.md — Asset generation: generate-assets provider dispatch + rough-cut Remotion assembly
-- [ ] 07-03-PLAN.md — Feedback loops: invalidation-engine + kitsu-sync bidirectional Kitsu integration
-- [ ] 07-04-PLAN.md — Calendar sync + Ansible registration: Plane editorial calendar + register all 7 workflows in deploy pipeline
+- [ ] 07-03-PLAN.md — Feedback loops: invalidation-engine + kitsu-sync + kitsu-inbound event handler
+- [ ] 07-04-PLAN.md — Calendar sync + Ansible registration: Plane editorial calendar + register all 8 workflows in deploy pipeline
 - [ ] 07-05-PLAN.md — Deploy + smoke test: Ansible deploy to Sese-AI + human verification of all endpoints
 
 ## Progress

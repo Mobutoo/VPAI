@@ -43,7 +43,7 @@ created: 2026-03-17
 | 07-02-01 | 02 | 1 | FLOW-04 | lint+json | `make lint && python3 -c "import json; json.load(open('roles/n8n-provision/files/workflows/cf-generate-assets.json'))"` | ⬜ pending |
 | 07-02-02 | 02 | 1 | FLOW-05 | lint+json | `make lint && python3 -c "import json; json.load(open('roles/n8n-provision/files/workflows/cf-rough-cut.json'))"` | ⬜ pending |
 | 07-03-01 | 03 | 1 | FLOW-06 | lint+json | `make lint && python3 -c "import json; json.load(open('roles/n8n-provision/files/workflows/cf-invalidation-engine.json'))"` | ⬜ pending |
-| 07-03-02 | 03 | 1 | FLOW-02,FLOW-07 | lint+json | `make lint && python3 -c "import json; json.load(open('roles/n8n-provision/templates/workflows/cf-kitsu-sync.json.j2'))"` | ⬜ pending |
+| 07-03-02 | 03 | 1 | FLOW-02,FLOW-07 | lint+template | `make lint && python3 -c "import re; c=open('roles/n8n-provision/templates/workflows/cf-kitsu-sync.json.j2').read(); assert '{%' in c; import json; json.loads(re.sub(r'\{%.*?%\}','',c).replace('{{ kitsu_subdomain }}','boss').replace('{{ domain_name }}','x.com'))"` | ⬜ pending |
 | 07-03-03 | 03 | 1 | FLOW-07 | lint+json | `make lint && python3 -c "import json; json.load(open('roles/n8n-provision/files/workflows/cf-kitsu-inbound.json'))"` | ⬜ pending |
 | 07-04-01 | 04 | 2 | CAL-01,CAL-02,CAL-03 | lint+json | `make lint && python3 -c "import json; json.load(open('roles/n8n-provision/files/workflows/cf-calendar-sync.json'))"` | ⬜ pending |
 | 07-04-02 | 04 | 2 | all | lint | `make lint` (Ansible registration of 8 CF workflows in n8n-provision/tasks/main.yml) | ⬜ pending |

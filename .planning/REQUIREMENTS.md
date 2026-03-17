@@ -47,11 +47,11 @@
 
 ### Remotion
 
-- [ ] **RMTN-01**: Composition `reel-motion-text` (9:16, 15-60s, animated text + gradients)
-- [ ] **RMTN-02**: Composition `reel-meme-skit` (9:16, 15-30s, meme/skit format)
-- [ ] **RMTN-03**: Composition `reel-feature-showcase` (9:16, 30-60s, product demo + overlays)
-- [ ] **RMTN-04**: Composition `reel-teaser` (9:16, 15s, hook + mystery + CTA)
-- [ ] **RMTN-05**: All compositions accept `scenes[]`, `brand`, `audio` props
+- [x] **RMTN-01**: Composition `reel-motion-text` (9:16, 15-60s, animated text + gradients)
+- [x] **RMTN-02**: Composition `reel-meme-skit` (9:16, 15-30s, meme/skit format)
+- [x] **RMTN-03**: Composition `reel-feature-showcase` (9:16, 30-60s, product demo + overlays)
+- [x] **RMTN-04**: Composition `reel-teaser` (9:16, 15s, hook + mystery + CTA)
+- [x] **RMTN-05**: All compositions accept `scenes[]`, `brand`, `audio` props
 
 ### Calendar
 
@@ -115,11 +115,11 @@
 | SKILL-07 | Phase 6 | Complete |
 | SKILL-08 | Phase 6 | Complete |
 | SKILL-09 | Phase 6 | Complete |
-| RMTN-01 | Phase 6 | Pending |
-| RMTN-02 | Phase 6 | Pending |
-| RMTN-03 | Phase 6 | Pending |
-| RMTN-04 | Phase 6 | Pending |
-| RMTN-05 | Phase 6 | Pending |
+| RMTN-01 | Phase 6 | Complete |
+| RMTN-02 | Phase 6 | Complete |
+| RMTN-03 | Phase 6 | Complete |
+| RMTN-04 | Phase 6 | Complete |
+| RMTN-05 | Phase 6 | Complete |
 | FLOW-01 | Phase 7 | Pending |
 | FLOW-02 | Phase 7 | Pending |
 | FLOW-03 | Phase 7 | Pending |

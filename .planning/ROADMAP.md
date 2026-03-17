@@ -107,7 +107,11 @@ Plans:
   3. `cf-read-content` webhook reads content by ID or filters and returns full record
   4. `cf-scene` webhook handles scene CRUD (create, list, update, invalidate) by content ID
   5. Kitsu project "Paul Taff" has Production/Episode/Sequence hierarchy with 14 task types mapped to pipeline steps
-**Plans**: TBD (via `/gsd:plan-phase 8`)
+**Plans**: 2 plans
+
+Plans:
+- [ ] 08-01-PLAN.md — 4 NocoDB CRUD webhook JSON files + NocoDB schema column additions + table ID env vars
+- [ ] 08-02-PLAN.md — Ansible registration in deploy loops + deploy to Sese-AI + DATA-06 verification
 
 ### Phase 9: Integration Fixes
 **Goal**: All cross-phase integration issues are fixed -- Kitsu events reach n8n, Remotion renders succeed, env vars are complete -- and the 3 E2E flows pass
@@ -132,5 +136,5 @@ Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
 | 5. Foundation | 2/3 | In Progress |  | - |
 | 6. Building Blocks | 3/3 | Complete | 2026-03-17 | - |
 | 7. Orchestration | 5/5 | Complete | 2026-03-17 | - |
-| 8. Data Layer Glue | 0/? | Not Started |  | - |
+| 8. Data Layer Glue | 0/2 | Not Started |  | - |
 | 9. Integration Fixes | 0/? | Not Started |  | - |

@@ -1,0 +1,114 @@
+{
+  "name": "CF Invalidation Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cf-invalidation-engine",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cfie-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 380],
+      "webhookId": "cfie0001-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate secret and parse input\nconst data = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nif (!expectedSecret) throw new Error('N8N_WEBHOOK_HMAC_SECRET not configured');\n\nconst headers = data.headers || {};\nconst body    = data.body    || data || {};\nconst receivedSecret = headers['x-webhook-secret'] || body.secret || '';\n\nif (receivedSecret !== expectedSecret) throw new Error('Invalid webhook secret');\n\nconst content_id    = body.content_id;\nconst modified_step = parseInt(body.modified_step);\nconst scene_number  = body.scene_number ? parseInt(body.scene_number) : null;\n\nif (!content_id) throw new Error('Missing required field: content_id');\nif (!modified_step || modified_step < 1 || modified_step > 14) {\n  throw new Error('modified_step must be integer 1-14');\n}\n\nreturn [{ json: { content_id, modified_step, scene_number } }];"
+      },
+      "id": "cfie-0001-0000-0000-0000-000000000002",
+      "name": "Validate and Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Compute targeted invalidation cascade from dependency matrix\nconst { content_id, modified_step, scene_number } = $input.first().json;\n\nconst INVALIDATION_MAP = {\n  1: [2,3,4,5,6,7,8,9,10,11,12,13,14],\n  2: [3,4,6,7,9,10,11],\n  3: [4,6,7,9,10,11],\n  4: [6,7,9,10,11],\n  5: [6,7,9],\n  6: [7,9,10,11],\n  7: [],  // single scene only -- handled separately\n  8: [10,11],\n  9: []   // single asset only -- handled separately\n};\n\nconst step = modified_step;\nlet stepsToInvalidate = INVALIDATION_MAP[step] !== undefined ? [...INVALIDATION_MAP[step]] : [];\nlet is_single_scene = false;\nlet target_steps = stepsToInvalidate;\n\n// Step 7: single scene change invalidates that scene's asset + montage portion\nif (step === 7 && scene_number !== null) {\n  is_single_scene = true;\n  target_steps = [9, 10, 11]; // asset + montage steps for that scene\n}\n\n// Step 9: single asset change invalidates montage portion for that scene\nif (step === 9 && scene_number !== null) {\n  is_single_scene = true;\n  target_steps = [10, 11]; // montage steps only\n}\n\n// Include the modified step itself\nconst all_steps = [step, ...target_steps];\n\nreturn [{ json: {\n  content_id,\n  modified_step: step,\n  scene_number,\n  steps_invalidated: all_steps,\n  is_single_scene\n} }];"
+      },
+      "id": "cfie-0001-0000-0000-0000-000000000003",
+      "name": "Compute Invalidation Cascade",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Load current scenes for the content from cf-scene webhook\nconst { content_id, modified_step, scene_number, steps_invalidated, is_single_scene } = $input.first().json;\n\nconst response = await $http.request({\n  method: 'POST',\n  url: 'http://localhost:5678/webhook/cf-scene',\n  headers: {\n    'Content-Type': 'application/json',\n    'x-webhook-secret': $env.N8N_WEBHOOK_HMAC_SECRET\n  },\n  body: {\n    action: 'list_scenes',\n    content_id\n  }\n});\n\nconst scenes = response.scenes || response.data || [];\n\n// Filter scenes affected by invalidation\n// Each scene has a step_number indicating which pipeline step produced it\nlet affected_scenes;\nif (is_single_scene && scene_number !== null) {\n  // Single scene mode: only invalidate that specific scene\n  affected_scenes = scenes.filter(s =>\n    s.scene_number === scene_number &&\n    steps_invalidated.includes(s.step_number)\n  );\n} else {\n  // Multi-step mode: invalidate all scenes produced by affected steps\n  affected_scenes = scenes.filter(s => steps_invalidated.includes(s.step_number));\n}\n\nreturn [{ json: {\n  content_id,\n  modified_step,\n  scene_number,\n  steps_invalidated,\n  is_single_scene,\n  all_scenes: scenes,\n  affected_scenes\n} }];"
+      },
+      "id": "cfie-0001-0000-0000-0000-000000000004",
+      "name": "Load Current Scenes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Invalidate each affected scene: mark as invalidated + clear asset_url\nconst { content_id, modified_step, scene_number, steps_invalidated, is_single_scene, all_scenes, affected_scenes } = $input.first().json;\n\nlet scenes_invalidated = 0;\nconst invalidation_results = [];\n\nfor (const scene of affected_scenes) {\n  try {\n    await $http.request({\n      method: 'POST',\n      url: 'http://localhost:5678/webhook/cf-scene',\n      headers: {\n        'Content-Type': 'application/json',\n        'x-webhook-secret': $env.N8N_WEBHOOK_HMAC_SECRET\n      },\n      body: {\n        action: 'invalidate_scene',\n        content_id,\n        scene_id: scene.id || scene.scene_id\n      }\n    });\n    scenes_invalidated++;\n    invalidation_results.push({ scene_id: scene.id || scene.scene_id, status: 'invalidated' });\n  } catch (err) {\n    invalidation_results.push({ scene_id: scene.id || scene.scene_id, status: 'error', error: err.message });\n  }\n}\n\nconst scenes_preserved = all_scenes.length - scenes_invalidated;\n\nreturn [{ json: {\n  content_id,\n  modified_step,\n  scene_number,\n  steps_invalidated,\n  is_single_scene,\n  scenes_invalidated,\n  scenes_preserved,\n  invalidation_results\n} }];"
+      },
+      "id": "cfie-0001-0000-0000-0000-000000000005",
+      "name": "Invalidate Scenes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update content step back to modified_step and set status to reworking\nconst { content_id, modified_step, steps_invalidated, scenes_invalidated, scenes_preserved, invalidation_results } = $input.first().json;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url: 'http://localhost:5678/webhook/cf-update-content',\n    headers: {\n      'Content-Type': 'application/json',\n      'x-webhook-secret': $env.N8N_WEBHOOK_HMAC_SECRET\n    },\n    body: {\n      content_id,\n      fields: {\n        current_step: modified_step,\n        status: 'reworking'\n      }\n    }\n  });\n} catch (err) {\n  // Log but don't fail — scenes already invalidated\n  console.error('Failed to update content step:', err.message);\n}\n\nreturn [{ json: {\n  content_id,\n  modified_step,\n  steps_invalidated,\n  scenes_invalidated,\n  scenes_preserved,\n  invalidation_results\n} }];"
+      },
+      "id": "cfie-0001-0000-0000-0000-000000000006",
+      "name": "Update Content Step",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sync Kitsu: mark invalidated steps as 'retake'\nconst { content_id, modified_step, steps_invalidated, scenes_invalidated, scenes_preserved, invalidation_results } = $input.first().json;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url: 'http://localhost:5678/webhook/cf-kitsu-sync',\n    headers: {\n      'Content-Type': 'application/json',\n      'x-webhook-secret': $env.N8N_WEBHOOK_HMAC_SECRET\n    },\n    body: {\n      action: 'update_task_status',\n      content_id,\n      data: {\n        steps: steps_invalidated,\n        status: 'retake',\n        comment: `[INVALIDATED] Step ${modified_step} modified — downstream steps require rework`\n      }\n    }\n  });\n} catch (err) {\n  // Log but don't fail — invalidation already done\n  console.error('Failed to sync Kitsu:', err.message);\n}\n\nreturn [{ json: {\n  content_id,\n  modified_step,\n  steps_invalidated,\n  scenes_invalidated,\n  scenes_preserved,\n  invalidation_results\n} }];"
+      },
+      "id": "cfie-0001-0000-0000-0000-000000000007",
+      "name": "Sync Kitsu Retake",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1580, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ok', content_id: $json.content_id, modified_step: $json.modified_step, steps_invalidated: $json.steps_invalidated, scenes_invalidated: $json.scenes_invalidated, scenes_preserved: $json.scenes_preserved } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "cfie-0001-0000-0000-0000-000000000008",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1800, 380]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger":             { "main": [[{ "node": "Validate and Parse",         "type": "main", "index": 0 }]] },
+    "Validate and Parse":          { "main": [[{ "node": "Compute Invalidation Cascade","type": "main", "index": 0 }]] },
+    "Compute Invalidation Cascade":{ "main": [[{ "node": "Load Current Scenes",        "type": "main", "index": 0 }]] },
+    "Load Current Scenes":         { "main": [[{ "node": "Invalidate Scenes",          "type": "main", "index": 0 }]] },
+    "Invalidate Scenes":           { "main": [[{ "node": "Update Content Step",        "type": "main", "index": 0 }]] },
+    "Update Content Step":         { "main": [[{ "node": "Sync Kitsu Retake",          "type": "main", "index": 0 }]] },
+    "Sync Kitsu Retake":           { "main": [[{ "node": "Webhook Response",           "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "content-factory" }, { "name": "invalidation" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
+  "versionId": "1",
+  "active": false
+}

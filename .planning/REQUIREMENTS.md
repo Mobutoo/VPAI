@@ -92,52 +92,50 @@
 
 ## Traceability
 
-Which phases cover which requirements. Updated during roadmap creation.
-
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | TBD | Pending |
-| INFRA-02 | TBD | Pending |
-| INFRA-03 | TBD | Pending |
-| INFRA-04 | TBD | Pending |
-| INFRA-05 | TBD | Pending |
-| INFRA-06 | TBD | Pending |
-| DATA-01 | TBD | Pending |
-| DATA-02 | TBD | Pending |
-| DATA-03 | TBD | Pending |
-| DATA-04 | TBD | Pending |
-| DATA-05 | TBD | Pending |
-| DATA-06 | TBD | Pending |
-| SKILL-01 | TBD | Pending |
-| SKILL-02 | TBD | Pending |
-| SKILL-03 | TBD | Pending |
-| SKILL-04 | TBD | Pending |
-| SKILL-05 | TBD | Pending |
-| SKILL-06 | TBD | Pending |
-| SKILL-07 | TBD | Pending |
-| SKILL-08 | TBD | Pending |
-| SKILL-09 | TBD | Pending |
-| FLOW-01 | TBD | Pending |
-| FLOW-02 | TBD | Pending |
-| FLOW-03 | TBD | Pending |
-| FLOW-04 | TBD | Pending |
-| FLOW-05 | TBD | Pending |
-| FLOW-06 | TBD | Pending |
-| FLOW-07 | TBD | Pending |
-| RMTN-01 | TBD | Pending |
-| RMTN-02 | TBD | Pending |
-| RMTN-03 | TBD | Pending |
-| RMTN-04 | TBD | Pending |
-| RMTN-05 | TBD | Pending |
-| CAL-01 | TBD | Pending |
-| CAL-02 | TBD | Pending |
-| CAL-03 | TBD | Pending |
+| INFRA-01 | Phase 5 | Pending |
+| INFRA-02 | Phase 5 | Pending |
+| INFRA-03 | Phase 5 | Pending |
+| INFRA-04 | Phase 5 | Pending |
+| INFRA-05 | Phase 5 | Pending |
+| INFRA-06 | Phase 5 | Pending |
+| DATA-01 | Phase 5 | Pending |
+| DATA-02 | Phase 5 | Pending |
+| DATA-03 | Phase 5 | Pending |
+| DATA-04 | Phase 5 | Pending |
+| DATA-05 | Phase 5 | Pending |
+| DATA-06 | Phase 5 | Pending |
+| SKILL-01 | Phase 6 | Pending |
+| SKILL-02 | Phase 6 | Pending |
+| SKILL-03 | Phase 6 | Pending |
+| SKILL-04 | Phase 6 | Pending |
+| SKILL-05 | Phase 6 | Pending |
+| SKILL-06 | Phase 6 | Pending |
+| SKILL-07 | Phase 6 | Pending |
+| SKILL-08 | Phase 6 | Pending |
+| SKILL-09 | Phase 6 | Pending |
+| RMTN-01 | Phase 6 | Pending |
+| RMTN-02 | Phase 6 | Pending |
+| RMTN-03 | Phase 6 | Pending |
+| RMTN-04 | Phase 6 | Pending |
+| RMTN-05 | Phase 6 | Pending |
+| FLOW-01 | Phase 7 | Pending |
+| FLOW-02 | Phase 7 | Pending |
+| FLOW-03 | Phase 7 | Pending |
+| FLOW-04 | Phase 7 | Pending |
+| FLOW-05 | Phase 7 | Pending |
+| FLOW-06 | Phase 7 | Pending |
+| FLOW-07 | Phase 7 | Pending |
+| CAL-01 | Phase 7 | Pending |
+| CAL-02 | Phase 7 | Pending |
+| CAL-03 | Phase 7 | Pending |
 
 **Coverage:**
 - v1 requirements: 36 total
-- Mapped to phases: 0
-- Unmapped: 36
+- Mapped to phases: 36
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after initial definition*
+*Last updated: 2026-03-17 after roadmap creation (all 36 requirements mapped to phases 5-7)*

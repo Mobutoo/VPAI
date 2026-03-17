@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2026.3
 milestone_name: Content Factory
 status: planning
-stopped_at: "Phase 6 complete — starting Phase 7 planning"
-last_updated: "2026-03-17T19:35:00Z"
-last_activity: 2026-03-17 — Phase 6 verified + Plane synced, starting Phase 7
+stopped_at: Completed 07-02-PLAN.md — cf-generate-assets + cf-rough-cut workflows
+last_updated: "2026-03-17T21:49:39.525Z"
+last_activity: 2026-03-17 — Phase 6 complete, Plane synced
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 11
+  completed_plans: 8
   percent: 83
 ---
 
@@ -45,6 +45,7 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 |-------|-------|-------|----------|
 | 05 | 3 | 15min | 5min |
 | 06 | 3 | 7min | 2.3min |
+| Phase 07-orchestration P02 | 8 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,9 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 - [Phase 06]: Pre-existing tsc errors in Root.tsx/server/render-queue left untouched (out of scope)
 - [Phase 06]: Tailscale VPN IP (100.64.0.14) used for Sese-AI deploy (public IP unreachable)
 - [Phase 06]: Remotion handler fixed: state: restarted -> state: present + recreate: always (was not picking up new images)
+- [Phase 07-02]: Sequential dispatch with 2s delay in cf-generate-assets to protect local ComfyUI/Remotion from concurrent overload
+- [Phase 07-02]: Motion keyword detection drives provider routing per scene (remotion for animation, comfyui for static, seedream as fallback)
+- [Phase 07-02]: cf-rough-cut validates ALL scenes ready before Remotion render to avoid partial renders
 
 ### Kitsu IDs (downstream reference)
 
@@ -104,6 +108,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T19:35:00Z
-Stopped at: Phase 6 complete — starting Phase 7 planning
+Last session: 2026-03-17T21:49:33.403Z
+Stopped at: Completed 07-02-PLAN.md — cf-generate-assets + cf-rough-cut workflows
 Resume file: None

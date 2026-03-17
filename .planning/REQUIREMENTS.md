@@ -40,8 +40,8 @@
 - [ ] **FLOW-01**: n8n workflow `brief-to-concept` orchestrates steps 1-5 (brief, research, moodboard, concept, casting)
 - [ ] **FLOW-02**: n8n workflow `kitsu-sync` uploads previews and updates task statuses in Kitsu
 - [ ] **FLOW-03**: n8n workflow `script-to-storyboard` orchestrates steps 6-8 (script, storyboard, sound design)
-- [ ] **FLOW-04**: n8n workflow `generate-assets` dispatches to correct provider per scene
-- [ ] **FLOW-05**: n8n workflow `rough-cut` assembles scenes via Remotion
+- [x] **FLOW-04**: n8n workflow `generate-assets` dispatches to correct provider per scene
+- [x] **FLOW-05**: n8n workflow `rough-cut` assembles scenes via Remotion
 - [ ] **FLOW-06**: n8n workflow `invalidation-engine` handles targeted scene invalidation cascades
 - [ ] **FLOW-07**: Kitsu webhooks to n8n integration (task status, comments, preview uploads)
 
@@ -123,8 +123,8 @@
 | FLOW-01 | Phase 7 | Pending |
 | FLOW-02 | Phase 7 | Pending |
 | FLOW-03 | Phase 7 | Pending |
-| FLOW-04 | Phase 7 | Pending |
-| FLOW-05 | Phase 7 | Pending |
+| FLOW-04 | Phase 7 | Complete |
+| FLOW-05 | Phase 7 | Complete |
 | FLOW-06 | Phase 7 | Pending |
 | FLOW-07 | Phase 7 | Pending |
 | CAL-01 | Phase 7 | Pending |

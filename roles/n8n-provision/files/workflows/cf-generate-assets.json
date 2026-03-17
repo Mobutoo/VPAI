@@ -1,0 +1,104 @@
+{
+  "name": "CF - Generate Assets",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cf-generate-assets",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cfga-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "cfga-0001-0000-0000-0000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate secret and load content + scene data\nconst data = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nif (!expectedSecret) throw new Error('N8N_WEBHOOK_HMAC_SECRET not configured');\n\nconst headers = data.headers || {};\nconst body    = data.body    || data || {};\nconst receivedSecret = headers['x-webhook-secret'] || body.secret || '';\n\nif (receivedSecret !== expectedSecret) throw new Error('Invalid webhook secret');\n\nconst content_id = body.content_id || '';\nif (!content_id) throw new Error('Missing required field: content_id');\n\n// Load content metadata\nconst contentResp = await $http.request({\n  method: 'POST',\n  url: 'http://localhost:5678/webhook/cf-read-content',\n  body: { secret: expectedSecret, action: 'read_content', content_id },\n  json: true\n});\nconst content = contentResp.content || {};\n\n// Load scenes\nconst scenesResp = await $http.request({\n  method: 'POST',\n  url: 'http://localhost:5678/webhook/cf-scene',\n  body: { secret: expectedSecret, action: 'list_scenes', content_id },\n  json: true\n});\nconst scenes = scenesResp.scenes || [];\n\nif (scenes.length === 0) throw new Error(`No scenes found for content_id: ${content_id}`);\n\nreturn [{ json: { content_id, content, scenes, authenticated: true } }];"
+      },
+      "id": "cfga-0001-0000-0000-0000-000000000002",
+      "name": "Validate and Load",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Assign providers to each scene based on description keywords\nconst { content_id, content, scenes } = $input.first().json;\n\n// Map content format to Remotion composition name\nconst formatMap = {\n  'reel-motion-text':       'ReelMotionText',\n  'reel-meme-skit':         'ReelMemeSkit',\n  'reel-feature-showcase':  'ReelFeatureShowcase',\n  'reel-teaser':            'ReelTeaser'\n};\nconst compositionName = formatMap[content.format] || 'ReelMotionText';\n\n// Motion/animation keywords that trigger Remotion over ComfyUI\nconst motionKeywords = [\n  'animation', 'animate', 'motion', 'moving', 'transition', 'effect',\n  'zoom', 'pan', 'slide', 'rotate', 'spin', 'bounce', 'fade',\n  'dynamic', 'kinetic', 'video', 'loop'\n];\n\nconst assignedScenes = scenes.map(scene => {\n  const desc = (scene.visual_description || scene.description || '').toLowerCase();\n  const hasMotion = motionKeywords.some(kw => desc.includes(kw));\n\n  let assigned_model, assigned_type;\n  if (hasMotion) {\n    // Motion/animation -> Remotion composition\n    assigned_model = 'remotion';\n    assigned_type  = 'video-composition';\n  } else if (scene.provider === 'comfyui' || (!scene.provider && !hasMotion)) {\n    // Static image -> local ComfyUI first\n    assigned_model = 'comfyui';\n    assigned_type  = 'image';\n  } else {\n    // Default fallback -> cloud Seedream\n    assigned_model = 'seedream';\n    assigned_type  = 'image';\n  }\n\n  return { ...scene, assigned_model, assigned_type, composition: compositionName };\n});\n\nreturn [{ json: { content_id, content, compositionName, assignedScenes } }];"
+      },
+      "id": "cfga-0001-0000-0000-0000-000000000003",
+      "name": "Assign Providers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sequential dispatch to creative-pipeline (2s delay between scenes)\nconst { content_id, content, compositionName, assignedScenes } = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nconst brandData = {\n  name:         content.brand_name         || '',\n  primaryColor: content.brand_palette?.primary || '#FF6B00',\n  font:         content.brand_typography    || 'Inter'\n};\n\nconst results = [];\n\nfor (const scene of assignedScenes) {\n  const payload = {\n    type:        scene.assigned_type,\n    prompt:      scene.visual_description || scene.description || '',\n    model:       scene.assigned_model,\n    output_name: `${content_id}-scene-${scene.scene_number}`,\n    agent_id:    'content-factory',\n    input_props: { scenes: [scene], brand: brandData }\n  };\n\n  // Only include composition for video-composition type\n  if (scene.assigned_type === 'video-composition') {\n    payload.composition = scene.composition || compositionName;\n  }\n\n  let result;\n  try {\n    result = await $http.request({\n      method: 'POST',\n      url:    'http://localhost:5678/webhook/creative-pipeline',\n      body:   payload,\n      json:   true\n    });\n  } catch (err) {\n    result = { status: 'error', error: err.message, scene_number: scene.scene_number };\n  }\n\n  results.push({\n    scene_number: scene.scene_number,\n    assigned_model: scene.assigned_model,\n    assigned_type:  scene.assigned_type,\n    result_url:     result.result_url || null,\n    render_id:      result.render_id  || null,\n    provider:       result.provider   || scene.assigned_model,\n    status:         result.status     || 'dispatched'\n  });\n\n  // 2-second delay between dispatches to avoid overwhelming local services\n  if (assignedScenes.indexOf(scene) < assignedScenes.length - 1) {\n    await new Promise(r => setTimeout(r, 2000));\n  }\n}\n\nreturn [{ json: { content_id, content, results, scenes_dispatched: results.length } }];"
+      },
+      "id": "cfga-0001-0000-0000-0000-000000000004",
+      "name": "Dispatch to Creative Pipeline",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update scene status in NocoDB for each dispatched scene\nconst { content_id, content, results, scenes_dispatched } = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nfor (const r of results) {\n  if (r.status !== 'error') {\n    try {\n      await $http.request({\n        method: 'POST',\n        url:    'http://localhost:5678/webhook/cf-scene',\n        body:   {\n          secret:       expectedSecret,\n          action:       'update_scene',\n          content_id,\n          scene_number: r.scene_number,\n          asset_url:    r.result_url,\n          provider:     r.provider,\n          status:       'generated'\n        },\n        json: true\n      });\n    } catch (err) {\n      // Log but continue — don't fail the whole workflow for a status update error\n      console.error(`Failed to update scene ${r.scene_number}: ${err.message}`);\n    }\n  }\n}\n\nreturn [{ json: { content_id, content, results, scenes_dispatched } }];"
+      },
+      "id": "cfga-0001-0000-0000-0000-000000000005",
+      "name": "Update Scene Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sync to Kitsu: mark step 9 (Generate Assets) as done\nconst { content_id, content, results, scenes_dispatched } = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url:    'http://localhost:5678/webhook/cf-kitsu-sync',\n    body:   {\n      secret:     expectedSecret,\n      action:     'update_task_status',\n      content_id,\n      step:       9,\n      status:     'done'\n    },\n    json: true\n  });\n} catch (err) {\n  // Non-fatal: Kitsu sync failure should not block the pipeline\n  console.error(`Kitsu sync failed: ${err.message}`);\n}\n\nreturn [{ json: { content_id, results, scenes_dispatched } }];"
+      },
+      "id": "cfga-0001-0000-0000-0000-000000000006",
+      "name": "Sync Kitsu",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ok', content_id: $json.content_id, scenes_dispatched: $json.scenes_dispatched, results: $json.results } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "cfga-0001-0000-0000-0000-000000000007",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1580, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger":              { "main": [[{ "node": "Validate and Load",           "type": "main", "index": 0 }]] },
+    "Validate and Load":            { "main": [[{ "node": "Assign Providers",            "type": "main", "index": 0 }]] },
+    "Assign Providers":             { "main": [[{ "node": "Dispatch to Creative Pipeline","type": "main", "index": 0 }]] },
+    "Dispatch to Creative Pipeline":{ "main": [[{ "node": "Update Scene Status",         "type": "main", "index": 0 }]] },
+    "Update Scene Status":          { "main": [[{ "node": "Sync Kitsu",                  "type": "main", "index": 0 }]] },
+    "Sync Kitsu":                   { "main": [[{ "node": "Webhook Response",            "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "executionTimeout": 600,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "content-factory" }, { "name": "generate" }, { "name": "assets" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
+  "versionId": "1",
+  "active": false
+}

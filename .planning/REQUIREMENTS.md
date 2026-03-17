@@ -7,12 +7,12 @@
 
 ### Infrastructure
 
-- [ ] **INFRA-01**: Kitsu + Zou deployed at `boss.ewutelo.cloud` via Docker Compose on Sese-AI
-- [ ] **INFRA-02**: Kitsu PostgreSQL database `kitsu_production` provisioned in shared instance
-- [ ] **INFRA-03**: Caddy reverse proxy with VPN-only ACL for Kitsu
-- [ ] **INFRA-04**: Fal.ai API key integrated in Ansible vault and available to n8n
-- [ ] **INFRA-05**: Kitsu healthcheck monitored in Grafana
-- [ ] **INFRA-06**: Kitsu backup included in daily Zerobyte PostgreSQL dump
+- [x] **INFRA-01**: Kitsu + Zou deployed at `boss.ewutelo.cloud` via Docker Compose on Sese-AI
+- [x] **INFRA-02**: Kitsu PostgreSQL database `kitsu_production` provisioned in shared instance
+- [x] **INFRA-03**: Caddy reverse proxy with VPN-only ACL for Kitsu
+- [x] **INFRA-04**: Fal.ai API key integrated in Ansible vault and available to n8n
+- [x] **INFRA-05**: Kitsu healthcheck monitored in Grafana
+- [x] **INFRA-06**: Kitsu backup included in daily Zerobyte PostgreSQL dump
 
 ### Data Model
 
@@ -94,12 +94,12 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INFRA-01 | Phase 5 | Pending |
-| INFRA-02 | Phase 5 | Pending |
-| INFRA-03 | Phase 5 | Pending |
-| INFRA-04 | Phase 5 | Pending |
-| INFRA-05 | Phase 5 | Pending |
-| INFRA-06 | Phase 5 | Pending |
+| INFRA-01 | Phase 5 | Complete |
+| INFRA-02 | Phase 5 | Complete |
+| INFRA-03 | Phase 5 | Complete |
+| INFRA-04 | Phase 5 | Complete |
+| INFRA-05 | Phase 5 | Complete |
+| INFRA-06 | Phase 5 | Complete |
 | DATA-01 | Phase 5 | Pending |
 | DATA-02 | Phase 5 | Pending |
 | DATA-03 | Phase 5 | Pending |

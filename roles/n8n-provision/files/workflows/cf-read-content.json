@@ -1,0 +1,69 @@
+{
+  "name": "CF Read Content",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cf-read-content",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cfrc-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 380],
+      "webhookId": "cfrc-0001-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate secret and extract params\nconst data = $input.first().json;\nconst body = data.body || data;\n\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\nif (!expectedSecret) throw new Error('N8N_WEBHOOK_HMAC_SECRET not configured');\nconst receivedSecret = (data.headers || {})['x-webhook-secret'] || body.secret || '';\nif (receivedSecret !== expectedSecret) throw new Error('Unauthorized: invalid webhook secret');\n\nconst content_id = body.content_id;\nif (!content_id) throw new Error('Missing required field: content_id');\n\nreturn [{ json: { content_id } }];"
+      },
+      "id": "cfrc-0001-0000-0000-0000-000000000002",
+      "name": "Validate Secret",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Read content row + merge brand data\nconst { content_id } = $input.first().json;\n\nconst baseUrl = $env.NOCODB_BASE_URL;\nconst token = $env.NOCODB_API_TOKEN;\nlet baseId = $env.NOCODB_CF_BASE_ID || '';\nlet contentsId = $env.NOCODB_CONTENTS_TABLE_ID || '';\nlet brandsId = $env.NOCODB_BRANDS_TABLE_ID || '';\n\n// Resolve table IDs via meta API if not set\nif (!baseId || !contentsId || !brandsId) {\n  const basesResp = await $http.request({\n    method: 'GET',\n    url: `${baseUrl}/api/v2/meta/bases/`,\n    headers: { 'xc-token': token }\n  });\n  const base = (basesResp.list || []).find(b => b.title === 'content-factory');\n  if (!base) throw new Error('NocoDB base content-factory not found');\n  baseId = base.id;\n\n  const tablesResp = await $http.request({\n    method: 'GET',\n    url: `${baseUrl}/api/v2/meta/bases/${baseId}/tables`,\n    headers: { 'xc-token': token }\n  });\n  const tables = tablesResp.list || [];\n  contentsId = contentsId || (tables.find(t => t.title === 'contents') || {}).id;\n  brandsId = brandsId || (tables.find(t => t.title === 'brands') || {}).id;\n  if (!contentsId) throw new Error('NocoDB table contents not found');\n}\n\n// Fetch content record by Id\nconst contentResp = await $http.request({\n  method: 'GET',\n  url: `${baseUrl}/api/v2/meta/bases/${baseId}/tables/${contentsId}/records`,\n  headers: { 'xc-token': token },\n  qs: { where: `(Id,eq,${content_id})`, limit: 1 }\n});\n\nconst contentRow = (contentResp.list || [])[0];\nif (!contentRow) throw new Error(`Content ${content_id} not found`);\n\n// Build result with content_id\nconst result = { ...contentRow, content_id: String(contentRow.Id) };\n\n// Merge brand data if brand_id exists\nconst brandIdVal = contentRow.brand_id;\nif (brandIdVal && brandsId) {\n  try {\n    const brandResp = await $http.request({\n      method: 'GET',\n      url: `${baseUrl}/api/v2/meta/bases/${baseId}/tables/${brandsId}/records`,\n      headers: { 'xc-token': token },\n      qs: { where: `(Id,eq,${brandIdVal})`, limit: 1 }\n    });\n    const brandRow = (brandResp.list || [])[0];\n    if (brandRow) {\n      result.brand_tone = brandRow.tone || '';\n      result.brand_name = brandRow.name || '';\n      result.brand_palette = brandRow.palette || '';\n      result.brand_typography = brandRow.typography || '';\n    }\n  } catch (e) {\n    console.error('Failed to fetch brand data:', e.message);\n  }\n}\n\nreturn [{ json: result }];"
+      },
+      "id": "cfrc-0001-0000-0000-0000-000000000003",
+      "name": "Read Content and Brand",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "cfrc-0001-0000-0000-0000-000000000004",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [920, 380]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger":        { "main": [[{ "node": "Validate Secret",        "type": "main", "index": 0 }]] },
+    "Validate Secret":        { "main": [[{ "node": "Read Content and Brand", "type": "main", "index": 0 }]] },
+    "Read Content and Brand": { "main": [[{ "node": "Webhook Response",       "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "content-factory" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
+  "versionId": "1"
+}

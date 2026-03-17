@@ -1,0 +1,20 @@
+---
+# kitsu — handlers
+
+- name: Restart kitsu stack
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - kitsu
+    state: present
+    # REX: recreate: always est necessaire pour que les changements d'env_file soient pris en compte.
+    # `state: restarted` = docker compose restart -> ne recharge PAS l'env_file.
+    # `state: present` + `recreate: always` = docker compose up --force-recreate.
+    recreate: always
+  become: true
+  # failed_when: false — convention projet : le container peut ne pas exister au premier deploy
+  # (docker-compose.yml pas encore deploye). L'echec du handler ne doit pas bloquer le play.
+  failed_when: false
+  when: not (common_molecule_mode | default(false))

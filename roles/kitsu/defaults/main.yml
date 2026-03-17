@@ -1,0 +1,9 @@
+---
+# kitsu — defaults
+
+kitsu_config_dir: "/opt/{{ project_name }}/configs/kitsu"
+kitsu_data_dir: "/opt/{{ project_name }}/data/kitsu"
+kitsu_previews_dir: "/opt/{{ project_name }}/data/kitsu/previews"
+kitsu_memory_limit: "512M"
+kitsu_memory_reservation: "256M"
+kitsu_cpu_limit: "1.0"

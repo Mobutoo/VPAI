@@ -1,0 +1,5 @@
+---
+dependencies: []
+galaxy_info:
+  role_name: kitsu
+  description: Deploy CGWire Kitsu production tracker

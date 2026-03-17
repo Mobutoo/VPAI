@@ -1,0 +1,47 @@
+---
+# kitsu — tasks
+
+- name: Create kitsu config directory
+  ansible.builtin.file:
+    path: "{{ kitsu_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [kitsu]
+
+- name: Create kitsu data directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  loop:
+    - "{{ kitsu_data_dir }}"
+    - "{{ kitsu_previews_dir }}"
+  become: true
+  tags: [kitsu]
+
+- name: Deploy kitsu environment file
+  ansible.builtin.template:
+    src: kitsu.env.j2
+    dest: "{{ kitsu_config_dir }}/kitsu.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  notify: Restart kitsu stack
+  become: true
+  tags: [kitsu]
+
+- name: Deploy kitsu supervisord override
+  ansible.builtin.template:
+    src: supervisord.conf.j2
+    dest: "{{ kitsu_config_dir }}/supervisord.conf"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  notify: Restart kitsu stack
+  become: true
+  tags: [kitsu]

@@ -160,6 +160,11 @@ nocodb_s3_bucket: "{{ s3_bucket_shared }}"  # bucket partagé — NocoDB stocke 
 s3_access_key: "{{ vault_s3_access_key }}"
 s3_secret_key: "{{ vault_s3_secret_key }}"
 
+# Kitsu (production tracking — Zou backend)
+kitsu_secret_key: "{{ vault_kitsu_secret_key }}"
+kitsu_admin_email: "{{ vault_kitsu_admin_email | default('admin@' + domain_name) }}"
+kitsu_admin_password: "{{ vault_kitsu_admin_password }}"
+
 # GitHub webhook (auto-fix pipeline)
 github_webhook_secret: "{{ vault_github_webhook_secret | default('') }}"
 

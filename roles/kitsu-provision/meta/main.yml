@@ -1,0 +1,8 @@
+---
+dependencies: []
+galaxy_info:
+  role_name: kitsu_provision
+  author: mobutoo
+  description: Initialize Zou database, create admin, and provision Kitsu project structure
+  license: proprietary
+  min_ansible_version: "2.16"

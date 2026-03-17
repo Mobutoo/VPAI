@@ -1,0 +1,171 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Kitsu/Zou provisioning — idempotent
+# Initializes DB, creates admin, provisions project structure via Zou REST API
+
+set -euo pipefail
+
+CONTAINER="{{ kitsu_container_name }}"
+ADMIN_EMAIL="{{ kitsu_admin_email }}"
+ADMIN_PASSWORD="{{ kitsu_admin_password }}"
+SENTINEL="{{ kitsu_provision_config_dir }}/.provision-complete"
+
+if [ -f "$SENTINEL" ]; then
+  echo "Kitsu already provisioned (sentinel exists). Skipping."
+  exit 0
+fi
+
+echo "[$(date)] Starting Kitsu/Zou provisioning..."
+
+# === Phase 1: Zou CLI initialization ===
+echo "[$(date)] Running zou upgrade-db..."
+docker exec "${CONTAINER}" /opt/zou/env/bin/zou upgrade-db 2>&1 || {
+  echo "[$(date)] ERROR: zou upgrade-db failed"
+  exit 1
+}
+
+echo "[$(date)] Running zou init-data..."
+docker exec "${CONTAINER}" /opt/zou/env/bin/zou init-data 2>&1 || {
+  echo "[$(date)] WARNING: zou init-data failed (may already be initialized)"
+}
+
+echo "[$(date)] Creating admin user..."
+docker exec "${CONTAINER}" /opt/zou/env/bin/zou create-admin \
+  "${ADMIN_EMAIL}" --password "${ADMIN_PASSWORD}" 2>&1 || {
+  echo "[$(date)] WARNING: Admin creation failed (may already exist)"
+}
+
+# === Phase 2: Zou REST API — Get auth token ===
+echo "[$(date)] Authenticating to Zou API..."
+AUTH_RESPONSE=$(curl -sf -X POST \
+  -H "Content-Type: application/json" \
+  "http://localhost:$(docker port ${CONTAINER} 80 | head -1 | cut -d: -f2)/api/auth/login" \
+  -d "{\"email\": \"${ADMIN_EMAIL}\", \"password\": \"${ADMIN_PASSWORD}\"}" 2>/dev/null || true)
+
+# Fallback: try via Docker network
+if [ -z "$AUTH_RESPONSE" ]; then
+  KITSU_IP=$(docker inspect -f '{{ '{{' }}range .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}.IPAddress{{ '}}' }}{{ '{{' }}end{{ '}}' }}' "${CONTAINER}" | head -c -1)
+  AUTH_RESPONSE=$(curl -sf -X POST \
+    -H "Content-Type: application/json" \
+    "http://${KITSU_IP}/api/auth/login" \
+    -d "{\"email\": \"${ADMIN_EMAIL}\", \"password\": \"${ADMIN_PASSWORD}\"}")
+fi
+
+TOKEN=$(echo "$AUTH_RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
+API_BASE="http://${KITSU_IP:-localhost}/api"
+
+if [ -z "$TOKEN" ]; then
+  echo "[$(date)] ERROR: Failed to get auth token"
+  exit 1
+fi
+echo "[$(date)] Authenticated successfully"
+
+# Helper function for API calls
+api_get() {
+  curl -sf -H "Authorization: Bearer ${TOKEN}" "${API_BASE}${1}"
+}
+api_post() {
+  curl -sf -X POST \
+    -H "Authorization: Bearer ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    "${API_BASE}${1}" -d "${2}"
+}
+
+# === Phase 3: Create project (Production) ===
+echo "[$(date)] Creating project..."
+PROJECTS=$(api_get "/data/projects")
+PROJECT_ID=$(echo "$PROJECTS" | python3 -c "
+import sys, json
+for p in json.load(sys.stdin):
+    if p['name'] == '{{ kitsu_project_name }}':
+        print(p['id'])
+        break
+" 2>/dev/null || true)
+
+if [ -z "$PROJECT_ID" ]; then
+  PROJECT_RESULT=$(api_post "/data/projects" '{"name": "{{ kitsu_project_name }}", "project_status_id": null}')
+  PROJECT_ID=$(echo "$PROJECT_RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+  echo "[$(date)] Project created: $PROJECT_ID"
+else
+  echo "[$(date)] Project exists: $PROJECT_ID"
+fi
+
+# === Phase 4: Create episode ===
+echo "[$(date)] Creating episode..."
+EPISODES=$(api_get "/data/projects/${PROJECT_ID}/episodes")
+EPISODE_ID=$(echo "$EPISODES" | python3 -c "
+import sys, json
+for e in json.load(sys.stdin):
+    if e['name'] == '{{ kitsu_episode_name }}':
+        print(e['id'])
+        break
+" 2>/dev/null || true)
+
+if [ -z "$EPISODE_ID" ]; then
+  EPISODE_RESULT=$(api_post "/data/projects/${PROJECT_ID}/episodes" '{"name": "{{ kitsu_episode_name }}"}')
+  EPISODE_ID=$(echo "$EPISODE_RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+  echo "[$(date)] Episode created: $EPISODE_ID"
+else
+  echo "[$(date)] Episode exists: $EPISODE_ID"
+fi
+
+# === Phase 5: Create sequences (4 phases) ===
+echo "[$(date)] Creating sequences..."
+{% for seq in kitsu_sequences %}
+SEQ_NAME="{{ seq }}"
+SEQUENCES=$(api_get "/data/projects/${PROJECT_ID}/sequences")
+SEQ_ID=$(echo "$SEQUENCES" | python3 -c "
+import sys, json
+for s in json.load(sys.stdin):
+    if s['name'] == '${SEQ_NAME}':
+        print(s['id'])
+        break
+" 2>/dev/null || true)
+
+if [ -z "$SEQ_ID" ]; then
+  SEQ_RESULT=$(api_post "/data/projects/${PROJECT_ID}/sequences" "{\"name\": \"${SEQ_NAME}\", \"episode_id\": \"${EPISODE_ID}\"}")
+  echo "[$(date)] Sequence created: ${SEQ_NAME}"
+else
+  echo "[$(date)] Sequence exists: ${SEQ_NAME}"
+fi
+{% endfor %}
+
+# === Phase 6: Create task types (14 pipeline steps) ===
+echo "[$(date)] Creating task types..."
+EXISTING_TYPES=$(api_get "/data/task-types")
+
+{% for tt in kitsu_task_types %}
+TT_NAME="{{ tt }}"
+TT_EXISTS=$(echo "$EXISTING_TYPES" | python3 -c "
+import sys, json
+for t in json.load(sys.stdin):
+    if t['name'] == '${TT_NAME}':
+        print(t['id'])
+        break
+" 2>/dev/null || true)
+
+if [ -z "$TT_EXISTS" ]; then
+  api_post "/data/task-types" "{\"name\": \"${TT_NAME}\", \"for_entity\": \"Shot\"}" > /dev/null
+  echo "[$(date)] Task type created: ${TT_NAME}"
+fi
+{% endfor %}
+
+# === Phase 7: Verify task statuses ===
+# zou init-data creates default statuses (Todo, WIP, Done, etc.)
+# Verify they exist — add custom ones if needed
+echo "[$(date)] Verifying task statuses..."
+EXISTING_STATUSES=$(api_get "/data/task-status")
+echo "$EXISTING_STATUSES" | python3 -c "
+import sys, json
+statuses = json.load(sys.stdin)
+names = [s['name'] for s in statuses]
+print(f'Existing statuses: {names}')
+"
+
+# Write sentinel
+touch "$SENTINEL"
+echo "[$(date)] Kitsu provisioning complete."
+echo "[$(date)] Project: {{ kitsu_project_name }}"
+echo "[$(date)] Episode: {{ kitsu_episode_name }}"
+echo "[$(date)] Sequences: {{ kitsu_sequences | join(', ') }}"
+echo "[$(date)] Task types: {{ kitsu_task_types | length }} created"

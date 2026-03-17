@@ -1,0 +1,37 @@
+---
+# kitsu-provision — defaults
+kitsu_provision_config_dir: "/opt/{{ project_name }}/configs/kitsu"
+kitsu_admin_email: "{{ vault_kitsu_admin_email | default('admin@' + domain_name) }}"
+kitsu_admin_password: "{{ vault_kitsu_admin_password }}"
+kitsu_secret_key: "{{ vault_kitsu_secret_key }}"
+
+# Zou container reference
+kitsu_container_name: "{{ project_name }}_kitsu"
+
+# Health check retries (Kitsu has start_period: 120s)
+kitsu_health_retries: 30
+kitsu_health_delay: 10
+
+# Project structure
+kitsu_project_name: "Paul Taff — Lancement"
+kitsu_episode_name: "Drop 1"
+kitsu_sequences:
+  - "1 — Pre-production"
+  - "2 — Ecriture"
+  - "3 — Production"
+  - "4 — Post-production"
+kitsu_task_types:
+  - "Brief"
+  - "Recherche"
+  - "Moodboard"
+  - "Concept"
+  - "Casting"
+  - "Script"
+  - "Storyboard"
+  - "Sound Design"
+  - "Assets"
+  - "Rough Cut"
+  - "Fine Cut"
+  - "Review"
+  - "Multi-format"
+  - "Publication"

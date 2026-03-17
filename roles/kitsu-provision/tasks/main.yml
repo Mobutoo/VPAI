@@ -1,0 +1,44 @@
+---
+# kitsu-provision — tasks
+
+- name: Wait for Kitsu container to be healthy
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format={{ '{{' }}.State.Health.Status{{ '}}' }}
+      {{ kitsu_container_name }}
+  register: kitsu_health
+  retries: "{{ kitsu_health_retries }}"
+  delay: "{{ kitsu_health_delay }}"
+  until: kitsu_health.stdout | default('') == 'healthy'
+  changed_when: false
+  become: true
+  when: not (common_molecule_mode | default(false))
+  tags: [kitsu-provision]
+
+- name: Deploy Kitsu provisioning script
+  ansible.builtin.template:
+    src: provision-kitsu.sh.j2
+    dest: "{{ kitsu_provision_config_dir }}/provision-kitsu.sh"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  become: true
+  tags: [kitsu-provision]
+
+- name: Execute Kitsu provisioning
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: "{{ kitsu_provision_config_dir }}/provision-kitsu.sh"
+    creates: "{{ kitsu_provision_config_dir }}/.provision-complete"
+  become: true
+  register: kitsu_provision_result
+  changed_when: kitsu_provision_result.rc == 0
+  failed_when: kitsu_provision_result.rc != 0
+  when: not (common_molecule_mode | default(false))
+  tags: [kitsu-provision]
+
+- name: Display Kitsu provision summary
+  ansible.builtin.debug:
+    msg: "{{ kitsu_provision_result.stdout_lines }}"
+  when: kitsu_provision_result.stdout_lines is defined
+  tags: [kitsu-provision]

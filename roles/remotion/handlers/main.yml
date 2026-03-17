@@ -7,6 +7,12 @@
     project_src: "/opt/workstation"
     files:
       - docker-compose-creative.yml
-    state: restarted
+    services:
+      - remotion
+    state: present
+    recreate: always
   become: true
   when: not (common_molecule_mode | default(false))
+  # NOTE: state: present + recreate: always force la recreation du container.
+  # state: restarted = docker compose restart = ne recharge PAS la nouvelle image.
+  # REX: Phase 06-03 — compositions non detectees car ancien image reutilise.

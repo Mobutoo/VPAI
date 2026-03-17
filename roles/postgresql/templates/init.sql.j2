@@ -23,3 +23,12 @@ GRANT ALL PRIVILEGES ON DATABASE plane_production TO plane;
 ALTER DATABASE plane_production OWNER TO plane;
 \c plane_production
 GRANT ALL ON SCHEMA public TO plane;
+
+-- Kitsu production database (for fresh PostgreSQL deployments only)
+-- On existing containers, this is provisioned via docker exec task
+CREATE DATABASE kitsu_production;
+CREATE USER zou WITH ENCRYPTED PASSWORD '{{ postgresql_password }}';
+GRANT ALL PRIVILEGES ON DATABASE kitsu_production TO zou;
+ALTER DATABASE kitsu_production OWNER TO zou;
+\c kitsu_production
+GRANT ALL ON SCHEMA public TO zou;

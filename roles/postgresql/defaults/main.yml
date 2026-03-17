@@ -34,3 +34,6 @@ postgresql_databases:
     user: mealie
     extensions:
       - uuid-ossp
+  - name: kitsu_production
+    user: zou
+    extensions: []

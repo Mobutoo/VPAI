@@ -13,7 +13,7 @@ echo "[$(date)] Starting pre-backup..."
 
 # === PostgreSQL dump ===
 echo "[$(date)] Dumping PostgreSQL databases..."
-for DB in n8n litellm; do
+for DB in n8n litellm nocodb kitsu_production; do
   docker exec "${PROJECT}_postgresql" \
     pg_dump -U postgres -Fc --file="/tmp/${DB}_backup.dump" "${DB}"
   docker cp "${PROJECT}_postgresql:/tmp/${DB}_backup.dump" \

@@ -90,6 +90,8 @@
       tags: [grocy, phase3]
     - role: koodia
       tags: [koodia, phase3]
+    - role: kitsu
+      tags: [kitsu, phase3]
 
     # Phase 4 — Observabilité
     - role: monitoring

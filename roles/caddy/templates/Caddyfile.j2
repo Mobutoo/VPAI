@@ -285,6 +285,18 @@ BOOTSTRAP 200
 }
 {% endif %}
 
+# === Kitsu (boss.<domain>) — CGWire Production Tracker ===
+{% if kitsu_subdomain | default('') | length > 0 %}
+{{ kitsu_subdomain }}.{{ domain_name }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy kitsu:80
+
+    import security_headers
+}
+{% endif %}
+
 # === NocoDB — pipeline production IA manga (hq.<domain>) ===
 {% if nocodb_subdomain | default('') | length > 0 %}
 {{ caddy_nocodb_domain }} {

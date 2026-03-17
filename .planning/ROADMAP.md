@@ -85,11 +85,14 @@ Plans:
   3. Modifying a scene at step N triggers `invalidation-engine` to invalidate only downstream dependents (not full rebuild), visible via `/impact` before confirmation
   4. Kitsu webhooks fire on task status changes and preview uploads, keeping the Kitsu board in sync with pipeline state via `kitsu-sync` workflow
   5. Editorial calendar is visible in Plane with contents as work items (with publish dates) and drops organized as cycles, auto-created from NocoDB content entries via n8n
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 07-01: TBD
-- [ ] 07-02: TBD
+- [ ] 07-01-PLAN.md — Pipeline core: brief-to-concept + script-to-storyboard LLM chain workflows
+- [ ] 07-02-PLAN.md — Asset generation: generate-assets provider dispatch + rough-cut Remotion assembly
+- [ ] 07-03-PLAN.md — Feedback loops: invalidation-engine + kitsu-sync bidirectional Kitsu integration
+- [ ] 07-04-PLAN.md — Calendar sync + Ansible registration: Plane editorial calendar + register all 7 workflows in deploy pipeline
+- [ ] 07-05-PLAN.md — Deploy + smoke test: Ansible deploy to Sese-AI + human verification of all endpoints
 
 ## Progress
 
@@ -100,4 +103,4 @@ Phases execute in numeric order: 5 -> 6 -> 7
 |-------|-----------|----------------|--------|-----------|
 | 5. Foundation | 2/3 | In Progress|  | - |
 | 6. Building Blocks | 3/3 | Complete   | 2026-03-17 | - |
-| 7. Orchestration | Content Factory | 0/? | Not started | - |
+| 7. Orchestration | Content Factory | 0/5 | Planned | - |

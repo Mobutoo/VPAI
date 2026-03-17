@@ -1,0 +1,124 @@
+{
+  "name": "CF Script to Storyboard",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cf-script-to-storyboard",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "sts-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 380],
+      "webhookId": "sts-webhook-0000-0000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate secret, extract content_id, read full content state\nconst data = $input.first().json;\nconst body = data.body || data;\n\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\nif (!expectedSecret) throw new Error('N8N_WEBHOOK_HMAC_SECRET not configured');\n\nconst receivedSecret = (data.headers || {})['x-webhook-secret'] || body.secret || '';\nif (receivedSecret !== expectedSecret) throw new Error('Unauthorized: invalid webhook secret');\n\nconst content_id = body.content_id;\nif (!content_id) throw new Error('Missing required field: content_id');\n\n// Read full content state from NocoDB\nlet content_state;\ntry {\n  content_state = await $http.request({\n    method: 'POST',\n    url: 'http://localhost:5678/webhook/cf-read-content',\n    headers: { 'Content-Type': 'application/json' },\n    body: {\n      secret: $env.N8N_WEBHOOK_HMAC_SECRET,\n      action: 'read_content',\n      content_id\n    }\n  });\n} catch (e) {\n  content_state = {};\n}\n\n// Parse stored step data\nconst cs = content_state.body || content_state;\nlet concept = {};\nlet casting = {};\nlet brief = {};\ntry { concept = JSON.parse(cs.step4_concept || '{}'); } catch {}\ntry { casting = JSON.parse(cs.step5_casting || '{}'); } catch {}\ntry { brief   = JSON.parse(cs.brief || '{}'); } catch { brief = cs.brief || {}; }\n\nconst title      = cs.title || '';\nconst format     = cs.format || 'reel';\nconst brand_tone = cs.brand_tone || cs.tone || 'professionnel et direct';\n\nreturn [{ json: { content_id, title, format, brand_tone, brief, concept, casting } }];"
+      },
+      "id": "sts-0001-0000-0000-0000-000000000002",
+      "name": "Validate and Read Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 6: Write Script — main creative writing step (premium model)\nconst data = $input.first().json;\n\nlet script_scenes;\ntry {\n  const response = await $http.request({\n    method: 'POST',\n    url: 'http://litellm:4000/v1/chat/completions',\n    headers: {\n      'Authorization': `Bearer ${$env.LITELLM_API_KEY}`,\n      'Content-Type': 'application/json'\n    },\n    body: {\n      model: 'gpt-4o-mini',\n      messages: [\n        {\n          role: 'system',\n          content: `You are a professional scriptwriter for short-form Instagram video content (${data.format}). Brand tone: ${data.brand_tone}. Write a scene-by-scene script based on the concept document. Output ONLY a valid JSON array of scene objects. Each scene must have: scene_number (integer starting at 1), duration_seconds (integer, 2-8), action (string describing visual action), dialogue (string or null), visual_description (string, detailed, suitable for image prompt), transition (string: cut|fade|slide|none).`\n        },\n        {\n          role: 'user',\n          content: `Title: ${data.title}\\nConcept hook: ${JSON.stringify(data.concept?.hook || '')}\\nNarrative arc: ${JSON.stringify(data.concept?.narrative_arc || '')}\\nVisual style: ${JSON.stringify(data.concept?.visual_style || '')}\\nCTA: ${JSON.stringify(data.concept?.cta || '')}\\nCasting: ${JSON.stringify(data.casting)}`\n        }\n      ],\n      max_tokens: 4000,\n      temperature: 0.8\n    }\n  });\n  const text = response.choices?.[0]?.message?.content || '[]';\n  // Strip markdown code fences if present\n  const cleaned = text.replace(/^```(?:json)?\\n?/m, '').replace(/\\n?```$/m, '').trim();\n  try { script_scenes = JSON.parse(cleaned); } catch { script_scenes = [{ raw: cleaned }]; }\n  if (!Array.isArray(script_scenes)) script_scenes = [script_scenes];\n} catch (e) {\n  script_scenes = [{ error: e.message }];\n}\n\nreturn [{ json: { ...data, step6_script_scenes: script_scenes } }];"
+      },
+      "id": "sts-0001-0000-0000-0000-000000000003",
+      "name": "Step 6 Write Script",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 7: Storyboard Decomposition — create NocoDB scene rows via cf-scene\nconst data = $input.first().json;\nconst scenes = data.step6_script_scenes || [];\n\nlet scenes_created = 0;\nconst errors = [];\n\nfor (const scene of scenes) {\n  if (!scene.scene_number) continue;\n  try {\n    await $http.request({\n      method: 'POST',\n      url: 'http://localhost:5678/webhook/cf-scene',\n      headers: { 'Content-Type': 'application/json' },\n      body: {\n        secret: $env.N8N_WEBHOOK_HMAC_SECRET,\n        action: 'create_scene',\n        content_id: data.content_id,\n        scene_number: scene.scene_number,\n        description: scene.visual_description || scene.action || '',\n        duration: scene.duration_seconds || 5,\n        dialogue: scene.dialogue || '',\n        action: scene.action || '',\n        transition: scene.transition || 'cut',\n        status: 'pending',\n        provider: ''\n      }\n    });\n    scenes_created++;\n  } catch (e) {\n    errors.push(`Scene ${scene.scene_number}: ${e.message}`);\n  }\n}\n\nreturn [{ json: { ...data, scenes_created, storyboard_errors: errors } }];"
+      },
+      "id": "sts-0001-0000-0000-0000-000000000004",
+      "name": "Step 7 Storyboard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 8: Sound Design Brief (eco model)\nconst data = $input.first().json;\n\nlet result;\ntry {\n  const response = await $http.request({\n    method: 'POST',\n    url: 'http://litellm:4000/v1/chat/completions',\n    headers: {\n      'Authorization': `Bearer ${$env.LITELLM_API_KEY}`,\n      'Content-Type': 'application/json'\n    },\n    body: {\n      model: 'deepseek-v3',\n      messages: [\n        {\n          role: 'system',\n          content: 'Generate a sound design brief for this video content. Output as JSON with fields: music_style (string), music_mood (string), tempo_bpm (integer or null), sfx_list (array of objects with scene_number and sfx_description), voiceover_cues (array of objects with scene_number and cue_text), overall_audio_notes (string).'\n        },\n        {\n          role: 'user',\n          content: `Script scenes: ${JSON.stringify(data.step6_script_scenes)}\\nVisual style: ${JSON.stringify(data.concept?.visual_style || '')}\\nBrand tone: ${data.brand_tone}`\n        }\n      ],\n      max_tokens: 1500,\n      temperature: 0.5\n    }\n  });\n  const text = response.choices?.[0]?.message?.content || '{}';\n  try { result = JSON.parse(text); } catch { result = { raw: text }; }\n} catch (e) {\n  result = { error: e.message };\n}\n\nreturn [{ json: { ...data, step8_sound_design: result } }];"
+      },
+      "id": "sts-0001-0000-0000-0000-000000000005",
+      "name": "Step 8 Sound Design",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Store all results in NocoDB via cf-update-content\nconst data = $input.first().json;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url: 'http://localhost:5678/webhook/cf-update-content',\n    headers: { 'Content-Type': 'application/json' },\n    body: {\n      secret: $env.N8N_WEBHOOK_HMAC_SECRET,\n      action: 'update_content',\n      content_id: data.content_id,\n      fields: {\n        current_step: 8,\n        status: 'awaiting_validation',\n        step6_script: JSON.stringify(data.step6_script_scenes),\n        step7_scenes_count: data.scenes_created,\n        step8_sound_design: JSON.stringify(data.step8_sound_design)\n      }\n    }\n  });\n} catch (e) {\n  console.error('cf-update-content failed:', e.message);\n}\n\nreturn [{ json: data }];"
+      },
+      "id": "sts-0001-0000-0000-0000-000000000006",
+      "name": "Store Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/cf-kitsu-sync",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ secret: $env.N8N_WEBHOOK_HMAC_SECRET, action: 'update_task_status', content_id: $json.content_id, steps: [6, 7, 8], status: 'done' }) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "sts-0001-0000-0000-0000-000000000007",
+      "name": "Sync Kitsu",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1580, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ok', content_id: $('Store Results').first().json.content_id, scenes_created: $('Store Results').first().json.scenes_created, steps_completed: [6, 7, 8] } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "sts-0001-0000-0000-0000-000000000008",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1800, 380]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger":           { "main": [[{ "node": "Validate and Read Content", "type": "main", "index": 0 }]] },
+    "Validate and Read Content": { "main": [[{ "node": "Step 6 Write Script",       "type": "main", "index": 0 }]] },
+    "Step 6 Write Script":       { "main": [[{ "node": "Step 7 Storyboard",         "type": "main", "index": 0 }]] },
+    "Step 7 Storyboard":         { "main": [[{ "node": "Step 8 Sound Design",       "type": "main", "index": 0 }]] },
+    "Step 8 Sound Design":       { "main": [[{ "node": "Store Results",             "type": "main", "index": 0 }]] },
+    "Store Results":             { "main": [[{ "node": "Sync Kitsu",                "type": "main", "index": 0 }]] },
+    "Sync Kitsu":                { "main": [[{ "node": "Webhook Response",          "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "content-factory" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
+  "versionId": "1"
+}

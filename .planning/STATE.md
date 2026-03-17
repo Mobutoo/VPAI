@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v2026.3
 milestone_name: Content Factory
 status: executing
-stopped_at: Completed 06-01-PLAN.md and 06-02-PLAN.md (Wave 1 complete)
+stopped_at: Completed 06-03-PLAN.md (checkpoint:human-verify pending)
 last_updated: "2026-03-17T18:55:00Z"
-last_activity: 2026-03-17 — 06-01 Remotion compositions + 06-02 content-director skill
+last_activity: 2026-03-17 — 06-03 Deploy OpenClaw skill + Remotion compositions
 progress:
   total_phases: 3
   completed_phases: 1
@@ -19,9 +19,9 @@ progress:
 ## Current Position
 
 Phase: 6 of 7 (Building Blocks) — IN PROGRESS
-Plan: 2 of 3 in current phase (06-02 complete)
-Status: Executing Phase 6 plans
-Last activity: 2026-03-17 — Content-director skill template + Ansible registration
+Plan: 3 of 3 in current phase (06-03 complete)
+Status: Phase 6 COMPLETE — awaiting human verification checkpoint
+Last activity: 2026-03-17 — Deployed OpenClaw skill + Remotion compositions to production
 
 Progress: [████████░░] 83% (overall)
 
@@ -53,6 +53,7 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 | Phase 05 P03 | 5min | 2 tasks | 6 files + API provisioning |
 | Phase 06 P01 | 4min | 2 tasks | 8 files |
 | Phase 06 P02 | 3min | 2 tasks | 2 files |
+| Phase 06 P03 | 9min | 1 task | 1 file + deploy |
 
 ### Decisions
 
@@ -78,6 +79,8 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 - [Phase 06]: All Reel compositions use uniform ReelProps interface (scenes[], brand, audio?) for n8n integration
 - [Phase 06]: Default durationInFrames overridable via inputProps at render time
 - [Phase 06]: Pre-existing tsc errors in Root.tsx/server/render-queue left untouched (out of scope)
+- [Phase 06]: Tailscale VPN IP (100.64.0.14) used for Sese-AI deploy (public IP unreachable)
+- [Phase 06]: Remotion handler fixed: state: restarted -> state: present + recreate: always (was not picking up new images)
 
 ### Kitsu IDs (downstream reference)
 
@@ -101,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T18:55:00Z
-Stopped at: Completed 06-01-PLAN.md (Remotion compositions)
+Last session: 2026-03-17T19:08:00Z
+Stopped at: Completed 06-03-PLAN.md Task 1 — checkpoint:human-verify pending (Task 2)
 Resume file: None

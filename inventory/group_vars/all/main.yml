@@ -129,6 +129,7 @@ openrouter_api_key: "{{ vault_openrouter_api_key | default('') }}"
 google_gemini_api_key: "{{ vault_google_gemini_api_key | default('') }}"
 byteplus_api_key: "{{ vault_byteplus_api_key | default('') }}"
 brave_search_api_key: "{{ vault_brave_search_api_key | default('') }}"
+fal_ai_api_key: "{{ vault_fal_ai_api_key | default('') }}"
 
 # OpenClaw
 openclaw_api_key: "{{ vault_openclaw_api_key }}"
@@ -268,6 +269,7 @@ oc_subdomain: "oc"
 # ComfyUI + Remotion + OpenCut (workstation Pi)
 # Doit etre declare ici (pas seulement dans role defaults) pour que vpn-dns
 # puisse construire les extra_records Headscale depuis vpn-server.
+kitsu_subdomain: "boss"
 comfyui_subdomain: "studio"
 remotion_subdomain: "re"
 opencut_subdomain: "cut"

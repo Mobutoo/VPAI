@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v2026.3 Plane** - Phases 1-4 (shipped)
-- 🚧 **v2026.3 Content Factory** - Phases 5-7 (in progress)
+- 🚧 **v2026.3 Content Factory** - Phases 5-9 (in progress)
 
 ## Phases
 
@@ -38,7 +38,9 @@
 
 - [ ] **Phase 5: Foundation** - Kitsu deploy, data model (NocoDB + Qdrant + Kitsu structure), Fal.ai integration, monitoring, backup
 - [x] **Phase 6: Building Blocks** - OpenClaw content-director skill with all Telegram commands + Remotion Instagram compositions (completed 2026-03-17)
-- [ ] **Phase 7: Orchestration** - n8n production workflows, Kitsu webhook integration, Plane editorial calendar
+- [x] **Phase 7: Orchestration** - n8n production workflows, Kitsu webhook integration, Plane editorial calendar (completed 2026-03-17)
+- [ ] **Phase 8: Data Layer Glue** - 4 NocoDB CRUD webhooks + Kitsu project structure provisioning (gap closure)
+- [ ] **Phase 9: Integration Fixes** - Ansible variable fix, Remotion API mismatches, env vars, tech debt (gap closure)
 
 ## Phase Details
 
@@ -94,13 +96,41 @@ Plans:
 - [ ] 07-04-PLAN.md — Calendar sync + Ansible registration: Plane editorial calendar + register all 8 workflows in deploy pipeline
 - [ ] 07-05-PLAN.md — Deploy + smoke test: Ansible deploy to Sese-AI + human verification of all endpoints
 
+### Phase 8: Data Layer Glue
+**Goal**: The 4 NocoDB CRUD webhook workflows exist and handle all content/scene CRUD operations, and Kitsu project structure is provisioned with 14 task types -- closing the data layer gap that blocks the entire pipeline
+**Depends on**: Phase 7
+**Requirements**: DATA-06
+**Gap Closure**: Closes BLOCKER from v2026.3 audit (4 missing webhooks + unsatisfied DATA-06)
+**Success Criteria** (what must be TRUE):
+  1. `cf-create-content` webhook creates a row in NocoDB `contents` table and returns the new content ID
+  2. `cf-update-content` webhook updates content fields (status, step, data) by content ID with action routing
+  3. `cf-read-content` webhook reads content by ID or filters and returns full record
+  4. `cf-scene` webhook handles scene CRUD (create, list, update, invalidate) by content ID
+  5. Kitsu project "Paul Taff" has Production/Episode/Sequence hierarchy with 14 task types mapped to pipeline steps
+**Plans**: TBD (via `/gsd:plan-phase 8`)
+
+### Phase 9: Integration Fixes
+**Goal**: All cross-phase integration issues are fixed -- Kitsu events reach n8n, Remotion renders succeed, env vars are complete -- and the 3 E2E flows pass
+**Depends on**: Phase 8
+**Requirements**: (none new -- fixes existing FLOW-02, FLOW-05, FLOW-07 runtime behavior)
+**Gap Closure**: Closes 2 BLOCKERs + 4 tech debt items from v2026.3 audit
+**Success Criteria** (what must be TRUE):
+  1. `event_handler.py.j2` uses correct variable `n8n_webhook_secret` and Kitsu events reach `cf-kitsu-inbound`
+  2. `creative-pipeline.json.j2` calls `/renders` with `compositionId` field and reads `jobId` from response
+  3. `n8n.env.j2` includes `REMOTION_API_KEY` and `BYTEPLUS_API_KEY`
+  4. `cf-rough-cut` sends `action` field in `cf-update-content` call
+  5. `cf-kitsu-sync` STATUS_MAP includes `locked` mapping
+**Plans**: TBD (via `/gsd:plan-phase 9`)
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 5 -> 6 -> 7
+Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 5. Foundation | 2/3 | In Progress|  | - |
-| 6. Building Blocks | 3/3 | Complete   | 2026-03-17 | - |
-| 7. Orchestration | 4/5 | In Progress|  | - |
+| 5. Foundation | 2/3 | In Progress |  | - |
+| 6. Building Blocks | 3/3 | Complete | 2026-03-17 | - |
+| 7. Orchestration | 5/5 | Complete | 2026-03-17 | - |
+| 8. Data Layer Glue | 0/? | Not Started |  | - |
+| 9. Integration Fixes | 0/? | Not Started |  | - |

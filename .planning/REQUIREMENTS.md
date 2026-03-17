@@ -105,7 +105,7 @@
 | DATA-03 | Phase 5 | Complete |
 | DATA-04 | Phase 5 | Complete |
 | DATA-05 | Phase 5 | Complete |
-| DATA-06 | Phase 5 | Pending |
+| DATA-06 | Phase 8 | Pending |
 | SKILL-01 | Phase 6 | Complete |
 | SKILL-02 | Phase 6 | Complete |
 | SKILL-03 | Phase 6 | Complete |

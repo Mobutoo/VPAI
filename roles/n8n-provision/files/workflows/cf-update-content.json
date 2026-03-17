@@ -1,0 +1,58 @@
+{
+  "name": "CF Update Content",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cf-update-content",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cfuc-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 380],
+      "webhookId": "cfuc-0001-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate secret (dual pattern) + update NocoDB content row\nconst data = $input.first().json;\nconst body = data.body || data;\n\n// Dual-secret validation: body.secret OR x-webhook-secret header\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\nif (!expectedSecret) throw new Error('N8N_WEBHOOK_HMAC_SECRET not configured');\nconst receivedSecret = (data.headers || {})['x-webhook-secret'] || body.secret || '';\nif (receivedSecret !== expectedSecret) throw new Error('Unauthorized: invalid webhook secret');\n\nconst content_id = body.content_id;\nif (!content_id) throw new Error('Missing required field: content_id');\n\nconst fields = body.fields || {};\nif (Object.keys(fields).length === 0) throw new Error('Missing required field: fields (nothing to update)');\n\n// Stringify any nested objects before sending to NocoDB\nconst patchFields = {};\nfor (const [key, value] of Object.entries(fields)) {\n  patchFields[key] = (typeof value === 'object' && value !== null) ? JSON.stringify(value) : value;\n}\n\n// Resolve NocoDB table IDs\nconst baseUrl = $env.NOCODB_BASE_URL;\nconst token = $env.NOCODB_API_TOKEN;\nlet baseId = $env.NOCODB_CF_BASE_ID || '';\nlet contentsId = $env.NOCODB_CONTENTS_TABLE_ID || '';\n\nif (!baseId || !contentsId) {\n  const basesResp = await $http.request({\n    method: 'GET',\n    url: `${baseUrl}/api/v2/meta/bases/`,\n    headers: { 'xc-token': token }\n  });\n  const base = (basesResp.list || []).find(b => b.title === 'content-factory');\n  if (!base) throw new Error('NocoDB base content-factory not found');\n  baseId = base.id;\n\n  const tablesResp = await $http.request({\n    method: 'GET',\n    url: `${baseUrl}/api/v2/meta/bases/${baseId}/tables`,\n    headers: { 'xc-token': token }\n  });\n  const contentsTable = (tablesResp.list || []).find(t => t.title === 'contents');\n  if (!contentsTable) throw new Error('NocoDB table contents not found');\n  contentsId = contentsTable.id;\n}\n\n// PATCH content row\nawait $http.request({\n  method: 'PATCH',\n  url: `${baseUrl}/api/v2/meta/bases/${baseId}/tables/${contentsId}/records`,\n  headers: {\n    'xc-token': token,\n    'Content-Type': 'application/json'\n  },\n  body: { Id: parseInt(content_id), ...patchFields }\n});\n\nreturn [{ json: { status: 'ok', content_id: String(content_id) } }];"
+      },
+      "id": "cfuc-0001-0000-0000-0000-000000000002",
+      "name": "Update Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "cfuc-0001-0000-0000-0000-000000000003",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 380]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Update Content",   "type": "main", "index": 0 }]] },
+    "Update Content":  { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "content-factory" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
+  "versionId": "1"
+}

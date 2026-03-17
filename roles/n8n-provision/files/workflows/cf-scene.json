@@ -1,0 +1,69 @@
+{
+  "name": "CF Scene",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cf-scene",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cfsc-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 380],
+      "webhookId": "cfsc-0001-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate secret and extract routing action\nconst data = $input.first().json;\nconst body = data.body || data;\n\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\nif (!expectedSecret) throw new Error('N8N_WEBHOOK_HMAC_SECRET not configured');\nconst receivedSecret = (data.headers || {})['x-webhook-secret'] || body.secret || '';\nif (receivedSecret !== expectedSecret) throw new Error('Unauthorized: invalid webhook secret');\n\n// Extract routing action FIRST (Pitfall 2: field name collision)\nconst route_action = body.action;\nif (!route_action) throw new Error('Missing required field: action');\nconst validActions = ['create_scene', 'list_scenes', 'update_scene', 'invalidate_scene'];\nif (!validActions.includes(route_action)) throw new Error(`Invalid action: ${route_action}`);\n\nconst content_id = body.content_id;\nif (!content_id) throw new Error('Missing required field: content_id');\n\n// Pass all body fields forward, but mark the routing action separately\nreturn [{ json: { route_action, content_id, ...body, action: undefined, secret: undefined } }];"
+      },
+      "id": "cfsc-0001-0000-0000-0000-000000000002",
+      "name": "Validate and Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Execute scene CRUD action against NocoDB scenes table\nconst input = $input.first().json;\nconst { route_action, content_id } = input;\n\nconst baseUrl = $env.NOCODB_BASE_URL;\nconst token = $env.NOCODB_API_TOKEN;\nlet baseId = $env.NOCODB_CF_BASE_ID || '';\nlet scenesId = $env.NOCODB_SCENES_TABLE_ID || '';\n\n// Resolve table IDs via meta API if not set\nif (!baseId || !scenesId) {\n  const basesResp = await $http.request({\n    method: 'GET',\n    url: `${baseUrl}/api/v2/meta/bases/`,\n    headers: { 'xc-token': token }\n  });\n  const base = (basesResp.list || []).find(b => b.title === 'content-factory');\n  if (!base) throw new Error('NocoDB base content-factory not found');\n  baseId = base.id;\n\n  const tablesResp = await $http.request({\n    method: 'GET',\n    url: `${baseUrl}/api/v2/meta/bases/${baseId}/tables`,\n    headers: { 'xc-token': token }\n  });\n  const scenesTable = (tablesResp.list || []).find(t => t.title === 'scenes');\n  if (!scenesTable) throw new Error('NocoDB table scenes not found');\n  scenesId = scenesTable.id;\n}\n\nconst apiBase = `${baseUrl}/api/v2/meta/bases/${baseId}/tables/${scenesId}/records`;\nconst headers = { 'xc-token': token, 'Content-Type': 'application/json' };\n\nif (route_action === 'create_scene') {\n  const result = await $http.request({\n    method: 'POST',\n    url: apiBase,\n    headers,\n    body: {\n      content_id: String(content_id),\n      scene_number: input.scene_number || 1,\n      description: input.description || '',\n      duration_sec: input.duration || 0,\n      dialogue: input.dialogue || '',\n      screen_text: input.screen_text || '',\n      transition: input.transition || 'cut',\n      status: input.status || 'draft',\n      provider: input.provider || '',\n      scene_action: input.scene_action || ''\n    }\n  });\n  return [{ json: { status: 'ok', scene_id: String(result.Id) } }];\n}\n\nif (route_action === 'list_scenes') {\n  const resp = await $http.request({\n    method: 'GET',\n    url: apiBase,\n    headers: { 'xc-token': token },\n    qs: { where: `(content_id,eq,${content_id})`, sort: 'scene_number', limit: 100 }\n  });\n  return [{ json: { scenes: resp.list || [] } }];\n}\n\nif (route_action === 'update_scene') {\n  const scene_number = input.scene_number;\n  if (!scene_number) throw new Error('Missing required field: scene_number for update_scene');\n\n  // Find scene by content_id + scene_number\n  const findResp = await $http.request({\n    method: 'GET',\n    url: apiBase,\n    headers: { 'xc-token': token },\n    qs: { where: `(content_id,eq,${content_id})~and(scene_number,eq,${scene_number})`, limit: 1 }\n  });\n  const sceneRow = (findResp.list || [])[0];\n  if (!sceneRow) throw new Error(`Scene not found: content_id=${content_id}, scene_number=${scene_number}`);\n\n  const patchFields = {};\n  if (input.asset_url !== undefined) patchFields.asset_url = input.asset_url;\n  if (input.provider !== undefined) patchFields.provider = input.provider;\n  if (input.status !== undefined) patchFields.status = input.status;\n  if (input.description !== undefined) patchFields.description = input.description;\n  if (input.duration !== undefined) patchFields.duration_sec = input.duration;\n\n  await $http.request({\n    method: 'PATCH',\n    url: apiBase,\n    headers,\n    body: { Id: sceneRow.Id, ...patchFields }\n  });\n  return [{ json: { status: 'ok', scene_id: String(sceneRow.Id) } }];\n}\n\nif (route_action === 'invalidate_scene') {\n  const scene_id = input.scene_id;\n  if (!scene_id) throw new Error('Missing required field: scene_id for invalidate_scene');\n\n  await $http.request({\n    method: 'PATCH',\n    url: apiBase,\n    headers,\n    body: { Id: parseInt(scene_id), status: 'invalidated', asset_url: '' }\n  });\n  return [{ json: { status: 'ok', scene_id: String(scene_id) } }];\n}\n\nthrow new Error(`Unhandled action: ${route_action}`);"
+      },
+      "id": "cfsc-0001-0000-0000-0000-000000000003",
+      "name": "Execute Scene Action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "cfsc-0001-0000-0000-0000-000000000004",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [920, 380]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger":      { "main": [[{ "node": "Validate and Route",    "type": "main", "index": 0 }]] },
+    "Validate and Route":   { "main": [[{ "node": "Execute Scene Action",  "type": "main", "index": 0 }]] },
+    "Execute Scene Action": { "main": [[{ "node": "Webhook Response",      "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "content-factory" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
+  "versionId": "1"
+}

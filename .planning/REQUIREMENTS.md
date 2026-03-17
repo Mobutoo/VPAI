@@ -25,15 +25,15 @@
 
 ### OpenClaw Skill
 
-- [ ] **SKILL-01**: OpenClaw skill `content-director` created and loaded
-- [ ] **SKILL-02**: Telegram topic 7 routed to content-director skill
-- [ ] **SKILL-03**: Command `/content <format> <brief>` creates new content (launches step 1)
-- [ ] **SKILL-04**: Command `/ok` validates current step, advances to next
-- [ ] **SKILL-05**: Command `/adjust <instruction>` modifies current step (new version)
-- [ ] **SKILL-06**: Command `/back <step>` returns to earlier step with impact analysis
-- [ ] **SKILL-07**: Command `/preview` shows current project status
-- [ ] **SKILL-08**: Command `/impact` shows what would be invalidated
-- [ ] **SKILL-09**: Gate commands `/lock-preprod`, `/lock-script`, `/ok-rough`, `/ok-final`, `/published`
+- [x] **SKILL-01**: OpenClaw skill `content-director` created and loaded
+- [x] **SKILL-02**: Telegram topic 7 routed to content-director skill
+- [x] **SKILL-03**: Command `/content <format> <brief>` creates new content (launches step 1)
+- [x] **SKILL-04**: Command `/ok` validates current step, advances to next
+- [x] **SKILL-05**: Command `/adjust <instruction>` modifies current step (new version)
+- [x] **SKILL-06**: Command `/back <step>` returns to earlier step with impact analysis
+- [x] **SKILL-07**: Command `/preview` shows current project status
+- [x] **SKILL-08**: Command `/impact` shows what would be invalidated
+- [x] **SKILL-09**: Gate commands `/lock-preprod`, `/lock-script`, `/ok-rough`, `/ok-final`, `/published`
 
 ### Workflows
 
@@ -106,15 +106,15 @@
 | DATA-04 | Phase 5 | Complete |
 | DATA-05 | Phase 5 | Complete |
 | DATA-06 | Phase 5 | Pending |
-| SKILL-01 | Phase 6 | Pending |
-| SKILL-02 | Phase 6 | Pending |
-| SKILL-03 | Phase 6 | Pending |
-| SKILL-04 | Phase 6 | Pending |
-| SKILL-05 | Phase 6 | Pending |
-| SKILL-06 | Phase 6 | Pending |
-| SKILL-07 | Phase 6 | Pending |
-| SKILL-08 | Phase 6 | Pending |
-| SKILL-09 | Phase 6 | Pending |
+| SKILL-01 | Phase 6 | Complete |
+| SKILL-02 | Phase 6 | Complete |
+| SKILL-03 | Phase 6 | Complete |
+| SKILL-04 | Phase 6 | Complete |
+| SKILL-05 | Phase 6 | Complete |
+| SKILL-06 | Phase 6 | Complete |
+| SKILL-07 | Phase 6 | Complete |
+| SKILL-08 | Phase 6 | Complete |
+| SKILL-09 | Phase 6 | Complete |
 | RMTN-01 | Phase 6 | Pending |
 | RMTN-02 | Phase 6 | Pending |
 | RMTN-03 | Phase 6 | Pending |

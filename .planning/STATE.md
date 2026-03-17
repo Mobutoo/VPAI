@@ -3,27 +3,27 @@ gsd_state_version: 1.0
 milestone: v2026.3
 milestone_name: Content Factory
 status: executing
-stopped_at: Completed Phase 5 (Foundation)
-last_updated: "2026-03-17T18:15:00Z"
-last_activity: 2026-03-17 — Completed Phase 5 Foundation (Kitsu, NocoDB, Qdrant, Fal.ai, bot Mobotoo)
+stopped_at: Completed 06-02-PLAN.md
+last_updated: "2026-03-17T18:53:42Z"
+last_activity: 2026-03-17 — Content-director skill template + Ansible registration
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 100
+  total_plans: 6
+  completed_plans: 5
+  percent: 83
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 5 of 7 (Foundation) — COMPLETE
-Plan: 3 of 3 in current phase
-Status: Phase 5 complete, ready for Phase 6
-Last activity: 2026-03-17 — Phase 5 Foundation fully provisioned
+Phase: 6 of 7 (Building Blocks) — IN PROGRESS
+Plan: 2 of 3 in current phase (06-02 complete)
+Status: Executing Phase 6 plans
+Last activity: 2026-03-17 — Content-director skill template + Ansible registration
 
-Progress: [██████████] 100% (Phase 5)
+Progress: [████████░░] 83% (overall)
 
 ## Project Reference
 
@@ -35,21 +35,23 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 3
-- Average duration: 5min
-- Total execution time: 15min
+- Total plans completed: 5
+- Average duration: 4min
+- Total execution time: 18min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 05 | 3 | 15min | 5min |
+| 06 | 2 | 3min | 1.5min |
 
 ## Accumulated Context
 
 | Phase 05 P01 | 4min | 2 tasks | 15 files |
 | Phase 05 P02 | 6min | 2 tasks | 6 files |
 | Phase 05 P03 | 5min | 2 tasks | 6 files + API provisioning |
+| Phase 06 P02 | 3min | 2 tasks | 2 files |
 
 ### Decisions
 
@@ -69,6 +71,9 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 - [Phase 05]: Admin user is seko.mobutoo@gmail.com (pre-existing), bot "Mobotoo" (javisi.bot@gmail.com) created for API automation
 - [Phase 05]: Zou default VFX task types coexist with 14 CF custom types — can be archived later
 - [Phase 05]: Custom status "Generating" added for AI pipeline steps
+- [Phase 06]: All NocoDB/Kitsu CRUD delegated to n8n webhooks (agent sandbox has no direct API secrets)
+- [Phase 06]: 5 CF webhooks defined: cf-create-content, cf-update-content, cf-read-content, cf-scene, cf-kitsu-sync
+- [Phase 06]: Contenu topic routes to marketer agent (topic 7)
 
 ### Kitsu IDs (downstream reference)
 
@@ -92,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T18:15:00Z
-Stopped at: Completed Phase 5 (Foundation)
+Last session: 2026-03-17T18:53:42Z
+Stopped at: Completed 06-02-PLAN.md
 Resume file: None

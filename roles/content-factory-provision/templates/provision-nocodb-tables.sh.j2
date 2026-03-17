@@ -96,7 +96,7 @@ if [ -z "$CONTENTS_ID" ]; then
         {"title": "kitsu_project_id", "uidt": "SingleLineText"},
         {"title": "title", "uidt": "SingleLineText"},
         {"title": "format", "uidt": "SingleSelect", "dtxp": "reel,carousel,post,story,ad"},
-        {"title": "status", "uidt": "SingleSelect", "dtxp": "brief,concept,script,storyboard,sound,assets,rough,fine,review,adapt,published"},
+        {"title": "status", "uidt": "SingleLineText"},
         {"title": "current_phase", "uidt": "Number"},
         {"title": "current_step", "uidt": "Number"},
         {"title": "brief", "uidt": "JSON"},
@@ -133,10 +133,10 @@ if [ -z "$SCENES_ID" ]; then
         {"title": "duration_sec", "uidt": "Decimal"},
         {"title": "transition", "uidt": "SingleLineText"},
         {"title": "visual_type", "uidt": "SingleSelect", "dtxp": "motion_design,ai_generative,stock,meme"},
-        {"title": "provider", "uidt": "SingleSelect", "dtxp": "remotion,comfyui,fal_ai,seedance,seedream"},
+        {"title": "provider", "uidt": "SingleLineText"},
         {"title": "asset_url", "uidt": "URL"},
         {"title": "version", "uidt": "Number"},
-        {"title": "status", "uidt": "SingleSelect", "dtxp": "draft,validated,invalidated"}
+        {"title": "status", "uidt": "SingleLineText"}
       ]
     }')
   SCENES_ID=$(echo "$SCENES_RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
@@ -144,6 +144,47 @@ if [ -z "$SCENES_ID" ]; then
 else
   echo "[$(date)] scenes table exists: $SCENES_ID"
 fi
+
+# Step 4b: Add missing step-data columns to contents table (idempotent)
+echo "[$(date)] Adding missing columns to contents table..."
+COLS=$(curl -sf -H "xc-token: ${TOKEN}" "${BASE_URL}/api/v2/meta/tables/${CONTENTS_ID}/columns" || echo '{"list":[]}')
+EXISTING_COLS=$(echo "$COLS" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for c in data.get('list', []):
+    print(c['title'])
+" 2>/dev/null || true)
+
+add_column_if_missing() {
+  local col_name="$1"
+  local col_type="${2:-LongText}"
+  if echo "$EXISTING_COLS" | grep -qx "$col_name"; then
+    echo "[$(date)]   Column '$col_name' already exists, skipping"
+  else
+    echo "[$(date)]   Adding column '$col_name' ($col_type)..."
+    curl -sf -X POST \
+      -H "xc-token: ${TOKEN}" \
+      -H "Content-Type: application/json" \
+      "${BASE_URL}/api/v2/meta/tables/${CONTENTS_ID}/columns" \
+      -d "{\"title\": \"${col_name}\", \"uidt\": \"${col_type}\"}" > /dev/null
+  fi
+}
+
+add_column_if_missing "step1_enhanced_brief"
+add_column_if_missing "step2_research"
+add_column_if_missing "step3_moodboard_prompts"
+add_column_if_missing "step4_concept"
+add_column_if_missing "step5_casting"
+add_column_if_missing "step6_script"
+add_column_if_missing "step7_scenes_count"
+add_column_if_missing "step8_sound_design"
+add_column_if_missing "brand_tone"
+add_column_if_missing "brand_name"
+add_column_if_missing "brand_palette"
+add_column_if_missing "brand_typography"
+add_column_if_missing "latest_preview_url" "SingleLineText"
+add_column_if_missing "last_kitsu_sync" "SingleLineText"
+echo "[$(date)] Missing columns check complete."
 
 # Step 6: Seed Paul Taff brand profile
 echo "[$(date)] Checking Paul Taff brand profile..."
@@ -174,6 +215,12 @@ if [ "$BRAND_EXISTS" = "0" ]; then
 else
   echo "[$(date)] Paul Taff brand already exists"
 fi
+
+# Output table IDs for Ansible to capture
+echo "NOCODB_CF_BASE_ID=${BASE_ID}"
+echo "NOCODB_CONTENTS_TABLE_ID=${CONTENTS_ID}"
+echo "NOCODB_SCENES_TABLE_ID=${SCENES_ID}"
+echo "NOCODB_BRANDS_TABLE_ID=${BRANDS_ID}"
 
 # Write sentinel
 touch "$SENTINEL"

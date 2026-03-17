@@ -647,6 +647,7 @@ services:
     volumes:
       - {{ kitsu_previews_dir | default('/opt/' + project_name + '/data/kitsu/previews') }}:/opt/zou/previews
       - {{ kitsu_config_dir | default('/opt/' + project_name + '/configs/kitsu') }}/supervisord.conf:/etc/supervisord.conf:ro
+      - {{ kitsu_config_dir | default('/opt/' + project_name + '/configs/kitsu') }}/event_handlers:/opt/zou/event_handlers:ro
     networks:
       - backend
     deploy:

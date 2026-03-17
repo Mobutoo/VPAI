@@ -45,3 +45,24 @@
   notify: Restart kitsu stack
   become: true
   tags: [kitsu]
+
+- name: Create kitsu event_handlers directory
+  ansible.builtin.file:
+    path: "{{ kitsu_config_dir }}/event_handlers"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [kitsu]
+
+- name: Deploy Zou event handler script (forwards events to n8n)
+  ansible.builtin.template:
+    src: event_handler.py.j2
+    dest: "{{ kitsu_config_dir }}/event_handlers/event_handler.py"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  notify: Restart kitsu stack
+  become: true
+  tags: [kitsu]

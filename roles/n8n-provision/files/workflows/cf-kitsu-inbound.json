@@ -1,0 +1,158 @@
+{
+  "name": "CF Kitsu Inbound",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cf-kitsu-inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cfki-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 380],
+      "webhookId": "cfki0001-0000-4000-8000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate secret and parse Zou event\nconst data = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\nif (!expectedSecret) throw new Error('N8N_WEBHOOK_HMAC_SECRET not configured');\n\nconst headers = data.headers || {};\nconst body    = data.body    || data || {};\nconst receivedSecret = headers['x-webhook-secret'] || body.secret || '';\n\nif (receivedSecret !== expectedSecret) throw new Error('Invalid webhook secret');\n\nconst event_type = body.event_type || body.type || 'unknown';\nconst event_data = body.data || {};\n\nreturn [{ json: { event_type, data: event_data } }];"
+      },
+      "id": "cfki-0001-0000-0000-0000-000000000002",
+      "name": "Validate and Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 380]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "task:status-changed",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "task_status_changed"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "preview-file:new",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "preview_file_new"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.event_type }}",
+                    "rightValue": "comment:new",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "comment_new"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cfki-0001-0000-0000-0000-000000000003",
+      "name": "Route Event",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [700, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle task:status-changed event from Kitsu\n// Sync the status change back to NocoDB content record\nconst { event_type, data } = $input.first().json;\n\nconst task_id            = data.task_id            || data.id;\nconst new_task_status_id = data.new_task_status_id || data.task_status_id;\nconst entity_id          = data.entity_id          || data.shot_id;\nconst entity_name        = data.entity_name        || data.name;\n\n// Use entity_name as content_id (Kitsu shot name = content_id)\nconst content_id = entity_name || entity_id;\n\nif (content_id) {\n  try {\n    await $http.request({\n      method: 'POST',\n      url: 'http://localhost:5678/webhook/cf-update-content',\n      headers: {\n        'Content-Type': 'application/json',\n        'x-webhook-secret': $env.N8N_WEBHOOK_HMAC_SECRET\n      },\n      body: {\n        content_id,\n        fields: {\n          kitsu_task_status_id: new_task_status_id,\n          last_kitsu_sync: new Date().toISOString()\n        }\n      }\n    });\n  } catch (err) {\n    console.error('Failed to sync task status to NocoDB:', err.message);\n  }\n}\n\nreturn [{ json: { event_type, handled: true, content_id, task_id, new_task_status_id } }];"
+      },
+      "id": "cfki-0001-0000-0000-0000-000000000004",
+      "name": "Handle Task Status Change",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle preview-file:new event from Kitsu\n// Attach preview URL to content record in NocoDB\nconst { event_type, data } = $input.first().json;\n\nconst preview_file_id = data.preview_file_id || data.id;\nconst task_id         = data.task_id;\nconst entity_id       = data.entity_id;\nconst entity_name     = data.entity_name;\n\nconst content_id  = entity_name || entity_id;\n\n// Construct Kitsu preview URL (internal)\nconst preview_url = preview_file_id\n  ? `http://kitsu:80/api/pictures/preview-files/${preview_file_id}/preview`\n  : null;\n\nif (content_id && preview_url) {\n  try {\n    await $http.request({\n      method: 'POST',\n      url: 'http://localhost:5678/webhook/cf-update-content',\n      headers: {\n        'Content-Type': 'application/json',\n        'x-webhook-secret': $env.N8N_WEBHOOK_HMAC_SECRET\n      },\n      body: {\n        content_id,\n        fields: {\n          latest_preview_url: preview_url,\n          last_kitsu_sync: new Date().toISOString()\n        }\n      }\n    });\n  } catch (err) {\n    console.error('Failed to attach preview to content:', err.message);\n  }\n}\n\nreturn [{ json: { event_type, handled: true, content_id, preview_file_id, preview_url } }];"
+      },
+      "id": "cfki-0001-0000-0000-0000-000000000005",
+      "name": "Handle Preview Upload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle comment:new event from Kitsu\n// Log for now -- full OpenClaw integration in v2\nconst { event_type, data } = $input.first().json;\n\nconst comment_id  = data.id;\nconst task_id     = data.task_id;\nconst text        = data.text || data.comment || '';\nconst person_id   = data.person_id;\nconst entity_name = data.entity_name;\n\n// v2: forward to OpenClaw for AI processing\n// For now: log only\nconsole.log(`[cf-kitsu-inbound] comment:new on task ${task_id} by ${person_id}: ${text.substring(0, 100)}`);\n\nreturn [{ json: { event_type, handled: true, comment_id, task_id, note: 'Logged -- OpenClaw integration in v2' } }];"
+      },
+      "id": "cfki-0001-0000-0000-0000-000000000006",
+      "name": "Handle Comment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 580]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ok', event_type: $json.event_type, handled: $json.handled !== false } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "cfki-0001-0000-0000-0000-000000000007",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1140, 380]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger":  { "main": [[{ "node": "Validate and Parse",      "type": "main", "index": 0 }]] },
+    "Validate and Parse":{ "main": [[{ "node": "Route Event",            "type": "main", "index": 0 }]] },
+    "Route Event": {
+      "main": [
+        [{ "node": "Handle Task Status Change", "type": "main", "index": 0 }],
+        [{ "node": "Handle Preview Upload",     "type": "main", "index": 0 }],
+        [{ "node": "Handle Comment",            "type": "main", "index": 0 }]
+      ]
+    },
+    "Handle Task Status Change": { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] },
+    "Handle Preview Upload":     { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] },
+    "Handle Comment":            { "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "content-factory" }, { "name": "kitsu" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
+  "versionId": "1",
+  "active": false
+}

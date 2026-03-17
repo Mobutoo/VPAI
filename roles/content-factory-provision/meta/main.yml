@@ -1,5 +1,15 @@
 ---
-dependencies: []
 galaxy_info:
-  role_name: content-factory-provision
+  role_name: content_factory_provision
+  author: VPAI
+  namespace: mobutoo
   description: Provision NocoDB tables, Qdrant collection, and seed data for Content Factory
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

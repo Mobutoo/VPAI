@@ -1,0 +1,110 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Qdrant brand-voice collection provisioning — idempotent
+# Creates collection + seeds initial Paul Taff brand vectors via LiteLLM embeddings
+
+set -euo pipefail
+
+QDRANT_URL="{{ content_factory_qdrant_base_url }}"
+QDRANT_KEY="{{ qdrant_api_key }}"
+LITELLM_URL="{{ content_factory_litellm_base_url }}"
+LITELLM_KEY="{{ litellm_master_key }}"
+COLLECTION="{{ content_factory_qdrant_collection }}"
+VECTOR_SIZE="{{ content_factory_qdrant_vector_size }}"
+DISTANCE="{{ content_factory_qdrant_distance }}"
+SENTINEL="{{ content_factory_config_dir }}/.qdrant-provision-complete"
+EMBEDDING_MODEL="{{ content_factory_embedding_model }}"
+
+if [ -f "$SENTINEL" ]; then
+  echo "Qdrant brand-voice already provisioned (sentinel exists). Skipping."
+  exit 0
+fi
+
+echo "[$(date)] Starting Qdrant brand-voice provisioning..."
+
+# Step 1: Create collection (PUT is idempotent in Qdrant)
+echo "[$(date)] Creating/verifying brand-voice collection..."
+HTTP_CODE=$(curl -sf -o /dev/null -w '%{http_code}' -X PUT \
+  -H "api-key: ${QDRANT_KEY}" \
+  -H "Content-Type: application/json" \
+  "${QDRANT_URL}/collections/${COLLECTION}" \
+  -d "{\"vectors\": {\"size\": ${VECTOR_SIZE}, \"distance\": \"${DISTANCE}\"}}" \
+  2>/dev/null || echo "000")
+
+if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "409" ]; then
+  echo "[$(date)] Collection ${COLLECTION} ready (HTTP ${HTTP_CODE})"
+else
+  echo "[$(date)] ERROR: Failed to create collection (HTTP ${HTTP_CODE})"
+  exit 1
+fi
+
+# Step 2: Check if seed vectors already exist
+POINT_COUNT=$(curl -sf \
+  -H "api-key: ${QDRANT_KEY}" \
+  "${QDRANT_URL}/collections/${COLLECTION}" \
+  | python3 -c "import sys, json; print(json.load(sys.stdin).get('result', {}).get('points_count', 0))" 2>/dev/null || echo "0")
+
+if [ "$POINT_COUNT" -gt "0" ]; then
+  echo "[$(date)] Collection already has ${POINT_COUNT} vectors. Skipping seed."
+  touch "$SENTINEL"
+  echo "[$(date)] Qdrant provisioning complete."
+  exit 0
+fi
+
+# Step 3: Generate embeddings via LiteLLM proxy
+# Seed texts: Paul Taff brand description and tone guidelines
+SEED_TEXTS=(
+  "Paul Taff - Flash Studio. Des agents IA avec du caractere. Tone decale, sarcastique, audacieux. Quand tes agents IA ont plus de personnalite que ton ex. Colors: orange vif #FF6B35, bleu profond #004E89, jaune accent #F7C948."
+  "Style Instagram Paul Taff: reels motion-text energiques, memes tech sarcastiques, showcases produit avec overlays audacieux. Target: dev et founders 25-40 ans, early adopters. Voix: tutoyement, argot tech, punchlines courtes, humour noir leger."
+  "Brand guidelines Paul Taff Flash Studio: typographie Inter pour les titres, JetBrains Mono pour le code. Transitions rapides, rythme soutenu. Pas de bullshit corporate, pas de jargon marketing creux. On parle comme un dev qui a trop de cafeine et une deadline dans 2h."
+)
+
+echo "[$(date)] Generating embeddings via LiteLLM..."
+for i in "${!SEED_TEXTS[@]}"; do
+  POINT_ID=$((i + 1))
+  TEXT="${SEED_TEXTS[$i]}"
+
+  # Get embedding from LiteLLM
+  EMBEDDING_RESPONSE=$(curl -sf -X POST \
+    -H "Authorization: Bearer ${LITELLM_KEY}" \
+    -H "Content-Type: application/json" \
+    "${LITELLM_URL}/embeddings" \
+    -d "{\"model\": \"${EMBEDDING_MODEL}\", \"input\": \"${TEXT}\"}")
+
+  EMBEDDING=$(echo "$EMBEDDING_RESPONSE" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+print(json.dumps(data['data'][0]['embedding']))
+")
+
+  # Determine content_type based on index
+  case $i in
+    0) CONTENT_TYPE="brand_description" ;;
+    1) CONTENT_TYPE="style_guide" ;;
+    2) CONTENT_TYPE="brand_guidelines" ;;
+  esac
+
+  # Upsert point to Qdrant
+  curl -sf -X PUT \
+    -H "api-key: ${QDRANT_KEY}" \
+    -H "Content-Type: application/json" \
+    "${QDRANT_URL}/collections/${COLLECTION}/points" \
+    -d "{
+      \"points\": [{
+        \"id\": ${POINT_ID},
+        \"vector\": ${EMBEDDING},
+        \"payload\": {
+          \"brand_id\": \"paul-taff\",
+          \"content_type\": \"${CONTENT_TYPE}\",
+          \"text\": \"$(echo "$TEXT" | sed 's/"/\\"/g')\",
+          \"created_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+        }
+      }]
+    }"
+
+  echo "[$(date)] Upserted point ${POINT_ID} (${CONTENT_TYPE})"
+done
+
+# Write sentinel
+touch "$SENTINEL"
+echo "[$(date)] Qdrant brand-voice provisioning complete. ${#SEED_TEXTS[@]} vectors seeded."

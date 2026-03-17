@@ -110,6 +110,8 @@
       tags: [n8n-provision, phase4]
     - role: plane-provision
       tags: [plane-provision, phase4]
+    - role: content-factory-provision
+      tags: [content-factory-provision, phase4]
 
     # Phase 5 — Résilience
     - role: backup-config

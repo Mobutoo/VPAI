@@ -55,9 +55,9 @@
 
 ### Calendar
 
-- [ ] **CAL-01**: Editorial calendar visible in Plane (contents = work items with dates)
-- [ ] **CAL-02**: Drops organized as Plane cycles
-- [ ] **CAL-03**: n8n auto-creates Plane work items from NocoDB content entries
+- [x] **CAL-01**: Editorial calendar visible in Plane (contents = work items with dates)
+- [x] **CAL-02**: Drops organized as Plane cycles
+- [x] **CAL-03**: n8n auto-creates Plane work items from NocoDB content entries
 
 ## v2 Requirements
 
@@ -127,9 +127,9 @@
 | FLOW-05 | Phase 7 | Complete |
 | FLOW-06 | Phase 7 | Complete |
 | FLOW-07 | Phase 7 | Complete |
-| CAL-01 | Phase 7 | Pending |
-| CAL-02 | Phase 7 | Pending |
-| CAL-03 | Phase 7 | Pending |
+| CAL-01 | Phase 7 | Complete |
+| CAL-02 | Phase 7 | Complete |
+| CAL-03 | Phase 7 | Complete |
 
 **Coverage:**
 - v1 requirements: 36 total

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v2026.3
 milestone_name: Content Factory
 status: planning
-stopped_at: Completed 07-03-PLAN.md — feedback loop workflows (invalidation-engine, kitsu-sync, kitsu-inbound)
-last_updated: "2026-03-17T21:51:33.505Z"
+stopped_at: Completed 07-04-PLAN.md — calendar sync workflow + Ansible registration of all 8 CF workflows
+last_updated: "2026-03-17T21:56:03.670Z"
 last_activity: 2026-03-17 — Phase 6 complete, Plane synced
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 11
-  completed_plans: 9
+  completed_plans: 10
   percent: 83
 ---
 
@@ -48,6 +48,7 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 | Phase 07-orchestration P02 | 8 | 2 tasks | 2 files |
 | Phase 07-orchestration P01 | 2 | 2 tasks | 2 files |
 | Phase 07 P03 | 4 | 3 tasks | 7 files |
+| Phase 07-orchestration P04 | 5 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,8 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 - [Phase 07]: cf-kitsu-sync uses internal Docker URL http://kitsu:80 to avoid VPN/Caddy layer
 - [Phase 07]: Zou event handler re-authenticates every call (no token caching) per research Pitfall 2
 - [Phase 07]: event_handler.py uses stdlib only (urllib) -- no pip dependencies needed in Zou environment
+- [Phase 07-orchestration]: cf-kitsu-sync uses template task (not copy loop) — Jinja2 vars require ansible.builtin.template, not ansible.builtin.copy
+- [Phase 07-orchestration]: Plane IDs in n8n.env.j2 use Ansible variables with | default('') — not hardcoded (plane_cf_project_id, plane_cf_module_id)
 
 ### Kitsu IDs (downstream reference)
 
@@ -115,6 +118,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T21:51:33.500Z
-Stopped at: Completed 07-03-PLAN.md — feedback loop workflows (invalidation-engine, kitsu-sync, kitsu-inbound)
+Last session: 2026-03-17T21:56:03.665Z
+Stopped at: Completed 07-04-PLAN.md — calendar sync workflow + Ansible registration of all 8 CF workflows
 Resume file: None

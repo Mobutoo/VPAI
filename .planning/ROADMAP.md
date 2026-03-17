@@ -127,7 +127,11 @@ Plans:
   6. Kitsu bot account (`javisi.bot@gmail.com`) exists in Zou and can authenticate via API
   7. Kitsu project "Paul Taff" created with Production/Episode/Sequence hierarchy (DATA-06 runtime)
   8. Vault credentials for Kitsu admin updated to match actual server (`seko.mobutoo@gmail.com`)
-**Plans**: TBD (via `/gsd:plan-phase 9`)
+**Plans**: 2 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — Template/workflow fixes (event_handler variable, Remotion API fields, env vars, rough-cut action, STATUS_MAP locked) + vault credential update
+- [ ] 09-02-PLAN.md — Bot account provisioning + deploy to Sese-AI + E2E verification
 
 ## Progress
 
@@ -140,4 +144,4 @@ Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
 | 6. Building Blocks | 3/3 | Complete | 2026-03-17 | - |
 | 7. Orchestration | 5/5 | Complete | 2026-03-17 | - |
 | 8. Data Layer Glue | 1/2 | In Progress|  | - |
-| 9. Integration Fixes | 0/? | Not Started |  | - |
+| 9. Integration Fixes | 0/2 | Not Started |  | - |

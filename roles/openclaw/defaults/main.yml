@@ -216,6 +216,7 @@ openclaw_skills:
   - idea-planning
   - palais-bridge
   - swarm-coordinator
+  - content-director
 
 # Skills supprimés — Ansible les supprime du répertoire global sur le VPS
 # Ajouter ici les skills obsolètes pour nettoyage automatique
@@ -295,6 +296,7 @@ openclaw_telegram_topics:
   recherche: { topic_id: "{{ telegram_openclaw_topic_ids.recherche | default('') }}", agent: "{{ openclaw_agent_explorer_name }}" }
   ecriture: { topic_id: "{{ telegram_openclaw_topic_ids.ecriture | default('') }}", agent: "{{ openclaw_agent_writer_name }}" }
   ecole: { topic_id: "{{ telegram_openclaw_topic_ids.ecole | default('') }}", agent: "{{ openclaw_agent_tutor_name }}" }
+  contenu: { topic_id: "{{ telegram_openclaw_topic_ids.contenu | default('') }}", agent: "{{ openclaw_agent_marketer_name }}" }
 
 # --- WhatsApp (Tutor channel — child tablet) ---
 # whatsapp_tutor_enabled and phone set in main.yml

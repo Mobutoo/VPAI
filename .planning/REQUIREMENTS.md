@@ -16,11 +16,11 @@
 
 ### Data Model
 
-- [ ] **DATA-01**: NocoDB table `brands` with profile fields (name, tone, palette, typography, target, platforms)
-- [ ] **DATA-02**: NocoDB table `contents` with pipeline status tracking (14 steps, 4 phases)
-- [ ] **DATA-03**: NocoDB table `scenes` with per-scene assets, provider, version, status
-- [ ] **DATA-04**: Qdrant collection `brand-voice` with embedding pipeline (scripts via LiteLLM to Qdrant)
-- [ ] **DATA-05**: Brand profile "Paul Taff" created (Flash-Studio colors, sarcastic tone, Instagram)
+- [x] **DATA-01**: NocoDB table `brands` with profile fields (name, tone, palette, typography, target, platforms)
+- [x] **DATA-02**: NocoDB table `contents` with pipeline status tracking (14 steps, 4 phases)
+- [x] **DATA-03**: NocoDB table `scenes` with per-scene assets, provider, version, status
+- [x] **DATA-04**: Qdrant collection `brand-voice` with embedding pipeline (scripts via LiteLLM to Qdrant)
+- [x] **DATA-05**: Brand profile "Paul Taff" created (Flash-Studio colors, sarcastic tone, Instagram)
 - [ ] **DATA-06**: Kitsu project structure mapped (Production=brand, Episode=drop, Sequence=phase, Shot=content, Task=step)
 
 ### OpenClaw Skill
@@ -100,11 +100,11 @@
 | INFRA-04 | Phase 5 | Complete |
 | INFRA-05 | Phase 5 | Complete |
 | INFRA-06 | Phase 5 | Complete |
-| DATA-01 | Phase 5 | Pending |
-| DATA-02 | Phase 5 | Pending |
-| DATA-03 | Phase 5 | Pending |
-| DATA-04 | Phase 5 | Pending |
-| DATA-05 | Phase 5 | Pending |
+| DATA-01 | Phase 5 | Complete |
+| DATA-02 | Phase 5 | Complete |
+| DATA-03 | Phase 5 | Complete |
+| DATA-04 | Phase 5 | Complete |
+| DATA-05 | Phase 5 | Complete |
 | DATA-06 | Phase 5 | Pending |
 | SKILL-01 | Phase 6 | Pending |
 | SKILL-02 | Phase 6 | Pending |

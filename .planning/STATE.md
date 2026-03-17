@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2026.3
 milestone_name: Content Factory
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-03-17T16:23:16.220Z"
-last_activity: 2026-03-17 — Roadmap created (phases 5-7, 36 requirements mapped)
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-17T16:31:38Z"
+last_activity: 2026-03-17 — Completed 05-02 NocoDB data model + Qdrant brand-voice provisioning
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
-  percent: 0
+  completed_plans: 2
+  percent: 67
 ---
 
 # Project State
@@ -19,11 +19,11 @@ progress:
 ## Current Position
 
 Phase: 5 of 7 (Foundation)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: Executing
-Last activity: 2026-03-17 — Completed 05-01 Kitsu Ansible role + infra config
+Last activity: 2026-03-17 — Completed 05-02 NocoDB data model + Qdrant brand-voice provisioning
 
-Progress: [███░░░░░░░] 33%
+Progress: [███████░░░] 67%
 
 ## Project Reference
 
@@ -35,9 +35,9 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 4min
-- Total execution time: 4min
+- Total plans completed: 2
+- Average duration: 5min
+- Total execution time: 10min
 
 **By Phase:**
 
@@ -47,6 +47,7 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 
 ## Accumulated Context
 | Phase 05 P01 | 4min | 2 tasks | 15 files |
+| Phase 05 P02 | 6min | 2 tasks | 6 files |
 
 ### Decisions
 
@@ -60,6 +61,9 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 - [Phase 05]: Kitsu role created: supervisord override disables internal PG/Redis, shared postgresql_password for zou user
 - [Phase 05]: Docker healthcheck uses shallow /api/health; deep DB check deferred to Plan 03 zou upgrade-db
 - [Phase 05]: Added nocodb to backup dump loop (was missing from original pre-backup.sh)
+- [Phase 05]: NocoDB FK fields as SingleLineText (API v2 limitation, FK deferred to UI/Phase 7)
+- [Phase 05]: Qdrant vector_size/distance parameterized via role defaults, not hardcoded
+- [Phase 05]: LiteLLM internal endpoint (http://litellm:4000) for on-server embedding generation
 
 ### Pending Todos
 
@@ -71,6 +75,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T16:23:16.215Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-03-17T16:31:38Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None

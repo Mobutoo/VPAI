@@ -1,0 +1,17 @@
+---
+# content-factory-provision — defaults
+content_factory_config_dir: "/opt/{{ project_name }}/configs/content-factory"
+
+# NocoDB API (uses existing deployed instance)
+content_factory_nocodb_base_url: "https://{{ nocodb_subdomain }}.{{ domain_name }}"
+content_factory_nocodb_base_name: "content-factory"
+
+# Qdrant API (uses existing deployed instance)
+content_factory_qdrant_base_url: "https://{{ qdrant_subdomain }}.{{ domain_name }}"
+content_factory_qdrant_collection: "brand-voice"
+content_factory_qdrant_vector_size: 1536
+content_factory_qdrant_distance: "Cosine"
+
+# LiteLLM embedding endpoint (for brand-voice seeding)
+content_factory_litellm_base_url: "http://litellm:4000"
+content_factory_embedding_model: "{{ qdrant_embedding_model | default('text-embedding-3-small') }}"

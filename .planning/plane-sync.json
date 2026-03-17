@@ -1,0 +1,84 @@
+{
+  "synced_at": "2026-03-17T19:30:00Z",
+  "project_id": "e0cb95f0-0ea5-41b8-a3e3-aec45e8cc37e",
+  "module_id": "c04ac29e-9842-4eec-8ff6-6923e9fe75d7",
+  "state_ids": {
+    "backlog": "8b4888c7-9fd9-4652-89d6-446aefc11560",
+    "in_progress": "3dfbcd23-faea-4c8e-a873-406dabf16d84",
+    "complete": "70038704-89df-42f7-9fe8-0324cdbddb06"
+  },
+  "items": {
+    "gsd:5": {
+      "work_item_id": "02042ac4-6ddf-4238-9a56-7107b460f6db",
+      "name": "Phase 5: Foundation",
+      "gsd_status": "complete",
+      "plane_state_id": "70038704-89df-42f7-9fe8-0324cdbddb06",
+      "parent_external_id": null,
+      "synced_at": "2026-03-17T18:17:28Z"
+    },
+    "gsd:6": {
+      "work_item_id": "742ce54e-894f-4672-94a6-e6c45029e60b",
+      "name": "Phase 6: Building Blocks",
+      "gsd_status": "complete",
+      "plane_state_id": "70038704-89df-42f7-9fe8-0324cdbddb06",
+      "parent_external_id": null,
+      "synced_at": "2026-03-17T19:30:00Z"
+    },
+    "gsd:7": {
+      "work_item_id": "14700547-7d86-4013-b5e1-8b4d9901bcc5",
+      "name": "Phase 7: Orchestration",
+      "gsd_status": "backlog",
+      "plane_state_id": "8b4888c7-9fd9-4652-89d6-446aefc11560",
+      "parent_external_id": null,
+      "synced_at": "2026-03-17T16:11:04Z"
+    },
+    "gsd:5-01": {
+      "work_item_id": "cf888732-484e-4660-85a4-68a14428b620",
+      "name": "05-01: Kitsu Ansible role + infra config",
+      "gsd_status": "complete",
+      "plane_state_id": "70038704-89df-42f7-9fe8-0324cdbddb06",
+      "parent_external_id": "gsd:5",
+      "synced_at": "2026-03-17T18:17:29Z"
+    },
+    "gsd:5-02": {
+      "work_item_id": "b5694f50-c7b6-440a-aff0-54e00e5e60cb",
+      "name": "05-02: NocoDB data model provisioning",
+      "gsd_status": "complete",
+      "plane_state_id": "70038704-89df-42f7-9fe8-0324cdbddb06",
+      "parent_external_id": "gsd:5",
+      "synced_at": "2026-03-17T18:17:31Z"
+    },
+    "gsd:5-03": {
+      "work_item_id": "79e5d2bd-242b-41d8-ad27-27ab4e3151ef",
+      "name": "05-03: Kitsu provisioning",
+      "gsd_status": "complete",
+      "plane_state_id": "70038704-89df-42f7-9fe8-0324cdbddb06",
+      "parent_external_id": "gsd:5",
+      "synced_at": "2026-03-17T18:17:33Z"
+    },
+    "gsd:6-01": {
+      "work_item_id": "c27a255f-6d7e-4661-924a-d9cc1e5e9737",
+      "name": "06-01: Remotion compositions",
+      "gsd_status": "complete",
+      "plane_state_id": "70038704-89df-42f7-9fe8-0324cdbddb06",
+      "parent_external_id": "gsd:6",
+      "synced_at": "2026-03-17T19:30:00Z"
+    },
+    "gsd:6-02": {
+      "work_item_id": "e6e615cd-2aee-4fe6-80fa-885fa7510d9e",
+      "name": "06-02: OpenClaw content-director skill",
+      "gsd_status": "complete",
+      "plane_state_id": "70038704-89df-42f7-9fe8-0324cdbddb06",
+      "parent_external_id": "gsd:6",
+      "synced_at": "2026-03-17T19:30:00Z"
+    },
+    "gsd:6-03": {
+      "work_item_id": "1aa22a01-d8af-489a-b5a4-b042caa7ba82",
+      "name": "06-03: Deploy + verify",
+      "gsd_status": "complete",
+      "plane_state_id": "70038704-89df-42f7-9fe8-0324cdbddb06",
+      "parent_external_id": "gsd:6",
+      "synced_at": "2026-03-17T19:30:00Z"
+    }
+  }
+}

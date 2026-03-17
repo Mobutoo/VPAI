@@ -1,0 +1,179 @@
+{
+  "name": "CF Brief to Concept",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cf-brief-to-concept",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "btc-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 380],
+      "webhookId": "btc-webhook-0000-0000-000000000001"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate secret and extract fields\nconst data = $input.first().json;\nconst body = data.body || data;\n\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\nif (!expectedSecret) throw new Error('N8N_WEBHOOK_HMAC_SECRET not configured');\n\nconst receivedSecret = (data.headers || {})['x-webhook-secret'] || body.secret || '';\nif (receivedSecret !== expectedSecret) throw new Error('Unauthorized: invalid webhook secret');\n\nconst content_id = body.content_id;\nconst brand_id   = body.brand_id   || '';\nconst title      = body.title      || '';\nconst format     = body.format     || 'reel';\nconst brief      = body.brief      || {};\n\nif (!content_id) throw new Error('Missing required field: content_id');\nif (!brief.objective) throw new Error('Missing required field: brief.objective');\n\nreturn [{ json: { content_id, brand_id, title, format, brief } }];"
+      },
+      "id": "btc-0001-0000-0000-0000-000000000002",
+      "name": "Validate Secret",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/cf-read-content",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ secret: $env.N8N_WEBHOOK_HMAC_SECRET, action: 'read_content', content_id: $json.content_id }) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "btc-0001-0000-0000-0000-000000000003",
+      "name": "Read Brand Profile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 1: Enhance Brief via LiteLLM (eco model — non-creative metadata)\nconst validate = $('Validate Secret').first().json;\nconst profile  = $input.first().json;\nconst content  = profile.body || profile;\nconst brand_tone = content.brand_tone || content.tone || 'professionnel et direct';\n\nlet result;\ntry {\n  const response = await $http.request({\n    method: 'POST',\n    url: 'http://litellm:4000/v1/chat/completions',\n    headers: {\n      'Authorization': `Bearer ${$env.LITELLM_API_KEY}`,\n      'Content-Type': 'application/json'\n    },\n    body: {\n      model: 'deepseek-v3',\n      messages: [\n        {\n          role: 'system',\n          content: `You are a content strategist for Instagram. Enhance this brief with specific KPIs, audience insights, and hook angles. Brand tone: ${brand_tone}. Respond in JSON with fields: kpis (array), audience_insights (string), hook_angles (array of 3), enhanced_objective (string).`\n        },\n        {\n          role: 'user',\n          content: JSON.stringify(validate.brief)\n        }\n      ],\n      max_tokens: 1500,\n      temperature: 0.7\n    }\n  });\n  const text = response.choices?.[0]?.message?.content || '{}';\n  try { result = JSON.parse(text); } catch { result = { raw: text }; }\n} catch (e) {\n  result = { error: e.message };\n}\n\nreturn [{ json: { ...validate, brand_tone, step1_enhanced_brief: result } }];"
+      },
+      "id": "btc-0001-0000-0000-0000-000000000004",
+      "name": "Step 1 Enhance Brief",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 2: Research — trending topics and competitor insights (eco model)\nconst data = $input.first().json;\n\nlet result;\ntry {\n  const response = await $http.request({\n    method: 'POST',\n    url: 'http://litellm:4000/v1/chat/completions',\n    headers: {\n      'Authorization': `Bearer ${$env.LITELLM_API_KEY}`,\n      'Content-Type': 'application/json'\n    },\n    body: {\n      model: 'deepseek-v3',\n      messages: [\n        {\n          role: 'system',\n          content: 'Research trending topics and competitor content related to this brief. Output structured insights as JSON with fields: trending_topics (array), competitor_angles (array), best_posting_times (string), content_gaps (array), recommended_hashtags (array of 10).'\n        },\n        {\n          role: 'user',\n          content: `Brief: ${JSON.stringify(data.brief)}\\nEnhanced: ${JSON.stringify(data.step1_enhanced_brief)}`\n        }\n      ],\n      max_tokens: 2000,\n      temperature: 0.5\n    }\n  });\n  const text = response.choices?.[0]?.message?.content || '{}';\n  try { result = JSON.parse(text); } catch { result = { raw: text }; }\n} catch (e) {\n  result = { error: e.message };\n}\n\nreturn [{ json: { ...data, step2_research: result } }];"
+      },
+      "id": "btc-0001-0000-0000-0000-000000000005",
+      "name": "Step 2 Research",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 3: Moodboard Prompts — 4-6 image prompts (eco model)\nconst data = $input.first().json;\n\nlet result;\ntry {\n  const response = await $http.request({\n    method: 'POST',\n    url: 'http://litellm:4000/v1/chat/completions',\n    headers: {\n      'Authorization': `Bearer ${$env.LITELLM_API_KEY}`,\n      'Content-Type': 'application/json'\n    },\n    body: {\n      model: 'deepseek-v3',\n      messages: [\n        {\n          role: 'system',\n          content: 'Generate 4-6 detailed image generation prompts for a moodboard based on the content brief and research insights. Output as a JSON array of strings. Each prompt should be 1-2 sentences, highly descriptive, suitable for Stable Diffusion or Seedream image generation.'\n        },\n        {\n          role: 'user',\n          content: `Brief: ${JSON.stringify(data.brief)}\\nResearch: ${JSON.stringify(data.step2_research)}\\nBrand tone: ${data.brand_tone}`\n        }\n      ],\n      max_tokens: 1500,\n      temperature: 0.7\n    }\n  });\n  const text = response.choices?.[0]?.message?.content || '[]';\n  try { result = JSON.parse(text); } catch { result = [text]; }\n  if (!Array.isArray(result)) result = [String(result)];\n} catch (e) {\n  result = [{ error: e.message }];\n}\n\nreturn [{ json: { ...data, step3_moodboard_prompts: result } }];"
+      },
+      "id": "btc-0001-0000-0000-0000-000000000006",
+      "name": "Step 3 Moodboard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1360, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 4: Concept & Hook — main creative step (premium model)\nconst data = $input.first().json;\n\nlet result;\ntry {\n  const response = await $http.request({\n    method: 'POST',\n    url: 'http://litellm:4000/v1/chat/completions',\n    headers: {\n      'Authorization': `Bearer ${$env.LITELLM_API_KEY}`,\n      'Content-Type': 'application/json'\n    },\n    body: {\n      model: 'gpt-4o-mini',\n      messages: [\n        {\n          role: 'system',\n          content: `You are a viral content creator specializing in Instagram Reels. Brand tone: ${data.brand_tone}. Write a full concept document as JSON with fields: hook (first 3 seconds script, max 15 words), narrative_arc (string), visual_style (string), cta (call-to-action text), emotional_trigger (string), virality_score (1-10 with reasoning).`\n        },\n        {\n          role: 'user',\n          content: `Title: ${data.title}\\nFormat: ${data.format}\\nBrief: ${JSON.stringify(data.brief)}\\nResearch insights: ${JSON.stringify(data.step2_research)}\\nHook angles: ${JSON.stringify(data.step1_enhanced_brief?.hook_angles || [])}`\n        }\n      ],\n      max_tokens: 2000,\n      temperature: 0.8\n    }\n  });\n  const text = response.choices?.[0]?.message?.content || '{}';\n  try { result = JSON.parse(text); } catch { result = { raw: text }; }\n} catch (e) {\n  result = { error: e.message };\n}\n\nreturn [{ json: { ...data, step4_concept: result } }];"
+      },
+      "id": "btc-0001-0000-0000-0000-000000000007",
+      "name": "Step 4 Concept Hook",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1580, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Step 5: Casting — characters and personas needed (eco model)\nconst data = $input.first().json;\n\nlet result;\ntry {\n  const response = await $http.request({\n    method: 'POST',\n    url: 'http://litellm:4000/v1/chat/completions',\n    headers: {\n      'Authorization': `Bearer ${$env.LITELLM_API_KEY}`,\n      'Content-Type': 'application/json'\n    },\n    body: {\n      model: 'deepseek-v3',\n      messages: [\n        {\n          role: 'system',\n          content: 'Based on the concept, define the casting for this content. Output as JSON with fields: characters (array of objects with name, role, visual_description, voice_type), presenter_style (string), on_screen_text_needed (boolean), special_requirements (array).'\n        },\n        {\n          role: 'user',\n          content: `Concept: ${JSON.stringify(data.step4_concept)}\\nHook: ${data.step4_concept?.hook || ''}\\nVisual style: ${data.step4_concept?.visual_style || ''}`\n        }\n      ],\n      max_tokens: 1000,\n      temperature: 0.5\n    }\n  });\n  const text = response.choices?.[0]?.message?.content || '{}';\n  try { result = JSON.parse(text); } catch { result = { raw: text }; }\n} catch (e) {\n  result = { error: e.message };\n}\n\nreturn [{ json: { ...data, step5_casting: result } }];"
+      },
+      "id": "btc-0001-0000-0000-0000-000000000008",
+      "name": "Step 5 Casting",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1800, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Store all step results in NocoDB via cf-update-content\nconst data = $input.first().json;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url: 'http://localhost:5678/webhook/cf-update-content',\n    headers: { 'Content-Type': 'application/json' },\n    body: {\n      secret: $env.N8N_WEBHOOK_HMAC_SECRET,\n      action: 'update_content',\n      content_id: data.content_id,\n      fields: {\n        current_step: 5,\n        status: 'awaiting_validation',\n        step1_enhanced_brief: JSON.stringify(data.step1_enhanced_brief),\n        step2_research: JSON.stringify(data.step2_research),\n        step3_moodboard_prompts: JSON.stringify(data.step3_moodboard_prompts),\n        step4_concept: JSON.stringify(data.step4_concept),\n        step5_casting: JSON.stringify(data.step5_casting)\n      }\n    }\n  });\n} catch (e) {\n  // Log but do not fail — content already generated\n  console.error('cf-update-content failed:', e.message);\n}\n\nreturn [{ json: data }];"
+      },
+      "id": "btc-0001-0000-0000-0000-000000000009",
+      "name": "Store Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2020, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/cf-kitsu-sync",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ secret: $env.N8N_WEBHOOK_HMAC_SECRET, action: 'update_task_status', content_id: $json.content_id, steps: [1, 2, 3, 4, 5], status: 'done' }) }}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "btc-0001-0000-0000-0000-000000000010",
+      "name": "Sync Kitsu",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2240, 380]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Sync calendar — create Plane work item for new content (first execution only)\nconst data = $('Store Results').first().json;\n\ntry {\n  // Only call on first execution (step was 0 or undefined before)\n  await $http.request({\n    method: 'POST',\n    url: 'http://localhost:5678/webhook/cf-calendar-sync',\n    headers: { 'Content-Type': 'application/json' },\n    body: {\n      secret: $env.N8N_WEBHOOK_HMAC_SECRET,\n      action: 'sync_content',\n      content_id: data.content_id,\n      title: data.title,\n      format: data.format\n    }\n  });\n} catch (e) {\n  // Calendar sync is non-blocking\n  console.error('cf-calendar-sync failed:', e.message);\n}\n\nconst concept_summary = data.step4_concept?.hook || data.step4_concept?.raw?.substring(0, 100) || 'Concept generated';\nreturn [{ json: { content_id: data.content_id, concept_summary, steps_completed: [1, 2, 3, 4, 5] } }];"
+      },
+      "id": "btc-0001-0000-0000-0000-000000000011",
+      "name": "Sync Calendar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2460, 380]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ok', content_id: $json.content_id, steps_completed: $json.steps_completed, concept_summary: $json.concept_summary } }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "btc-0001-0000-0000-0000-000000000012",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2680, 380]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger":    { "main": [[{ "node": "Validate Secret",     "type": "main", "index": 0 }]] },
+    "Validate Secret":    { "main": [[{ "node": "Read Brand Profile",  "type": "main", "index": 0 }]] },
+    "Read Brand Profile": { "main": [[{ "node": "Step 1 Enhance Brief","type": "main", "index": 0 }]] },
+    "Step 1 Enhance Brief": { "main": [[{ "node": "Step 2 Research",   "type": "main", "index": 0 }]] },
+    "Step 2 Research":    { "main": [[{ "node": "Step 3 Moodboard",    "type": "main", "index": 0 }]] },
+    "Step 3 Moodboard":   { "main": [[{ "node": "Step 4 Concept Hook", "type": "main", "index": 0 }]] },
+    "Step 4 Concept Hook":{ "main": [[{ "node": "Step 5 Casting",      "type": "main", "index": 0 }]] },
+    "Step 5 Casting":     { "main": [[{ "node": "Store Results",       "type": "main", "index": 0 }]] },
+    "Store Results":      { "main": [[{ "node": "Sync Kitsu",          "type": "main", "index": 0 }]] },
+    "Sync Kitsu":         { "main": [[{ "node": "Sync Calendar",       "type": "main", "index": 0 }]] },
+    "Sync Calendar":      { "main": [[{ "node": "Webhook Response",    "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "content-factory" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-03-17T00:00:00.000Z",
+  "versionId": "1"
+}

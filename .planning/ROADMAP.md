@@ -124,6 +124,9 @@ Plans:
   3. `n8n.env.j2` includes `REMOTION_API_KEY` and `BYTEPLUS_API_KEY`
   4. `cf-rough-cut` sends `action` field in `cf-update-content` call
   5. `cf-kitsu-sync` STATUS_MAP includes `locked` mapping
+  6. Kitsu bot account (`javisi.bot@gmail.com`) exists in Zou and can authenticate via API
+  7. Kitsu project "Paul Taff" created with Production/Episode/Sequence hierarchy (DATA-06 runtime)
+  8. Vault credentials for Kitsu admin updated to match actual server (`seko.mobutoo@gmail.com`)
 **Plans**: TBD (via `/gsd:plan-phase 9`)
 
 ## Progress

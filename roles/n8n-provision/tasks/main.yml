@@ -312,6 +312,10 @@
     - cf-invalidation-engine
     - cf-calendar-sync
     - cf-kitsu-inbound
+    - cf-create-content
+    - cf-read-content
+    - cf-update-content
+    - cf-scene
 
 - name: Check workflow update status (checksum comparison)
   ansible.builtin.shell:
@@ -374,6 +378,10 @@
     - {file: "cf-kitsu-sync", name: "CF Kitsu Sync"}
     - {file: "cf-calendar-sync", name: "CF Calendar Sync"}
     - {file: "cf-kitsu-inbound", name: "CF Kitsu Inbound"}
+    - {file: "cf-create-content", name: "CF Create Content"}
+    - {file: "cf-read-content", name: "CF Read Content"}
+    - {file: "cf-update-content", name: "CF Update Content"}
+    - {file: "cf-scene", name: "CF Scene"}
   loop_control:
     label: "{{ item.name }}"
   when: not (common_molecule_mode | default(false))
@@ -578,6 +586,10 @@
     - {file: "cf-kitsu-sync", name: "CF Kitsu Sync"}
     - {file: "cf-calendar-sync", name: "CF Calendar Sync"}
     - {file: "cf-kitsu-inbound", name: "CF Kitsu Inbound"}
+    - {file: "cf-create-content", name: "CF Create Content"}
+    - {file: "cf-read-content", name: "CF Read Content"}
+    - {file: "cf-update-content", name: "CF Update Content"}
+    - {file: "cf-scene", name: "CF Scene"}
   loop_control:
     label: "{{ item.name }}"
   when: not (common_molecule_mode | default(false))
@@ -638,6 +650,10 @@
     - cf-kitsu-sync
     - cf-calendar-sync
     - cf-kitsu-inbound
+    - cf-create-content
+    - cf-read-content
+    - cf-update-content
+    - cf-scene
 
 - name: Display n8n workflow update results
   ansible.builtin.debug:

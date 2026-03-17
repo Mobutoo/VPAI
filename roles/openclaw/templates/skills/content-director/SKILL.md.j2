@@ -1,0 +1,405 @@
+---
+name: content-director
+description: Pilot the Content Factory pipeline -- create content, validate steps, handle gates and invalidation via Telegram commands.
+metadata: { "openclaw": { "emoji": "🎬", "always": false } }
+---
+
+# Skill: Content Director
+
+Pilote le pipeline Content Factory (14 etapes, 4 gates). Cree du contenu Instagram via commandes Telegram.
+
+## Quand utiliser ce skill
+
+- Message dans le topic contenu (topic 7)
+- Commande /content, /ok, /adjust, /back, /preview, /impact
+- Commande gate: /lock-preprod, /lock-script, /ok-rough, /ok-final, /published
+- Question sur un contenu en cours de production
+
+## Pipeline: 4 Phases, 14 Etapes
+
+| Phase | Etapes | Gate |
+|-------|--------|------|
+| I. Pre-production | 1. Brief, 2. Recherche, 3. Moodboard, 4. Concept/Hook, 5. Casting | /lock-preprod |
+| II. Ecriture | 6. Script, 7. Storyboard, 8. Sound design | /lock-script |
+| III. Production | 9. Generation assets, 10. Rough cut, 11. Fine cut | /ok-rough |
+| IV. Post-production | 12. Review final, 13. Multi-format, 14. Publication | /published |
+
+Les etapes auto-enchainables (l'agent les execute sans attendre apres /ok) :
+- Etape 2 (Recherche) : search-content skill + web search
+- Etape 3 (Moodboard) : generate-visual skill (4-8 images de reference)
+- Etape 9 (Generation assets) : delegation a n8n generate-assets workflow
+- Etape 10 (Rough cut) : delegation a n8n rough-cut workflow
+
+## APIs Disponibles
+
+### NocoDB via n8n (source de verite)
+
+Toutes les operations CRUD NocoDB passent par n8n webhooks.
+Le token NocoDB est stocke dans n8n, pas dans le sandbox agent.
+
+#### Creer un contenu
+
+```
+POST {{ n8n_webhook_base_url }}/webhook/cf-create-content
+Headers:
+  Content-Type: application/json
+  X-Webhook-Secret: ${N8N_WEBHOOK_SECRET}
+Body:
+{
+  "secret": "${N8N_WEBHOOK_SECRET}",
+  "action": "create_content",
+  "data": {
+    "brand_id": "<brand row id>",
+    "title": "<content title>",
+    "format": "reel-motion-text|reel-meme-skit|reel-feature-showcase|reel-teaser",
+    "brief": { "objective": "...", "target": "...", "message": "...", "constraints": "..." }
+  }
+}
+```
+
+#### Mettre a jour un contenu
+
+```
+POST {{ n8n_webhook_base_url }}/webhook/cf-update-content
+Headers:
+  Content-Type: application/json
+  X-Webhook-Secret: ${N8N_WEBHOOK_SECRET}
+Body:
+{
+  "secret": "${N8N_WEBHOOK_SECRET}",
+  "action": "update_content",
+  "content_id": "<id>",
+  "data": { "current_step": <N>, "status": "<status>" }
+}
+```
+
+#### Lire un contenu
+
+```
+POST {{ n8n_webhook_base_url }}/webhook/cf-read-content
+Headers:
+  Content-Type: application/json
+  X-Webhook-Secret: ${N8N_WEBHOOK_SECRET}
+Body:
+{
+  "secret": "${N8N_WEBHOOK_SECRET}",
+  "action": "read_content",
+  "content_id": "<id>"
+}
+```
+
+#### Creer/mettre a jour une scene
+
+```
+POST {{ n8n_webhook_base_url }}/webhook/cf-scene
+Headers:
+  Content-Type: application/json
+  X-Webhook-Secret: ${N8N_WEBHOOK_SECRET}
+Body:
+{
+  "secret": "${N8N_WEBHOOK_SECRET}",
+  "action": "create_scene|update_scene|invalidate_scene|list_scenes",
+  "content_id": "<id>",
+  "data": { "scene_number": <N>, "description": "...", "status": "..." }
+}
+```
+
+### Kitsu via n8n (suivi production)
+
+#### Synchroniser avec Kitsu
+
+```
+POST {{ n8n_webhook_base_url }}/webhook/cf-kitsu-sync
+Headers:
+  Content-Type: application/json
+  X-Webhook-Secret: ${N8N_WEBHOOK_SECRET}
+Body:
+{
+  "secret": "${N8N_WEBHOOK_SECRET}",
+  "action": "update_task_status|create_shot|upload_preview",
+  "content_id": "<id>",
+  "data": { "step": <N>, "status": "wip|done|retake|invalidated" }
+}
+```
+
+### Qdrant (memoire creative)
+
+Recherche de references stylistiques pour maintenir la coherence de marque.
+
+```
+POST http://litellm:4000/v1/embeddings
+Headers:
+  Content-Type: application/json
+  Authorization: Bearer ${LITELLM_API_KEY}
+Body: { "model": "text-embedding-3-small", "input": "<query>" }
+```
+
+Puis recherche dans Qdrant :
+
+```
+POST http://qdrant:6333/collections/brand-voice/points/search
+Headers:
+  Content-Type: application/json
+Body: { "vector": <embedding>, "limit": 5 }
+```
+
+## Commandes
+
+### /content <format> <brief>
+
+Cree un nouveau contenu et lance l'etape 1 (brief creatif).
+
+**Formats valides:** reel-motion-text, reel-meme-skit, reel-feature-showcase, reel-teaser
+
+**Workflow:**
+1. Valider le format (doit etre dans la liste)
+2. Appeler cf-create-content via n8n (cree ligne NocoDB + shot Kitsu)
+3. Consulter Qdrant brand-voice pour le ton de la marque
+4. Generer le brief structure (objectif, cible, message cle, contraintes, KPI)
+5. Appeler cf-update-content pour sauvegarder le brief
+6. Appeler cf-kitsu-sync pour mettre la tache Brief en "wip"
+7. Presenter le brief a l'utilisateur dans Telegram
+8. Attendre /ok pour valider ou /adjust pour modifier
+
+**Reponse Telegram:**
+```
+🎬 **Nouveau contenu: <title>**
+Format: <format>
+Brief:
+- Objectif: ...
+- Cible: ...
+- Message cle: ...
+- Contraintes: ...
+
+Tape /ok pour valider le brief, /adjust pour modifier.
+```
+
+### /ok
+
+Valide l'etape en cours et avance a la suivante.
+
+**Workflow:**
+1. Lire le contenu actuel via cf-read-content
+2. Verifier que l'etape en cours a un livrable (pas vide)
+3. Appeler cf-update-content: current_step += 1
+4. Appeler cf-kitsu-sync: tache etape N -> "done", tache etape N+1 -> "wip"
+5. Si l'etape suivante est automatisable (recherche, moodboard), la lancer immediatement
+6. Sinon, presenter les instructions pour l'etape suivante
+
+**Etapes auto-enchainables (l'agent les execute sans attendre):**
+- Etape 2 (Recherche): search-content skill + web search
+- Etape 3 (Moodboard): generate-visual skill (4-8 images de reference)
+- Etape 9 (Generation assets): delegation a n8n generate-assets workflow
+- Etape 10 (Rough cut): delegation a n8n rough-cut workflow
+
+**Reponse Telegram:**
+```
+✅ Etape <N> (<nom>) validee.
+Passage a l'etape <N+1> (<nom>).
+[instructions specifiques a l'etape]
+```
+
+### /adjust <instruction>
+
+Modifie l'etape en cours selon l'instruction donnee.
+
+**Workflow:**
+1. Lire le contenu actuel via cf-read-content
+2. Appliquer la modification demandee (reecrire le livrable de l'etape)
+3. Incrementer la version dans NocoDB (si scenes: scene.version += 1)
+4. Appeler cf-kitsu-sync: tache -> "retake" puis "wip"
+5. Presenter la nouvelle version
+
+**Reponse Telegram:**
+```
+🔄 Etape <N> (<nom>) modifiee (v<version>).
+[nouveau contenu]
+Tape /ok pour valider, /adjust pour re-modifier.
+```
+
+### /back <step_number>
+
+Retourne a une etape anterieure avec analyse d'impact.
+
+**Workflow:**
+1. Lire le contenu actuel
+2. Calculer l'impact via la matrice d'invalidation
+3. Presenter l'impact AVANT d'agir (lecture seule)
+4. Attendre confirmation /go ou /cancel
+
+**Si cross-phase (retour avant une gate passee):**
+- Necessite un unlock explicite
+- Montrer l'impact complet
+
+**Reponse Telegram:**
+```
+⚠️ Retour a l'etape <N> (<nom>).
+Impact:
+- Etapes invalidees: <liste>
+- Scenes a refaire: <liste>
+- Scenes conservees: <liste>
+
+Tape /go pour confirmer, /cancel pour annuler.
+```
+
+### /preview
+
+Affiche l'etat complet du contenu en cours.
+
+**Workflow:**
+1. Lire le contenu actuel via cf-read-content
+2. Lire les scenes via cf-scene (action: list_scenes)
+3. Formater pour Telegram
+
+**Reponse Telegram:**
+```
+📋 **<title>** (format: <format>)
+Phase: <N>/4 (<nom phase>)
+Etape: <N>/14 (<nom etape>) — <status>
+
+Gates:
+- Pre-production: ✅ locked / ⬜ open
+- Ecriture: ✅ locked / ⬜ open
+- Rough cut: ✅ locked / ⬜ open
+- Publication: ✅ locked / ⬜ open
+
+Scenes: <count> (<validated>/<total> validees)
+[liste scenes avec statut]
+```
+
+### /impact
+
+Affiche ce qui serait invalide si l'etape en cours etait modifiee (lecture seule, ne modifie rien).
+
+**Workflow:**
+1. Lire le contenu actuel
+2. Calculer la cascade d'invalidation
+3. Presenter sans agir
+
+**Reponse Telegram:**
+```
+🔍 Impact si modification de l'etape <N> (<nom>):
+- Etapes a refaire: <liste avec noms>
+- Scenes impactees: <N> sur <total>
+- Scenes preservees: <N> sur <total>
+Aucune modification effectuee.
+```
+
+### Gates
+
+Les gates verrouillent une phase terminee. Les etapes verrouillees passent en lecture seule.
+
+#### /lock-preprod
+
+Verrouille les etapes 1-5 (Pre-production).
+
+**Pre-requis:** etapes 1-5 toutes en statut "done".
+
+**Workflow:**
+1. Lire le contenu via cf-read-content
+2. Verifier que les etapes 1-5 sont toutes en "done"
+3. Appeler cf-update-content: phases 1-5 -> "locked"
+4. Appeler cf-kitsu-sync: taches 1-5 -> "locked"
+5. Presenter le resultat
+
+**Effet:** NocoDB phases 1-5 -> "locked", Kitsu taches 1-5 -> "locked".
+
+#### /lock-script
+
+Verrouille les etapes 6-8 (Ecriture).
+
+**Pre-requis:** gate preprod verrouillee + etapes 6-8 en "done".
+
+**Workflow:**
+1. Verifier que /lock-preprod a ete valide
+2. Verifier que les etapes 6-8 sont en "done"
+3. Appeler cf-update-content: phases 6-8 -> "locked"
+4. Appeler cf-kitsu-sync: taches 6-8 -> "locked"
+
+**Effet:** NocoDB phases 6-8 -> "locked", nombre de scenes fige.
+
+#### /ok-rough
+
+Valide le rough cut (etape 10).
+
+**Pre-requis:** gate script verrouillee + etape 10 en "done".
+
+**Workflow:**
+1. Verifier que /lock-script a ete valide
+2. Verifier que l'etape 10 est en "done"
+3. Appeler cf-update-content: rough_cut_validated -> true
+4. Appeler cf-kitsu-sync: tache 10 -> "approved"
+
+**Effet:** structure du montage figee, ajustements restants = cosmetiques.
+
+#### /ok-final
+
+Valide le montage final (etape 12 review).
+
+**Pre-requis:** gate rough verrouillee + etape 12 en "done".
+
+**Workflow:**
+1. Verifier que /ok-rough a ete valide
+2. Verifier que l'etape 12 est en "done"
+3. Appeler cf-update-content: final_validated -> true
+4. Appeler cf-kitsu-sync: tache 12 -> "approved"
+5. Lancer l'export haute qualite via n8n
+
+**Effet:** export haute qualite lance.
+
+#### /published
+
+Marque le contenu comme publie.
+
+**Pre-requis:** gate final validee + etape 14 en "done".
+
+**Workflow:**
+1. Verifier que /ok-final a ete valide
+2. Verifier que l'etape 14 est en "done"
+3. Appeler cf-update-content: status -> "published"
+4. Appeler cf-kitsu-sync: projet archive
+5. Embedder le script valide dans Qdrant brand-voice (memoire creative)
+
+**Effet:** NocoDB status -> "published", Kitsu projet archive, embedding script -> Qdrant.
+
+**Reponse gate validee:**
+```
+🔒 Gate <nom> verrouillee.
+Etapes <N>-<M> en lecture seule.
+Prochaine etape: <N+1> (<nom>).
+```
+
+**Reponse gate refusee:**
+```
+❌ Impossible de verrouiller <nom>.
+Etapes manquantes: <liste etapes pas en "done">.
+```
+
+## Matrice d'Invalidation
+
+| Modification de... | Ce qui est invalide |
+|--------------------|---------------------|
+| Brief (1) | TOUT (2-14) — mais proposer ce qui peut etre conserve |
+| Recherche (2) | Moodboard (3) -> Concept (4) -> Script (6) -> Storyboard (7) -> Assets (9) -> Montage (10-11) |
+| Moodboard (3) | Concept (4) -> Script (6) -> Storyboard (7) -> Assets (9) -> Montage (10-11) |
+| Concept/Hook (4) | Script (6) -> Storyboard (7) -> Assets (9) -> Montage (10-11) |
+| Casting (5) | Script dialogues (6) -> Storyboard (7) -> Assets scenes avec persos (9) |
+| Script (6) | Storyboard (7) -> Assets (9) -> Montage (10-11) |
+| 1 scene storyboard (7) | Uniquement l'asset + portion montage de cette scene |
+| Sound design (8) | Musique/SFX dans le montage uniquement (10-11) |
+| 1 asset (9) | Portion montage de cette scene uniquement |
+
+**Regle:** ne jamais invalider plus que necessaire. Si une scene n'est pas impactee, elle est preservee.
+
+## Regles
+
+1. **Delegation obligatoire**: toutes les operations NocoDB et Kitsu passent par n8n (secrets pas dans le sandbox)
+2. **Pas d'action sans confirmation**: /back et les unlocks montrent l'impact AVANT d'agir
+3. **Versioning**: chaque modification incremente la version du livrable (NocoDB + Kitsu)
+4. **Brand voice**: consulter Qdrant brand-voice avant toute generation de texte
+5. **Format des IDs**: les content_id et scene_id sont des entiers NocoDB (pas des UUIDs)
+6. **Telegram topic 7**: ce skill n'est actif que dans le topic contenu
+7. **Enchainement auto**: les etapes automatisables (2, 3, 9, 10) se lancent sans attendre apres /ok
+8. **Gates sequentielles**: une gate ne peut pas etre verrouillee si la precedente ne l'est pas
+9. **Cross-phase unlock**: retourner avant une gate verrouillee necessite un unlock explicite avec analyse d'impact complete
+10. **Archivage Qdrant**: a la publication, le script valide est embedde dans brand-voice pour la memoire creative

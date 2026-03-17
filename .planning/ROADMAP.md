@@ -52,11 +52,12 @@
   3. Qdrant collection `brand-voice` accepts and returns semantic search queries for brand tone and style references
   4. Fal.ai API key is available in n8n environment and a test API call to a Fal.ai model succeeds
   5. Kitsu healthcheck appears green in Grafana and `kitsu_production` database is included in daily Zerobyte backup
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 05-01-PLAN.md — Kitsu Ansible role + infra config (Docker Compose, Caddy, PostgreSQL, backup, Fal.ai, monitoring)
+- [ ] 05-02-PLAN.md — NocoDB data model provisioning (brands/contents/scenes tables, Paul Taff brand, Qdrant brand-voice)
+- [ ] 05-03-PLAN.md — Kitsu provisioning (Zou DB init, admin, project structure with 14 task types)
 
 ### Phase 6: Building Blocks
 **Goal**: The content-director skill responds to all Telegram commands and Remotion renders all 4 Instagram composition formats from structured scene data
@@ -96,6 +97,6 @@ Phases execute in numeric order: 5 -> 6 -> 7
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
-| 5. Foundation | Content Factory | 0/? | Not started | - |
+| 5. Foundation | Content Factory | 0/3 | Planned | - |
 | 6. Building Blocks | Content Factory | 0/? | Not started | - |
 | 7. Orchestration | Content Factory | 0/? | Not started | - |

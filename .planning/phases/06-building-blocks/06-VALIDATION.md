@@ -38,11 +38,12 @@ created: 2026-03-17
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 06-01-01 | 01 | 1 | SKILL-01 | lint+check | `make lint` | ✅ | ⬜ pending |
-| 06-01-02 | 01 | 1 | SKILL-02 | lint+check | `make lint` | ✅ | ⬜ pending |
-| 06-01-03 | 01 | 1 | SKILL-03..09 | manual | Telegram commands | N/A | ⬜ pending |
-| 06-02-01 | 02 | 1 | RMTN-01..04 | render | `npx remotion render` (local) | ❌ W0 | ⬜ pending |
-| 06-02-02 | 02 | 1 | RMTN-05 | type-check | `npx tsc --noEmit` | ❌ W0 | ⬜ pending |
+| 06-01-01 | 01 | 1 | RMTN-01..05 | type-check+lint | `cd roles/remotion/files && npx tsc --noEmit` | ✅ | ⬜ pending |
+| 06-01-02 | 01 | 1 | RMTN-01..05 | type-check+lint | `npx tsc --noEmit && make lint` | ✅ | ⬜ pending |
+| 06-02-01 | 02 | 1 | SKILL-01..09 | lint+check | `make lint` | ✅ | ⬜ pending |
+| 06-02-02 | 02 | 1 | SKILL-01,02 | lint+check | `make lint` | ✅ | ⬜ pending |
+| 06-03-01 | 03 | 2 | RMTN-01..05, SKILL-01,02 | deploy+smoke | `curl localhost:3200/health + ssh skill check` | ✅ | ⬜ pending |
+| 06-03-02 | 03 | 2 | ALL | manual | Telegram + Remotion UI verification | N/A | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 

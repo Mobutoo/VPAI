@@ -1,113 +1,122 @@
-# Plane — Operational Intelligence pour Agents IA
+# Content Factory — Pipeline de Creation de Contenu Automatise
 
 ## What This Is
 
-Une intégration de **Plane** (plateforme open-source de gestion de projet) comme hub opérationnel central pour la stack IA VPAI. Plane devient le cerveau visible de l'orchestration : les agents OpenClaw y détectent leurs tâches, y mettent à jour leur progression, et l'humain (via Concierge sur Telegram) y pilote projets et sprints. Remplace l'anti-pattern Kaneo + simplification majeure de l'architecture.
+Un pipeline automatise de creation de contenu pour les reseaux sociaux, pilote par Telegram (via OpenClaw) et suivi visuellement dans Kitsu (CGWire). Le systeme est multi-projet : le premier cas d'usage est la production de videos virales pour le lancement de **Paul Taff** (Flash Studio — plateforme IaaS, agents IA ton decale) sur Instagram.
 
-Déployé sur `work.ewutelo.cloud` (Sese-AI), intégré dans l'écosystème Ansible/Docker existant avec PostgreSQL et Redis partagés.
+Deploye sur l'ecosysteme VPAI existant : Kitsu + n8n + OpenClaw sur Sese-AI, ComfyUI + Remotion sur Waza, providers cloud (Fal.ai, Seedance, Seedream).
 
 ## Core Value
 
-**Le Concierge crée et orchestre les projets via Telegram → Plane, et les agents OpenClaw exécutent et synchronisent automatiquement leur progression.** Synchronisation bidirectionnelle : Plane détecte les nouvelles tâches, agents mettent à jour statuts/temps/livrables, notifications temps-réel vers Telegram.
+**Produire du contenu de qualite studio avec un workflow professionnel (14 etapes, 4 gates) pilotable depuis Telegram, avec invalidation ciblee par scene pour permettre les allers-retours creatifs sans tout reconstruire.**
+
+## Current Milestone: v2026.3 Content Factory
+
+**Goal:** Deployer l'infrastructure Content Factory (Kitsu, tables NocoDB, collection Qdrant, skill OpenClaw content-director, workflows n8n) et produire les premiers contenus pour Paul Taff.
+
+**Target features:**
+- Deploy Kitsu (CGWire) production tracking at `boss.ewutelo.cloud`
+- Integrate Fal.ai as multi-model provider in n8n creative workflows
+- Create NocoDB data model (brands, contents, scenes)
+- Configure Qdrant brand-voice semantic memory
+- Build OpenClaw content-director skill with Telegram topic 7 commands
+- Build n8n orchestration workflows (brief-to-concept, kitsu-sync)
+- Create Remotion Instagram compositions (motion-text, meme, feature-showcase, teaser)
+- Implement full production pipeline (storyboard, asset generation, rough cut, fine cut)
+- Enable editorial calendar in Plane
 
 ## Requirements
 
 ### Validated
 
-(None yet — ship to validate)
+- Plane deployed on `work.ewutelo.cloud` (operational, project Content Factory created)
+- NocoDB deployed on `hq.ewutelo.cloud` (operational)
+- Qdrant deployed on `qd.ewutelo.cloud` (operational, existing collections)
+- OpenClaw deployed with Telegram topic routing (operational)
+- n8n deployed with creative-pipeline and content-generate workflows (operational)
+- ComfyUI deployed on Waza (operational)
+- Remotion deployed on Waza (operational, HelloWorld only)
+- LiteLLM budget system with Telegram alerts (operational)
 
 ### Active
 
-- [ ] Plane déployé sur `work.ewutelo.cloud` via Docker Compose (Sese-AI)
-- [ ] PostgreSQL partagé (DB `plane_production`, utilisateur `plane`, schéma isolé)
-- [ ] Redis partagé (namespace `plane:*` pour éviter collisions)
-- [ ] Concierge = compte admin Plane (créé au provisioning)
-- [ ] Auth hybride : Email/password humain + API tokens agents
-- [ ] OpenClaw agents : détection bidirectionnelle tâches (polling API Plane)
-- [ ] Agents mettent à jour : statut, progression, temps passé, commentaires
-- [ ] Caddy reverse proxy : `work.ewutelo.cloud` → VPN-only (ACL standard)
-- [ ] Webhooks publics : endpoint `/webhooks/*` accessible sans VPN (pour n8n)
-- [ ] Notifications Telegram : via n8n (events Plane → webhook → Telegram)
-- [ ] Backup Zerobyte : DB Plane incluse dans dump PostgreSQL quotidien
-- [ ] Healthcheck Plane : endpoint `/api/health` (monitored via stack monitoring)
-- [ ] Provisioning initial : workspace, premier projet, API tokens agents
-- [ ] Documentation : guide OpenClaw skill `plane-bridge` (remplace `kaneo-bridge`)
+- [ ] Kitsu + Zou deployed at `boss.ewutelo.cloud` (Sese-AI)
+- [ ] Fal.ai integrated as provider in n8n + LiteLLM
+- [ ] NocoDB tables: brands, contents, scenes
+- [ ] Qdrant collection `brand-voice` with embedding pipeline
+- [ ] OpenClaw skill `content-director` with Telegram topic 7
+- [ ] Telegram commands: /content, /ok, /adjust, /back, /preview, /impact, /drop
+- [ ] Gate commands: /lock-preprod, /lock-script, /ok-rough, /ok-final, /published
+- [ ] n8n workflow `brief-to-concept` (pipeline steps 1-5)
+- [ ] n8n workflow `kitsu-sync` (upload previews, update statuses)
+- [ ] n8n workflow `script-to-storyboard` (steps 6-8)
+- [ ] n8n workflow `generate-assets` (multi-provider dispatch per scene)
+- [ ] n8n workflow `rough-cut` (Remotion assembly)
+- [ ] n8n workflow `invalidation-engine` (targeted scene invalidation)
+- [ ] Remotion compositions: reel-motion-text, reel-meme-skit, reel-feature-showcase, reel-teaser
+- [ ] Scene-level invalidation mechanics (modify step N, only downstream dependents invalidated)
+- [ ] Kitsu webhooks → n8n (task status, comments, previews)
+- [ ] Editorial calendar visible in Plane (contents = work items, drops = cycles)
+- [ ] Brand profile Paul Taff in NocoDB (Flash-Studio colors, sarcastic tone)
 
 ### Out of Scope
 
-- **Palais custom build** — Plane **devient** l'operational intelligence, pas un interim
-- **SSO/OAuth** — Email/password suffit (VPN-only, solo user)
-- **Mobile app Plane** — Web-only pour v1
-- **Multi-tenancy** — Un seul workspace (javisi)
-- **Custom Plane plugins** — Utiliser API REST standard uniquement
-- **PostgreSQL dédié** — Instance partagée obligatoire (contrainte infra)
-- **Real-time WebSocket UI** — Polling API suffit pour agents, SSE pour humain OK
-- **Plane self-hosted complex features** — Activer uniquement modules essentiels (issues, projects, cycles, modules)
+- **ElevenLabs voiceover** — Skip in Phase 1, defer to Phase 2+
+- **Instagram Graph API auto-publish** — Manual publish first (Phase 3)
+- **TikTok/LinkedIn/X/YouTube Shorts** — Instagram only for v1
+- **Analytics feedback loop** — No Instagram API metrics integration yet
+- **Ad spot pipeline** — Organic content first
+- **Multi-format adaptation (step 13)** — Phase 3
+- **Mobile app** — Telegram + Kitsu web UI only
 
 ## Context
 
-**Écosystème existant VPAI :**
-- Serveur **Sese-AI** (OVH VPS 8GB, production) déjà déployé avec 20+ services Docker
-- **OpenClaw** : 10 agents IA (Concierge, Imhotep, Thot, Basquiat, R2D2, Shuri, Piccolo, etc.)
-- **Concierge** : agent orchestrateur, interface Telegram avec l'humain
-- **PostgreSQL 18.1** : instance partagée (n8n, litellm, nocodb, openclaw déjà présents)
-- **Redis 8.0** : instance partagée (cache + queues)
-- **n8n** : orchestration workflows (notifications, automatisations)
-- **Caddy** : reverse proxy avec ACL VPN (Headscale mesh)
-- **Zerobyte** : backup quotidien PostgreSQL → serveur VPN distant
-- **Monitoring stack** : Grafana + VictoriaMetrics + Loki
+**PRD:** `docs/PRD-CONTENT-FACTORY.md` (672 lines, committed `4c7cbe2`)
 
-**Problème Kaneo actuel (REX) :**
-- 6 points de défaillance par requête (agent → Messenger → Kaneo API → BetterAuth → Redis → DB)
-- Auth cookie fragile (TTL 40min, regeneration aléatoire)
-- Pas de temps-réel (polling manuel)
-- API limitée (pas de budget, pas de mémoire, pas de confiance)
-- Outil PM humain détourné pour backend IA
+**Plane project:** Content Factory (`e0cb95f0-0ea5-41b8-a3e3-aec45e8cc37e`)
+- Phase 1 module: `c04ac29e-9842-4eec-8ff6-6923e9fe75d7` (Fondations, Mar 17-31)
+- Phase 2 module: `0ff668ce-cf0d-40a7-82bc-1e2de4a50fe3` (Production, Apr 1-14)
+- Phase 3 module: `2347a591-77ad-4c52-ba68-786100353dad` (Autonomie, Apr 15-30)
 
-**PRD Palais comme référence :**
-Le document `docs/PRD-PALAIS.md` décrit les workflows idéaux (agent cockpit, knowledge graph, mission launcher, budget tracking). Ces fonctionnalités seront **implémentées via l'API Plane** plutôt que via une plateforme custom :
-- Task management IA-natif → Issues Plane + custom fields (cost_estimate, confidence_score, agent_id)
-- Observabilité → Commentaires automatiques des agents sur progression
-- Knowledge Graph → Peut être ajouté plus tard (Qdrant séparé) ou rester dans TROUBLESHOOTING.md
-- Budget tracking → Custom fields Plane ou tableau n8n séparé
-- Mission Launcher → Workflow Concierge via Telegram → création projet/tâches Plane
+**Architecture:**
+- Kitsu = production tracking board (vue globale, annotations, previews)
+- n8n = orchestrateur central (workflows, dispatch providers, sync)
+- OpenClaw = cerveau creatif (skill content-director, raisonnement, Telegram)
+- Providers = ComfyUI/Remotion (local Waza, gratuit) + Fal.ai/Seedance/Seedream (cloud, payant)
 
-**Flux typique attendu :**
-1. Humain discute avec Concierge via Telegram : "Je veux ajouter feature X"
-2. Concierge analyse, pose questions, confirme scope
-3. Concierge crée projet Plane + issues + assigne agents OpenClaw
-4. Agents OpenClaw (polling API Plane toutes les 5min) détectent nouvelles tâches
-5. Agents exécutent, commentent progression dans Plane
-6. Plane webhook → n8n → Telegram (notifications à l'humain)
-7. Humain consulte Plane UI ou demande status via Telegram
-8. Projet complété → Concierge résume via Telegram
+**Brand:** Paul Taff — Flash Studio IaaS platform with sarcastic AI agents
+- Colors: Flash-Studio palette (TBD precise values)
+- Tone: Decale, sarcastique, audacieux
+- Target: Dev/founders 25-40, early adopters
+- Platform: Instagram (Reels, Stories, Carousels)
+
+**Provider keys:**
+- Fal.ai: added to vault as `vault_fal_ai_api_key`
+- Telegram topic: 7 (content-director)
+- Kitsu subdomain: `boss.ewutelo.cloud`
 
 ## Constraints
 
-- **Tech stack** : Docker Compose uniquement (pattern VPAI), pas de Kubernetes
-- **PostgreSQL** : Instance partagée obligatoire (pas de DB dédiée), schéma isolé `plane.*`
-- **Redis** : Instance partagée, namespace `plane:*` pour éviter conflits
-- **Serveur** : Sese-AI uniquement (pas de multi-node)
-- **Réseau** : VPN-only via Caddy (sauf webhooks publics `/webhooks/*`)
-- **Backup** : Intégré dans Zerobyte existant (dump PostgreSQL quotidien)
-- **Versions** : Images Docker pinnées dans `inventory/group_vars/all/versions.yml`
-- **Limites ressources** : Max 512MB RAM, 0.5 CPU (contrainte VPS 8GB partagé)
-- **Healthcheck** : Obligatoire pour monitoring stack (Grafana alerting)
-- **Logs** : Rotation 10MB/3 fichiers (daemon.json Docker)
-- **Timeline** : Déploiement v1 sous 2 semaines (constraint budget IA, besoin opérationnel urgent)
+- **Tech stack**: Ansible + Docker Compose (pattern VPAI), all on Sese-AI + Waza
+- **Memory**: Kitsu + Zou < 500MB RAM (VPS 8GB shared with 20+ services)
+- **Budget**: $5/day LiteLLM hard cap for LLM; Fal.ai separate budget
+- **PostgreSQL**: Shared instance, new DB `kitsu_production` for Zou
+- **Network**: VPN-only for Kitsu UI (Caddy ACL standard)
+- **Versions**: All Docker images pinned in versions.yml
+- **Local providers first**: ComfyUI + Remotion (free) before cloud providers (paid)
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| **Plane au lieu de Palais custom** | Mature, API riche, communauté active, pas besoin de réécrire tout de zéro. PRD Palais = cahier des charges, implémentation via Plane API. | — Pending (validation post-déploiement) |
-| **PostgreSQL partagé** | Simplification infra, backup unifié, pas de surcharge mémoire VPS 8GB. Isolation via schéma `plane.*`. | — Pending |
-| **Redis partagé + namespace** | Plane nécessite Redis pour queues. Partager l'instance existante avec namespace évite second container. | — Pending |
-| **Auth hybride (email + API tokens)** | Humain = email/password Plane natif. Agents = API tokens (pas de cookies fragiles comme Kaneo). | — Pending |
-| **Bidirectional sync agents** | Agents détectent ET mettent à jour (vs push-only). Nécessaire pour workflows complexes (sprints, dépendances). | — Pending |
-| **VPN-only + webhooks publics** | UI Plane = VPN sécurisé. Webhooks `/webhooks/*` publics pour n8n (authentifiés par secret). Pattern standard VPAI. | — Pending |
-| **Concierge = orchestrateur** | Un seul agent responsable création projets/tâches. Évite chaos multi-agents créant tasks en parallèle. | — Pending |
-| **Zerobyte backup** | Données critiques (projets, tasks, progression agents). Dump PostgreSQL quotidien suffit. | — Pending |
+| **Kitsu (CGWire) as production tracker** | Open-source (AGPL v3), designed for animation/VFX production, REST API, webhooks, Vue.js UI. Maps perfectly to content pipeline. | — Pending |
+| **Kitsu on Sese-AI (not Waza)** | Needs to be accessible via VPN from anywhere, close to PostgreSQL/n8n/OpenClaw. Waza is local-only. | — Pending |
+| **NocoDB as source of truth (not Kitsu)** | Kitsu = tracking/preview board. NocoDB = CRUD, calendar, structured data. Avoids Kitsu lock-in. | — Pending |
+| **Dual storage NocoDB + Qdrant** | NocoDB for CRUD/status, Qdrant for semantic search/brand-voice memory. Each does what it does best. | — Pending |
+| **Scene-level invalidation** | Modify step N → only downstream dependents invalidated, not full rebuild. Critical for creative iteration. | — Pending |
+| **Telegram as primary pilot** | Mobile-friendly, instant, integrated with OpenClaw. Kitsu for detailed review only. | — Pending |
+| **Skip ElevenLabs Phase 1** | User request. Voiceover via Fal.ai TTS or text-only content first. | — Pending |
+| **Fal.ai for multi-model access** | Single API key gives access to Kling, Minimax, HunyuanVideo, Flux. Complements local providers. | — Pending |
 
 ---
-*Last updated: 2026-02-28 after initialization*
+*Last updated: 2026-03-17 after Content Factory milestone start*

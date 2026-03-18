@@ -4,12 +4,12 @@
 - name: Wait for Kitsu container to be healthy
   ansible.builtin.command:
     cmd: >-
-      docker inspect --format={{ '{{' }}.State.Health.Status{{ '}}' }}
-      {{ kitsu_container_name }}
+      docker exec {{ kitsu_container_name }}
+      python3 -c "import urllib.request; urllib.request.urlopen('http://localhost/api/')"
   register: kitsu_health
   retries: "{{ kitsu_health_retries }}"
   delay: "{{ kitsu_health_delay }}"
-  until: kitsu_health.stdout | default('') == 'healthy'
+  until: kitsu_health.rc == 0
   changed_when: false
   become: true
   when: not (common_molecule_mode | default(false))

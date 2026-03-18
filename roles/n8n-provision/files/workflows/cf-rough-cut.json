@@ -57,7 +57,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Store rough cut URL in NocoDB and advance pipeline step\nconst { content_id, content, composition, render_id, rough_cut_url } = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url:    'http://localhost:5678/webhook/cf-update-content',\n    body:   {\n      secret:       expectedSecret,\n      content_id,\n      rough_cut_url,\n      current_step: 10,\n      status:       'awaiting_validation'\n    },\n    json: true\n  });\n} catch (err) {\n  // Log but continue — storage failure should not block Kitsu sync\n  console.error(`Failed to store rough cut URL: ${err.message}`);\n}\n\nreturn [{ json: { content_id, content, composition, render_id, rough_cut_url } }];"
+        "jsCode": "// Store rough cut URL in NocoDB and advance pipeline step\nconst { content_id, content, composition, render_id, rough_cut_url } = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url:    'http://localhost:5678/webhook/cf-update-content',\n    body:   {\n      secret:       expectedSecret,\n      action:       'update_content',\n      content_id,\n      rough_cut_url,\n      current_step: 10,\n      status:       'awaiting_validation'\n    },\n    json: true\n  });\n} catch (err) {\n  // Log but continue — storage failure should not block Kitsu sync\n  console.error(`Failed to store rough cut URL: ${err.message}`);\n}\n\nreturn [{ json: { content_id, content, composition, render_id, rough_cut_url } }];"
       },
       "id": "cfrc-0001-0000-0000-0000-000000000006",
       "name": "Store Rough Cut URL",

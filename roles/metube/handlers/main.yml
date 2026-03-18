@@ -3,7 +3,7 @@
 
 - name: Restart metube
   community.docker.docker_compose_v2:
-    project_src: "/opt/workstation/comfyui"
+    project_src: "/opt/workstation"
     files:
       - docker-compose-creative.yml
     services:

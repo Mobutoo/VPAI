@@ -63,7 +63,7 @@ grocy_image: "lscr.io/linuxserver/grocy:4.6.0"
 koodia_image: "ghcr.io/mobutoo/koodia:v0.1.0"
 
 # --- MeTube (video downloader — Workstation Pi) ---
-metube_image: "alexta69/metube:2025-01-31"
+metube_image: "alexta69/metube:2026.03.14"
 
 # --- VideoRef Engine (video analysis pipeline — Workstation Pi) ---
 videoref_image: "ghcr.io/mobutoo/videoref-engine:v0.1.0"

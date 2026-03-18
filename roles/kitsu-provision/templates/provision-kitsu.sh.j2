@@ -10,6 +10,14 @@ ADMIN_EMAIL="{{ kitsu_admin_email }}"
 ADMIN_PASSWORD="{{ kitsu_admin_password }}"
 SENTINEL="{{ kitsu_provision_config_dir }}/.provision-complete"
 
+# === Bot account (idempotent — zou create-admin warns if exists) ===
+echo "[$(date)] Creating bot account..."
+docker exec "${CONTAINER}" /opt/zou/env/bin/zou create-admin \
+  "{{ vault_kitsu_bot_email }}" --password "{{ vault_kitsu_bot_password }}" 2>&1 || {
+  echo "[$(date)] WARNING: Bot account creation failed (may already exist)"
+}
+echo "[$(date)] Bot account ready."
+
 if [ -f "$SENTINEL" ]; then
   echo "Kitsu already provisioned (sentinel exists). Skipping."
   exit 0

@@ -7,6 +7,9 @@
 videoref_install_dir: "/opt/workstation/videoref-engine"
 videoref_data_dir: "/opt/workstation/data/videoref-engine"
 
+# Version (local build tag)
+videoref_version: "v0.1.0"
+
 # Ports
 videoref_port: 8082
 

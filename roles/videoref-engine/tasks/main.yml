@@ -24,6 +24,26 @@
     - "{{ videoref_output_dir }}"
   become: true
 
+- name: "Videoref-engine | Copy Dockerfile"
+  ansible.builtin.copy:
+    src: Dockerfile
+    dest: "{{ videoref_install_dir }}/Dockerfile"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart videoref-engine
+
+- name: "Videoref-engine | Copy application"
+  ansible.builtin.copy:
+    src: app.py
+    dest: "{{ videoref_install_dir }}/app.py"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart videoref-engine
+
 - name: "Videoref-engine | Deploy env file"
   ansible.builtin.template:
     src: videoref.env.j2

@@ -130,7 +130,10 @@ services:
 
 {% if videoref_image | default('') | length > 0 %}
   videoref-engine:
-    image: {{ videoref_image }}
+    image: videoref-engine-local:{{ videoref_version | default('v0.1.0') }}
+    build:
+      context: {{ videoref_install_dir }}
+      dockerfile: Dockerfile
     container_name: workstation_videoref
     restart: unless-stopped
     security_opt:

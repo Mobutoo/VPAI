@@ -3,34 +3,34 @@ gsd_state_version: 1.0
 milestone: v2026.3
 milestone_name: Content Factory
 status: planning
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-03-17T23:35:09.773Z"
+stopped_at: Completed 09-01-PLAN.md
+last_updated: "2026-03-18T00:15:14.972Z"
 last_activity: 2026-03-17 — Phase 6 complete, Plane synced
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
-  percent: 83
+  total_plans: 15
+  completed_plans: 14
+  percent: 93
 ---
 
 # Project State
 
 ## Current Position
 
-Phase: 7 of 7 (Orchestration) — PLANNING
-Plan: 0 of ? in current phase
-Status: Starting Phase 7 planning
-Last activity: 2026-03-17 — Phase 6 complete, Plane synced
+Phase: 9 of 9 (Integration Fixes) — IN PROGRESS
+Plan: 1 of 2 in current phase
+Status: Plan 09-01 complete, ready for 09-02
+Last activity: 2026-03-18 — Plan 09-01 complete (template/workflow/vault fixes)
 
-Progress: [████████░░] 83% (overall)
+Progress: [█████████░] 93% (overall)
 
 ## Project Reference
 
 See: .planning/PROJECT.md (updated 2026-03-17)
 
 **Core value:** Produire du contenu de qualite studio avec un workflow professionnel (14 etapes, 4 gates) pilotable depuis Telegram, avec invalidation ciblee par scene.
-**Current focus:** Phase 7 — Orchestration (n8n workflows, Kitsu webhooks, editorial calendar)
+**Current focus:** Phase 9 — Integration Fixes (cross-phase template/workflow fixes, deploy, E2E verification)
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 | Phase 07-orchestration P05 | 6min | 2 tasks | 2 files |
 | Phase 08 P01 | 4min | 3 tasks | 6 files |
 | Phase 08 P02 | 4min | 2 tasks | 1 files |
+| Phase 09 P01 | 6min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -104,6 +105,8 @@ See: .planning/PROJECT.md (updated 2026-03-17)
 - [Phase 08]: NocoDB table ID resolution uses env vars with meta API fallback for resilience
 - [Phase 08]: cf-scene extracts route_action before scene fields to avoid Pitfall 2 field name collision
 - [Phase 08]: DATA-06 verified via n8n workflow count (sentinel file not present but Kitsu provisioning confirmed through different path)
+- [Phase 09]: Vault kitsu_admin_email set to seko.mobutoo@gmail.com to match actual Zou admin
+- [Phase 09]: REMOTION_API_KEY env var bridges vault_remotion_api_token to workflow env reference
 
 ### Kitsu IDs (downstream reference)
 
@@ -127,6 +130,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-17T23:28:07.053Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-03-18T00:15:14.966Z
+Stopped at: Completed 09-01-PLAN.md
 Resume file: None

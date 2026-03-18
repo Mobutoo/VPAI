@@ -40,7 +40,7 @@
 - [x] **Phase 6: Building Blocks** - OpenClaw content-director skill with all Telegram commands + Remotion Instagram compositions (completed 2026-03-17)
 - [x] **Phase 7: Orchestration** - n8n production workflows, Kitsu webhook integration, Plane editorial calendar (completed 2026-03-17)
 - [ ] **Phase 8: Data Layer Glue** - 4 NocoDB CRUD webhooks + Kitsu project structure provisioning (gap closure)
-- [ ] **Phase 9: Integration Fixes** - Ansible variable fix, Remotion API mismatches, env vars, tech debt (gap closure)
+- [x] **Phase 9: Integration Fixes** - Ansible variable fix, Remotion API mismatches, env vars, tech debt (gap closure) (completed 2026-03-18)
 
 ## Phase Details
 
@@ -144,4 +144,4 @@ Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
 | 6. Building Blocks | 3/3 | Complete | 2026-03-17 | - |
 | 7. Orchestration | 5/5 | Complete | 2026-03-17 | - |
 | 8. Data Layer Glue | 1/2 | In Progress|  | - |
-| 9. Integration Fixes | 1/2 | In Progress|  | - |
+| 9. Integration Fixes | 2/2 | Complete   | 2026-03-18 | - |

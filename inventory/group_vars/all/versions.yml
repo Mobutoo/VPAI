@@ -43,6 +43,9 @@ socket_proxy_image: "tecnativa/docker-socket-proxy:v0.4.2"
 # --- Obsidian Sync ---
 couchdb_image: "apache/couchdb:3.3.3"
 
+# --- Kitsu (animation/VFX production tracker) ---
+kitsu_image: "cgwire/cgwire:1.0.17"
+
 # --- Tunnel / VPN-only ---
 # cloudflared: RETIRÉ — remplacé par webhook relay via Seko-VPN (role webhook-relay)
 # Les webhooks Meta passent maintenant par hook.<domain> (Seko-VPN) -> VPN mesh -> VPS
@@ -58,6 +61,12 @@ zimboo_image: "ghcr.io/mobutoo/zimboo:v1.14.0"
 mealie_image: "ghcr.io/mealie-recipes/mealie:v3.12.0"
 grocy_image: "lscr.io/linuxserver/grocy:4.6.0"
 koodia_image: "ghcr.io/mobutoo/koodia:v0.1.0"
+
+# --- MeTube (video downloader — Workstation Pi) ---
+metube_image: "alexta69/metube:2025-01-31"
+
+# --- VideoRef Engine (video analysis pipeline — Workstation Pi) ---
+videoref_image: "ghcr.io/mobutoo/videoref-engine:v0.1.0"
 
 # --- Workstation Pi (natif — pas Docker) ---
 # Caddy : binaire custom build via xcaddy (module dns.providers.ovh)

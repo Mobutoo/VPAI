@@ -1,0 +1,16 @@
+---
+- name: Verify metube role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check MeTube env file exists
+      ansible.builtin.stat:
+        path: /opt/workstation/metube/metube.env
+      register: metube_env
+      failed_when: not metube_env.stat.exists
+
+    - name: Check downloads directory exists
+      ansible.builtin.stat:
+        path: /opt/workstation/data/metube/downloads
+      register: metube_downloads
+      failed_when: not metube_downloads.stat.exists

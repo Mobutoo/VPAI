@@ -1,0 +1,13 @@
+---
+# videoref-engine — handlers
+
+- name: Restart videoref-engine
+  community.docker.docker_compose_v2:
+    project_src: "/opt/workstation/comfyui"
+    files:
+      - docker-compose-creative.yml
+    services:
+      - videoref-engine
+    state: present
+    recreate: always
+  become: true

@@ -1,0 +1,35 @@
+---
+# videoref-engine — tasks
+# Prepare directories and env file for VideoRef Engine container
+# Container itself lives in docker-compose-creative.yml.j2 (comfyui role)
+
+- name: "Videoref-engine | Create install directory"
+  ansible.builtin.file:
+    path: "{{ videoref_install_dir }}"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  become: true
+
+- name: "Videoref-engine | Create data directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  loop:
+    - "{{ videoref_data_dir }}"
+    - "{{ videoref_output_dir }}"
+  become: true
+
+- name: "Videoref-engine | Deploy env file"
+  ansible.builtin.template:
+    src: videoref.env.j2
+    dest: "{{ videoref_install_dir }}/videoref.env"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart videoref-engine

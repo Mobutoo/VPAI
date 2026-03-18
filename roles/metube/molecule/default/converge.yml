@@ -1,0 +1,17 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    workstation_pi_user: molecule
+    domain_name: molecule.example.com
+    metube_subdomain: tube
+    metube_webhook_url: ""
+    vault_metube_webhook_url: ""
+  pre_tasks:
+    - name: Create molecule test user
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
+  roles:
+    - role: metube

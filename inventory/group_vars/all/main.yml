@@ -178,6 +178,9 @@ qdrant_rag_collection: "content_index"
 qdrant_embedding_model: "text-embedding-3-small"
 qdrant_embedding_dimensions: 1536
 
+# Qdrant collection — video reference styles (VideoRef Engine)
+qdrant_videoref_collection: "videoref_styles"
+
 # --- LiteLLM budget caps (USD per day) ---
 # Budget global cross-providers (hard cap absolu)
 litellm_budget_global_daily: 5.00
@@ -251,6 +254,12 @@ n8n_provision_webhook: "webhook-provision"
 firefly_subdomain: "lola"
 zimboo_subdomain: "zimboo"
 
+# === KITSU (animation/VFX production tracker) ===
+kitsu_subdomain: "boss"               # → boss.<domain> (VPN-only)
+kitsu_memory_limit: "1G"
+kitsu_memory_reservation: "512M"
+kitsu_cpu_limit: "1.0"
+
 # === FOOD & STOCK (Koodia) ===
 mealie_subdomain: "miam"
 grocy_subdomain: "garde"
@@ -278,6 +287,11 @@ kitsu_subdomain: "boss"
 comfyui_subdomain: "studio"
 remotion_subdomain: "re"
 opencut_subdomain: "cut"
+openpencil_subdomain: "pencil"
+
+# MeTube + VideoRef Engine (workstation Pi)
+metube_subdomain: "tube"
+videoref_subdomain: "cine"
 
 # --- Prod Apps (Hetzner CX22) ---
 app_prod_hostname: "app-prod-01"
@@ -297,9 +311,10 @@ couchdb_memory_limit: "512M"
 obsidian_git_repo: "git@github-seko:Mobutoo/obsidian-vault.git"
 # Limite de messages parsés par session .jsonl → note Obsidian
 obsidian_collector_max_session_messages: 20
-# SECURITY: CouchDB VPN-only — protège contre brute-force et vulns CouchDB
-# Obsidian sync iOS nécessite Tailscale/WireGuard installé sur le device
-couchdb_vpn_enforce: true
+# SECURITY: CouchDB public (auth CouchDB natif user/password)
+# REX 2026-03-17: VPN-only bloquait iOS quand Tailscale se déconnecte (batterie/sleep).
+# CouchDB a son propre système d'auth → public HTTPS + auth native = suffisant.
+couchdb_vpn_enforce: false
 
 # === n8n-MCP Documentation Server (RPi, Docker HTTP/SSE) ===
 # Docs-only mode : SQLite embarqué, zéro requête web, zéro N8N_API_URL

@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: metube
+  author: VPAI
+  namespace: mobutoo
+  description: MeTube video downloader (yt-dlp web UI) on Workstation Pi
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+
+dependencies: []

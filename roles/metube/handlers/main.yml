@@ -1,0 +1,13 @@
+---
+# metube — handlers
+
+- name: Restart metube
+  community.docker.docker_compose_v2:
+    project_src: "/opt/workstation/comfyui"
+    files:
+      - docker-compose-creative.yml
+    services:
+      - metube
+    state: present
+    recreate: always
+  become: true

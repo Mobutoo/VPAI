@@ -16,6 +16,10 @@ services:
       - CHOWN
       - SETGID
       - SETUID
+{% if comfyui_fal_key | default('') | length > 0 %}
+    environment:
+      FAL_KEY: "{{ comfyui_fal_key }}"
+{% endif %}
     volumes:
       - {{ comfyui_data_dir }}/models:/app/models
       - {{ comfyui_data_dir }}/output:/app/output
@@ -78,6 +82,84 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+{% endif %}
+
+{% if metube_image | default('') | length > 0 %}
+  metube:
+    image: {{ metube_image }}
+    container_name: workstation_metube
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    env_file:
+      - {{ metube_install_dir }}/metube.env
+    volumes:
+      - {{ metube_download_dir }}:/downloads
+      - {{ creative_assets_dir }}:/app/creative-assets
+    ports:
+      - "127.0.0.1:{{ metube_port }}:8081"
+    networks:
+      - creative
+    deploy:
+      resources:
+        limits:
+          memory: {{ metube_memory_limit }}
+          cpus: "{{ metube_cpu_limit }}"
+        reservations:
+          memory: {{ metube_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+{% endif %}
+
+{% if videoref_image | default('') | length > 0 %}
+  videoref-engine:
+    image: {{ videoref_image }}
+    container_name: workstation_videoref
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    env_file:
+      - {{ videoref_install_dir }}/videoref.env
+    volumes:
+      - {{ videoref_watch_dir }}:/watch:ro
+      - {{ videoref_output_dir }}:/analyzed
+      - {{ videoref_comfyui_workflows_dir }}:/comfyui-workflows
+      - {{ creative_assets_dir }}:/app/creative-assets
+    ports:
+      - "127.0.0.1:{{ videoref_port }}:8082"
+    networks:
+      - creative
+    deploy:
+      resources:
+        limits:
+          memory: {{ videoref_memory_limit }}
+          cpus: "{{ videoref_cpu_limit }}"
+        reservations:
+          memory: {{ videoref_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 {% endif %}
 
 networks:

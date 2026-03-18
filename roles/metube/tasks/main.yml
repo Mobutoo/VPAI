@@ -1,0 +1,35 @@
+---
+# metube — tasks
+# Prepare directories and env file for MeTube container
+# Container itself lives in docker-compose-creative.yml.j2 (comfyui role)
+
+- name: "Metube | Create install directory"
+  ansible.builtin.file:
+    path: "{{ metube_install_dir }}"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  become: true
+
+- name: "Metube | Create data directories"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  loop:
+    - "{{ metube_data_dir }}"
+    - "{{ metube_download_dir }}"
+  become: true
+
+- name: "Metube | Deploy env file"
+  ansible.builtin.template:
+    src: metube.env.j2
+    dest: "{{ metube_install_dir }}/metube.env"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart metube

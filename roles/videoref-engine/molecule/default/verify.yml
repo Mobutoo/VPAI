@@ -1,0 +1,16 @@
+---
+- name: Verify videoref-engine role
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check VideoRef env file exists
+      ansible.builtin.stat:
+        path: /opt/workstation/videoref-engine/videoref.env
+      register: videoref_env
+      failed_when: not videoref_env.stat.exists
+
+    - name: Check analyzed output directory exists
+      ansible.builtin.stat:
+        path: /opt/workstation/data/videoref-engine/analyzed
+      register: videoref_analyzed
+      failed_when: not videoref_analyzed.stat.exists

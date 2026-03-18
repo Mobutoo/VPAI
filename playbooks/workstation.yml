@@ -10,6 +10,9 @@
 #   ansible-playbook playbooks/workstation.yml --tags "comfyui"
 #   ansible-playbook playbooks/workstation.yml --tags "remotion"
 #   ansible-playbook playbooks/workstation.yml --tags "opencut"
+#   ansible-playbook playbooks/workstation.yml --tags "openpencil"
+#   ansible-playbook playbooks/workstation.yml --tags "metube"
+#   ansible-playbook playbooks/workstation.yml --tags "videoref-engine"
 #   ansible-playbook playbooks/workstation.yml --tags "workstation-caddy"
 #
 # Prerequis :
@@ -83,6 +86,15 @@
 
     - role: opencut
       tags: [opencut]
+
+    - role: openpencil
+      tags: [openpencil]
+
+    - role: metube
+      tags: [metube]
+
+    - role: videoref-engine
+      tags: [videoref-engine]
 
     - role: workstation-caddy
       tags: [workstation-caddy]

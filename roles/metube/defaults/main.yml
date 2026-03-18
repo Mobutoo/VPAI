@@ -1,0 +1,31 @@
+---
+# metube — defaults
+# MeTube: self-hosted web UI for yt-dlp (video downloader)
+# Deployed as Docker container on Workstation Pi (ARM64)
+
+metube_install_dir: "/opt/workstation/metube"
+metube_data_dir: "/opt/workstation/data/metube"
+
+# Ports
+metube_port: 8081
+
+# Docker resource limits (RPi 5 16GB — lightweight service)
+metube_memory_limit: "512M"
+metube_memory_reservation: "128M"
+metube_cpu_limit: "1.0"
+
+# Subdomain (VPN-only via workstation Caddy)
+metube_subdomain: "tube"
+
+# Download directory (shared with videoref-engine)
+metube_download_dir: "/opt/workstation/data/metube/downloads"
+
+# yt-dlp output template
+metube_output_template: "%(title)s.%(ext)s"
+
+# Max video quality (height in pixels)
+metube_max_quality: "1080"
+
+# Webhook → n8n sur VPS via mesh VPN (notification quand download termine)
+# Double mode : webhook n8n + inotify filesystem local (videoref-engine)
+metube_webhook_url: "{{ vault_metube_webhook_url | default('') }}"

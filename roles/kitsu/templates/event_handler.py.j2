@@ -8,7 +8,7 @@ import json
 import urllib.request
 
 N8N_WEBHOOK_URL = "http://{{ project_name }}_n8n:5678/webhook/cf-kitsu-inbound"
-WEBHOOK_SECRET = "{{ n8n_webhook_hmac_secret }}"
+WEBHOOK_SECRET = "{{ n8n_webhook_secret }}"
 
 
 def handle_event(data):

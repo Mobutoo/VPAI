@@ -46,6 +46,21 @@ comfyui_custom_nodes:
   - name: "ComfyUI-Impact-Pack"
     repo: "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git"
     pip_deps: ["segment-anything", "ultralytics"]
+  # --- Gap 1: Soul Cast (character consistency across shots) ---
+  # FaceID for persistent character identity + InstantID for face-driven generation
+  - name: "ComfyUI-InstantID"
+    repo: "https://github.com/cubiq/ComfyUI_InstantID.git"
+    pip_deps: ["onnxruntime"]
+  # --- Gap 2: 3D scene control (depth-aware generation) ---
+  # Depth estimation (MiDaS/DPT) + 3D-aware generation
+  - name: "comfyui-art-venture"
+    repo: "https://github.com/sipherxyz/comfyui-art-venture.git"
+    pip_deps: ["timm"]
+  # --- Gap 3: Optical physics (depth of field, bokeh, lens effects) ---
+  # Advanced ControlNet preprocessors: depth, normal, canny, openpose
+  - name: "comfyui_controlnet_aux"
+    repo: "https://github.com/Fannovel16/comfyui_controlnet_aux.git"
+    pip_deps: ["mediapipe", "depth-anything-v2"]
 
 # fal.ai API key (from vault — used by fal-API and fal-Connector nodes)
 comfyui_fal_key: "{{ vault_comfyui_fal_key | default('') }}"

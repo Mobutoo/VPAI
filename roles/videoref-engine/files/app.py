@@ -2873,29 +2873,27 @@ async def _ocr_frames(
     if not frames:
         return []
 
-    # OCR each frame with Surya OCR (state-of-the-art, 90+ languages)
+    # OCR: EasyOCR local fallback (PaddleOCR segfaults ARM64, Surya needs PyTorch)
+    # Claude Vision is used separately in _extract_instructions for best quality
     results = []
     try:
-        from surya.recognition import RecognitionPredictor
-        from surya.detection import DetectionPredictor
-        from PIL import Image as PILImage
+        import easyocr
 
-        det_predictor = DetectionPredictor()
-        rec_predictor = RecognitionPredictor()
+        reader = easyocr.Reader(["en", "fr"], gpu=False, verbose=False)
 
         for i, frame in enumerate(frames):
             timestamp_sec = i * fps_extract
-            img = PILImage.open(frame)
-            predictions = rec_predictor([img], [["en", "fr"]], det_predictor)
+            detections = reader.readtext(str(frame))
 
             texts = []
-            if predictions and predictions[0].text_lines:
-                for line in predictions[0].text_lines:
-                    if line.confidence > 0.3:
-                        texts.append({
-                            "text": line.text,
-                            "confidence": round(line.confidence, 3),
-                        })
+            for det in detections:
+                text = det[1]
+                confidence = det[2]
+                if confidence > 0.3 and text.strip():
+                    texts.append({
+                        "text": text.strip(),
+                        "confidence": round(float(confidence), 3),
+                    })
 
             if texts:
                 results.append({
@@ -2904,7 +2902,9 @@ async def _ocr_frames(
                     "texts": texts,
                 })
     except ImportError:
-        results = [{"error": "surya-ocr not installed, falling back skipped"}]
+        results = [{"error": "easyocr not installed"}]
+    except Exception as exc:
+        results = [{"error": f"OCR error: {exc}"}]
     finally:
         # Cleanup
         for f in tmpdir.iterdir():
@@ -2923,8 +2923,9 @@ async def _extract_instructions(
 
     full_text = transcript.get("full_text", "")[:3000]
     ocr_text = "\n".join(
-        f"[{r['timestamp']}] {' | '.join(t['text'] for t in r['texts'])}"
+        f"[{r['timestamp']}] {' | '.join(t['text'] for t in r.get('texts', []))}"
         for r in ocr_results[:15]
+        if "timestamp" in r
     )[:2000]
 
     prompt = (

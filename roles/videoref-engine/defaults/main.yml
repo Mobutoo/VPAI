@@ -13,10 +13,10 @@ videoref_version: "v0.2.0"
 # Ports
 videoref_port: 8082
 
-# Docker resource limits (RPi 5 16GB — heavy during ffmpeg/opencv processing)
-videoref_memory_limit: "1536M"
-videoref_memory_reservation: "512M"
-videoref_cpu_limit: "2.0"
+# Docker resource limits (RPi 5 16GB — EasyOCR/Surya + PyTorch need ~2.5GB)
+videoref_memory_limit: "3072M"
+videoref_memory_reservation: "1024M"
+videoref_cpu_limit: "3.0"
 
 # Subdomain (VPN-only via workstation Caddy)
 videoref_subdomain: "cine"

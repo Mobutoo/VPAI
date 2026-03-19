@@ -3295,38 +3295,64 @@ async def _ocr_frames(
     if not frames:
         return []
 
-    # OCR: EasyOCR local fallback (PaddleOCR segfaults ARM64, Surya needs PyTorch)
-    # Claude Vision is used separately in _extract_instructions for best quality
+    # OCR via Claude Vision (best quality, no local deps, no PyTorch bloat)
     results = []
-    try:
-        import easyocr
+    if LITELLM_URL and LITELLM_API_KEY:
+        try:
+            async with aiohttp.ClientSession() as session:
+                for i, frame in enumerate(frames):
+                    timestamp_sec = i * fps_extract
+                    b64 = base64.b64encode(frame.read_bytes()).decode()
 
-        reader = easyocr.Reader(["en", "fr"], gpu=False, verbose=False)
+                    payload = {
+                        "model": "claude-sonnet-4-20250514",
+                        "messages": [{
+                            "role": "user",
+                            "content": [
+                                {"type": "image_url",
+                                 "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
+                                {"type": "text",
+                                 "text": "Extract ALL visible text from this image. "
+                                         "Return JSON: {\"texts\": [{\"text\": \"...\", \"type\": \"title|code|ui|subtitle|other\"}]}. "
+                                         "If no text visible, return {\"texts\": []}."},
+                            ],
+                        }],
+                        "max_tokens": 512,
+                    }
 
-        for i, frame in enumerate(frames):
-            timestamp_sec = i * fps_extract
-            detections = reader.readtext(str(frame))
+                    async with session.post(
+                        f"{LITELLM_URL}/v1/chat/completions",
+                        json=payload,
+                        headers={"Authorization": f"Bearer {LITELLM_API_KEY}",
+                                 "Content-Type": "application/json"},
+                        timeout=aiohttp.ClientTimeout(total=30),
+                    ) as resp:
+                        if resp.status != 200:
+                            continue
+                        data = await resp.json()
+                        content = data["choices"][0]["message"]["content"]
+                        try:
+                            start = content.index("{")
+                            end = content.rindex("}") + 1
+                            parsed = json.loads(content[start:end])
+                            texts = [
+                                {"text": t["text"], "confidence": 0.95,
+                                 "type": t.get("type", "other")}
+                                for t in parsed.get("texts", []) if t.get("text")
+                            ]
+                        except (ValueError, json.JSONDecodeError):
+                            texts = [{"text": content.strip(), "confidence": 0.8}] if content.strip() else []
 
-            texts = []
-            for det in detections:
-                text = det[1]
-                confidence = det[2]
-                if confidence > 0.3 and text.strip():
-                    texts.append({
-                        "text": text.strip(),
-                        "confidence": round(float(confidence), 3),
-                    })
-
-            if texts:
-                results.append({
-                    "timestamp": f"{timestamp_sec // 60:02d}:{timestamp_sec % 60:02d}",
-                    "timestamp_sec": timestamp_sec,
-                    "texts": texts,
-                })
-    except ImportError:
-        results = [{"error": "easyocr not installed"}]
-    except Exception as exc:
-        results = [{"error": f"OCR error: {exc}"}]
+                    if texts:
+                        results.append({
+                            "timestamp": f"{timestamp_sec // 60:02d}:{timestamp_sec % 60:02d}",
+                            "timestamp_sec": timestamp_sec,
+                            "texts": texts,
+                        })
+        except Exception as exc:
+            results = [{"error": f"Vision OCR error: {exc}"}]
+    else:
+        results = [{"error": "LiteLLM not configured for Vision OCR"}]
     finally:
         # Cleanup
         for f in tmpdir.iterdir():

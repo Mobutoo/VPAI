@@ -8,13 +8,10 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Python deps + EasyOCR fallback (PaddleOCR segfaults on ARM64, Surya needs PyTorch)
-# Primary OCR: Claude Vision via LiteLLM (best quality, no local deps)
-# Fallback OCR: EasyOCR (works on ARM64 CPU, multi-language)
+# Python deps (OCR = Claude Vision via LiteLLM, no local OCR lib needed)
 RUN pip install --no-cache-dir \
     aiohttp watchfiles Pillow numpy \
-    kokoro>=0.9 soundfile \
-    easyocr
+    kokoro>=0.9 soundfile
 
 # whisper.cpp — build from source (repo moved to ggml-org, binary is now whisper-cli)
 RUN git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git /opt/whisper.cpp && \

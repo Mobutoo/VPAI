@@ -1,0 +1,256 @@
+---
+name: studio-produce
+description: Orchestrate the 14-step cinema production pipeline via vref CLI — from brief to publication.
+metadata: { "openclaw": { "emoji": "🎬" } }
+---
+
+# Skill: Studio Production Pipeline
+
+Orchestre une production audiovisuelle complete en 14 etapes via le CLI `vref`.
+Chaque etape met a jour Kitsu automatiquement (tasks, previews, commentaires).
+
+## Demarrer une production
+
+```bash
+vref produce-start --title "<titre>" --camera <preset> --lens <preset>
+```
+
+Retourne un **slug** (ex: `ninja-cyberpunk-chase-81b2`) utilisable partout.
+
+### Presets camera disponibles
+
+```bash
+vref cameras   # Liste complete
+```
+
+| Camera | Quand l'utiliser |
+|--------|-----------------|
+| RED | Digital 8K, net, HDR — action, sci-fi |
+| ARRI | Film organique, tons chauds — drame, romance |
+| IMAX | Scale epique, profondeur — paysages, batailles |
+| Sony | Basse lumiere, naturel — documentaire, nuit |
+| 16mm | Grain vintage, doux — nostalgie, retro |
+| Panavision | Hollywood classique, peau riche — cinema narratif |
+
+| Lentille | Effet |
+|----------|-------|
+| anamorphic | Bokeh ovale, lens flare, 2.39:1 cine widescreen |
+| prime_85mm | Faible profondeur, compression fond, portrait |
+| prime_35mm | Perspective naturelle, polyvalent |
+| prime_24mm | Grand angle, immersif |
+| macro | Extreme close-up, detail texture |
+| telephoto | Compression extreme, sujet isole |
+
+| Ouverture | Profondeur de champ |
+|-----------|-------------------|
+| f1.4 | Bokeh extreme, sujet isole |
+| f2.8 | Modere, polyvalent |
+| f4 | Equilibre |
+| f8 | Deep focus, paysage |
+| f11 | Maximum nettete |
+
+| Mouvement | Effet narratif |
+|-----------|---------------|
+| dolly_in | Tension, intimite |
+| dolly_out | Revelation, contexte |
+| crane_up | Echelle epique |
+| crane_down | Approche intime |
+| tracking | Energie dynamique |
+| steadicam | Fluidite continue |
+| handheld | Brut, documentaire |
+| fpv | Immersif, action |
+| static | Contemplation |
+
+## Les 14 etapes
+
+### Etape 1 : BRIEF
+```bash
+vref produce-step <slug> brief --description "<cadrage du projet>"
+```
+**Quoi** : Definir la vision avec le producteur (humain).
+**Kitsu** : Cree la Sequence + task Brief → Done.
+**Decision** : Toujours discuter AVANT de lancer. Poser les questions :
+- Quelle emotion ? Quel public ? Quel format ? Quel budget ?
+
+### Etape 2 : RECHERCHE
+```bash
+# Avec une video de reference
+vref produce-step <slug> research --url "fichier.mp4"
+
+# Sans video (recherche semantique dans les assets existants)
+vref produce-step <slug> research --query-param "dramatic dark cinematic"
+```
+**Quoi** : Analyser une video source (8+ scenes detectees par ffmpeg) ou chercher dans Qdrant.
+**Delegation** : Spawner **R2D2** (explorer) pour des recherches complementaires.
+**Kitsu** : Task Recherche → Done + previews keyframes + assets VideoRef crees.
+
+### Etape 3 : SCRIPT
+```bash
+vref produce-step <slug> script --modifications "subject=X,style=Y,mood=Z"
+```
+**Quoi** : Remixer les prompts de chaque scene avec les modifications du brief + camera presets.
+**Delegation** : Spawner **Thot** (writer) pour le travail de prompt engineering avance.
+**Decision** : Proposer les prompts au producteur AVANT de generer.
+**Kitsu** : Task Script → Done + 1 commentaire par scene.
+
+### Etape 4 : STORYBOARD
+```bash
+vref produce-step <slug> storyboard
+```
+**Quoi** : Generer des images basse resolution via ComfyUI pour valider la direction visuelle.
+**Delegation** : Spawner **Basquiat** (artist) pour affiner les visuels.
+**Humain** : Demander validation. "Voici 4 variations, laquelle preferes-tu ?"
+**Kitsu** : Task Storyboard CF → WFA + previews grid.
+
+### Etape 5 : VOICE-OVER
+```bash
+# Preview rapide (Kokoro local, 82M, gratuit)
+vref produce-step <slug> voiceover --description "texte de la narration"
+
+# Skip si pas de voix
+vref produce-step <slug> voiceover --skip
+```
+**Quoi** : Generer la voix-off. Preview avec Kokoro (local, rapide). Production avec Chatterbox (CCX33 ephemere, qualite ElevenLabs).
+**Decision** : Preview d'abord, prod seulement apres validation du texte.
+**Kitsu** : Task Voice-over → Done + preview audio.
+
+### Etape 6 : MUSIQUE
+```bash
+# Via CCX33 ephemere (ACE-Step, ~3 min pour 4 min de musique)
+vref produce-step <slug> music --description "nostalgic piano cinematic"
+
+# Skip si pas de musique
+vref produce-step <slug> music --skip
+```
+**Quoi** : Generer la musique d'ambiance via ACE-Step sur serveur ephemere Hetzner CCX33.
+**Cout** : ~0.07 EUR par session (le serveur reste vivant pour les retakes, TTL 30min).
+**Kitsu** : Task Music → WFA + preview audio.
+
+### Etape 7 : IMAGE GEN
+```bash
+vref produce-step <slug> imagegen
+```
+**Quoi** : Generer les images finales HD via n8n → ComfyUI (local) ou Seedream (cloud).
+**Delegation** : Spawner **Basquiat** pour des retouches specifiques.
+**Humain** : Demander validation. "Images HD pretes. Retake sur certaines ?"
+**Kitsu** : Task Image Gen → WFA + previews HD.
+
+### Etape 8 : VIDEO GEN
+```bash
+vref produce-step <slug> videogen
+```
+**Quoi** : Image-to-video via n8n → Seedance/BytePlus (cloud, async).
+**Decision** : Verifier le budget avant (Seedance = ~$0.10/video).
+**Kitsu** : Task Video Gen → WFA + previews video.
+
+### Etape 9 : MONTAGE
+```bash
+vref produce-step <slug> montage
+```
+**Quoi** : Assembler les scenes via n8n → Remotion (local Docker).
+**Kitsu** : Task Montage → WFA + preview montage complet.
+
+### Etape 10 : SOUS-TITRES
+```bash
+# Transcription auto (whisper.cpp local)
+vref produce-step <slug> subtitles
+
+# Skip
+vref produce-step <slug> subtitles --skip
+```
+**Quoi** : Transcription automatique via whisper.cpp (modele base, local ARM64).
+**Kitsu** : Task Sous-titres → Done + fichier SRT.
+
+### Etape 11 : COLOR GRADE
+```bash
+vref produce-step <slug> colorgrade
+```
+**Quoi** : Appliquer un LUT cinematique via ffmpeg.
+**Presets disponibles** : teal-orange, warm-vintage, cold-blue, bleach-bypass, golden-hour.
+**Decision** : Choisir le LUT en coherence avec le mood du brief.
+**Kitsu** : Task Color Grade → WFA + preview avant/apres.
+
+### Etape 12 : REVIEW
+```bash
+vref produce-step <slug> review
+```
+**Quoi** : Envoyer une notification Telegram + creer une playlist Kitsu. Le producteur review.
+**Humain** : Attendre la validation. Gerer les retakes si necessaire.
+**Kitsu** : Playlist de review creee.
+
+### Etape 13 : EXPORT
+```bash
+vref produce-step <slug> export
+```
+**Quoi** : Encode final via ffmpeg (video + audio + sous-titres + color grade).
+**Formats** : MP4 (web), GIF (social).
+**Kitsu** : Task Export → Done + fichier final.
+
+### Etape 14 : PUBLICATION
+```bash
+vref produce-step <slug> publish --skip
+```
+**Quoi** : Preparer les posts pour les reseaux sociaux.
+**Delegation** : Spawner **Marketer** pour la publication.
+**Kitsu** : Task Publication → Done.
+
+## Retakes
+
+```bash
+# Retake une etape specifique
+vref produce-retake <slug> imagegen --scenes 3,5 --modifications "subject=more contrast"
+```
+
+Le retake relance uniquement les scenes concernees. Kitsu cree une nouvelle revision sur la task.
+
+## Recherche de references
+
+```bash
+# Par style/mood dans Kitsu
+vref assets --style "3D" --mood "playful"
+
+# Recherche semantique dans Qdrant
+vref search "dramatic cinematic dark blue twilight"
+
+# Detail complet d'un asset (prompt inclus)
+vref get <asset_id>
+
+# Copier le prompt pour reutilisation
+vref prompt <asset_id>
+```
+
+## Remix d'un asset existant
+
+```bash
+vref remix <asset_id> \
+  --camera ARRI --lens anamorphic --aperture f2.8 --cam-motion dolly_in \
+  --subject "dragons" --style "oil painting" --mood "epic" \
+  --extra "medieval castle, fire breathing" \
+  --template cinematic --output dragon-epic-v1
+```
+
+Claude LLM reecrit le prompt avec les modifications appliquees + les tokens camera injectes.
+
+## Gestion du budget
+
+| Mode | Modeles | Cout/jour | Quand |
+|------|---------|-----------|-------|
+| eco | DeepSeek, Qwen (gratuits) | $0 | Tests, brouillons |
+| balanced | GLM-5, DeepSeek R1 | ~$1-2 | Production standard |
+| premium | Claude, GPT-4o | ~$3-5 | Productions client |
+
+Verifier le budget avant imagegen/videogen :
+```bash
+# Spawner CFO pour verifier
+@CFO quel est le budget restant aujourd'hui ?
+```
+
+## Erreurs courantes
+
+| Erreur | Cause | Solution |
+|--------|-------|----------|
+| "Job not found" | Mauvais slug | `vref produce-status <slug>` pour verifier |
+| "N8N not configured" | Webhook n8n pas accessible | Step fonctionne quand meme (Kitsu mis a jour) |
+| "RENDER_SERVER_URL not set" | Pas de CCX33 lance | Skipper voiceover/music ou lancer le serveur |
+| "LUT not found" | Nom de preset incorrect | `ls /app/luts/` pour voir les disponibles |
+| Step "montage" echoue | Remotion pas accessible | Montage manuel a re.ewutelo.cloud |

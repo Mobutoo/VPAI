@@ -745,10 +745,47 @@ async def push_to_kitsu(
                         if pid:
                             preview_count += 1
 
+            # Phase 4: Create Assets (1 per scene — visible in Assets tab)
+            videoref_type_id = await _kitsu_get_entity_type_id(
+                session, "VideoRef",
+            )
+            asset_count = 0
+            for idx, analysis in enumerate(scene_analyses):
+                style = analysis.get("style", "unknown")[:40]
+                mood = analysis.get("mood", "unknown")[:30]
+                asset_name = f"{seq_name[:50]} - S{idx+1:02d} {style}"
+                asset_data = {
+                    "style": analysis.get("style", ""),
+                    "mood": analysis.get("mood", ""),
+                    "colors": ", ".join(colors[:5]) if idx == 0 else "",
+                    "motion": motion.get("motion_level", "low"),
+                    "ai_prompt": analysis.get("suggested_prompt", "")[:500],
+                }
+                desc = (
+                    f"Style: {analysis.get('style', '')}\n"
+                    f"Mood: {analysis.get('mood', '')}\n"
+                    f"Prompt: {analysis.get('suggested_prompt', '')[:200]}"
+                )
+                try:
+                    await _kitsu_api(
+                        session, "POST",
+                        f"/data/projects/{project_id}/asset-types"
+                        f"/{videoref_type_id}/assets/new",
+                        {
+                            "name": asset_name,
+                            "description": desc,
+                            "data": asset_data,
+                        },
+                    )
+                    asset_count += 1
+                except Exception:
+                    pass  # Non-critical — shots are primary
+
             return {
                 "sequence_id": sequence_id,
                 "sequence_name": seq_name,
                 "shot_count": len(shot_ids),
+                "asset_count": asset_count,
                 "task_count": task_count,
                 "comment_count": comment_count,
                 "preview_count": preview_count,

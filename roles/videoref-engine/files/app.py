@@ -527,6 +527,38 @@ async def _kitsu_get_project(session: aiohttp.ClientSession) -> dict[str, Any]:
     return projects[0]
 
 
+async def _kitsu_get_asset_library(
+    session: aiohttp.ClientSession,
+) -> dict[str, Any]:
+    """Get or create the global Asset Library project.
+
+    MeTube auto-analyze creates assets here (not in a specific production).
+    Productions can then cast assets from the library into their shots.
+    """
+    projects = await _kitsu_api(session, "GET", "/data/projects")
+    library = next(
+        (p for p in projects if p.get("production_type") == "assets"),
+        None,
+    )
+    if library:
+        return library
+
+    # Create Asset Library if it doesn't exist
+    statuses = await _kitsu_api(session, "GET", "/data/project-status")
+    open_status = next(
+        (s for s in statuses if s["name"].lower() == "open"), statuses[0]
+    )
+    library = await _kitsu_api(
+        session, "POST", "/data/projects",
+        json={
+            "name": "Asset Library",
+            "production_type": "assets",
+            "project_status_id": open_status["id"],
+        },
+    )
+    return library
+
+
 async def _kitsu_create_project(
     session: aiohttp.ClientSession,
     title: str,
@@ -550,6 +582,9 @@ async def _kitsu_create_project(
             "name": title,
             "production_type": production_type,
             "project_status_id": open_status["id"],
+            "fps": "24",
+            "resolution": "1920x1080",
+            "production_style": "2d3d",
         },
     )
 
@@ -582,6 +617,46 @@ async def _kitsu_create_project(
                 session, "POST",
                 f"/data/projects/{project['id']}/settings/asset-types",
                 json={"asset_type_id": vref_type["id"]},
+            )
+        except Exception:
+            pass
+
+    # Associate all task statuses
+    all_statuses = await _kitsu_api(session, "GET", "/data/task-status")
+    for s in all_statuses:
+        try:
+            await _kitsu_api(
+                session, "POST",
+                f"/data/projects/{project['id']}/settings/task-statuses",
+                json={"task_status_id": s["id"]},
+            )
+        except Exception:
+            pass
+
+    # Create metadata descriptors (custom columns in UI)
+    descriptors = [
+        {"name": "Style", "field_name": "style",
+         "data_type": "string", "entity_type": "Asset"},
+        {"name": "Mood", "field_name": "mood",
+         "data_type": "string", "entity_type": "Asset"},
+        {"name": "Colors", "field_name": "colors",
+         "data_type": "string", "entity_type": "Asset"},
+        {"name": "Motion", "field_name": "motion",
+         "data_type": "list", "choices": ["low", "medium", "high"],
+         "entity_type": "Asset"},
+        {"name": "AI Prompt", "field_name": "ai_prompt",
+         "data_type": "string", "entity_type": "Asset"},
+        {"name": "Camera", "field_name": "camera",
+         "data_type": "string", "entity_type": "Shot"},
+        {"name": "Lens", "field_name": "lens",
+         "data_type": "string", "entity_type": "Shot"},
+    ]
+    for desc in descriptors:
+        try:
+            await _kitsu_api(
+                session, "POST",
+                f"/data/projects/{project['id']}/metadata-descriptors",
+                json=desc,
             )
         except Exception:
             pass
@@ -802,7 +877,7 @@ async def push_to_kitsu(
 
     try:
         async with aiohttp.ClientSession() as session:
-            project = await _kitsu_get_project(session)
+            project = await _kitsu_get_asset_library(session)
             project_id = project["id"]
             episode_id = project.get("first_episode_id", "")
 
@@ -2226,7 +2301,7 @@ async def search_assets(request: web.Request) -> web.Response:
 
     try:
         async with aiohttp.ClientSession() as session:
-            project = await _kitsu_get_project(session)
+            project = await _kitsu_get_asset_library(session)
             assets = await _kitsu_api(
                 session, "GET",
                 f"/data/projects/{project['id']}/assets",

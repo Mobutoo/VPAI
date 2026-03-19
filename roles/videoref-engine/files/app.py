@@ -32,7 +32,10 @@ N8N_CREATIVE_PIPELINE_URL = os.environ.get("N8N_CREATIVE_PIPELINE_URL", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
-VERSION = "0.8.0"
+COMFYUI_API_URL = os.environ.get("COMFYUI_API_URL", "http://workstation_comfyui:8188")
+MODEL_REGISTRY_COLLECTION = "model-registry"
+
+VERSION = "0.9.0"
 SCENE_THRESHOLD = 0.3
 SHORT_VIDEO_SECONDS = 30
 JOBS_DIR = OUTPUT_DIR / "jobs"
@@ -974,9 +977,9 @@ async def push_to_kitsu(
             )
             asset_count = 0
             for idx, analysis in enumerate(scene_analyses):
-                style = analysis.get("style", "unknown")[:40]
-                mood = analysis.get("mood", "unknown")[:30]
-                asset_name = f"{seq_name[:50]} - S{idx+1:02d} {style}"
+                # Short descriptive name: Subject-Style-Mood (max 40 chars)
+                asset_name = _generate_asset_name(analysis, filename)
+                asset_name = f"{asset_name}-S{idx+1:02d}"
                 asset_data = {
                     "style": analysis.get("style", ""),
                     "mood": analysis.get("mood", ""),
@@ -1555,6 +1558,238 @@ async def _call_n8n_video(
 
 
 # ============================================================
+# 16b. Workflow Composer — intelligent model routing
+# ============================================================
+async def _composer_select_model(
+    task: str, budget: str = "balanced",
+) -> dict[str, Any] | None:
+    """Search model-registry in Qdrant for the best model matching task + budget.
+
+    Returns the model payload (node, name, quality, cost, notes) or None.
+    """
+    if not QDRANT_URL or not QDRANT_API_KEY or not LITELLM_URL:
+        return None
+
+    try:
+        # Get embedding for the task description
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{LITELLM_URL}/v1/embeddings",
+                json={"model": "embedding", "input": f"{task} {budget} quality"},
+                headers={"Authorization": f"Bearer {LITELLM_API_KEY}",
+                         "Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                emb = await resp.json()
+                vector = emb["data"][0]["embedding"]
+
+            # Search with budget filter
+            search_payload = {
+                "vector": vector,
+                "limit": 5,
+                "with_payload": True,
+                "filter": {
+                    "must": [
+                        {"key": "budget", "match": {"any": _budget_tiers(budget)}},
+                    ],
+                },
+            }
+
+            async with session.post(
+                f"{QDRANT_URL}/collections/{MODEL_REGISTRY_COLLECTION}/points/search",
+                json=search_payload,
+                headers={"api-key": QDRANT_API_KEY, "Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                data = await resp.json()
+                results = data.get("result", [])
+
+                # Filter by task match + pick highest quality
+                best = None
+                for hit in results:
+                    p = hit["payload"]
+                    tasks = p.get("tasks", [])
+                    if any(t in task.lower() for t in tasks) or hit["score"] > 0.45:
+                        if best is None or p.get("quality", 0) > best.get("quality", 0):
+                            best = p
+                return best
+    except Exception as exc:
+        print(f"[composer] Model selection error: {exc}")
+        return None
+
+
+def _budget_tiers(budget: str) -> list[str]:
+    """Return allowed budget tiers for a given budget level."""
+    if budget == "eco":
+        return ["eco"]
+    if budget == "balanced":
+        return ["eco", "balanced"]
+    return ["eco", "balanced", "premium"]
+
+
+async def _composer_build_workflow(
+    model: dict[str, Any],
+    prompt: str,
+    negative: str = "",
+    width: int = 1024,
+    height: int = 1024,
+    style: str = "",
+    camera: str = "",
+    lens: str = "",
+    reference_image: str = "",
+    fps: int = 24,
+    duration: int = 5,
+) -> dict[str, Any]:
+    """Build a ComfyUI workflow JSON for the selected model.
+
+    Handles fal.ai nodes (simple prompt-based) and local nodes (full graph).
+    """
+    node_name = model.get("node", "")
+
+    # fal.ai nodes are simple: just prompt + params
+    if node_name.endswith("_fal"):
+        workflow = {"prompt": {}}
+
+        # Inject camera tokens into prompt
+        full_prompt = _inject_camera_tokens(prompt, camera, lens)
+        if style:
+            full_prompt = f"{full_prompt}, {style}"
+
+        # Common inputs for fal.ai nodes
+        inputs: dict[str, Any] = {"prompt": full_prompt}
+
+        # Add model-specific params
+        tasks = model.get("tasks", [])
+        if any(t in tasks for t in ["txt2vid", "img2vid", "video_production",
+                                     "video_cinematic", "video_preview"]):
+            inputs["duration"] = str(duration)
+            inputs["aspect_ratio"] = f"{width}:{height}" if width > height else f"{height}:{width}"
+            if reference_image:
+                inputs["image"] = reference_image
+        else:
+            # Image gen
+            if "image_size" in str(model):
+                inputs["image_size"] = f"{width}x{height}"
+            else:
+                inputs["width"] = width
+                inputs["height"] = height
+            if negative:
+                inputs["negative_prompt"] = negative
+            if reference_image:
+                inputs["image"] = reference_image
+
+        workflow["prompt"]["1"] = {
+            "class_type": node_name,
+            "inputs": inputs,
+        }
+        workflow["prompt"]["2"] = {
+            "class_type": "SaveImage_fal" if "video" not in node_name.lower() else "SaveImage",
+            "inputs": {"images": ["1", 0], "filename_prefix": "composer"},
+        }
+
+        workflow["_metadata"] = {
+            "composer": True,
+            "model": model.get("name", node_name),
+            "task": model.get("tasks", []),
+            "budget": model.get("budget", "?"),
+            "cost": model.get("cost", model.get("cost_per_sec", 0)),
+        }
+        return workflow
+
+    # Local nodes (KSampler, AnimateDiff, etc.) — use template-based approach
+    return _build_local_workflow(prompt, negative, width, height, style)
+
+
+def _build_local_workflow(
+    prompt: str, negative: str, width: int, height: int, style: str,
+) -> dict[str, Any]:
+    """Fallback: build a local KSampler workflow."""
+    full_prompt = f"{prompt}, {style}" if style else prompt
+    return {
+        "prompt": {
+            "1": {"class_type": "CheckpointLoaderSimple",
+                  "inputs": {"ckpt_name": "sd_xl_turbo_1.0_fp16.safetensors"}},
+            "2": {"class_type": "EmptyLatentImage",
+                  "inputs": {"width": min(width, 1024), "height": min(height, 1024),
+                             "batch_size": 1}},
+            "3": {"class_type": "CLIPTextEncode",
+                  "inputs": {"text": full_prompt, "clip": ["1", 1]}},
+            "4": {"class_type": "CLIPTextEncode",
+                  "inputs": {"text": negative or "blurry, low quality", "clip": ["1", 1]}},
+            "5": {"class_type": "KSampler",
+                  "inputs": {"model": ["1", 0], "seed": 42, "steps": 20, "cfg": 7.5,
+                             "sampler_name": "euler_ancestral", "scheduler": "karras",
+                             "positive": ["3", 0], "negative": ["4", 0],
+                             "latent_image": ["2", 0], "denoise": 1.0}},
+            "6": {"class_type": "VAEDecode",
+                  "inputs": {"samples": ["5", 0], "vae": ["1", 2]}},
+            "7": {"class_type": "SaveImage",
+                  "inputs": {"images": ["6", 0], "filename_prefix": "composer_local"}},
+        },
+        "_metadata": {"composer": True, "model": "local_ksampler", "budget": "eco"},
+    }
+
+
+async def _composer_submit(workflow: dict[str, Any]) -> dict[str, Any]:
+    """Submit a workflow to ComfyUI /prompt API and return the result."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{COMFYUI_API_URL}/prompt",
+                json={"prompt": workflow.get("prompt", workflow)},
+                timeout=aiohttp.ClientTimeout(total=120),
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return {"status": "queued", "prompt_id": data.get("prompt_id", "")}
+                body = await resp.text()
+                return {"error": f"ComfyUI {resp.status}: {body[:200]}"}
+    except Exception as exc:
+        return {"error": f"ComfyUI submit failed: {exc}"}
+
+
+def _generate_asset_name(analysis: dict[str, Any], filename: str = "") -> str:
+    """Generate a short, descriptive asset name from analysis.
+
+    Pattern: Subject-Style-Mood (max 40 chars)
+    Examples: Shoes-3D-Playful, Dragon-Fantasy-Dramatic, Village-Ghibli-Nostalgic
+    """
+    style = analysis.get("style", "")
+    mood = analysis.get("mood", "")
+    prompt = analysis.get("suggested_prompt", analysis.get("ai_prompt", ""))
+
+    # Extract subject from prompt (first noun phrase, ~1-2 words)
+    subject = ""
+    if prompt:
+        # Take first 2-3 meaningful words from prompt
+        words = [w for w in prompt.split()[:6]
+                 if len(w) > 2 and w.lower() not in
+                 {"the", "and", "with", "from", "that", "this", "for",
+                  "create", "generate", "make", "design", "draw", "render",
+                  "beautiful", "stunning", "amazing", "realistic", "high",
+                  "quality", "detailed", "professional"}]
+        subject = " ".join(words[:2]).title()
+
+    if not subject and filename:
+        # Fallback: clean filename
+        subject = Path(filename).stem.split("[")[0].split("-")[0].strip()[:15]
+
+    if not subject:
+        subject = "Scene"
+
+    # Shorten style to 1-2 words
+    style_short = style.split(",")[0].strip()[:15] if style else ""
+    mood_short = mood.split(",")[0].strip()[:12] if mood else ""
+
+    parts = [p for p in [subject[:15], style_short, mood_short] if p]
+    name = "-".join(parts)
+
+    # Clean and limit
+    name = re.sub(r"[^a-zA-Z0-9\s-]", "", name).strip("-")[:40]
+    return name or "Untitled"
+
+
+# ============================================================
 # 17. Production step handlers
 # ============================================================
 async def _step_brief(
@@ -1729,27 +1964,60 @@ async def _step_script(
 async def _step_storyboard(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle storyboard step: generate low-res images via n8n."""
+    """Handle storyboard step: generate low-res frames via Composer.
+
+    Composer selects: NanoBanana2 (eco), FluxSchnell (balanced), or FluxPro (premium).
+    Best practice 2026: storyboard = fast + cheap, iterate quickly.
+    """
     scene_prompts = job.get("scene_prompts", [])
+    budget = params.get("budget", "eco")  # Storyboard = eco by default
     results: list[dict[str, Any]] = []
 
+    # Select best model for storyboard task
+    model = await _composer_select_model("storyboard text-to-image fast cheap", budget)
+    model_name = model["name"] if model else "fallback"
+
     for sp in scene_prompts:
-        n8n_result = await _call_n8n_creative(
-            prompt=sp.get("enriched", sp.get("original", "")),
-            output_type="image",
-            resolution="low-res",
-            scene_index=sp.get("scene_index", 0),
-            job_id=job["job_id"],
-        )
-        results.append(n8n_result)
+        prompt = sp.get("enriched", sp.get("original", ""))
+        if not prompt:
+            continue
+
+        if model:
+            # Composer workflow: selected model
+            workflow = await _composer_build_workflow(
+                model, prompt,
+                negative=sp.get("negative", "blurry, low quality"),
+                width=768, height=512,  # Low-res for storyboard
+                style=job.get("style", ""),
+                camera=job.get("camera", ""),
+                lens=job.get("lens", ""),
+            )
+            submit_result = await _composer_submit(workflow)
+            results.append({
+                "scene": sp.get("scene_index", 0),
+                "model": model_name,
+                "prompt": prompt[:100],
+                "result": submit_result,
+            })
+        else:
+            # Fallback to n8n creative pipeline
+            n8n_result = await _call_n8n_creative(
+                prompt=prompt, output_type="image",
+                resolution="low-res",
+                scene_index=sp.get("scene_index", 0),
+                job_id=job["job_id"],
+            )
+            results.append({"scene": sp.get("scene_index", 0), "model": "n8n", "result": n8n_result})
 
     kitsu_result = await _kitsu_step_task(
         job, "Storyboard CF", "wfa",
-        f"Storyboard generated: {len(results)} scenes (low-res). Awaiting validation.",
+        f"Storyboard: {len(results)} frames via {model_name}. Awaiting validation.",
     )
 
     return {
         "status": "ok",
+        "model_used": model_name,
+        "budget": budget,
         "storyboard_results": results,
         "kitsu": kitsu_result,
     }, {}
@@ -1871,27 +2139,85 @@ async def _step_music(
 async def _step_imagegen(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle imagegen step: generate hi-res images via n8n."""
+    """Handle imagegen step: generate hi-res keyframes via Composer.
+
+    Best practice 2026: generate at model-native res, then upscale.
+    Composer selects: FluxPro1.1 (premium), NanoBananaPro (balanced), HiDream (eco).
+    """
     scene_prompts = job.get("scene_prompts", [])
+    budget = params.get("budget", "balanced")
     results: list[dict[str, Any]] = []
 
-    for sp in scene_prompts:
-        n8n_result = await _call_n8n_creative(
-            prompt=sp.get("enriched", sp.get("original", "")),
-            output_type="image",
-            resolution="hi-res",
-            scene_index=sp.get("scene_index", 0),
-            job_id=job["job_id"],
-        )
-        results.append(n8n_result)
+    # Parse target resolution from Kitsu project
+    resolution = job.get("resolution", "1920x1080")
+    try:
+        target_w, target_h = [int(x) for x in resolution.split("x")]
+    except (ValueError, AttributeError):
+        target_w, target_h = 1920, 1080
 
-    kitsu_result = await _kitsu_step_task(
-        job, "Image Gen", "wfa",
-        f"HD images generated: {len(results)} scenes. Awaiting validation.",
+    # Select best model for keyframe generation
+    model = await _composer_select_model("keyframe final render high quality image", budget)
+    model_name = model["name"] if model else "fallback"
+
+    # Generate at model-optimal resolution (not target — upscale later)
+    gen_w = min(target_w, 1344) if target_w > target_h else min(target_w, 768)
+    gen_h = min(target_h, 768) if target_w > target_h else min(target_h, 1344)
+    # Ensure multiple of 8
+    gen_w = (gen_w // 8) * 8
+    gen_h = (gen_h // 8) * 8
+
+    for sp in scene_prompts:
+        prompt = sp.get("enriched", sp.get("original", ""))
+        if not prompt:
+            continue
+
+        if model:
+            workflow = await _composer_build_workflow(
+                model, prompt,
+                negative=sp.get("negative", "blurry, low quality, deformed"),
+                width=gen_w, height=gen_h,
+                style=job.get("style", ""),
+                camera=job.get("camera", ""),
+                lens=job.get("lens", ""),
+            )
+            submit_result = await _composer_submit(workflow)
+
+            # Generate short asset name for Kitsu
+            analysis = sp.get("analysis", {})
+            asset_name = _generate_asset_name(analysis, job.get("title", ""))
+
+            results.append({
+                "scene": sp.get("scene_index", 0),
+                "model": model_name,
+                "asset_name": asset_name,
+                "gen_resolution": f"{gen_w}x{gen_h}",
+                "target_resolution": resolution,
+                "needs_upscale": gen_w < target_w or gen_h < target_h,
+                "result": submit_result,
+            })
+        else:
+            n8n_result = await _call_n8n_creative(
+                prompt=prompt, output_type="image", resolution="hi-res",
+                scene_index=sp.get("scene_index", 0), job_id=job["job_id"],
+            )
+            results.append({"scene": sp.get("scene_index", 0), "model": "n8n", "result": n8n_result})
+
+    needs_upscale = any(r.get("needs_upscale") for r in results)
+    kitsu_note = (
+        f"Keyframes: {len(results)} images via {model_name} "
+        f"at {gen_w}x{gen_h}"
+        f"{' (upscale needed → ' + resolution + ')' if needs_upscale else ''}. "
+        f"Validate before video generation."
     )
+    kitsu_result = await _kitsu_step_task(job, "Image Gen", "wfa", kitsu_note)
 
     return {
         "status": "ok",
+        "model_used": model_name,
+        "budget": budget,
+        "gen_resolution": f"{gen_w}x{gen_h}",
+        "target_resolution": resolution,
+        "needs_upscale": needs_upscale,
         "imagegen_results": results,
         "kitsu": kitsu_result,
     }, {}
@@ -1900,25 +2226,75 @@ async def _step_imagegen(
 async def _step_videogen(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle videogen step: generate videos via n8n."""
+    """Handle videogen step: generate video clips via Composer.
+
+    Best practice 2026: Kling 3.0 = best value, Seedance = best creative control.
+    Budget eco → Seedance 2.0 ($0.10), balanced → Kling 2.6 ($0.15), premium → Veo 3.1.
+    Prefer img2vid (keyframe → clip) over txt2vid for consistency.
+    """
     scene_prompts = job.get("scene_prompts", [])
+    budget = params.get("budget", "balanced")
+    duration = int(params.get("duration", job.get("fps", "24") == "24" and 5 or 5))
     results: list[dict[str, Any]] = []
 
-    for sp in scene_prompts:
-        n8n_result = await _call_n8n_video(
-            prompt=sp.get("enriched", sp.get("original", "")),
-            scene_index=sp.get("scene_index", 0),
-            job_id=job["job_id"],
-        )
-        results.append(n8n_result)
+    # Parse resolution
+    resolution = job.get("resolution", "1920x1080")
+    try:
+        target_w, target_h = [int(x) for x in resolution.split("x")]
+    except (ValueError, AttributeError):
+        target_w, target_h = 1920, 1080
 
-    kitsu_result = await _kitsu_step_task(
-        job, "Video Gen", "wfa",
-        f"Videos generated: {len(results)} scenes. Awaiting validation.",
+    # Select best video model
+    model = await _composer_select_model(
+        "video generation production animated clip best value", budget,
     )
+    model_name = model["name"] if model else "fallback"
+
+    for sp in scene_prompts:
+        prompt = sp.get("enriched", sp.get("original", ""))
+        if not prompt:
+            continue
+
+        if model:
+            workflow = await _composer_build_workflow(
+                model, prompt,
+                width=target_w, height=target_h,
+                style=job.get("style", ""),
+                camera=job.get("camera", ""),
+                lens=job.get("lens", ""),
+                fps=int(job.get("fps", 24)),
+                duration=duration,
+            )
+            submit_result = await _composer_submit(workflow)
+            results.append({
+                "scene": sp.get("scene_index", 0),
+                "model": model_name,
+                "duration": duration,
+                "result": submit_result,
+            })
+        else:
+            n8n_result = await _call_n8n_video(
+                prompt=prompt,
+                scene_index=sp.get("scene_index", 0),
+                job_id=job["job_id"],
+            )
+            results.append({"scene": sp.get("scene_index", 0), "model": "n8n", "result": n8n_result})
+
+    total_cost = sum(
+        (model.get("cost", 0) if model else 0) for _ in results
+    )
+    kitsu_note = (
+        f"Video: {len(results)} clips via {model_name}, "
+        f"{duration}s each, ~${total_cost:.2f} total. "
+        f"Awaiting validation."
+    )
+    kitsu_result = await _kitsu_step_task(job, "Video Gen", "wfa", kitsu_note)
 
     return {
         "status": "ok",
+        "model_used": model_name,
+        "budget": budget,
+        "duration_per_clip": duration,
         "videogen_results": results,
         "kitsu": kitsu_result,
     }, {}
@@ -2149,10 +2525,55 @@ async def _step_export(
         kitsu_result = await _kitsu_step_task(job, "Export", "done", note)
         return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
 
+    # Best practice 2026: auto-upscale to target resolution if needed
+    target_res = job.get("resolution", "1920x1080")
+    upscale_result: dict[str, Any] = {}
+    try:
+        target_w, target_h = [int(x) for x in target_res.split("x")]
+        # Check current video resolution
+        probe = await asyncio.create_subprocess_exec(
+            "ffprobe", "-v", "quiet", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-of", "json", str(video),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await probe.communicate()
+        vinfo = json.loads(stdout).get("streams", [{}])[0]
+        cur_w = int(vinfo.get("width", target_w))
+        cur_h = int(vinfo.get("height", target_h))
+
+        if cur_w < target_w or cur_h < target_h:
+            # Upscale via Composer (Upscaler_fal or local)
+            upscale_model = await _composer_select_model(
+                "upscale enhance resolution video", params.get("budget", "balanced"),
+            )
+            if upscale_model and upscale_model["node"].endswith("_fal"):
+                upscale_result = {"model": upscale_model["name"],
+                                  "from": f"{cur_w}x{cur_h}", "to": target_res,
+                                  "note": "Submitted to fal.ai upscaler"}
+            else:
+                # Local ffmpeg scale (lanczos, free)
+                upscaled = OUTPUT_DIR / f"{job_prefix}-upscaled.mp4"
+                up_cmd = [
+                    "ffmpeg", "-i", str(video),
+                    "-vf", f"scale={target_w}:{target_h}:flags=lanczos",
+                    "-c:v", "libx264", "-crf", "18", "-y", str(upscaled),
+                ]
+                proc = await asyncio.create_subprocess_exec(
+                    *up_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
+                if upscaled.exists():
+                    video = upscaled  # Use upscaled version
+                    upscale_result = {"method": "ffmpeg_lanczos",
+                                      "from": f"{cur_w}x{cur_h}", "to": target_res}
+    except Exception as exc:
+        upscale_result = {"error": str(exc)}
+
     results: list[dict[str, Any]] = []
     for fmt in formats:
         fmt = fmt.strip()
-        out_name = f"{job.get('title', 'export').replace(' ', '_')}-final.{fmt}"
+        slug = job.get("slug", job.get("title", "export")).replace(" ", "_")
+        out_name = f"{slug}-final.{fmt}"
         out_path = OUTPUT_DIR / out_name
 
         try:
@@ -2192,9 +2613,10 @@ async def _step_export(
         except Exception as exc:
             results.append({"format": fmt, "error": str(exc)})
 
-    note = f"Exported: {', '.join(r.get('path', r.get('error', '?')).split('/')[-1] for r in results)}"
+    upscale_note = f" Upscaled: {upscale_result.get('from', '?')}→{upscale_result.get('to', '?')}" if upscale_result and "error" not in upscale_result else ""
+    note = f"Exported: {', '.join(r.get('path', r.get('error', '?')).split('/')[-1] for r in results)}.{upscale_note}"
     kitsu_result = await _kitsu_step_task(job, "Export", "done", note)
-    return {"status": "ok", "exports": results, "kitsu": kitsu_result}, {}
+    return {"status": "ok", "exports": results, "upscale": upscale_result, "kitsu": kitsu_result}, {}
 
 
 async def _step_publish(
@@ -3094,7 +3516,12 @@ async def video_intelligence(request: web.Request) -> web.Response:
                         f"/data/projects/{library['id']}"
                         f"/asset-types/{vref_type['id']}/assets/new",
                         json={
-                            "name": f"{Path(filename).stem} [transcript]",
+                            "name": _generate_asset_name(
+                                {"style": video_type,
+                                 "mood": ", ".join(tags[:3]),
+                                 "suggested_prompt": summary},
+                                filename,
+                            ) + "-Transcript",
                             "description": (
                                 f"Type: {video_type}\n"
                                 f"Summary: {summary}\n"

@@ -25,7 +25,7 @@ QDRANT_URL = os.environ.get("QDRANT_URL", "")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
 QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "videoref_styles")
 
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 
 
 # ============================================================
@@ -379,17 +379,20 @@ async def push_to_kitsu(
                 project_id = projects[0]["id"]
 
             # Get or create asset type "VideoRef"
+            # NOTE: asset types are entity-types in Zou API
+            # GET /data/asset-types lists them, but POST goes to /data/entity-types
             async with session.get(
-                f"{KITSU_URL}/api/data/asset-types", headers=headers,
+                f"{KITSU_URL}/api/data/entity-types", headers=headers,
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
-                asset_types = await resp.json()
+                entity_types = await resp.json()
                 vref_type = next(
-                    (t for t in asset_types if t["name"] == "VideoRef"), None
+                    (t for t in entity_types if t["name"] == "VideoRef"),
+                    None,
                 )
                 if not vref_type:
                     async with session.post(
-                        f"{KITSU_URL}/api/data/asset-types",
+                        f"{KITSU_URL}/api/data/entity-types",
                         headers={**headers, "Content-Type": "application/json"},
                         json={"name": "VideoRef"},
                         timeout=aiohttp.ClientTimeout(total=10),
@@ -405,8 +408,6 @@ async def push_to_kitsu(
 
             asset_data = {
                 "name": asset_name,
-                "project_id": project_id,
-                "entity_type_id": type_id,
                 "description": (
                     f"Style: {style}\nMood: {mood}\n"
                     f"Colors: {', '.join(colors[:5])}\n"
@@ -421,8 +422,10 @@ async def push_to_kitsu(
                     "videoref_prompt": prompt[:500],
                 },
             }
+            # Zou API: POST /data/projects/{pid}/asset-types/{tid}/assets/new
             async with session.post(
-                f"{KITSU_URL}/api/data/assets",
+                f"{KITSU_URL}/api/data/projects/{project_id}"
+                f"/asset-types/{type_id}/assets/new",
                 headers={**headers, "Content-Type": "application/json"},
                 json=asset_data,
                 timeout=aiohttp.ClientTimeout(total=15),
@@ -430,26 +433,26 @@ async def push_to_kitsu(
                 asset = await resp.json()
                 asset_id = asset.get("id", "")
 
-            # Upload keyframe previews (first 3)
+            # Upload first keyframe as asset thumbnail
             uploaded_previews = []
-            for frame in frames[:3]:
-                if not frame.exists():
-                    continue
-                form = aiohttp.FormData()
-                form.add_field(
-                    "file", frame.read_bytes(),
-                    filename=frame.name,
-                    content_type="image/jpeg",
-                )
-                async with session.post(
-                    f"{KITSU_URL}/api/pictures/previews/preview-files/"
-                    f"{asset_id}",
-                    headers=headers,
-                    data=form,
-                    timeout=aiohttp.ClientTimeout(total=30),
-                ) as r:
-                    if r.status in (200, 201):
-                        uploaded_previews.append(frame.name)
+            if frames and asset_id:
+                first_frame = frames[0]
+                if first_frame.exists():
+                    form = aiohttp.FormData()
+                    form.add_field(
+                        "file", first_frame.read_bytes(),
+                        filename=first_frame.name,
+                        content_type="image/jpeg",
+                    )
+                    async with session.post(
+                        f"{KITSU_URL}/api/pictures/thumbnails/assets/"
+                        f"{asset_id}",
+                        headers=headers,
+                        data=form,
+                        timeout=aiohttp.ClientTimeout(total=30),
+                    ) as r:
+                        if r.status in (200, 201):
+                            uploaded_previews.append(first_frame.name)
 
             return {
                 "asset_id": asset_id,

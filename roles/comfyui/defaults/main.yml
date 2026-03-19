@@ -37,6 +37,9 @@ comfyui_custom_nodes:
   - name: "ComfyUI-fal-Connector"
     repo: "https://github.com/gokayfem/ComfyUI-fal-Connector.git"
     pip_deps: ["fal-client", "fal", "httpx", "httpx-sse"]
+  - name: "ComfyUI-IPAdapter-plus"
+    repo: "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git"
+    pip_deps: ["insightface", "onnxruntime"]
 
 # fal.ai API key (from vault — used by fal-API and fal-Connector nodes)
 comfyui_fal_key: "{{ vault_comfyui_fal_key | default('') }}"

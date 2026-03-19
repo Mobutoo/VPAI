@@ -33,3 +33,12 @@ videoref_litellm_key: "{{ litellm_master_key }}"
 # Gitea template registry (via mesh VPN — Seko-VPN)
 videoref_gitea_url: "{{ vault_videoref_gitea_url | default('') }}"
 videoref_gitea_token: "{{ vault_videoref_gitea_token | default('') }}"
+
+# Kitsu (production tracker — via HTTPS domain)
+videoref_kitsu_url: "https://{{ kitsu_subdomain }}.{{ domain_name }}"
+videoref_kitsu_token: "{{ vault_kitsu_bot_token | default('') }}"
+
+# Qdrant (semantic search — via HTTPS domain)
+videoref_qdrant_url: "https://{{ qdrant_subdomain }}.{{ domain_name }}"
+videoref_qdrant_key: "{{ qdrant_api_key }}"
+videoref_qdrant_collection: "{{ qdrant_videoref_collection }}"

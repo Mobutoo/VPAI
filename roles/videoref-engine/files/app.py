@@ -1,4 +1,4 @@
-"""VideoRef Engine v0.2.0 -- Video analysis + ComfyUI workflow generation."""
+"""VideoRef Engine v0.3.0 -- Video analysis + Kitsu + Qdrant + Gitea integration."""
 import os
 import json
 import asyncio
@@ -19,8 +19,13 @@ LITELLM_URL = os.environ.get("LITELLM_URL", "")
 LITELLM_API_KEY = os.environ.get("LITELLM_API_KEY", "")
 GITEA_URL = os.environ.get("GITEA_URL", "")
 GITEA_TOKEN = os.environ.get("GITEA_TOKEN", "")
+KITSU_URL = os.environ.get("KITSU_URL", "")
+KITSU_TOKEN = os.environ.get("KITSU_TOKEN", "")
+QDRANT_URL = os.environ.get("QDRANT_URL", "")
+QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
+QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "videoref_styles")
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 
 
 # ============================================================
@@ -350,10 +355,268 @@ def _replace_in_dict(obj: Any, old: str, new: str) -> None:
 
 
 # ============================================================
+# 6. Kitsu integration (notes + metadata + preview uploads)
+# ============================================================
+async def push_to_kitsu(
+    filename: str, analysis: dict, colors: list[str],
+    motion: dict, frames: list[Path],
+) -> dict[str, Any]:
+    """Push analysis results to Kitsu as asset metadata + preview thumbnails."""
+    if not KITSU_URL or not KITSU_TOKEN:
+        return {"skipped": "KITSU not configured"}
+
+    headers = {"Authorization": f"Bearer {KITSU_TOKEN}"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Get first project
+            async with session.get(
+                f"{KITSU_URL}/api/data/projects", headers=headers,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                projects = await resp.json()
+                if not projects:
+                    return {"error": "No projects in Kitsu"}
+                project_id = projects[0]["id"]
+
+            # Get or create asset type "VideoRef"
+            async with session.get(
+                f"{KITSU_URL}/api/data/asset-types", headers=headers,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                asset_types = await resp.json()
+                vref_type = next(
+                    (t for t in asset_types if t["name"] == "VideoRef"), None
+                )
+                if not vref_type:
+                    async with session.post(
+                        f"{KITSU_URL}/api/data/asset-types",
+                        headers={**headers, "Content-Type": "application/json"},
+                        json={"name": "VideoRef"},
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as r:
+                        vref_type = await r.json()
+                type_id = vref_type["id"]
+
+            # Create asset for this video
+            asset_name = Path(filename).stem[:120]
+            style = analysis.get("style", "unknown")
+            mood = analysis.get("mood", "unknown")
+            prompt = analysis.get("suggested_prompt", "")
+
+            asset_data = {
+                "name": asset_name,
+                "project_id": project_id,
+                "entity_type_id": type_id,
+                "description": (
+                    f"Style: {style}\nMood: {mood}\n"
+                    f"Colors: {', '.join(colors[:5])}\n"
+                    f"Motion: {motion.get('motion_level', '?')}\n"
+                    f"Prompt: {prompt[:200]}"
+                ),
+                "data": {
+                    "videoref_style": style,
+                    "videoref_mood": mood,
+                    "videoref_colors": ", ".join(colors[:5]),
+                    "videoref_motion": motion.get("motion_level", "low"),
+                    "videoref_prompt": prompt[:500],
+                },
+            }
+            async with session.post(
+                f"{KITSU_URL}/api/data/assets",
+                headers={**headers, "Content-Type": "application/json"},
+                json=asset_data,
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                asset = await resp.json()
+                asset_id = asset.get("id", "")
+
+            # Upload keyframe previews (first 3)
+            uploaded_previews = []
+            for frame in frames[:3]:
+                if not frame.exists():
+                    continue
+                form = aiohttp.FormData()
+                form.add_field(
+                    "file", frame.read_bytes(),
+                    filename=frame.name,
+                    content_type="image/jpeg",
+                )
+                async with session.post(
+                    f"{KITSU_URL}/api/pictures/previews/preview-files/"
+                    f"{asset_id}",
+                    headers=headers,
+                    data=form,
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as r:
+                    if r.status in (200, 201):
+                        uploaded_previews.append(frame.name)
+
+            return {
+                "asset_id": asset_id,
+                "asset_name": asset_name,
+                "previews_uploaded": len(uploaded_previews),
+                "project_id": project_id,
+            }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ============================================================
+# 7. Qdrant semantic indexing (embeddings via LiteLLM)
+# ============================================================
+async def index_in_qdrant(
+    filename: str, analysis: dict, colors: list[str], motion: dict,
+) -> dict[str, Any]:
+    """Generate embedding via LiteLLM and index in Qdrant."""
+    if not QDRANT_URL or not QDRANT_API_KEY:
+        return {"skipped": "QDRANT not configured"}
+    if not LITELLM_URL or not LITELLM_API_KEY:
+        return {"skipped": "LITELLM not configured (needed for embeddings)"}
+
+    # Build text to embed
+    style = analysis.get("style", "")
+    mood = analysis.get("mood", "")
+    prompt = analysis.get("suggested_prompt", "")
+    color_str = ", ".join(colors[:5])
+    text = (
+        f"Video reference: {filename}. "
+        f"Style: {style}. Mood: {mood}. "
+        f"Colors: {color_str}. "
+        f"Motion: {motion.get('motion_level', 'unknown')}. "
+        f"Prompt: {prompt}"
+    )
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Get embedding from LiteLLM
+            async with session.post(
+                f"{LITELLM_URL}/v1/embeddings",
+                json={
+                    "model": "embedding",
+                    "input": text,
+                },
+                headers={
+                    "Authorization": f"Bearer {LITELLM_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    return {"error": f"Embedding failed: {resp.status} {body[:200]}"}
+                emb_data = await resp.json()
+                vector = emb_data["data"][0]["embedding"]
+
+            # Upsert into Qdrant
+            import hashlib
+            point_id = int(
+                hashlib.sha256(filename.encode()).hexdigest()[:15], 16
+            )
+            payload = {
+                "filename": filename,
+                "style": style,
+                "mood": mood,
+                "colors": colors[:5],
+                "motion_level": motion.get("motion_level", "unknown"),
+                "suggested_prompt": prompt[:500],
+                "analysis": json.dumps(analysis)[:2000],
+            }
+            async with session.put(
+                f"{QDRANT_URL}/collections/{QDRANT_COLLECTION}/points",
+                json={
+                    "points": [{
+                        "id": point_id,
+                        "vector": vector,
+                        "payload": payload,
+                    }]
+                },
+                headers={
+                    "api-key": QDRANT_API_KEY,
+                    "Content-Type": "application/json",
+                },
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    return {"error": f"Qdrant upsert: {resp.status} {body[:200]}"}
+                return {"indexed": True, "point_id": point_id}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ============================================================
+# 8. Gitea versioning (push analysis JSON to repo)
+# ============================================================
+async def version_in_gitea(
+    filename: str, result: dict,
+) -> dict[str, Any]:
+    """Push analysis result as JSON file to Gitea comfyui-templates repo."""
+    if not GITEA_URL or not GITEA_TOKEN:
+        return {"skipped": "GITEA not configured"}
+
+    stem = Path(filename).stem
+    file_path = f"analyses/{stem}.json"
+    content_b64 = base64.b64encode(
+        json.dumps(result, indent=2).encode()
+    ).decode()
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Check if file exists (for update vs create)
+            async with session.get(
+                f"{GITEA_URL}/api/v1/repos/mobuone/comfyui-templates"
+                f"/contents/{file_path}?ref=main",
+                headers={"Authorization": f"token {GITEA_TOKEN}"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                sha = ""
+                if resp.status == 200:
+                    existing = await resp.json()
+                    sha = existing.get("sha", "")
+
+            method = "PUT" if sha else "POST"
+            body = {
+                "message": f"analysis: {stem}",
+                "content": content_b64,
+            }
+            if sha:
+                body["sha"] = sha
+
+            url = (
+                f"{GITEA_URL}/api/v1/repos/mobuone/comfyui-templates"
+                f"/contents/{file_path}"
+            )
+            async with session.request(
+                method, url,
+                json=body,
+                headers={
+                    "Authorization": f"token {GITEA_TOKEN}",
+                    "Content-Type": "application/json",
+                },
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status in (200, 201):
+                    return {"versioned": True, "path": file_path}
+                body_text = await resp.text()
+                return {"error": f"Gitea {resp.status}: {body_text[:200]}"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ============================================================
 # HTTP API handlers
 # ============================================================
 async def health(request):
-    return web.json_response({"status": "ok", "version": VERSION})
+    return web.json_response({
+        "status": "ok",
+        "version": VERSION,
+        "integrations": {
+            "litellm": bool(LITELLM_URL),
+            "kitsu": bool(KITSU_URL),
+            "qdrant": bool(QDRANT_URL),
+            "gitea": bool(GITEA_URL),
+        },
+    })
 
 
 async def list_jobs(request):
@@ -428,6 +691,21 @@ async def analyze(request):
         result["status"] = "completed"
         result["workflow_path"] = str(wf_path)
 
+        # Step 6: Push to Kitsu (notes + metadata + preview keyframes)
+        result["kitsu"] = await push_to_kitsu(
+            filename, result["vision_analysis"], result["colors"],
+            result["motion"], frames,
+        )
+
+        # Step 7: Index in Qdrant (semantic search)
+        result["qdrant"] = await index_in_qdrant(
+            filename, result["vision_analysis"], result["colors"],
+            result["motion"],
+        )
+
+        # Step 8: Version in Gitea
+        result["gitea"] = await version_in_gitea(filename, result)
+
     except Exception as exc:
         result["status"] = "error"
         result["error"] = str(exc)
@@ -488,6 +766,15 @@ async def _background_analyze(filename: str) -> None:
             "vision_analysis": vision,
             "workflow_path": str(wf_path),
         }
+
+        # Push to creative pipeline (Kitsu + Qdrant + Gitea)
+        result["kitsu"] = await push_to_kitsu(
+            filename, vision, colors, motion, frames,
+        )
+        result["qdrant"] = await index_in_qdrant(
+            filename, vision, colors, motion,
+        )
+        result["gitea"] = await version_in_gitea(filename, result)
     except Exception as exc:
         result = {"filename": filename, "status": "error", "error": str(exc)}
 

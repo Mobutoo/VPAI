@@ -280,6 +280,43 @@
           "exec": { "timeoutSec": 30 },
           "elevated": { "enabled": false }
         }
+      },
+      {
+        "id": "{{ openclaw_agent_director_name }}",
+        "model": {
+          "primary": "{{ openclaw_director_model }}",
+          "fallbacks": {{ openclaw_reasoning_fallbacks }}
+        },
+        "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_director_name }}",
+        "sandbox": {
+          "mode": "all",
+          "docker": {
+            "network": "{{ project_name }}_egress",
+            "readOnlyRoot": true,
+            "tmpfs": ["/tmp", "/var/tmp", "/run"],
+            "user": "1000:1000",
+            "capDrop": ["ALL"],
+            "memory": "1024m",
+            "cpus": 1,
+            "env": {
+              "VREF_URL": "https://cine.{{ domain_name }}",
+              "KITSU_URL": "https://{{ kitsu_subdomain }}.{{ domain_name }}",
+              "QDRANT_URL": "https://{{ qdrant_subdomain }}.{{ domain_name }}",
+              "QDRANT_API_KEY": "${QDRANT_API_KEY}"
+            }
+          }
+        },
+        "subagents": {
+          "allowAgents": {{ agent_allow('director') }}
+        },
+        "tools": {
+          "fs": { "workspaceOnly": true },
+          "exec": {
+            "applyPatch": { "workspaceOnly": true },
+            "timeoutSec": 600
+          },
+          "elevated": { "enabled": false }
+        }
       }
     ]
   },

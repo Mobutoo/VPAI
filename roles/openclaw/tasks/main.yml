@@ -230,6 +230,7 @@
     - "{{ openclaw_agent_cfo_name }}"
     - "{{ openclaw_agent_maintainer_name }}"
     - "{{ openclaw_agent_messenger_name }}"
+    - "{{ openclaw_agent_director_name }}"
     - "{{ openclaw_agent_marketer_name }}"
   when: openclaw_volume_isolation | default(false)
 
@@ -254,6 +255,7 @@
     - "{{ openclaw_agent_cfo_name }}"
     - "{{ openclaw_agent_maintainer_name }}"
     - "{{ openclaw_agent_messenger_name }}"
+    - "{{ openclaw_agent_director_name }}"
     - "{{ openclaw_agent_marketer_name }}"
   when: openclaw_volume_isolation | default(false)
 
@@ -278,6 +280,7 @@
     - "{{ openclaw_agent_cfo_name }}"
     - "{{ openclaw_agent_maintainer_name }}"
     - "{{ openclaw_agent_messenger_name }}"
+    - "{{ openclaw_agent_director_name }}"
     - "{{ openclaw_agent_marketer_name }}"
   when: openclaw_volume_isolation | default(false)
   notify: Restart openclaw stack
@@ -317,6 +320,7 @@
     - "{{ openclaw_agent_cfo_name }}"
     - "{{ openclaw_agent_maintainer_name }}"
     - "{{ openclaw_agent_messenger_name }}"
+    - "{{ openclaw_agent_director_name }}"
   when: openclaw_volume_isolation | default(false)
 
 - name: Deploy per-agent workspace IDENTITY.md
@@ -337,6 +341,19 @@
     - { agent: "{{ openclaw_agent_cfo_name }}", dir: "finance" }
     - { agent: "{{ openclaw_agent_maintainer_name }}", dir: "{{ openclaw_agent_maintainer_name }}" }
     - { agent: "{{ openclaw_agent_messenger_name }}", dir: "{{ openclaw_agent_messenger_name }}" }
+    - { agent: "{{ openclaw_agent_director_name }}", dir: "{{ openclaw_agent_director_name }}" }
+  when: openclaw_volume_isolation | default(false)
+  notify: Restart openclaw stack
+
+# Deploy vref CLI to Director workspace (used in sandbox via exec tool)
+- name: Deploy vref CLI to Director workspace
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../roles/videoref-engine/files/vref"
+    dest: "{{ openclaw_workspace_dir }}/{{ openclaw_agent_director_name }}/vref"
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
   when: openclaw_volume_isolation | default(false)
   notify: Restart openclaw stack
 

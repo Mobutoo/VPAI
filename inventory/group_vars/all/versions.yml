@@ -44,7 +44,7 @@ socket_proxy_image: "tecnativa/docker-socket-proxy:v0.4.2"
 couchdb_image: "apache/couchdb:3.3.3"
 
 # --- Kitsu (animation/VFX production tracker) ---
-kitsu_image: "cgwire/cgwire:1.0.17"
+kitsu_image: "cgwire/cgwire:1.0.19"  # Kitsu 1.0.19 + Zou 1.0.21 (2026-03-18)
 
 # --- Tunnel / VPN-only ---
 # cloudflared: RETIRÉ — remplacé par webhook relay via Seko-VPN (role webhook-relay)

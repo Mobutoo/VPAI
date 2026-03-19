@@ -27,7 +27,7 @@ QDRANT_URL = os.environ.get("QDRANT_URL", "")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
 QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "videoref_styles")
 
-VERSION = "0.4.1"
+VERSION = "0.5.0"
 SCENE_THRESHOLD = 0.3
 SHORT_VIDEO_SECONDS = 30
 
@@ -527,25 +527,52 @@ async def _kitsu_create_shot(
     shot_name: str,
     scene_data: dict[str, Any],
 ) -> dict[str, Any]:
-    """Create a Shot under a sequence."""
+    """Create a Shot under a sequence. Requires Zou >= 1.0.21."""
     return await _kitsu_api(
         session, "POST",
-        f"/data/projects/{project_id}/sequences/{sequence_id}/shots",
-        {"name": shot_name, "data": scene_data},
+        f"/data/projects/{project_id}/shots",
+        {"name": shot_name, "sequence_id": sequence_id, "data": scene_data},
     )
 
 
-async def _kitsu_create_task(
+async def _kitsu_get_or_create_task(
     session: aiohttp.ClientSession,
     entity_id: str,
     task_type_id: str,
     project_id: str,
 ) -> dict[str, Any]:
-    """Create a task on an entity (shot or sequence)."""
-    return await _kitsu_api(
-        session, "POST", "/data/tasks",
-        {"entity_id": entity_id, "task_type_id": task_type_id, "project_id": project_id},
-    )
+    """Get existing task or create one. Handles auto-created tasks."""
+    # Try to fetch existing task first (Kitsu may auto-create tasks)
+    try:
+        tasks = await _kitsu_api(
+            session, "GET",
+            f"/data/entities/{entity_id}/task-types/{task_type_id}/tasks",
+        )
+        if tasks and isinstance(tasks, list) and tasks:
+            return tasks[0]
+    except Exception:
+        pass
+
+    # No existing task — create one
+    try:
+        return await _kitsu_api(
+            session, "POST", "/data/tasks",
+            {
+                "entity_id": entity_id,
+                "task_type_id": task_type_id,
+                "project_id": project_id,
+            },
+        )
+    except RuntimeError as e:
+        if "already exists" in str(e).lower():
+            # Race condition — retry fetch
+            tasks = await _kitsu_api(
+                session, "GET",
+                f"/data/entities/{entity_id}/task-types/{task_type_id}/tasks",
+            )
+            if tasks and isinstance(tasks, list) and tasks:
+                return tasks[0]
+        raise
 
 
 async def _kitsu_post_comment(
@@ -579,14 +606,14 @@ async def _kitsu_upload_preview(
         return None
     preview_id = preview["id"]
 
-    # Step 2: upload the file
+    # Step 2: upload the file (POST, not PUT — Zou 1.0.21+)
     form = aiohttp.FormData()
     form.add_field(
         "file", frame_path.read_bytes(),
         filename=frame_path.name, content_type="image/jpeg",
     )
     await _kitsu_api(
-        session, "PUT",
+        session, "POST",
         f"/pictures/preview-files/{preview_id}",
         data=form,
     )
@@ -623,7 +650,9 @@ async def push_to_kitsu(
             project_id = project["id"]
             episode_id = project.get("first_episode_id", "")
 
-            task_type_id = await _kitsu_get_task_type_id(session)
+            shot_task_type_id = await _kitsu_get_task_type_id(
+                session, "Shot Analysis",
+            )
             done_status_id = await _kitsu_get_done_status_id(session)
 
             # Create Sequence for this video
@@ -633,53 +662,87 @@ async def push_to_kitsu(
             )
             sequence_id = sequence["id"]
 
-            # Post synthesis analysis on the sequence
-            seq_task = await _kitsu_create_task(
-                session, sequence_id, task_type_id, project_id,
-            )
+            # Store synthesis as sequence description (no task on sequence)
             synthesis_text = _format_synthesis(synthesis, colors, motion)
-            await _kitsu_post_comment(
-                session, seq_task["id"], done_status_id, synthesis_text,
-            )
+            try:
+                await _kitsu_api(
+                    session, "PUT",
+                    f"/data/entities/{sequence_id}",
+                    {"description": synthesis_text},
+                )
+            except Exception:
+                pass  # Non-critical
 
-            # Create Shots (1 per scene)
+            # Phase 1: Create all Shots (1 per scene)
             shot_ids: list[str] = []
             for idx, (scene, analysis) in enumerate(
                 zip(scenes, scene_analyses, strict=False)
             ):
                 shot_name = f"SH{(idx + 1) * 10:04d}"
                 scene_meta = {
-                    "start": scene["start"],
-                    "end": scene["end"],
-                    "duration": round(scene["end"] - scene["start"], 3),
+                    "start": scene.get("start", 0),
+                    "end": scene.get("end", 0),
+                    "duration": round(
+                        scene.get("end", 0) - scene.get("start", 0), 3
+                    ),
                     "style": analysis.get("style", ""),
                     "mood": analysis.get("mood", ""),
                 }
                 shot = await _kitsu_create_shot(
                     session, project_id, sequence_id, shot_name, scene_meta,
                 )
-                shot_id = shot["id"]
-                shot_ids.append(shot_id)
+                shot_ids.append(shot["id"])
 
-                # Create task + comment with analysis
-                task = await _kitsu_create_task(
-                    session, shot_id, task_type_id, project_id,
+            # Phase 2: Bulk create tasks for all shots
+            await _kitsu_api(
+                session, "POST",
+                f"/actions/projects/{project_id}/task-types"
+                f"/{shot_task_type_id}/shots/create-tasks",
+                {},
+            )
+
+            # Phase 3: Post comments + previews on each shot
+            task_count = 0
+            comment_count = 0
+            preview_count = 0
+            for idx, (shot_id, scene, analysis) in enumerate(
+                zip(shot_ids, scenes, scene_analyses, strict=False)
+            ):
+                # Fetch the auto-created task
+                shot_tasks = await _kitsu_api(
+                    session, "GET",
+                    f"/data/shots/{shot_id}/tasks",
                 )
+                task = next(
+                    (t for t in (shot_tasks or [])
+                     if t.get("task_type_id") == shot_task_type_id),
+                    None,
+                )
+                if not task:
+                    continue
+                task_count += 1
                 comment_text = _format_scene_analysis(idx, scene, analysis)
                 comment = await _kitsu_post_comment(
                     session, task["id"], done_status_id, comment_text,
                 )
+                if comment and "id" in comment:
+                    comment_count += 1
 
-                # Upload keyframe as preview
-                if idx < len(frames) and frames[idx].exists():
-                    await _kitsu_upload_preview(
-                        session, task["id"], comment["id"], frames[idx],
-                    )
+                    # Upload keyframe as preview
+                    if idx < len(frames) and frames[idx].exists():
+                        pid = await _kitsu_upload_preview(
+                            session, task["id"], comment["id"], frames[idx],
+                        )
+                        if pid:
+                            preview_count += 1
 
             return {
                 "sequence_id": sequence_id,
                 "sequence_name": seq_name,
-                "shots_created": len(shot_ids),
+                "shot_count": len(shot_ids),
+                "task_count": task_count,
+                "comment_count": comment_count,
+                "preview_count": preview_count,
                 "project_id": project_id,
             }
     except Exception as exc:

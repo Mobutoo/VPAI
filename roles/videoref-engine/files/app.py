@@ -853,9 +853,19 @@ async def _kitsu_create_playlist(
     name: str,
     shot_ids: list[str],
 ) -> dict[str, Any] | None:
-    """Create a playlist in Kitsu for review."""
+    """Create a playlist in Kitsu for review with actual preview files."""
     try:
-        shots_payload = [{"entity_id": sid, "preview_file_id": ""} for sid in shot_ids]
+        # Fetch preview_file_id for each shot (so the playlist shows real frames)
+        shots_payload = []
+        for sid in shot_ids:
+            preview_id = ""
+            try:
+                entity = await _kitsu_api(session, "GET", f"/data/entities/{sid}")
+                preview_id = entity.get("preview_file_id", "") or ""
+            except Exception:
+                pass
+            shots_payload.append({"entity_id": sid, "preview_file_id": preview_id})
+
         return await _kitsu_api(
             session, "POST",
             f"/data/projects/{project_id}/playlists",
@@ -863,6 +873,61 @@ async def _kitsu_create_playlist(
         )
     except Exception:
         return None
+
+
+async def _kitsu_cast_asset_to_shot(
+    session: aiohttp.ClientSession,
+    project_id: str,
+    shot_id: str,
+    asset_id: str,
+) -> bool:
+    """Cast an asset into a shot (breakdown link).
+
+    This makes the asset appear in the shot's breakdown view in Kitsu.
+    Used for character consistency: the character asset is linked to all
+    shots where it appears.
+    """
+    try:
+        # Get current casting
+        current = await _kitsu_api(
+            session, "GET",
+            f"/data/projects/{project_id}/entities/{shot_id}/casting",
+        )
+        # Add new asset if not already cast
+        casting = current if isinstance(current, list) else []
+        if not any(c.get("asset_id") == asset_id for c in casting):
+            casting.append({"asset_id": asset_id, "nb_occurences": 1})
+            await _kitsu_api(
+                session, "PUT",
+                f"/data/projects/{project_id}/entities/{shot_id}/casting",
+                casting,
+            )
+        return True
+    except Exception:
+        return False
+
+
+async def _kitsu_set_task_estimation(
+    session: aiohttp.ClientSession,
+    task_id: str,
+    cost_usd: float = 0.0,
+    duration_seconds: int = 0,
+) -> bool:
+    """Set estimation on a task (cost as duration proxy, visible in schedule).
+
+    Kitsu tracks estimation in seconds. We encode the AI model cost
+    as "estimation" so it appears in the schedule/budget views.
+    Convention: 1 USD = 3600 seconds (1 hour) for visual representation.
+    """
+    try:
+        estimation_sec = int(cost_usd * 3600) if cost_usd > 0 else duration_seconds
+        await _kitsu_api(
+            session, "PUT", f"/data/tasks/{task_id}",
+            {"estimation": estimation_sec},
+        )
+        return True
+    except Exception:
+        return False
 
 
 async def push_to_kitsu(
@@ -2209,7 +2274,10 @@ async def _step_imagegen(
         f"{' (upscale needed → ' + resolution + ')' if needs_upscale else ''}. "
         f"Validate before video generation."
     )
-    kitsu_result = await _kitsu_step_task(job, "Image Gen", "wfa", kitsu_note)
+    total_cost = len(results) * (model.get("cost", 0) if model else 0)
+    kitsu_result = await _kitsu_step_task(
+        job, "Image Gen", "wfa", kitsu_note, cost_usd=total_cost,
+    )
 
     return {
         "status": "ok",
@@ -2218,6 +2286,7 @@ async def _step_imagegen(
         "gen_resolution": f"{gen_w}x{gen_h}",
         "target_resolution": resolution,
         "needs_upscale": needs_upscale,
+        "estimated_cost_usd": total_cost,
         "imagegen_results": results,
         "kitsu": kitsu_result,
     }, {}
@@ -2288,13 +2357,16 @@ async def _step_videogen(
         f"{duration}s each, ~${total_cost:.2f} total. "
         f"Awaiting validation."
     )
-    kitsu_result = await _kitsu_step_task(job, "Video Gen", "wfa", kitsu_note)
+    kitsu_result = await _kitsu_step_task(
+        job, "Video Gen", "wfa", kitsu_note, cost_usd=total_cost,
+    )
 
     return {
         "status": "ok",
         "model_used": model_name,
         "budget": budget,
         "duration_per_clip": duration,
+        "estimated_cost_usd": total_cost,
         "videogen_results": results,
         "kitsu": kitsu_result,
     }, {}
@@ -2652,8 +2724,15 @@ async def _kitsu_step_task(
     task_type_name: str,
     target_status: str,
     comment_text: str,
+    cost_usd: float = 0.0,
+    cast_asset_ids: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Create/update a Kitsu task for a pipeline step on the sequence."""
+    """Create/update a Kitsu task for a pipeline step on the sequence.
+
+    Enhanced with:
+    - cost_usd: set estimation on task (visible in schedule/budget)
+    - cast_asset_ids: link assets to the sequence (breakdown/casting)
+    """
     if not KITSU_URL or not KITSU_TOKEN:
         return {"skipped": "KITSU not configured"}
 
@@ -2672,11 +2751,34 @@ async def _kitsu_step_task(
             comment = await _kitsu_post_comment(
                 session, task["id"], status_id, comment_text[:5000],
             )
-            return {
+
+            # Set estimation (cost → visible in Kitsu schedule)
+            if cost_usd > 0:
+                await _kitsu_set_task_estimation(
+                    session, task["id"], cost_usd=cost_usd,
+                )
+
+            # Cast assets into shots (breakdown links)
+            cast_count = 0
+            if cast_asset_ids:
+                for shot_id in job.get("kitsu_shot_ids", []):
+                    for asset_id in cast_asset_ids:
+                        ok = await _kitsu_cast_asset_to_shot(
+                            session, project_id, shot_id, asset_id,
+                        )
+                        if ok:
+                            cast_count += 1
+
+            result: dict[str, Any] = {
                 "task_id": task["id"],
                 "comment_id": comment.get("id", "") if comment else "",
                 "status": target_status,
             }
+            if cost_usd > 0:
+                result["estimation_usd"] = cost_usd
+            if cast_count > 0:
+                result["cast_links"] = cast_count
+            return result
     except Exception as exc:
         return {"error": str(exc)}
 

@@ -1618,8 +1618,49 @@ async def _step_videogen(
 async def _step_montage(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle montage step: placeholder for Remotion integration."""
-    note = "Not yet implemented -- manual step (Remotion integration future)"
+    """Handle montage step: assemble video scenes via n8n → Remotion."""
+    scene_prompts = job.get("scene_prompts", [])
+    transitions = params.get("transitions", "cut")
+
+    # Call n8n creative-pipeline with type=video-composition for Remotion
+    if N8N_CREATIVE_PIPELINE_URL:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    N8N_CREATIVE_PIPELINE_URL,
+                    json={
+                        "type": "video-composition",
+                        "composition": "MultiScene",
+                        "input_props": {
+                            "scenes": [
+                                sp.get("enriched", sp.get("original", ""))
+                                for sp in scene_prompts
+                            ],
+                            "transitions": transitions,
+                            "duration": len(scene_prompts) * 5,
+                        },
+                        "agent_id": "videoref-engine",
+                        "output_name": f"{job['job_id'][:8]}-montage",
+                    },
+                    timeout=aiohttp.ClientTimeout(total=300),
+                ) as resp:
+                    if resp.status == 200:
+                        result = await resp.json()
+                        note = f"Montage assembled via Remotion: {result.get('render_id', '?')}"
+                        kitsu_result = await _kitsu_step_task(
+                            job, "Montage", "wfa", note,
+                        )
+                        return {
+                            "status": "ok",
+                            "render_id": result.get("render_id"),
+                            "result_url": result.get("result_url"),
+                            "kitsu": kitsu_result,
+                        }, {}
+        except Exception as exc:
+            note = f"Remotion montage failed: {exc}. Manual montage at re.ewutelo.cloud"
+    else:
+        note = "n8n not configured. Manual montage at re.ewutelo.cloud"
+
     kitsu_result = await _kitsu_step_task(job, "Montage", "wfa", note)
     return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
 

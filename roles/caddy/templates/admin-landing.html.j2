@@ -3,205 +3,542 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ project_display_name }} — Admin Portal</title>
+    <title>{{ project_display_name }} — Mission Control</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --bg: #0a0a0f;
+            --card: #12121a;
+            --border: #1e1e2e;
+            --text: #c8c8d4;
+            --dim: #5a5a72;
+            --accent: #6366f1;
+            --green: #22c55e;
+            --cyan: #06b6d4;
+            --amber: #f59e0b;
+            --rose: #f43f5e;
+            --purple: #a855f7;
+            --pink: #ec4899;
         }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            background: #000;
-            color: #0f0;
-            font-family: 'Courier New', monospace;
-            overflow: hidden;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-shadow: 0 0 10px #0f0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
         }
 
-        .scanlines {
+        .bg-grid {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: repeating-linear-gradient(
-                0deg,
-                rgba(0, 255, 0, 0.05),
-                rgba(0, 255, 0, 0.05) 1px,
-                transparent 1px,
-                transparent 2px
-            );
-            pointer-events: none;
-            z-index: 10;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(99, 102, 241, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(99, 102, 241, 0.03) 1px, transparent 1px);
+            background-size: 48px 48px;
+            z-index: 0;
         }
 
-        .container {
+        .main {
+            position: relative;
+            z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem 4rem;
+        }
+
+        /* Header */
+        header {
             text-align: center;
-            padding: 2rem;
-            border: 2px solid #0f0;
-            background: rgba(0, 0, 0, 0.8);
-            box-shadow: 0 0 30px #0f0;
-            max-width: 90%;
-            animation: flicker 0.15s infinite;
+            padding: 3rem 0 2rem;
         }
 
-        @keyframes flicker {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.97; }
+        header h1 {
+            font-size: clamp(1.6rem, 4vw, 2.4rem);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            background: linear-gradient(135deg, var(--accent), var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
-        pre {
-            color: #0ff;
-            font-size: clamp(0.5rem, 1.2vw, 1rem);
-            line-height: 1.2;
-            margin: 1rem 0;
-            text-shadow: 0 0 15px #0ff;
+        header .tagline {
+            color: var(--dim);
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
         }
 
-        h1 {
-            color: #f0f;
-            font-size: clamp(1.2rem, 3vw, 2rem);
-            margin: 1.5rem 0;
-            text-shadow: 0 0 20px #f0f;
-            letter-spacing: 0.2em;
-        }
-
-        .quote {
-            color: #ff0;
-            font-size: clamp(0.9rem, 2vw, 1.3rem);
-            margin: 2rem 0;
-            font-style: italic;
-            text-shadow: 0 0 15px #ff0;
-        }
-
-        .nav {
-            margin-top: 2rem;
+        .status-bar {
             display: flex;
-            flex-wrap: wrap;
             justify-content: center;
-            gap: 1rem;
+            gap: 1.5rem;
+            margin-top: 1.2rem;
+            flex-wrap: wrap;
         }
 
-        .nav a {
-            color: #0f0;
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.75rem;
+            color: var(--dim);
+            padding: 0.3rem 0.8rem;
+            border: 1px solid var(--border);
+            border-radius: 99px;
+            background: var(--card);
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--green);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Sections */
+        .section {
+            margin-top: 2.5rem;
+        }
+
+        .section-title {
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--dim);
+            margin-bottom: 1rem;
+            padding-left: 0.25rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 0.75rem;
+        }
+
+        /* Cards */
+        .card {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.9rem 1rem;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
             text-decoration: none;
-            padding: 0.5rem 1rem;
-            border: 1px solid #0f0;
-            transition: all 0.3s;
-            text-shadow: 0 0 10px #0f0;
+            color: var(--text);
+            transition: all 0.2s ease;
+            position: relative;
+            overflow: hidden;
         }
 
-        .nav a:hover {
-            background: #0f0;
-            color: #000;
-            box-shadow: 0 0 20px #0f0;
-            text-shadow: none;
+        .card:hover {
+            border-color: var(--accent);
+            background: #16162a;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 24px rgba(99, 102, 241, 0.08);
         }
 
-        .footer {
-            color: #666;
-            font-size: 0.8rem;
-            margin-top: 2rem;
-            text-shadow: none;
+        .card-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
         }
 
-        @media (max-width: 768px) {
-            pre {
-                font-size: 0.5rem;
-            }
+        .card-info h3 {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #e0e0ea;
+        }
+
+        .card-info p {
+            font-size: 0.7rem;
+            color: var(--dim);
+            margin-top: 0.15rem;
+        }
+
+        .card .badge {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            font-size: 0.55rem;
+            padding: 0.15rem 0.4rem;
+            border-radius: 4px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .badge-vpn { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+        .badge-pi { background: rgba(168, 85, 247, 0.15); color: var(--purple); }
+        .badge-seko { background: rgba(6, 182, 212, 0.15); color: var(--cyan); }
+
+        /* Color themes per section */
+        .ai .card-icon { background: rgba(99, 102, 241, 0.15); color: var(--accent); }
+        .data .card-icon { background: rgba(6, 182, 212, 0.15); color: var(--cyan); }
+        .creative .card-icon { background: rgba(168, 85, 247, 0.15); color: var(--purple); }
+        .finance .card-icon { background: rgba(245, 158, 11, 0.15); color: var(--amber); }
+        .food .card-icon { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+        .ops .card-icon { background: rgba(244, 63, 94, 0.15); color: var(--rose); }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--dim);
+            font-size: 0.75rem;
+        }
+
+        footer .servers {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 0.8rem;
+            flex-wrap: wrap;
+        }
+
+        footer .server {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        footer .server-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+        }
+
+        @media (max-width: 640px) {
+            .grid { grid-template-columns: 1fr; }
+            .main { padding: 1rem 1rem 3rem; }
         }
     </style>
 </head>
 <body>
-    <div class="scanlines"></div>
+    <div class="bg-grid"></div>
 
-    <div class="container">
-        <pre>
-    ╔═══════════════════════════════════════════════════════════════╗
-    ║                                                               ║
-    ║   ▄▄▄█████▓ ██░ ██ ▓█████     ▄▄▄█████▓ ██▀███   █    ██  ▄▄▄█████▓ ██░ ██
-    ║   ▓  ██▒ ▓▒▓██░ ██▒▓█   ▀     ▓  ██▒ ▓▒▓██ ▒ ██▒ ██  ▓██▒ ▓  ██▒ ▓▒▓██░ ██▒
-    ║   ▒ ▓██░ ▒░▒██▀▀██░▒███       ▒ ▓██░ ▒░▓██ ░▄█ ▒▓██  ▒██░ ▒ ▓██░ ▒░▒██▀▀██░
-    ║   ░ ▓██▓ ░ ░▓█ ░██ ▒▓█  ▄     ░ ▓██▓ ░ ▒██▀▀█▄  ▓▓█  ░██░ ░ ▓██▓ ░ ░▓█ ░██
-    ║     ▒██▒ ░ ░▓█▒░██▓░▒████▒      ▒██▒ ░ ░██▓ ▒██▒▒▒█████▓    ▒██▒ ░ ░▓█▒░██▓
-    ║     ▒ ░░    ▒ ░░▒░▒░░ ▒░ ░      ▒ ░░   ░ ▒▓ ░▒▓░░▒▓▒ ▒ ▒    ▒ ░░    ▒ ░░▒░▒
-    ║       ░     ▒ ░▒░ ░ ░ ░  ░        ░      ░▒ ░ ▒░░░▒░ ░ ░      ░     ▒ ░▒░ ░
-    ║     ░       ░  ░░ ░   ░         ░        ░░   ░  ░░░ ░ ░    ░       ░  ░░ ░
-    ║             ░  ░  ░   ░  ░                ░        ░                ░  ░  ░
-    ║                                                                             ║
-    ║                        ██▓  ██████     ▒█████   █    ██ ▄▄▄█████▓          ║
-    ║                       ▓██▒▒██    ▒    ▒██▒  ██▒ ██  ▓██▒▓  ██▒ ▓▒          ║
-    ║                       ▒██▒░ ▓██▄      ▒██░  ██▒▓██  ▒██░▒ ▓██░ ▒░          ║
-    ║                       ░██░  ▒   ██▒   ▒██   ██░▓▓█  ░██░░ ▓██▓ ░           ║
-    ║                       ░██░▒██████▒▒   ░ ████▓▒░▒▒█████▓   ▒██▒ ░           ║
-    ║                       ░▓  ▒ ▒▓▒ ▒ ░   ░ ▒░▒░▒░ ░▒▓▒ ▒ ▒   ▒ ░░             ║
-    ║                        ▒ ░░ ░▒  ░ ░     ░ ▒ ▒░ ░░▒░ ░ ░     ░              ║
-    ║                        ▒ ░░  ░  ░     ░ ░ ░ ▒   ░░░ ░ ░   ░                ║
-    ║                        ░        ░         ░ ░     ░                        ║
-    ║                                                                             ║
-    ╚═══════════════════════════════════════════════════════════════╝
-        </pre>
+    <div class="main">
+        <header>
+            <h1>{{ project_display_name }}</h1>
+            <div class="tagline">Mission Control</div>
+            <div class="status-bar">
+                <div class="status-pill"><span class="status-dot"></span> VPN Active</div>
+                <div class="status-pill">4 Servers</div>
+                <div class="status-pill" id="clock"></div>
+            </div>
+        </header>
 
-        <h1>[ ADMIN PORTAL ]</h1>
-
-        <div class="quote">
-            « La vérité est ailleurs »
-        </div>
-
-        <div class="nav">
+        <!-- AI & Automation -->
+        <div class="section ai">
+            <div class="section-title">AI &amp; Automation</div>
+            <div class="grid">
+{% if admin_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ caddy_admin_domain }}/">
+                    <div class="card-icon">🤖</div>
+                    <div class="card-info">
+                        <h3>OpenClaw</h3>
+                        <p>Agent IA multi-outils</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
+{% endif %}
 {% if n8n_subdomain | default('') | length > 0 %}
-            <a href="https://{{ caddy_n8n_domain }}/">[N8N]</a>
-{% endif %}
-{% if grafana_subdomain | default('') | length > 0 %}
-            <a href="https://{{ caddy_grafana_domain }}/">[GRAFANA]</a>
-{% endif %}
-            <a href="https://{{ caddy_admin_domain }}/">[OPENCLAW]</a>
-{% if qdrant_subdomain | default('') | length > 0 %}
-            <a href="https://{{ caddy_qdrant_domain }}/">[QDRANT]</a>
+                <a class="card" href="https://{{ caddy_n8n_domain }}/">
+                    <div class="card-icon">⚡</div>
+                    <div class="card-info">
+                        <h3>n8n</h3>
+                        <p>Workflows automation</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
 {% endif %}
 {% if litellm_subdomain | default('') | length > 0 %}
-            <a href="https://{{ caddy_litellm_domain }}/">[LITELLM]</a>
+                <a class="card" href="https://{{ caddy_litellm_domain }}/">
+                    <div class="card-icon">🔀</div>
+                    <div class="card-info">
+                        <h3>LiteLLM</h3>
+                        <p>Gateway multi-modeles</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
 {% endif %}
+{% if qdrant_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ caddy_qdrant_domain }}/dashboard">
+                    <div class="card-icon">🔍</div>
+                    <div class="card-info">
+                        <h3>Qdrant</h3>
+                        <p>Vector search engine</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
+{% endif %}
+            </div>
         </div>
 
-        <div class="footer">
-            {{ project_display_name }} • Secured by VPN • {{ ansible_facts['date_time']['iso8601'] | default('') }}
+        <!-- Creative Studio -->
+        <div class="section creative">
+            <div class="section-title">Creative Studio</div>
+            <div class="grid">
+{% if kitsu_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ kitsu_subdomain }}.{{ domain_name }}/">
+                    <div class="card-icon">🎬</div>
+                    <div class="card-info">
+                        <h3>Kitsu</h3>
+                        <p>Production tracker</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
+{% endif %}
+{% if comfyui_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ comfyui_subdomain }}.{{ domain_name }}/">
+                    <div class="card-icon">🎨</div>
+                    <div class="card-info">
+                        <h3>ComfyUI</h3>
+                        <p>AI image generation</p>
+                    </div>
+                    <span class="badge badge-pi">Pi</span>
+                </a>
+{% endif %}
+{% if videoref_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ videoref_subdomain }}.{{ domain_name }}/health">
+                    <div class="card-icon">🎥</div>
+                    <div class="card-info">
+                        <h3>VideoRef Engine</h3>
+                        <p>Video analysis pipeline</p>
+                    </div>
+                    <span class="badge badge-pi">Pi</span>
+                </a>
+{% endif %}
+{% if metube_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ metube_subdomain }}.{{ domain_name }}/">
+                    <div class="card-icon">📥</div>
+                    <div class="card-info">
+                        <h3>MeTube</h3>
+                        <p>Video downloader</p>
+                    </div>
+                    <span class="badge badge-pi">Pi</span>
+                </a>
+{% endif %}
+{% if remotion_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ remotion_subdomain }}.{{ domain_name }}/">
+                    <div class="card-icon">🎞️</div>
+                    <div class="card-info">
+                        <h3>Remotion</h3>
+                        <p>Video rendering API</p>
+                    </div>
+                    <span class="badge badge-pi">Pi</span>
+                </a>
+{% endif %}
+{% if opencut_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ opencut_subdomain }}.{{ domain_name }}/">
+                    <div class="card-icon">✂️</div>
+                    <div class="card-info">
+                        <h3>OpenCut</h3>
+                        <p>Video editor</p>
+                    </div>
+                    <span class="badge badge-pi">Pi</span>
+                </a>
+{% endif %}
+{% if openpencil_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ openpencil_subdomain }}.{{ domain_name }}/">
+                    <div class="card-icon">✏️</div>
+                    <div class="card-info">
+                        <h3>OpenPencil</h3>
+                        <p>AI design editor</p>
+                    </div>
+                    <span class="badge badge-pi">Pi</span>
+                </a>
+{% endif %}
+            </div>
         </div>
+
+        <!-- Data & Projects -->
+        <div class="section data">
+            <div class="section-title">Data &amp; Projects</div>
+            <div class="grid">
+{% if nocodb_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ caddy_nocodb_domain }}/">
+                    <div class="card-icon">📊</div>
+                    <div class="card-info">
+                        <h3>NocoDB</h3>
+                        <p>Pipeline production</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
+{% endif %}
+{% if plane_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ plane_subdomain }}.{{ domain_name }}/">
+                    <div class="card-icon">📋</div>
+                    <div class="card-info">
+                        <h3>Plane</h3>
+                        <p>Project management</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
+{% endif %}
+                <a class="card" href="https://git.{{ domain_name }}/">
+                    <div class="card-icon">📦</div>
+                    <div class="card-info">
+                        <h3>Gitea</h3>
+                        <p>Template registry</p>
+                    </div>
+                    <span class="badge badge-seko">Seko</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Finance -->
+        <div class="section finance">
+            <div class="section-title">Finance</div>
+            <div class="grid">
+{% if zimboo_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ caddy_zimboo_domain }}/">
+                    <div class="card-icon">📈</div>
+                    <div class="card-info">
+                        <h3>Zimboo</h3>
+                        <p>Financial cockpit</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
+{% endif %}
+{% if firefly_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ caddy_firefly_domain }}/">
+                    <div class="card-icon">💰</div>
+                    <div class="card-info">
+                        <h3>Firefly III</h3>
+                        <p>Personal finance</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
+{% endif %}
+            </div>
+        </div>
+
+        <!-- Food & Stock -->
+        <div class="section food">
+            <div class="section-title">Food &amp; Stock</div>
+            <div class="grid">
+{% if koodia_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ caddy_koodia_domain }}/">
+                    <div class="card-icon">🍽️</div>
+                    <div class="card-info">
+                        <h3>Koodia</h3>
+                        <p>Food intelligence</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
+{% endif %}
+{% if mealie_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ caddy_mealie_domain }}/">
+                    <div class="card-icon">📖</div>
+                    <div class="card-info">
+                        <h3>Mealie</h3>
+                        <p>Recettes &amp; menus</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
+{% endif %}
+{% if grocy_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ caddy_grocy_domain }}/">
+                    <div class="card-icon">🏪</div>
+                    <div class="card-info">
+                        <h3>Grocy</h3>
+                        <p>Stock &amp; DLC</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
+{% endif %}
+            </div>
+        </div>
+
+        <!-- Operations -->
+        <div class="section ops">
+            <div class="section-title">Operations</div>
+            <div class="grid">
+{% if grafana_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ caddy_grafana_domain }}/">
+                    <div class="card-icon">📉</div>
+                    <div class="card-info">
+                        <h3>Grafana</h3>
+                        <p>Monitoring &amp; dashboards</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
+{% endif %}
+{% if palais_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ caddy_palais_domain }}/">
+                    <div class="card-icon">🏛️</div>
+                    <div class="card-info">
+                        <h3>Palais</h3>
+                        <p>Infrastructure control</p>
+                    </div>
+                    <span class="badge badge-vpn">VPN</span>
+                </a>
+{% endif %}
+{% if oc_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ oc_subdomain }}.{{ domain_name }}/">
+                    <div class="card-icon">💻</div>
+                    <div class="card-info">
+                        <h3>OpenCode</h3>
+                        <p>Code editor server</p>
+                    </div>
+                    <span class="badge badge-pi">Pi</span>
+                </a>
+{% endif %}
+            </div>
+        </div>
+
+        <footer>
+            <div>{{ project_display_name }} &bull; Secured by VPN &bull; Self-hosted</div>
+            <div class="servers">
+                <div class="server">
+                    <span class="server-dot" style="background: var(--green)"></span>
+                    Sese-AI (OVH)
+                </div>
+                <div class="server">
+                    <span class="server-dot" style="background: var(--cyan)"></span>
+                    Seko-VPN (Ionos)
+                </div>
+                <div class="server">
+                    <span class="server-dot" style="background: var(--purple)"></span>
+                    Waza (RPi5)
+                </div>
+                <div class="server">
+                    <span class="server-dot" style="background: var(--amber)"></span>
+                    Prod Apps (Hetzner)
+                </div>
+            </div>
+        </footer>
     </div>
 
     <script>
-        // Glitch effect on quotes
-        const quotes = [
-            '« La vérité est ailleurs »',
-            '« I\'ve seen things you people wouldn\'t believe »',
-            '« In space, no one can hear you scream »',
-            '« Welcome to the desert of the real »',
-            '« Do androids dream of electric sheep? »',
-            '« The future is already here »',
-            '« Trust no one »',
-            '« I\'ll be back »',
-            '« The spice must flow »'
-        ];
-
-        const quoteEl = document.querySelector('.quote');
-        let currentQuote = 0;
-
-        setInterval(() => {
-            currentQuote = (currentQuote + 1) % quotes.length;
-            quoteEl.style.opacity = '0';
-            setTimeout(() => {
-                quoteEl.textContent = quotes[currentQuote];
-                quoteEl.style.opacity = '1';
-            }, 300);
-        }, 8000);
-
-        quoteEl.style.transition = 'opacity 0.3s';
+        function updateClock() {
+            const el = document.getElementById('clock');
+            if (el) el.textContent = new Date().toLocaleString('fr-FR', {
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                timeZone: 'Europe/Paris'
+            });
+        }
+        updateClock();
+        setInterval(updateClock, 1000);
     </script>
 </body>
 </html>

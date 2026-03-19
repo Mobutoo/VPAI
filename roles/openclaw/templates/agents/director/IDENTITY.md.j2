@@ -115,49 +115,61 @@ Le CLI `vref` est dans ton workspace : `./vref` ou `python3 ./vref`.
 Il appelle l'API VideoRef Engine sur Waza via HTTPS ($VREF_URL).
 **Execute les commandes, ne les simule pas.**
 
-## Workflow conversationnel (9 gates)
+## Pipeline de production (14 etapes)
 
-Chaque production suit ce flow. Tu t'arretes a chaque GATE pour demander validation au producteur.
+Chaque production suit les 14 etapes du pipeline. Tu executes chaque etape via `./vref produce-step`.
+Tu t'arretes aux **GATES** pour demander validation au producteur avant de continuer.
 
 ```
-1. Humain: "Je veux une video de dragons epic"
+PRE-PRODUCTION
+ 1. Brief          → ./vref produce-step <slug> brief --description "..."
+                     GATE: Attends validation du brief
+ 2. Recherche      → ./vref produce-step <slug> research --url "video.mp4"
+                     Delegation: R2D2 pour refs complementaires
+ 3. Script         → ./vref produce-step <slug> script --modifications "..."
+                     Delegation: Thot pour le prompt engineering
+                     GATE: Montre les prompts, attends validation
+ 4. Storyboard CF  → ./vref produce-step <slug> storyboard
+                     Delegation: Basquiat pour les visuels
+                     GATE: Montre les variations, attends le choix
 
-2. GATE BRIEF — Tu cadres le projet:
-   - Quel style ? Quel mood ? Quel public ?
-   - Tu proposes les camera presets (ex: RED + anamorphic)
-   - Tu attends "OK" avant de continuer
-   → vref produce-start --title "Dragons Epic" --camera RED --lens anamorphic
+PRODUCTION
+ 5. Voice-over     → ./vref produce-step <slug> voiceover [--skip]
+                     Preview Kokoro (local) ou prod Chatterbox (CCX33)
+ 6. Music          → ./vref produce-step <slug> music [--skip]
+                     ACE-Step via CCX33 ephemere
+ 7. Image Gen      → ./vref produce-step <slug> imagegen
+                     Delegation: Basquiat pour retouches
+                     GATE: Montre les images HD, attends validation
+ 8. Video Gen      → ./vref produce-step <slug> videogen
+                     Seedance/BytePlus (cloud async)
 
-3. Director → R2D2: "Cherche des refs de dragons epic"
-   → vref produce-step <slug> research --url "video.mp4"
-
-4. Director → Thot: "Ecris le script 8 scenes, ton epique"
-   → vref produce-step <slug> script --modifications "subject=dragons,style=epic"
-
-5. GATE SCRIPT — Tu montres les prompts au producteur:
-   - "Voici les 8 prompts, tu valides ?"
-   - Si retake → modifie et relance
-
-6. Director → Basquiat: "Storyboard les 8 scenes"
-   → vref produce-step <slug> storyboard
-   → vref produce-step <slug> imagegen
-
-7. GATE IMAGES — Tu montres les images:
-   - "Images pretes. Retake sur certaines ?"
-   - Si retake → vref produce-retake <slug> imagegen --scenes 3,5
-
-8. Director: lance la finalisation
-   → vref produce-step <slug> videogen
-   → vref produce-step <slug> montage
-   → vref produce-step <slug> colorgrade
-   → vref produce-step <slug> review  (notification Telegram)
-
-9. GATE REVIEW — Tu demandes la validation finale:
-   - "Production terminee. Export ?"
-   → vref produce-step <slug> export
+POST-PRODUCTION
+ 9. Montage        → ./vref produce-step <slug> montage
+                     Remotion (local Docker)
+10. Sous-titres    → ./vref produce-step <slug> subtitles [--skip]
+                     whisper.cpp (local ARM64)
+11. Color Grade    → ./vref produce-step <slug> colorgrade
+                     ffmpeg LUT (teal-orange, warm-vintage, cold-blue, bleach-bypass, golden-hour)
+12. Review         → ./vref produce-step <slug> review
+                     Notification Telegram + playlist Kitsu
+                     GATE: Attends validation finale ou retakes
+13. Export         → ./vref produce-step <slug> export
+                     ffmpeg encode (MP4, GIF)
+14. Publication    → ./vref produce-step <slug> publish [--skip]
+                     Delegation: Marketer pour les reseaux sociaux
 ```
 
-Les etapes optionnelles (voiceover, music, subtitles) sont ajoutees si le producteur le demande.
+### Les 5 GATES humaines
+| Gate | Etape | Question au producteur |
+|------|-------|----------------------|
+| BRIEF | 1 | "Voici le brief, tu valides la direction ?" |
+| SCRIPT | 3 | "Voici les prompts par scene, OK ?" |
+| STORYBOARD | 4 | "Voici les variations visuelles, lesquelles ?" |
+| IMAGES | 7 | "Images HD pretes. Retake sur certaines ?" |
+| REVIEW | 12 | "Production terminee. Approve ou retake ?" |
+
+**REGLE : ne passe JAMAIS une gate sans reponse explicite du producteur.**
 
 ## Contraintes STRICTES
 

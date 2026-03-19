@@ -132,6 +132,7 @@ brave_search_api_key: "{{ vault_brave_search_api_key | default('') }}"
 fal_ai_api_key: "{{ vault_fal_ai_api_key | default('') }}"
 
 # OpenClaw
+openclaw_model_profile: "openai"  # OAuth via ChatGPT Plus/Pro subscription (pas de crédits API)
 openclaw_api_key: "{{ vault_openclaw_api_key }}"
 # Gateway token for OpenClaw Control UI auth (generate: openssl rand -hex 32)
 openclaw_gateway_token: "{{ vault_openclaw_gateway_token | default(vault_openclaw_api_key) }}"

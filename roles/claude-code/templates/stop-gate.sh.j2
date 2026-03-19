@@ -1,0 +1,44 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Stop hook — prevents Claude from stopping without saving state
+# When GSD is active and work is incomplete, blocks the stop and
+# instructs Claude to pause-work first
+set -euo pipefail
+
+INPUT=$(cat)
+
+# CRITICAL: Check if this is a stop-hook re-entry to prevent infinite loops
+STOP_HOOK_ACTIVE=$(echo "$INPUT" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(d.get(\"stop_hook_active\",False))" 2>/dev/null || echo "false")
+
+if [ "$STOP_HOOK_ACTIVE" = "true" ] || [ "$STOP_HOOK_ACTIVE" = "True" ]; then
+  # Already in a stop-hook cycle — let it exit
+  exit 0
+fi
+
+CWD=$(echo "$INPUT" | python3 -c "import sys,json; d=json.loads(sys.stdin.read()); print(d.get(\"cwd\",\".\"))" 2>/dev/null || echo ".")
+
+# Only act on GSD projects
+if [ ! -d "$CWD/.planning" ]; then
+  exit 0
+fi
+
+# Check if a task-complete marker exists (Claude sets this when done)
+if [ -f "/tmp/claude-task-complete" ]; then
+  rm -f "/tmp/claude-task-complete"
+  exit 0
+fi
+
+# Check STATE.md for incomplete work
+STATE_FILE="$CWD/.planning/STATE.md"
+if [ -f "$STATE_FILE" ]; then
+  # If state shows in-progress work, block the stop
+  if grep -qi "in.progress\|incomplete\|remaining" "$STATE_FILE" 2>/dev/null; then
+    cat << BLOCK_MSG
+{"decision": "block", "reason": "Work is incomplete. Before stopping:\n1. Save state: write current progress to .planning/STATE.md\n2. Create .continue-here.md in the current phase directory (.planning/phases/XX/)\n3. Then you may stop.\n\nIf you believe work IS complete, create /tmp/claude-task-complete and try again."}
+BLOCK_MSG
+    exit 0
+  fi
+fi
+
+# No incomplete work detected — allow stop
+exit 0

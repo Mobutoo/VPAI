@@ -1,0 +1,149 @@
+---
+# playbooks/openclaw-oauth.yml — OpenAI Codex OAuth (headless two-step PKCE)
+#
+# Step 1: make openclaw-oauth-start        → Génère l'URL OAuth
+# Step 2: make openclaw-oauth-complete URL=<redirect-url>  → Échange code → token
+#
+# Le flow PKCE est découpé pour fonctionner sans terminal interactif.
+
+- name: OpenClaw — OpenAI Codex OAuth
+  hosts: prod-server
+  gather_facts: false
+  become: true
+
+  vars:
+    oauth_client_id: "app_EMoamEEZ73f0CkXaXp7hrann"
+    oauth_auth_url: "https://auth.openai.com/oauth/authorize"
+    oauth_token_url: "https://auth.openai.com/oauth/token"
+    oauth_redirect_uri: "http://localhost:1455/auth/callback"
+    oauth_state_file: "/tmp/openclaw-oauth-pkce.json"
+    # Note: state/agents est monté dans le container sur system/agents
+    auth_profiles_path: "/opt/{{ project_name }}/data/openclaw/state/agents/main/agent/auth-profiles.json"
+
+  tasks:
+    # =================================================================
+    # STEP 1: Generate PKCE + OAuth URL
+    # =================================================================
+    - name: "Step 1 — Generate PKCE challenge and OAuth URL"
+      when: oauth_step == "start"
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          CV=$(openssl rand -base64 32 | tr -d '=+/' | head -c 43)
+          CC=$(printf '%s' "$CV" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
+          ST=$(openssl rand -hex 16)
+          printf '{"code_verifier":"%s","state":"%s"}' "$CV" "$ST" > "{{ oauth_state_file }}"
+          RU=$(python3 -c "import urllib.parse; print(urllib.parse.quote('{{ oauth_redirect_uri }}'))")
+          # REX: scope model.request = invalid_scope (piège 1). Le provider natif openai-codex
+          # gère le routing vers chatgpt.com/backend-api (pas api.openai.com) — pas besoin du scope.
+          SCOPE=$(python3 -c "import urllib.parse; print(urllib.parse.quote('openid profile email offline_access'))")
+          echo "{{ oauth_auth_url }}?client_id={{ oauth_client_id }}&redirect_uri=${RU}&response_type=code&scope=${SCOPE}&state=${ST}&code_challenge=${CC}&code_challenge_method=S256&id_token_add_organizations=true&codex_cli_simplified_flow=true"
+        executable: /bin/bash
+      register: oauth_url_result
+      changed_when: false
+
+    - name: "Display OAuth URL"
+      when: oauth_step == "start"
+      ansible.builtin.debug:
+        msg: "{{ oauth_url_result.stdout_lines | last }}"
+
+    # =================================================================
+    # STEP 2: Exchange auth code for tokens
+    # =================================================================
+    - name: "Step 2 — Exchange authorization code for tokens"
+      when: oauth_step == "complete"
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          STATE_FILE="{{ oauth_state_file }}"
+          PROFILES="{{ auth_profiles_path }}"
+          CB_URL="{{ oauth_callback_url }}"
+
+          # Read PKCE state
+          CV=$(python3 -c "import json; print(json.load(open('$STATE_FILE'))['code_verifier'])")
+
+          # Extract code from callback URL
+          CODE=$(python3 -c "
+          from urllib.parse import urlparse, parse_qs
+          q = parse_qs(urlparse('$CB_URL').query)
+          print(q['code'][0])
+          ")
+
+          # Exchange code for tokens
+          RESP=$(curl -sf -X POST "{{ oauth_token_url }}" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            -d "grant_type=authorization_code" \
+            -d "code=$CODE" \
+            -d "redirect_uri={{ oauth_redirect_uri }}" \
+            -d "client_id={{ oauth_client_id }}" \
+            -d "code_verifier=$CV")
+
+          # Save to auth-profiles.json
+          python3 << PYEOF
+          import json, os, time
+
+          resp = json.loads('''$RESP''')
+          path = "$PROFILES"
+          os.makedirs(os.path.dirname(path), exist_ok=True)
+
+          # Load existing or create new auth-profiles structure
+          data = {"version": 1, "profiles": {}}
+          if os.path.exists(path):
+              with open(path) as f:
+                  existing = json.load(f)
+                  if "version" in existing:
+                      data = existing
+                  else:
+                      # Migrate flat format
+                      data["profiles"] = existing
+
+          # Extract accountId from JWT claims
+          import base64
+          parts = resp["access_token"].split(".")
+          payload = parts[1] + "=="
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          account_id = claims.get("https://api.openai.com/auth", {}).get("chatgpt_account_id", "")
+
+          data["profiles"]["openai-codex:default"] = {
+              "type": "oauth",
+              "provider": "openai-codex",
+              "access": resp["access_token"],
+              "refresh": resp.get("refresh_token", ""),
+              "expires": int(time.time() + resp.get("expires_in", 3600)),
+              "accountId": account_id
+          }
+
+          with open(path, "w") as f:
+              json.dump(data, f, indent=2)
+
+          print("OK — token saved to " + path)
+          PYEOF
+
+          rm -f "$STATE_FILE"
+        executable: /bin/bash
+      register: exchange_result
+      changed_when: true
+
+    - name: "Show exchange result"
+      when: oauth_step == "complete"
+      ansible.builtin.debug:
+        msg: "{{ exchange_result.stdout_lines }}"
+
+    - name: "Restart OpenClaw to pick up new credentials"
+      when: oauth_step == "complete"
+      ansible.builtin.shell:
+        cmd: "docker restart {{ project_name }}_openclaw"
+      changed_when: true
+
+    - name: "Verify OAuth status"
+      when: oauth_step == "complete"
+      ansible.builtin.shell:
+        cmd: "docker exec {{ project_name }}_openclaw openclaw models status 2>&1"
+      register: verify_result
+      changed_when: false
+      failed_when: false
+
+    - name: "Display status"
+      when: oauth_step == "complete"
+      ansible.builtin.debug:
+        msg: "{{ verify_result.stdout_lines }}"

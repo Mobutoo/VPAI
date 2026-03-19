@@ -1,0 +1,12 @@
+---
+# penpot — handlers
+# Note: most lifecycle is managed by penpot-up.yml / penpot-down.yml playbooks
+
+- name: Restart penpot stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ penpot_install_dir }}"
+    files:
+      - docker-compose-penpot.yml
+    state: present
+    recreate: always
+  become: true

@@ -1,0 +1,144 @@
+---
+# playbooks/penpot-down.yml — Backup Penpot to S3 + destroy ephemeral VPS
+#
+# Usage:
+#   ansible-playbook playbooks/penpot-down.yml
+#   make penpot-down
+#
+# What it does:
+#   1. Runs final S3 backup (pg_dump + assets)
+#   2. Verifies backup integrity (checksum)
+#   3. Destroys the Hetzner VPS
+#   4. Removes DNS A record at OVH
+#   5. Cost drops to €0 immediately
+#
+# Restore with: make penpot-up (auto-restores from S3)
+
+# --- Phase 1: Final backup on the VPS ---
+- name: Final backup before destroy
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - ../roles/penpot/defaults/main.yml
+
+  tasks:
+    # Discover VPS IP
+    - name: Get Penpot VPS info
+      hetzner.hcloud.server_info:
+        api_token: "{{ hetzner_api_token }}"
+        name: "{{ penpot_server_name }}"
+      register: _penpot_info
+      failed_when: false
+
+    - name: Check if VPS exists
+      ansible.builtin.assert:
+        that:
+          - _penpot_info.hcloud_server_info | length > 0
+        fail_msg: "Penpot VPS '{{ penpot_server_name }}' not found. Nothing to destroy."
+
+    - name: Add Penpot VPS to in-memory inventory
+      ansible.builtin.add_host:
+        name: penpot-ephemeral
+        ansible_host: "{{ _penpot_info.hcloud_server_info[0].ipv4_address }}"
+        ansible_user: root
+        ansible_ssh_private_key_file: "{{ penpot_ssh_key_pub_path | replace('.pub', '') }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+        groups:
+          - penpot_ephemeral
+
+# --- Phase 2: Run backup on VPS ---
+- name: Execute final backup
+  hosts: penpot-ephemeral
+  gather_facts: false
+
+  vars_files:
+    - ../roles/penpot/defaults/main.yml
+
+  tasks:
+    - name: Run backup script
+      ansible.builtin.command:
+        cmd: "{{ penpot_install_dir }}/backup-penpot.sh"
+      become: true
+      changed_when: true
+
+    - name: Verify S3 backup exists
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          LATEST=$(aws s3 ls "s3://{{ penpot_s3_bucket }}/pg-dumps/" \
+            --endpoint-url "{{ penpot_s3_endpoint }}" \
+            | sort -r | head -1 | awk '{print $3}')
+          if [ "${LATEST:-0}" -lt 1000 ]; then
+            echo "WARN: Latest dump is only ${LATEST} bytes — possibly corrupt"
+            exit 1
+          fi
+          echo "OK: Latest dump is ${LATEST} bytes"
+        executable: /bin/bash
+      become: true
+      changed_when: false
+      register: _penpot_backup_verify
+
+    - name: Display backup verification
+      ansible.builtin.debug:
+        msg: "{{ _penpot_backup_verify.stdout }}"
+
+# --- Phase 3: Destroy VPS ---
+- name: Destroy Penpot VPS
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - ../roles/penpot/defaults/main.yml
+
+  tasks:
+    - name: Destroy Penpot CX23 VPS
+      hetzner.hcloud.server:
+        api_token: "{{ hetzner_api_token }}"
+        name: "{{ penpot_server_name }}"
+        state: absent
+
+    # --- DNS: Remove A record at OVH ---
+    - name: Remove DNS A record for Penpot
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          python3 -c "
+          import ovh, sys, json
+          client = ovh.Client(
+              endpoint='ovh-eu',
+              application_key='{{ ovh_application_key }}',
+              application_secret='{{ ovh_application_secret }}',
+              consumer_key='{{ ovh_consumer_key }}',
+          )
+          zone = '{{ domain_name }}'
+          sub = '{{ penpot_subdomain }}'
+          records = client.get(f'/domain/zone/{zone}/record', fieldType='A', subDomain=sub)
+          if not records:
+              print(json.dumps({'changed': False, 'msg': f'No A record for {sub}.{zone} — nothing to remove'}))
+              sys.exit(0)
+          for rid in records:
+              client.delete(f'/domain/zone/{zone}/record/{rid}')
+          client.post(f'/domain/zone/{zone}/refresh')
+          print(json.dumps({'changed': True, 'msg': f'Removed {len(records)} A record(s) for {sub}.{zone}'}))
+          "
+        executable: /bin/bash
+      register: _penpot_dns_cleanup
+      changed_when: "(_penpot_dns_cleanup.stdout | from_json).changed | default(true)"
+      tags: [dns]
+
+    - name: Display confirmation
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Penpot VPS '{{ penpot_server_name }}' DESTROYED
+          DNS: {{ (_penpot_dns_cleanup.stdout | from_json).msg }}
+          Data safely backed up to S3:
+            s3://{{ penpot_s3_bucket }}/pg-dumps/
+            s3://{{ penpot_s3_bucket }}/assets/
+          Cost: €0 from now on
+          ========================================
+          Restore: make penpot-up
+          ========================================

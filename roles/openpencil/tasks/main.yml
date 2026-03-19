@@ -1,0 +1,146 @@
+---
+# openpencil — tasks
+# OpenPencil: AI-native design editor (native install on RPi5)
+# Prerequisites: workstation-common role (Node.js, git)
+
+# --- Bun runtime ---
+- name: Check if Bun is installed
+  ansible.builtin.command:
+    cmd: bun --version
+  changed_when: false
+  failed_when: false
+  register: _openpencil_bun_check
+  become: true
+  become_user: "{{ openpencil_user }}"
+
+- name: Install Bun runtime
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      curl -fsSL https://bun.sh/install | bash
+    executable: /bin/bash
+  become: true
+  become_user: "{{ openpencil_user }}"
+  when: _openpencil_bun_check.rc != 0
+  changed_when: true
+
+- name: Verify Bun installation
+  ansible.builtin.command:
+    cmd: "{{ openpencil_user_home }}/.bun/bin/bun --version"
+  changed_when: false
+  register: _openpencil_bun_version
+  become: true
+  become_user: "{{ openpencil_user }}"
+  vars:
+    openpencil_user_home: "/home/{{ openpencil_user }}"
+
+- name: Display Bun version
+  ansible.builtin.debug:
+    msg: "Bun: v{{ _openpencil_bun_version.stdout }}"
+
+# --- Directories ---
+- name: Create OpenPencil install directory
+  ansible.builtin.file:
+    path: "{{ openpencil_install_dir }}"
+    state: directory
+    owner: "{{ openpencil_user }}"
+    group: "{{ openpencil_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create OpenPencil data directory
+  ansible.builtin.file:
+    path: "{{ openpencil_data_dir }}"
+    state: directory
+    owner: "{{ openpencil_user }}"
+    group: "{{ openpencil_user }}"
+    mode: "0755"
+  become: true
+
+# --- Clone & Build ---
+- name: Clone OpenPencil repository
+  ansible.builtin.git:
+    repo: "{{ openpencil_repo }}"
+    dest: "{{ openpencil_install_dir }}"
+    version: "{{ openpencil_version }}"
+    depth: 1
+    force: false
+  become: true
+  become_user: "{{ openpencil_user }}"
+  notify:
+    - Install openpencil deps
+    - Build openpencil
+
+# Flush handlers NOW so bun install + build run BEFORE service start
+- name: Flush handlers (install + build before service start)
+  ansible.builtin.meta: flush_handlers
+
+# Vite 6 blocks requests with non-localhost Host header by default.
+# Patch vite.config.ts to allow reverse proxy access via domain name.
+- name: Patch vite.config.ts to allow custom host headers
+  ansible.builtin.lineinfile:
+    path: "{{ openpencil_install_dir }}/vite.config.ts"
+    insertafter: "export default defineConfig"
+    line: "  preview: { allowedHosts: true },"
+    regexp: "preview.*allowedHosts"
+    state: present
+  become: true
+  become_user: "{{ openpencil_user }}"
+  notify: Restart openpencil
+
+# --- Systemd service ---
+- name: Deploy OpenPencil systemd service
+  ansible.builtin.template:
+    src: openpencil.service.j2
+    dest: "/etc/systemd/system/{{ openpencil_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart openpencil
+
+- name: Enable and start OpenPencil service
+  ansible.builtin.systemd:
+    name: "{{ openpencil_service_name }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+
+# --- Healthcheck ---
+- name: Wait for OpenPencil port to be open
+  ansible.builtin.wait_for:
+    host: localhost
+    port: "{{ openpencil_port }}"
+    timeout: 120
+    state: started
+  changed_when: false
+
+- name: Check OpenPencil HTTP response
+  ansible.builtin.uri:
+    url: "http://localhost:{{ openpencil_port }}/"
+    method: GET
+    status_code: [200, 204, 301, 302]
+  retries: 6
+  delay: 5
+  register: _openpencil_health
+  until: _openpencil_health.status in [200, 204, 301, 302]
+  changed_when: false
+
+- name: Show OpenPencil logs if healthcheck failed
+  ansible.builtin.command:
+    cmd: "journalctl -u {{ openpencil_service_name }} --no-pager -n 30"
+  changed_when: false
+  when: _openpencil_health is failed
+  become: true
+  failed_when: false
+
+- name: Display OpenPencil status
+  ansible.builtin.debug:
+    msg: >-
+      OpenPencil: {{ 'healthy' if _openpencil_health.status in [200, 204, 301, 302]
+      else 'unhealthy (status: ' ~ _openpencil_health.status | default('unknown') ~ ')' }}
+      — UI: http://localhost:{{ openpencil_port }}
+      — MCP: http://localhost:{{ openpencil_mcp_port }}/mcp

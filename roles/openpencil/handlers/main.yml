@@ -1,0 +1,40 @@
+---
+# openpencil — handlers
+# PATH must include bun bin + node_modules/.bin for sub-scripts (lint, vite)
+
+- name: Install openpencil deps
+  ansible.builtin.command:
+    cmd: "/home/{{ openpencil_user }}/.bun/bin/bun install"
+    chdir: "{{ openpencil_install_dir }}"
+  become: true
+  become_user: "{{ openpencil_user }}"
+  changed_when: true
+  environment:
+    HOME: "/home/{{ openpencil_user }}"
+    PATH: "{{ openpencil_install_dir }}/node_modules/.bin:/home/{{ openpencil_user }}/.bun/bin:/usr/local/bin:/usr/bin:/bin"
+  notify: Build openpencil
+
+# Skip 'bun run build' (runs lint+build) — run vite build directly to avoid
+# oxlint type-check issues on ARM64. Lint can be run separately.
+- name: Build openpencil
+  ansible.builtin.command:
+    cmd: "vite build"
+    chdir: "{{ openpencil_install_dir }}"
+  become: true
+  become_user: "{{ openpencil_user }}"
+  changed_when: true
+  environment:
+    HOME: "/home/{{ openpencil_user }}"
+    PATH: "{{ openpencil_install_dir }}/node_modules/.bin:/home/{{ openpencil_user }}/.bun/bin:/usr/local/bin:/usr/bin:/bin"
+  notify: Restart openpencil
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
+- name: Restart openpencil
+  ansible.builtin.systemd:
+    name: "{{ openpencil_service_name }}"
+    state: restarted
+  become: true

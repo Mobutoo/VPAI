@@ -1,0 +1,37 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Pre-compact state preservation hook
+# Saves critical GSD context before auto-compact summarizes conversation
+set -euo pipefail
+
+CWD="${1:-$(pwd)}"
+PLANNING_DIR="$CWD/.planning"
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# Only act if this is a GSD project (has .planning/)
+if [ ! -d "$PLANNING_DIR" ]; then
+  exit 0
+fi
+
+# Create compact checkpoint file
+CHECKPOINT="$PLANNING_DIR/COMPACT-CHECKPOINT.md"
+cat > "$CHECKPOINT" << EOF
+---
+type: auto-compact-checkpoint
+timestamp: $TIMESTAMP
+reason: Context auto-compacted at {{ claude_code_autocompact_pct | default(70) }}% threshold
+---
+
+# Post-Compact Recovery
+
+## Critical Context
+After compaction, read these files to restore context:
+1. \`.planning/STATE.md\` — Current project position
+2. \`.planning/PROJECT.md\` — Project description and decisions
+3. Any \`.planning/phases/*/.continue-here.md\` — Mid-task checkpoints
+4. Any \`.continue-here.md\` at project root — Legacy checkpoints
+
+## What Just Happened
+Auto-compact triggered. Conversation history has been summarized.
+Continue from STATE.md — all planning artifacts are preserved on disk.
+EOF

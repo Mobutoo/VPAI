@@ -1,0 +1,59 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# GSD Auto-Compact Hook — autonomous context renewal without human interaction
+#
+# Mechanism:
+#   1. Counts tool calls per session (file-based counter)
+#   2. At threshold, outputs strategic compact instruction to the model
+#   3. At critical threshold (2x), outputs urgent compact instruction
+#   4. Model acts on instructions autonomously (no human needed)
+#
+# The model sees hook stdout as a message and decides whether to /compact.
+# Combined with GSD subagent architecture (fresh context per task), this
+# ensures the orchestrator stays lean and subagents never overflow.
+#
+# Hook registration: PreToolUse matcher "Edit|Write" in settings.json
+set -euo pipefail
+
+SESSION_ID="${CLAUDE_SESSION_ID:-${PPID:-default}}"
+COUNTER_FILE="/tmp/claude-gsd-compact-${SESSION_ID}"
+THRESHOLD=${COMPACT_THRESHOLD:-{{ claude_code_gsd_compact_threshold | default(40) }}}
+CRITICAL=$((THRESHOLD * 2))
+
+# Initialize or increment counter
+if [ -f "$COUNTER_FILE" ]; then
+  count=$(cat "$COUNTER_FILE")
+  count=$((count + 1))
+else
+  count=1
+fi
+echo "$count" > "$COUNTER_FILE"
+
+# --- Phase transition suggestion at threshold ---
+if [ "$count" -eq "$THRESHOLD" ]; then
+  cat <<'COMPACT_MSG'
+[GSD-AutoCompact] Phase transition checkpoint reached.
+If you are between phases (research→plan, plan→implement, implement→test):
+  1. Save progress to .planning/STATE.md or SHARED_TASK_NOTES.md
+  2. Run /compact with a summary of current state and next steps
+  3. Continue from the state file after compaction
+If you are mid-implementation, ignore this and continue.
+COMPACT_MSG
+fi
+
+# --- Periodic reminders every 20 calls after threshold ---
+if [ "$count" -gt "$THRESHOLD" ] && [ $((count % 20)) -eq 0 ]; then
+  echo "[GSD-AutoCompact] ${count} tool calls in session. Consider /compact at the next logical boundary to maintain output quality."
+fi
+
+# --- Critical: context likely degrading ---
+if [ "$count" -ge "$CRITICAL" ] && [ $((count % 10)) -eq 0 ]; then
+  cat <<'CRITICAL_MSG'
+[GSD-AutoCompact] CRITICAL — context quality at risk.
+Action required:
+  1. Write current state to .planning/STATE.md immediately
+  2. Run /compact "Resuming from STATE.md — next: <describe next step>"
+  3. Or spawn a subagent (Task tool) for remaining work with a fresh context
+Do NOT continue without compacting or delegating.
+CRITICAL_MSG
+fi

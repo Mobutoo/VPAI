@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# backup-penpot.sh — S3 backup for ephemeral Penpot VPS
+# Managed by Ansible — do not edit manually
+# Cron: {{ penpot_backup_cron }}
+set -euo pipefail
+
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+DUMP_DIR="/tmp/penpot-backups"
+S3_BUCKET="{{ penpot_s3_bucket }}"
+S3_ENDPOINT="{{ penpot_s3_endpoint }}"
+ASSETS_DIR="{{ penpot_data_dir }}/assets"
+LOG_FILE="/var/log/penpot-backup.log"
+
+log() { echo "[$(date -Iseconds)] $*" | tee -a "$LOG_FILE"; }
+
+mkdir -p "$DUMP_DIR"
+
+# --- 1. PostgreSQL dump ---
+log "Starting PostgreSQL dump..."
+docker exec penpot_postgres pg_dump \
+  -U {{ penpot_db_user }} \
+  -d {{ penpot_db_name }} \
+  --format=custom \
+  --compress=6 \
+  > "${DUMP_DIR}/penpot-${TIMESTAMP}.dump"
+
+DUMP_SIZE=$(stat -c%s "${DUMP_DIR}/penpot-${TIMESTAMP}.dump" 2>/dev/null || echo 0)
+log "PostgreSQL dump: ${DUMP_SIZE} bytes"
+
+# --- 2. Upload dump to S3 ---
+log "Uploading dump to S3..."
+aws s3 cp \
+  "${DUMP_DIR}/penpot-${TIMESTAMP}.dump" \
+  "s3://${S3_BUCKET}/pg-dumps/penpot-${TIMESTAMP}.dump" \
+  --endpoint-url "${S3_ENDPOINT}" \
+  --only-show-errors
+
+# --- 3. Sync assets to S3 ---
+log "Syncing assets to S3..."
+aws s3 sync \
+  "${ASSETS_DIR}/" \
+  "s3://${S3_BUCKET}/assets/" \
+  --endpoint-url "${S3_ENDPOINT}" \
+  --only-show-errors \
+  --delete
+
+# --- 4. Rotate old dumps (keep last 5) ---
+log "Rotating old dumps..."
+aws s3 ls "s3://${S3_BUCKET}/pg-dumps/" \
+  --endpoint-url "${S3_ENDPOINT}" \
+  | sort -r \
+  | tail -n +6 \
+  | awk '{print $4}' \
+  | while read -r old_dump; do
+    aws s3 rm "s3://${S3_BUCKET}/pg-dumps/${old_dump}" \
+      --endpoint-url "${S3_ENDPOINT}" \
+      --only-show-errors
+    log "Deleted old dump: ${old_dump}"
+  done
+
+# --- 5. Cleanup local ---
+rm -f "${DUMP_DIR}/penpot-${TIMESTAMP}.dump"
+
+log "Backup complete: dump=${DUMP_SIZE}b"

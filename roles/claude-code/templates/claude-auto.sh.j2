@@ -1,0 +1,48 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# claude-auto — Autonomous Claude Code with auto-continuation
+# Runs Claude in headless mode with automatic session continuation
+# when context is exhausted. GSD state files (.planning/) provide
+# continuity across iterations.
+#
+# Usage: claude-auto "Your task here" [max-iterations]
+set -euo pipefail
+
+PROMPT="${1:?Usage: claude-auto \"your prompt\" [max-iterations]}"
+MAX_ITERATIONS="${2:-5}"
+
+echo "=== Claude Auto — $MAX_ITERATIONS iterations max ==="
+
+cd "$(pwd)"
+
+for i in $(seq 1 "$MAX_ITERATIONS"); do
+  echo ""
+  echo "--- Iteration $i/$MAX_ITERATIONS — $(date) ---"
+
+  if [ "$i" -eq 1 ]; then
+    claude --dangerously-skip-permissions -p "$PROMPT
+
+IMPORTANT: If work is incomplete when context runs low:
+1. Update .planning/STATE.md with current progress
+2. Write .continue-here.md in .planning/phases/XX/
+3. Touch /tmp/claude-task-complete when ALL work is done" 2>&1 || true
+  else
+    claude --dangerously-skip-permissions --continue -p "Session restarted after context exhaustion.
+Read .planning/STATE.md and .continue-here.md to restore context.
+Continue from where previous session stopped.
+Original task: $PROMPT
+Touch /tmp/claude-task-complete when ALL work is done." 2>&1 || true
+  fi
+
+  echo "--- Iteration $i finished ---"
+
+  if [ -f "/tmp/claude-task-complete" ]; then
+    echo "Task complete!"
+    rm -f "/tmp/claude-task-complete"
+    break
+  fi
+
+  sleep 2
+done
+
+echo "=== Done ($i iterations) ==="

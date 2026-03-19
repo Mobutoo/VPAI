@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""vref — VideoRef Engine CLI.
+"""vref — VideoRef Engine CLI v0.7.0.
 
 Universal CLI for the VideoRef creative pipeline.
 Calls the VideoRef Engine REST API on Waza (RPi5).
@@ -14,6 +14,11 @@ Usage:
     vref search <query>                  # Semantic search via Qdrant embeddings
     vref remix <asset_id> [--subject X]  # Remix an asset with modifications
     vref prompt <asset_id>               # Print just the AI prompt (for piping)
+    vref cameras                         # List available camera presets
+    vref produce-start [--title T]       # Start a new production job
+    vref produce-step JOB_ID STEP        # Execute a pipeline step
+    vref produce-status JOB_ID           # Show job status
+    vref produce-retake JOB_ID STEP      # Retake a specific step
 
 Environment:
     VREF_URL    Base URL (default: https://cine.ewutelo.cloud)
@@ -22,9 +27,15 @@ Examples:
     vref assets --style 3D --mood playful
     vref get abc123 | jq .ai_prompt
     vref remix abc123 --subject "cats" --style "watercolor" --mood "sad"
+    vref remix abc123 --camera ARRI --lens anamorphic --subject "cats"
     vref search "dramatic cinematic dark blue"
     vref prompt abc123 | pbcopy   # Copy prompt to clipboard
     vref analyze "video.mp4" --template cinematic
+    vref cameras
+    vref produce-start --title "Cats Ghibli" --camera ARRI --lens anamorphic
+    vref produce-step JOB_ID brief --description "A short film about cats"
+    vref produce-status JOB_ID
+    vref produce-retake JOB_ID imagegen --scenes 3,5
 """
 import argparse
 import json
@@ -34,6 +45,12 @@ import urllib.request
 import urllib.error
 
 BASE_URL = os.environ.get("VREF_URL", "https://cine.ewutelo.cloud")
+
+PIPELINE_STEPS = [
+    "brief", "research", "script", "storyboard", "voiceover", "music",
+    "imagegen", "videogen", "montage", "subtitles", "colorgrade",
+    "review", "export", "publish",
+]
 
 
 def _api(method: str, path: str, body: dict | None = None) -> dict:
@@ -87,7 +104,7 @@ def _print_table(rows: list[dict], columns: list[str], widths: list[int]) -> Non
         print(line)
 
 
-# ── Commands ─────────────────────────────────────────────────
+# -- Commands (existing) ------------------------------------------
 
 def cmd_health(args: argparse.Namespace) -> None:
     """Check service health."""
@@ -98,10 +115,10 @@ def cmd_health(args: argparse.Namespace) -> None:
     status = data.get("status", "?")
     version = data.get("version", "?")
     integrations = data.get("integrations", {})
-    icon = "✅" if status == "ok" else "❌"
-    print(f"{icon} VideoRef Engine v{version}")
+    icon = "OK" if status == "ok" else "FAIL"
+    print(f"[{icon}] VideoRef Engine v{version}")
     for name, active in integrations.items():
-        print(f"  {'✅' if active else '⬜'} {name}")
+        print(f"  [{'x' if active else ' '}] {name}")
 
 
 def cmd_watch(args: argparse.Namespace) -> None:
@@ -111,9 +128,9 @@ def cmd_watch(args: argparse.Namespace) -> None:
         _print_json(data)
         return
     files = data.get("files", [])
-    print(f"📁 {data.get('count', 0)} files in watch dir:\n")
+    print(f"{data.get('count', 0)} files in watch dir:\n")
     for f in files:
-        print(f"  📹 {f}")
+        print(f"  {f}")
 
 
 def cmd_jobs(args: argparse.Namespace) -> None:
@@ -123,35 +140,32 @@ def cmd_jobs(args: argparse.Namespace) -> None:
         _print_json(data)
         return
     analyzed = data.get("analyzed", [])
-    print(f"📊 {data.get('count', 0)} completed analyses:\n")
+    print(f"{data.get('count', 0)} completed analyses:\n")
     for f in analyzed:
-        print(f"  ✅ {f}")
+        print(f"  {f}")
 
 
 def cmd_analyze(args: argparse.Namespace) -> None:
     """Analyze a video file."""
     body = {"filename": args.filename, "template": args.template}
-    print(f"🔍 Analyzing '{args.filename}' (template: {args.template})...")
+    print(f"Analyzing '{args.filename}' (template: {args.template})...")
     print("   This may take 1-5 minutes for Claude Vision analysis.\n")
     data = _api("POST", "/api/analyze", body)
     if args.json:
         _print_json(data)
         return
     if "error" in data:
-        print(f"❌ Error: {data['error']}")
+        print(f"Error: {data['error']}")
         return
-    print(f"✅ Status: {data.get('status')} | Scenes: {data.get('scene_count')}")
-    # Kitsu
+    print(f"Status: {data.get('status')} | Scenes: {data.get('scene_count')}")
     k = data.get("kitsu", {})
     if isinstance(k.get("sequence_id"), str):
         print(f"   Kitsu: {k.get('shot_count')} shots, {k.get('asset_count')} assets, {k.get('preview_count')} previews")
     elif k.get("error"):
-        print(f"   Kitsu: ⚠ {k['error'][:80]}")
-    # Others
-    print(f"   Qdrant: {'✅' if data.get('qdrant', {}).get('indexed') else '⬜'}")
-    print(f"   Gitea: {'✅' if data.get('gitea', {}).get('versioned') else '⬜'}")
-    # Scenes
-    print(f"\n{'─' * 70}")
+        print(f"   Kitsu: {k['error'][:80]}")
+    print(f"   Qdrant: {'indexed' if data.get('qdrant', {}).get('indexed') else 'skipped'}")
+    print(f"   Gitea: {'versioned' if data.get('gitea', {}).get('versioned') else 'skipped'}")
+    print(f"\n{'=' * 70}")
     for i, scene in enumerate(data.get("scenes", [])):
         a = scene.get("analysis", {})
         print(f"  Scene {i+1}: {a.get('style', '?')[:35]} | {a.get('mood', '?')[:25]}")
@@ -177,9 +191,9 @@ def cmd_assets(args: argparse.Namespace) -> None:
         _print_json(data)
         return
     assets = data.get("assets", [])
-    print(f"🎨 {data.get('count', 0)} assets found (of {data.get('total', '?')} total):\n")
+    print(f"{data.get('count', 0)} assets found (of {data.get('total', '?')} total):\n")
     for a in assets:
-        print(f"  📦 {a['name'][:65]}")
+        print(f"  {a['name'][:65]}")
         print(f"     ID: {a['id']}")
         print(f"     Style: {a.get('style', '')[:40]} | Mood: {a.get('mood', '')[:25]}")
         prompt = a.get("ai_prompt", "")
@@ -195,16 +209,16 @@ def cmd_get(args: argparse.Namespace) -> None:
         _print_json(data)
         return
     if "error" in data:
-        print(f"❌ {data['error']}")
+        print(f"Error: {data['error']}")
         return
-    print(f"📦 {data.get('name', '?')}")
+    print(f"Asset: {data.get('name', '?')}")
     print(f"   ID:      {data.get('id', '?')}")
     print(f"   Style:   {data.get('style', '?')}")
     print(f"   Mood:    {data.get('mood', '?')}")
     print(f"   Colors:  {data.get('colors', '?')}")
     print(f"   Motion:  {data.get('motion', '?')}")
     print(f"   Created: {data.get('created_at', '?')}")
-    print(f"\n{'─' * 70}")
+    print(f"\n{'=' * 70}")
     print(f"AI Prompt:\n{data.get('ai_prompt', 'N/A')}")
 
 
@@ -224,10 +238,10 @@ def cmd_search(args: argparse.Namespace) -> None:
         _print_json(data)
         return
     results = data.get("results", [])
-    print(f"🔎 '{query}' — {data.get('count', 0)} results:\n")
+    print(f"'{query}' -- {data.get('count', 0)} results:\n")
     for r in results:
         score = r.get("score", 0)
-        bar = "█" * int(score * 20) + "░" * (20 - int(score * 20))
+        bar = "#" * int(score * 20) + "." * (20 - int(score * 20))
         print(f"  [{bar}] {score:.3f}")
         print(f"    Style: {r.get('style', '?')[:40]} | Mood: {r.get('mood', '?')[:25]}")
         prompt = r.get("suggested_prompt", "")
@@ -250,8 +264,8 @@ def cmd_remix(args: argparse.Namespace) -> None:
     if args.extra:
         modifications["extra"] = args.extra
 
-    if not modifications and not args.source_prompt:
-        print("❌ Provide at least one modification (--subject, --style, --mood, --colors, --extra)")
+    if not modifications and not args.source_prompt and not args.camera:
+        print("Error: Provide at least one modification (--subject, --style, --mood, --colors, --extra, --camera)")
         sys.exit(1)
 
     body = {
@@ -264,7 +278,19 @@ def cmd_remix(args: argparse.Namespace) -> None:
     else:
         body["asset_id"] = args.asset_id
 
-    print(f"🎨 Remixing with: {modifications}")
+    # Camera params
+    if args.camera:
+        body["camera"] = args.camera
+    if args.lens:
+        body["lens"] = args.lens
+    if args.aperture:
+        body["aperture"] = args.aperture
+    if args.cam_motion:
+        body["motion"] = args.cam_motion
+
+    print(f"Remixing with: {modifications}")
+    if args.camera:
+        print(f"   Camera: {args.camera} | Lens: {args.lens or 'default'}")
     print(f"   Template: {args.template}\n")
 
     data = _api("POST", "/api/remix", body)
@@ -272,25 +298,240 @@ def cmd_remix(args: argparse.Namespace) -> None:
         _print_json(data)
         return
     if "error" in data:
-        print(f"❌ {data['error']}")
+        print(f"Error: {data['error']}")
         return
-    print(f"✅ Remix complete!")
-    print(f"\n{'─' * 70}")
+    print(f"Remix complete!")
+    print(f"\n{'=' * 70}")
     print(f"Original:  {data.get('original_prompt', '')[:80]}...")
-    print(f"\n{'─' * 70}")
+    print(f"\n{'=' * 70}")
     print(f"Remixed:   {data.get('remixed_prompt', '')}")
-    print(f"\n{'─' * 70}")
+    print(f"\n{'=' * 70}")
     print(f"Style:     {data.get('style', '?')}")
     print(f"Mood:      {data.get('mood', '?')}")
+    cam = data.get("camera_tokens", {})
+    if cam.get("camera"):
+        print(f"Camera:    {cam.get('camera', '')} | Lens: {cam.get('lens', '')} | f/{cam.get('aperture', '')}")
     print(f"Workflow:   {data.get('workflow_path', '?')}")
 
 
-# ── Parser ───────────────────────────────────────────────────
+# -- Commands (new: production pipeline) --------------------------
+
+def cmd_cameras(args: argparse.Namespace) -> None:
+    """List available camera presets."""
+    data = _api("GET", "/api/cameras")
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    cameras = data.get("cameras", {})
+    lenses = data.get("lenses", {})
+    apertures = data.get("apertures", {})
+    motions = data.get("motions", {})
+
+    print("Camera Presets\n")
+    if cameras:
+        print("  Cameras:")
+        for name, desc in cameras.items():
+            label = desc if isinstance(desc, str) else json.dumps(desc)
+            print(f"    {name:20s}  {label[:50]}")
+    if lenses:
+        print("\n  Lenses:")
+        for name, desc in lenses.items():
+            label = desc if isinstance(desc, str) else json.dumps(desc)
+            print(f"    {name:20s}  {label[:50]}")
+    if apertures:
+        print("\n  Apertures:")
+        for name, desc in apertures.items():
+            label = desc if isinstance(desc, str) else json.dumps(desc)
+            print(f"    {name:20s}  {label[:50]}")
+    if motions:
+        print("\n  Motions:")
+        for name, desc in motions.items():
+            label = desc if isinstance(desc, str) else json.dumps(desc)
+            print(f"    {name:20s}  {label[:50]}")
+    if not any([cameras, lenses, apertures, motions]):
+        print("  No presets loaded (camera-presets.json not found in Gitea)")
+
+
+def cmd_produce_start(args: argparse.Namespace) -> None:
+    """Start a new production job."""
+    title = args.title
+    if not title:
+        print("Error: --title is required")
+        sys.exit(1)
+
+    body = {"title": title}
+    if args.url:
+        body["url"] = args.url
+    if args.camera:
+        body["camera"] = args.camera
+    if args.lens:
+        body["lens"] = args.lens
+    if args.aperture:
+        body["aperture"] = args.aperture
+    if args.cam_motion:
+        body["motion"] = args.cam_motion
+
+    data = _api("POST", "/api/produce/start", body)
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    print(f"Production job created!")
+    print(f"  Job ID:  {data.get('job_id', '?')}")
+    print(f"  Title:   {data.get('title', '?')}")
+    print(f"  Next:    {data.get('next_step', '?')}")
+    print(f"\n  Pipeline: {' -> '.join(data.get('pipeline_steps', []))}")
+    print(f"\n  Run: vref produce-step {data.get('job_id', 'JOB_ID')} brief")
+
+
+def cmd_produce_step(args: argparse.Namespace) -> None:
+    """Execute a pipeline step."""
+    job_id = args.job_id
+    step = args.step
+
+    if step not in PIPELINE_STEPS:
+        print(f"Error: Unknown step '{step}'. Valid: {', '.join(PIPELINE_STEPS)}")
+        sys.exit(1)
+
+    params = {}
+    if args.description:
+        params["description"] = args.description
+    if args.query_param:
+        params["query"] = args.query_param
+    if args.url:
+        params["url"] = args.url
+    if args.skip:
+        params["skip"] = True
+    if args.scenes:
+        params["scenes"] = _parse_scene_list(args.scenes)
+    if args.modifications:
+        params["modifications"] = _parse_modifications(args.modifications)
+
+    print(f"Executing step '{step}' for job {job_id[:8]}...")
+    data = _api("POST", "/api/produce/step", {
+        "job_id": job_id,
+        "step": step,
+        "params": params,
+    })
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    print(f"Step '{step}' completed!")
+    completed = data.get("steps_completed", [])
+    next_step = data.get("next_step", "done")
+    print(f"  Completed: {', '.join(completed)}")
+    print(f"  Next:      {next_step or 'DONE'}")
+    result = data.get("step_result", {})
+    kitsu = result.get("kitsu", {})
+    if kitsu.get("task_id"):
+        print(f"  Kitsu:     task {kitsu['task_id'][:8]}... -> {kitsu.get('status', '?')}")
+    if next_step:
+        print(f"\n  Run: vref produce-step {job_id} {next_step}")
+
+
+def cmd_produce_status(args: argparse.Namespace) -> None:
+    """Show production job status."""
+    job_id = args.job_id
+    data = _api("GET", f"/api/produce/status/{job_id}")
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+
+    progress = data.get("progress", 0)
+    bar_len = 30
+    filled = int(progress * bar_len)
+    bar = "#" * filled + "." * (bar_len - filled)
+    pct = int(progress * 100)
+
+    print(f"Production: {data.get('title', '?')}")
+    print(f"  Job ID:   {data.get('job_id', '?')}")
+    if data.get("camera"):
+        print(f"  Camera:   {data.get('camera', '')} | Lens: {data.get('lens', '')}")
+    print(f"  Progress: [{bar}] {pct}%")
+    print(f"  Current:  {data.get('current_step') or 'DONE'}")
+    if data.get("kitsu_sequence_id"):
+        print(f"  Kitsu:    sequence {data['kitsu_sequence_id'][:8]}...")
+    print(f"  Created:  {data.get('created_at', '?')[:19]}")
+    print(f"  Updated:  {data.get('updated_at', '?')[:19]}")
+
+    print(f"\n  Steps:")
+    for s in data.get("steps", []):
+        status = "[x]" if s["completed"] else "[ ]"
+        human = " (human)" if s["needs_human"] else ""
+        optional = " (optional)" if s["optional"] else ""
+        print(f"    {status} {s['id']:15s} {s['task_type']}{human}{optional}")
+
+
+def cmd_produce_retake(args: argparse.Namespace) -> None:
+    """Retake a specific pipeline step."""
+    job_id = args.job_id
+    step = args.step
+
+    if step not in PIPELINE_STEPS:
+        print(f"Error: Unknown step '{step}'. Valid: {', '.join(PIPELINE_STEPS)}")
+        sys.exit(1)
+
+    body: dict = {
+        "job_id": job_id,
+        "step": step,
+    }
+    if args.scenes:
+        body["scenes"] = _parse_scene_list(args.scenes)
+    if args.modifications:
+        body["modifications"] = _parse_modifications(args.modifications)
+
+    print(f"Retaking step '{step}' for job {job_id[:8]}...")
+    data = _api("POST", "/api/produce/retake", body)
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    print(f"Retake of '{step}' completed!")
+    if data.get("scenes_retaken"):
+        print(f"  Scenes retaken: {data['scenes_retaken']}")
+
+
+# -- Helpers -------------------------------------------------------
+
+def _parse_scene_list(scenes_str: str) -> list[int]:
+    """Parse comma-separated scene indices string to list of ints."""
+    result = []
+    for part in scenes_str.split(","):
+        part = part.strip()
+        if part.isdigit():
+            result.append(int(part))
+    return result
+
+
+def _parse_modifications(mods_str: str) -> dict:
+    """Parse key=value modifications string to dict."""
+    result = {}
+    for part in mods_str.split(","):
+        if "=" in part:
+            k, v = part.split("=", 1)
+            result[k.strip()] = v.strip()
+    return result
+
+
+# -- Parser --------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="vref",
-        description="VideoRef Engine CLI — creative video reference pipeline",
+        description="VideoRef Engine CLI -- creative video reference pipeline v0.7.0",
         epilog="Environment: VREF_URL (default: https://cine.ewutelo.cloud)",
     )
     parser.add_argument("--json", action="store_true", help="Output raw JSON")
@@ -331,7 +572,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("query", nargs="+", help="Search query")
     p.add_argument("--limit", type=int, default=5, help="Max results")
 
-    # remix
+    # remix (updated with camera params)
     p = sub.add_parser("remix", help="Remix an asset with modifications")
     p.add_argument("asset_id", nargs="?", help="Kitsu asset UUID (or use --source-prompt)")
     p.add_argument("--source-prompt", help="Direct prompt instead of asset_id")
@@ -340,8 +581,46 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mood", help="Change mood (e.g. 'melancholic')")
     p.add_argument("--colors", help="Override colors (e.g. '#1a1a2e, #16213e')")
     p.add_argument("--extra", help="Additional modifications")
+    p.add_argument("--camera", help="Camera preset (e.g. ARRI, RED, Sony)")
+    p.add_argument("--lens", help="Lens type (e.g. anamorphic, prime, zoom)")
+    p.add_argument("--aperture", help="Aperture value (e.g. 1.4, 2.8)")
+    p.add_argument("--cam-motion", help="Camera motion (e.g. dolly, pan, steadicam)")
     p.add_argument("--template", default="cinematic", help="ComfyUI template")
     p.add_argument("--output", help="Output workflow name")
+
+    # cameras
+    sub.add_parser("cameras", help="List available camera presets")
+
+    # produce-start
+    p = sub.add_parser("produce-start", help="Start a new production job")
+    p.add_argument("--title", required=True, help="Production title")
+    p.add_argument("--url", help="Source video URL")
+    p.add_argument("--camera", help="Camera preset")
+    p.add_argument("--lens", help="Lens type")
+    p.add_argument("--aperture", help="Aperture value")
+    p.add_argument("--cam-motion", help="Camera motion")
+
+    # produce-step
+    p = sub.add_parser("produce-step", help="Execute a pipeline step")
+    p.add_argument("job_id", help="Production job ID")
+    p.add_argument("step", help=f"Step name: {', '.join(PIPELINE_STEPS)}")
+    p.add_argument("--description", help="Brief description (for brief step)")
+    p.add_argument("--query-param", help="Search query (for research step)")
+    p.add_argument("--url", help="Source URL (for research step)")
+    p.add_argument("--skip", action="store_true", help="Skip optional step")
+    p.add_argument("--scenes", help="Comma-separated scene indices")
+    p.add_argument("--modifications", help="key=value,key=value modifications")
+
+    # produce-status
+    p = sub.add_parser("produce-status", help="Show production job status")
+    p.add_argument("job_id", help="Production job ID")
+
+    # produce-retake
+    p = sub.add_parser("produce-retake", help="Retake a specific pipeline step")
+    p.add_argument("job_id", help="Production job ID")
+    p.add_argument("step", help=f"Step to retake: {', '.join(PIPELINE_STEPS)}")
+    p.add_argument("--scenes", help="Comma-separated scene indices to retake")
+    p.add_argument("--modifications", help="key=value,key=value modifications")
 
     return parser
 
@@ -364,6 +643,11 @@ def main() -> None:
         "prompt": cmd_prompt,
         "search": cmd_search,
         "remix": cmd_remix,
+        "cameras": cmd_cameras,
+        "produce-start": cmd_produce_start,
+        "produce-step": cmd_produce_step,
+        "produce-status": cmd_produce_status,
+        "produce-retake": cmd_produce_retake,
     }
 
     fn = commands.get(args.command)

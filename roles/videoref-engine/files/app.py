@@ -1,4 +1,4 @@
-"""VideoRef Engine v0.4.0 -- Multi-scene video analysis + Kitsu + Qdrant + Gitea."""
+"""VideoRef Engine v0.7.0 -- Multi-scene video analysis + 14-step production pipeline."""
 import os
 import re
 import json
@@ -7,6 +7,8 @@ import base64
 import hashlib
 import subprocess
 import tempfile
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -26,10 +28,41 @@ KITSU_TOKEN = os.environ.get("KITSU_TOKEN", "")
 QDRANT_URL = os.environ.get("QDRANT_URL", "")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
 QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "videoref_styles")
+N8N_CREATIVE_PIPELINE_URL = os.environ.get("N8N_CREATIVE_PIPELINE_URL", "")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 SCENE_THRESHOLD = 0.3
 SHORT_VIDEO_SECONDS = 30
+JOBS_DIR = OUTPUT_DIR / "jobs"
+
+# --- Camera presets cache (loaded once from Gitea) ---
+_camera_presets_cache: dict[str, Any] | None = None
+
+
+# ============================================================
+# Pipeline State Machine — 14 production steps
+# ============================================================
+PIPELINE_STEPS = [
+    {"id": "brief", "task_type": "Brief", "needs_human": False, "optional": False, "kitsu_status": "done"},
+    {"id": "research", "task_type": "Recherche", "needs_human": False, "optional": False, "kitsu_status": "done"},
+    {"id": "script", "task_type": "Script", "needs_human": False, "optional": False, "kitsu_status": "done"},
+    {"id": "storyboard", "task_type": "Storyboard CF", "needs_human": True, "optional": False, "kitsu_status": "wfa"},
+    {"id": "voiceover", "task_type": "Voice-over", "needs_human": False, "optional": True, "kitsu_status": "done"},
+    {"id": "music", "task_type": "Music", "needs_human": False, "optional": True, "kitsu_status": "done"},
+    {"id": "imagegen", "task_type": "Image Gen", "needs_human": True, "optional": False, "kitsu_status": "wfa"},
+    {"id": "videogen", "task_type": "Video Gen", "needs_human": True, "optional": False, "kitsu_status": "wfa"},
+    {"id": "montage", "task_type": "Montage", "needs_human": True, "optional": False, "kitsu_status": "wfa"},
+    {"id": "subtitles", "task_type": "Sous-titres", "needs_human": False, "optional": True, "kitsu_status": "done"},
+    {"id": "colorgrade", "task_type": "Color Grade", "needs_human": True, "optional": False, "kitsu_status": "wfa"},
+    {"id": "review", "task_type": "Review", "needs_human": True, "optional": False, "kitsu_status": "wfa"},
+    {"id": "export", "task_type": "Export", "needs_human": False, "optional": False, "kitsu_status": "done"},
+    {"id": "publish", "task_type": "Publication", "needs_human": False, "optional": True, "kitsu_status": "done"},
+]
+
+STEP_IDS = [s["id"] for s in PIPELINE_STEPS]
+STEP_MAP = {s["id"]: s for s in PIPELINE_STEPS}
 
 
 # ============================================================
@@ -252,6 +285,30 @@ async def _call_litellm(payload: dict[str, Any]) -> dict[str, Any]:
                 return json.loads(content[start:end])
             except (ValueError, json.JSONDecodeError):
                 return {"raw_analysis": content}
+
+
+async def _call_litellm_text(prompt: str) -> str:
+    """Call LiteLLM and return raw text response."""
+    if not LITELLM_URL or not LITELLM_API_KEY:
+        return ""
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            f"{LITELLM_URL}/v1/chat/completions",
+            json={
+                "model": "claude-sonnet",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 1024,
+            },
+            headers={
+                "Authorization": f"Bearer {LITELLM_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            timeout=aiohttp.ClientTimeout(total=60),
+        ) as resp:
+            if resp.status != 200:
+                return ""
+            data = await resp.json()
+            return data["choices"][0]["message"]["content"].strip()
 
 
 def _encode_frame(frame_path: Path) -> dict[str, Any]:
@@ -491,6 +548,17 @@ async def _kitsu_get_done_status_id(session: aiohttp.ClientSession) -> str:
     raise RuntimeError("No 'done' task status found in Kitsu")
 
 
+async def _kitsu_get_status_id(
+    session: aiohttp.ClientSession, short_name: str,
+) -> str:
+    """Get a task status ID by short_name (done, wfa, wip, todo, etc)."""
+    statuses = await _kitsu_api(session, "GET", "/data/task-status")
+    match = next((s for s in statuses if s.get("short_name") == short_name), None)
+    if match:
+        return match["id"]
+    raise RuntimeError(f"No '{short_name}' task status found in Kitsu")
+
+
 async def _kitsu_get_entity_type_id(
     session: aiohttp.ClientSession, name: str,
 ) -> str:
@@ -586,14 +654,14 @@ async def _kitsu_get_or_create_task(
 async def _kitsu_post_comment(
     session: aiohttp.ClientSession,
     task_id: str,
-    done_status_id: str,
+    status_id: str,
     text: str,
 ) -> dict[str, Any]:
-    """Post a comment on a task, setting status to Done."""
+    """Post a comment on a task, setting status."""
     return await _kitsu_api(
         session, "POST",
         f"/actions/tasks/{task_id}/comment",
-        {"task_status_id": done_status_id, "text": text},
+        {"task_status_id": status_id, "text": text},
     )
 
 
@@ -637,6 +705,24 @@ async def _kitsu_upload_preview(
         pass  # Non-critical if setting main preview fails
 
     return preview_id
+
+
+async def _kitsu_create_playlist(
+    session: aiohttp.ClientSession,
+    project_id: str,
+    name: str,
+    shot_ids: list[str],
+) -> dict[str, Any] | None:
+    """Create a playlist in Kitsu for review."""
+    try:
+        shots_payload = [{"entity_id": sid, "preview_file_id": ""} for sid in shot_ids]
+        return await _kitsu_api(
+            session, "POST",
+            f"/data/projects/{project_id}/playlists",
+            {"name": name, "shots": shots_payload},
+        )
+    except Exception:
+        return None
 
 
 async def push_to_kitsu(
@@ -895,6 +981,43 @@ async def index_in_qdrant(
         return {"error": str(exc)}
 
 
+async def _search_qdrant(query: str, limit: int = 5) -> list[dict[str, Any]]:
+    """Search Qdrant for similar references. Returns list of results."""
+    if not QDRANT_URL or not LITELLM_URL:
+        return []
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{LITELLM_URL}/v1/embeddings",
+                json={"model": "embedding", "input": query},
+                headers={
+                    "Authorization": f"Bearer {LITELLM_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status != 200:
+                    return []
+                emb = await resp.json()
+                vector = emb["data"][0]["embedding"]
+
+            async with session.post(
+                f"{QDRANT_URL}/collections/{QDRANT_COLLECTION}/points/search",
+                json={"vector": vector, "limit": limit, "with_payload": True},
+                headers={"api-key": QDRANT_API_KEY, "Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status != 200:
+                    return []
+                data = await resp.json()
+                return [
+                    {**hit.get("payload", {}), "score": hit.get("score", 0)}
+                    for hit in data.get("result", [])
+                ]
+    except Exception:
+        return []
+
+
 # ============================================================
 # 11. Gitea versioning
 # ============================================================
@@ -1034,7 +1157,609 @@ async def run_analysis(filename: str, template_name: str = "default") -> dict[st
 
 
 # ============================================================
-# HTTP API handlers
+# 13. Camera presets loader
+# ============================================================
+async def _load_camera_presets() -> dict[str, Any]:
+    """Fetch camera-presets.json from Gitea (cached after first load)."""
+    global _camera_presets_cache
+    if _camera_presets_cache is not None:
+        return _camera_presets_cache
+
+    if not GITEA_URL or not GITEA_TOKEN:
+        return {"cameras": {}, "lenses": {}, "apertures": {}, "motions": {}}
+
+    url = (
+        f"{GITEA_URL}/api/v1/repos/mobuone/comfyui-templates"
+        f"/raw/camera-presets.json?ref=main"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url,
+                headers={"Authorization": f"token {GITEA_TOKEN}"},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status == 200:
+                    _camera_presets_cache = await resp.json()
+                    return _camera_presets_cache
+    except Exception as exc:
+        print(f"[camera-presets] Failed to load from Gitea: {exc}")
+
+    # Fallback: try with urllib (sync, simpler SSL)
+    try:
+        import urllib.request as _ur
+        req = _ur.Request(url, headers={"Authorization": f"token {GITEA_TOKEN}"})
+        with _ur.urlopen(req, timeout=10) as resp:
+            _camera_presets_cache = json.loads(resp.read())
+            print(f"[camera-presets] Loaded via urllib fallback")
+            return _camera_presets_cache
+    except Exception as exc2:
+        print(f"[camera-presets] urllib fallback also failed: {exc2}")
+
+    fallback = {"cameras": {}, "lenses": {}, "apertures": {}, "motions": {}}
+    _camera_presets_cache = fallback
+    return fallback
+
+
+def _inject_camera_tokens(
+    prompt: str,
+    camera: str = "",
+    lens: str = "",
+    aperture: str = "",
+    motion: str = "",
+) -> str:
+    """Append camera tokens to a prompt string. Returns new string."""
+    tokens = []
+    if camera:
+        tokens.append(f"shot on {camera}")
+    if lens:
+        tokens.append(f"{lens} lens")
+    if aperture:
+        tokens.append(f"f/{aperture}")
+    if motion:
+        tokens.append(f"{motion} camera movement")
+    if not tokens:
+        return prompt
+    return f"{prompt}, {', '.join(tokens)}"
+
+
+# ============================================================
+# 14. Job state management
+# ============================================================
+def _job_path(job_id: str) -> Path:
+    """Return path to a job state JSON file."""
+    return JOBS_DIR / f"{job_id}.json"
+
+
+def _load_job(job_id: str) -> dict[str, Any] | None:
+    """Load a job from disk. Returns None if not found."""
+    path = _job_path(job_id)
+    if not path.exists():
+        return None
+    return json.loads(path.read_text())
+
+
+def _save_job(job: dict[str, Any]) -> None:
+    """Save a job to disk. Creates new dict to avoid mutation."""
+    path = _job_path(job["job_id"])
+    JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    saved = {**job, "updated_at": datetime.now(timezone.utc).isoformat()}
+    path.write_text(json.dumps(saved, indent=2))
+
+
+def _new_job(
+    title: str,
+    url: str = "",
+    camera: str = "",
+    lens: str = "",
+    aperture: str = "",
+    motion: str = "",
+) -> dict[str, Any]:
+    """Create a new immutable job state dict."""
+    now = datetime.now(timezone.utc).isoformat()
+    return {
+        "job_id": str(uuid.uuid4()),
+        "title": title,
+        "url": url,
+        "camera": camera,
+        "lens": lens,
+        "aperture": aperture,
+        "motion": motion,
+        "current_step": None,
+        "steps_completed": [],
+        "kitsu_project_id": "",
+        "kitsu_sequence_id": "",
+        "kitsu_shot_ids": [],
+        "scenes": [],
+        "scene_analyses": [],
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def _advance_job(job: dict[str, Any], step_id: str, extras: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return new job dict with step marked completed. Immutable."""
+    completed = list(job["steps_completed"])
+    if step_id not in completed:
+        completed.append(step_id)
+    # Find next step
+    current_idx = STEP_IDS.index(step_id) if step_id in STEP_IDS else -1
+    next_step = STEP_IDS[current_idx + 1] if current_idx + 1 < len(STEP_IDS) else None
+    updated = {
+        **job,
+        "current_step": next_step,
+        "steps_completed": completed,
+    }
+    if extras:
+        updated = {**updated, **extras}
+    return updated
+
+
+# ============================================================
+# 15. Telegram notification helper
+# ============================================================
+async def _send_telegram(message: str) -> bool:
+    """Send a Telegram notification. Returns True on success."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                return resp.status == 200
+    except Exception:
+        return False
+
+
+# ============================================================
+# 16. N8N creative pipeline caller
+# ============================================================
+async def _call_n8n_creative(
+    prompt: str,
+    output_type: str = "image",
+    resolution: str = "low-res",
+    scene_index: int = 0,
+    job_id: str = "",
+) -> dict[str, Any]:
+    """Call n8n creative-pipeline webhook. Returns result dict."""
+    if not N8N_CREATIVE_PIPELINE_URL:
+        return {"skipped": "N8N_CREATIVE_PIPELINE_URL not configured"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                N8N_CREATIVE_PIPELINE_URL,
+                json={
+                    "prompt": prompt,
+                    "output_type": output_type,
+                    "resolution": resolution,
+                    "scene_index": scene_index,
+                    "job_id": job_id,
+                },
+                timeout=aiohttp.ClientTimeout(total=300),
+            ) as resp:
+                if resp.status in (200, 201):
+                    return await resp.json()
+                body = await resp.text()
+                return {"error": f"n8n {resp.status}: {body[:200]}"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+async def _call_n8n_video(
+    prompt: str,
+    scene_index: int = 0,
+    job_id: str = "",
+) -> dict[str, Any]:
+    """Call n8n video-generate webhook. Returns result dict."""
+    if not N8N_CREATIVE_PIPELINE_URL:
+        return {"skipped": "N8N_CREATIVE_PIPELINE_URL not configured"}
+    video_url = N8N_CREATIVE_PIPELINE_URL.replace("creative-pipeline", "video-generate")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                video_url,
+                json={
+                    "prompt": prompt,
+                    "scene_index": scene_index,
+                    "job_id": job_id,
+                },
+                timeout=aiohttp.ClientTimeout(total=600),
+            ) as resp:
+                if resp.status in (200, 201):
+                    return await resp.json()
+                body = await resp.text()
+                return {"error": f"n8n video {resp.status}: {body[:200]}"}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ============================================================
+# 17. Production step handlers
+# ============================================================
+async def _step_brief(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle brief step: store description, create Kitsu sequence + task."""
+    description = params.get("description", job.get("title", ""))
+    extras: dict[str, Any] = {"description": description}
+
+    kitsu_result: dict[str, Any] = {}
+    if KITSU_URL and KITSU_TOKEN:
+        try:
+            async with aiohttp.ClientSession() as session:
+                project = await _kitsu_get_project(session)
+                project_id = project["id"]
+                episode_id = project.get("first_episode_id", "")
+
+                seq = await _kitsu_create_sequence(
+                    session, project_id, episode_id, job["title"][:80],
+                )
+                extras["kitsu_project_id"] = project_id
+                extras["kitsu_sequence_id"] = seq["id"]
+
+                task_type_id = await _kitsu_get_task_type_id(session, "Brief")
+                task = await _kitsu_get_or_create_task(
+                    session, seq["id"], task_type_id, project_id,
+                )
+                done_id = await _kitsu_get_done_status_id(session)
+                await _kitsu_post_comment(
+                    session, task["id"], done_id, f"Brief: {description}",
+                )
+                kitsu_result = {"task_id": task["id"], "status": "done"}
+        except Exception as exc:
+            kitsu_result = {"error": str(exc)}
+
+    return {"status": "ok", "description": description, "kitsu": kitsu_result}, extras
+
+
+async def _step_research(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle research step: analyze URL or search Qdrant."""
+    url = params.get("url", job.get("url", ""))
+    extras: dict[str, Any] = {}
+    research_result: dict[str, Any] = {}
+
+    if url:
+        # Use existing analysis pipeline on a video URL
+        # (Assumes video is already downloaded to WATCH_DIR)
+        filename = Path(url).name if "/" in url else url
+        src = WATCH_DIR / filename
+        if src.exists():
+            research_result = await run_analysis(filename)
+            extras["scene_analyses"] = research_result.get("scenes", [])
+        else:
+            research_result = {"note": f"File not in watch dir: {filename}"}
+    else:
+        # Search Qdrant for similar references
+        query = params.get("query", job.get("title", ""))
+        results = await _search_qdrant(query, limit=5)
+        research_result = {"qdrant_results": results}
+
+    kitsu_result = await _kitsu_step_task(
+        job, "Recherche", "done",
+        f"Research completed.\n{json.dumps(research_result, indent=2)[:2000]}",
+    )
+
+    return {
+        "status": "ok",
+        "research": research_result,
+        "kitsu": kitsu_result,
+    }, extras
+
+
+async def _step_script(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle script step: generate prompts per scene with camera presets."""
+    scenes = params.get("scenes", job.get("scenes", []))
+    modifications = params.get("modifications", {})
+    presets = await _load_camera_presets()
+
+    scene_prompts: list[dict[str, Any]] = []
+    for idx, scene in enumerate(scenes):
+        base_prompt = scene.get("analysis", {}).get("suggested_prompt", "")
+        if not base_prompt:
+            base_prompt = scene.get("suggested_prompt", f"Scene {idx + 1}")
+
+        # Apply camera tokens
+        enriched = _inject_camera_tokens(
+            base_prompt,
+            camera=job.get("camera", ""),
+            lens=job.get("lens", ""),
+            aperture=job.get("aperture", ""),
+            motion=job.get("motion", ""),
+        )
+
+        # Apply modifications via LiteLLM if available
+        if modifications and LITELLM_URL:
+            mod_text = "\n".join(f"- {k}: {v}" for k, v in modifications.items())
+            remix_text = await _call_litellm_text(
+                f"Modify this image prompt:\n{enriched}\n\nChanges:\n{mod_text}\n\nReturn ONLY the modified prompt."
+            )
+            if remix_text:
+                enriched = remix_text
+
+        scene_prompts.append({
+            "scene_index": idx,
+            "original": base_prompt,
+            "enriched": enriched,
+        })
+
+    extras = {"scene_prompts": scene_prompts}
+
+    # Post all prompts as Kitsu comment
+    comment = "\n\n".join(
+        f"Scene {p['scene_index']+1}:\n{p['enriched']}" for p in scene_prompts
+    )
+    kitsu_result = await _kitsu_step_task(
+        job, "Script", "done", f"Script prompts:\n\n{comment[:3000]}",
+    )
+
+    return {
+        "status": "ok",
+        "scene_prompts": scene_prompts,
+        "kitsu": kitsu_result,
+    }, extras
+
+
+async def _step_storyboard(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle storyboard step: generate low-res images via n8n."""
+    scene_prompts = job.get("scene_prompts", [])
+    results: list[dict[str, Any]] = []
+
+    for sp in scene_prompts:
+        n8n_result = await _call_n8n_creative(
+            prompt=sp.get("enriched", sp.get("original", "")),
+            output_type="image",
+            resolution="low-res",
+            scene_index=sp.get("scene_index", 0),
+            job_id=job["job_id"],
+        )
+        results.append(n8n_result)
+
+    kitsu_result = await _kitsu_step_task(
+        job, "Storyboard CF", "wfa",
+        f"Storyboard generated: {len(results)} scenes (low-res). Awaiting validation.",
+    )
+
+    return {
+        "status": "ok",
+        "storyboard_results": results,
+        "kitsu": kitsu_result,
+    }, {}
+
+
+async def _step_voiceover(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle voiceover step: placeholder for ElevenLabs integration."""
+    skip = params.get("skip", False)
+    status = "done" if skip else "done"
+    note = "Skipped by user" if skip else "Not yet implemented -- manual step"
+
+    kitsu_result = await _kitsu_step_task(job, "Voice-over", status, note)
+    return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+
+
+async def _step_music(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle music step: placeholder."""
+    skip = params.get("skip", False)
+    note = "Skipped by user" if skip else "Not yet implemented -- manual step"
+
+    kitsu_result = await _kitsu_step_task(job, "Music", "done", note)
+    return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+
+
+async def _step_imagegen(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle imagegen step: generate hi-res images via n8n."""
+    scene_prompts = job.get("scene_prompts", [])
+    results: list[dict[str, Any]] = []
+
+    for sp in scene_prompts:
+        n8n_result = await _call_n8n_creative(
+            prompt=sp.get("enriched", sp.get("original", "")),
+            output_type="image",
+            resolution="hi-res",
+            scene_index=sp.get("scene_index", 0),
+            job_id=job["job_id"],
+        )
+        results.append(n8n_result)
+
+    kitsu_result = await _kitsu_step_task(
+        job, "Image Gen", "wfa",
+        f"HD images generated: {len(results)} scenes. Awaiting validation.",
+    )
+
+    return {
+        "status": "ok",
+        "imagegen_results": results,
+        "kitsu": kitsu_result,
+    }, {}
+
+
+async def _step_videogen(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle videogen step: generate videos via n8n."""
+    scene_prompts = job.get("scene_prompts", [])
+    results: list[dict[str, Any]] = []
+
+    for sp in scene_prompts:
+        n8n_result = await _call_n8n_video(
+            prompt=sp.get("enriched", sp.get("original", "")),
+            scene_index=sp.get("scene_index", 0),
+            job_id=job["job_id"],
+        )
+        results.append(n8n_result)
+
+    kitsu_result = await _kitsu_step_task(
+        job, "Video Gen", "wfa",
+        f"Videos generated: {len(results)} scenes. Awaiting validation.",
+    )
+
+    return {
+        "status": "ok",
+        "videogen_results": results,
+        "kitsu": kitsu_result,
+    }, {}
+
+
+async def _step_montage(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle montage step: placeholder for Remotion integration."""
+    note = "Not yet implemented -- manual step (Remotion integration future)"
+    kitsu_result = await _kitsu_step_task(job, "Montage", "wfa", note)
+    return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+
+
+async def _step_subtitles(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle subtitles step: placeholder for Whisper integration."""
+    skip = params.get("skip", False)
+    note = "Skipped by user" if skip else "Not yet implemented -- manual step (Whisper future)"
+    kitsu_result = await _kitsu_step_task(job, "Sous-titres", "done", note)
+    return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+
+
+async def _step_colorgrade(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle colorgrade step: placeholder for ffmpeg LUT."""
+    note = "Not yet implemented -- manual step (ffmpeg LUT future)"
+    kitsu_result = await _kitsu_step_task(job, "Color Grade", "wfa", note)
+    return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+
+
+async def _step_review(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle review step: send Telegram notification, create Kitsu playlist."""
+    title = job.get("title", "Unknown")
+    job_id = job["job_id"]
+    completed = len(job.get("steps_completed", []))
+    total = len(PIPELINE_STEPS)
+
+    # Send Telegram notification
+    msg = (
+        f"*Review needed*\n"
+        f"Production: {title}\n"
+        f"Job: `{job_id}`\n"
+        f"Progress: {completed}/{total} steps completed"
+    )
+    telegram_ok = await _send_telegram(msg)
+
+    # Create Kitsu playlist
+    playlist_result: dict[str, Any] = {}
+    if KITSU_URL and KITSU_TOKEN and job.get("kitsu_project_id"):
+        async with aiohttp.ClientSession() as session:
+            playlist = await _kitsu_create_playlist(
+                session,
+                job["kitsu_project_id"],
+                f"Review: {title}",
+                job.get("kitsu_shot_ids", []),
+            )
+            if playlist:
+                playlist_result = {"playlist_id": playlist.get("id", "")}
+
+    kitsu_result = await _kitsu_step_task(
+        job, "Review", "wfa",
+        f"Review requested. Telegram: {'sent' if telegram_ok else 'not configured'}",
+    )
+
+    return {
+        "status": "ok",
+        "telegram_sent": telegram_ok,
+        "playlist": playlist_result,
+        "kitsu": kitsu_result,
+    }, {}
+
+
+async def _step_export(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle export step: placeholder for ffmpeg encode."""
+    note = "Not yet implemented -- manual step (ffmpeg encode future)"
+    kitsu_result = await _kitsu_step_task(job, "Export", "done", note)
+    return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+
+
+async def _step_publish(
+    job: dict[str, Any], params: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Handle publish step: placeholder."""
+    skip = params.get("skip", False)
+    note = "Skipped by user" if skip else "Not yet implemented -- manual step"
+    kitsu_result = await _kitsu_step_task(job, "Publication", "done", note)
+    return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+
+
+STEP_HANDLERS = {
+    "brief": _step_brief,
+    "research": _step_research,
+    "script": _step_script,
+    "storyboard": _step_storyboard,
+    "voiceover": _step_voiceover,
+    "music": _step_music,
+    "imagegen": _step_imagegen,
+    "videogen": _step_videogen,
+    "montage": _step_montage,
+    "subtitles": _step_subtitles,
+    "colorgrade": _step_colorgrade,
+    "review": _step_review,
+    "export": _step_export,
+    "publish": _step_publish,
+}
+
+
+async def _kitsu_step_task(
+    job: dict[str, Any],
+    task_type_name: str,
+    target_status: str,
+    comment_text: str,
+) -> dict[str, Any]:
+    """Create/update a Kitsu task for a pipeline step on the sequence."""
+    if not KITSU_URL or not KITSU_TOKEN:
+        return {"skipped": "KITSU not configured"}
+
+    seq_id = job.get("kitsu_sequence_id", "")
+    project_id = job.get("kitsu_project_id", "")
+    if not seq_id or not project_id:
+        return {"skipped": "No Kitsu sequence in job"}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            task_type_id = await _kitsu_get_task_type_id(session, task_type_name)
+            task = await _kitsu_get_or_create_task(
+                session, seq_id, task_type_id, project_id,
+            )
+            status_id = await _kitsu_get_status_id(session, target_status)
+            comment = await _kitsu_post_comment(
+                session, task["id"], status_id, comment_text[:5000],
+            )
+            return {
+                "task_id": task["id"],
+                "comment_id": comment.get("id", "") if comment else "",
+                "status": target_status,
+            }
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+# ============================================================
+# HTTP API handlers (existing)
 # ============================================================
 async def health(request: web.Request) -> web.Response:
     """GET /health -- service health check."""
@@ -1046,6 +1771,7 @@ async def health(request: web.Request) -> web.Response:
             "kitsu": bool(KITSU_URL),
             "qdrant": bool(QDRANT_URL),
             "gitea": bool(GITEA_URL),
+            "n8n_creative": bool(N8N_CREATIVE_PIPELINE_URL),
         },
     })
 
@@ -1114,17 +1840,7 @@ async def _background_analyze(filename: str) -> None:
 # Agent-friendly API: search, get, remix
 # ============================================================
 async def search_assets(request: web.Request) -> web.Response:
-    """GET /api/assets?style=X&mood=Y&q=Z -- search VideoRef assets.
-
-    Query params (all optional, combined with AND):
-      - q: free text search (matches name, description, prompt)
-      - style: filter by style substring
-      - mood: filter by mood substring
-      - motion: filter by motion level (low, medium, high)
-      - limit: max results (default 20)
-
-    Used by: OpenClaw, Claude Code, n8n agents
-    """
+    """GET /api/assets?style=X&mood=Y&q=Z -- search VideoRef assets."""
     if not KITSU_URL or not KITSU_TOKEN:
         return web.json_response({"error": "KITSU not configured"}, status=503)
 
@@ -1185,11 +1901,7 @@ async def search_assets(request: web.Request) -> web.Response:
 
 
 async def get_asset(request: web.Request) -> web.Response:
-    """GET /api/assets/{id} -- get full asset details with prompt.
-
-    Returns complete asset data ready for remix.
-    Used by: OpenClaw, Claude Code agents
-    """
+    """GET /api/assets/{id} -- get full asset details with prompt."""
     asset_id = request.match_info["id"]
     if not KITSU_URL or not KITSU_TOKEN:
         return web.json_response({"error": "KITSU not configured"}, status=503)
@@ -1221,11 +1933,7 @@ async def get_asset(request: web.Request) -> web.Response:
 
 
 async def semantic_search(request: web.Request) -> web.Response:
-    """GET /api/search?q=cinematic+dramatic+blue -- semantic search via Qdrant.
-
-    Returns assets ranked by embedding similarity.
-    Used by: OpenClaw, Claude Code for finding similar visual references
-    """
+    """GET /api/search?q=cinematic+dramatic+blue -- semantic search via Qdrant."""
     query = request.query.get("q", "")
     limit = int(request.query.get("limit", "5"))
     if not query:
@@ -1234,47 +1942,23 @@ async def semantic_search(request: web.Request) -> web.Response:
         return web.json_response({"error": "Search not configured"}, status=503)
 
     try:
-        async with aiohttp.ClientSession() as session:
-            # Get embedding
-            async with session.post(
-                f"{LITELLM_URL}/v1/embeddings",
-                json={"model": "embedding", "input": query},
-                headers={
-                    "Authorization": f"Bearer {LITELLM_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                timeout=aiohttp.ClientTimeout(total=15),
-            ) as resp:
-                emb = await resp.json()
-                vector = emb["data"][0]["embedding"]
-
-            # Search Qdrant
-            async with session.post(
-                f"{QDRANT_URL}/collections/{QDRANT_COLLECTION}/points/search",
-                json={"vector": vector, "limit": limit, "with_payload": True},
-                headers={
-                    "api-key": QDRANT_API_KEY,
-                    "Content-Type": "application/json",
-                },
-                timeout=aiohttp.ClientTimeout(total=10),
-            ) as resp:
-                data = await resp.json()
-                results = []
-                for hit in data.get("result", []):
-                    p = hit.get("payload", {})
-                    results.append({
-                        "score": round(hit["score"], 3),
-                        "filename": p.get("filename", ""),
-                        "style": p.get("style", ""),
-                        "mood": p.get("mood", ""),
-                        "colors": p.get("colors", []),
-                        "suggested_prompt": p.get("suggested_prompt", ""),
-                    })
-                return web.json_response({
-                    "query": query,
-                    "results": results,
-                    "count": len(results),
-                })
+        results = await _search_qdrant(query, limit)
+        formatted = [
+            {
+                "score": round(r.get("score", 0), 3),
+                "filename": r.get("filename", ""),
+                "style": r.get("style", ""),
+                "mood": r.get("mood", ""),
+                "colors": r.get("colors", []),
+                "suggested_prompt": r.get("suggested_prompt", ""),
+            }
+            for r in results
+        ]
+        return web.json_response({
+            "query": query,
+            "results": formatted,
+            "count": len(formatted),
+        })
     except Exception as exc:
         return web.json_response({"error": str(exc)}, status=500)
 
@@ -1282,23 +1966,7 @@ async def semantic_search(request: web.Request) -> web.Response:
 async def remix(request: web.Request) -> web.Response:
     """POST /api/remix -- remix an existing VideoRef asset with modifications.
 
-    Body:
-    {
-        "asset_id": "uuid",           // Kitsu asset ID (or use source_prompt)
-        "source_prompt": "...",        // Alternative: provide prompt directly
-        "modifications": {             // What to change
-            "subject": "cats instead of shoes",
-            "style": "watercolor painting",
-            "mood": "melancholic",
-            "colors": "#1a1a2e, #16213e, #0f3460",
-            "extra": "add rain, twilight sky"
-        },
-        "template": "cinematic",       // ComfyUI workflow template (default/cinematic/anime)
-        "output_name": "my-remix-v1"   // Optional output name
-    }
-
-    Returns: modified prompt + generated ComfyUI workflow JSON
-    Used by: OpenClaw agent, Claude Code, n8n automation
+    Body supports optional camera/lens/aperture/motion params for camera tokens.
     """
     data = await request.json()
     asset_id = data.get("asset_id", "")
@@ -1306,6 +1974,10 @@ async def remix(request: web.Request) -> web.Response:
     modifications = data.get("modifications", {})
     template_name = data.get("template", "default")
     output_name = data.get("output_name", "remix")
+    camera = data.get("camera", "")
+    lens = data.get("lens", "")
+    aperture = data.get("aperture", "")
+    motion_param = data.get("motion", "")
 
     # Get source prompt from Kitsu asset or direct input
     original_analysis = {}
@@ -1334,6 +2006,11 @@ async def remix(request: web.Request) -> web.Response:
         return web.json_response(
             {"error": "Provide asset_id or source_prompt"}, status=400,
         )
+
+    # Inject camera tokens
+    source_prompt = _inject_camera_tokens(
+        source_prompt, camera, lens, aperture, motion_param,
+    )
 
     # Build remix prompt via LiteLLM
     mod_parts = []
@@ -1395,6 +2072,7 @@ async def remix(request: web.Request) -> web.Response:
         "original_prompt": source_prompt[:300],
         "remixed_prompt": remix_prompt[:500],
         "modifications_applied": modifications,
+        "camera_tokens": {"camera": camera, "lens": lens, "aperture": aperture, "motion": motion_param},
         "style": remixed_analysis.get("style", ""),
         "mood": remixed_analysis.get("mood", ""),
         "template": template_name,
@@ -1404,9 +2082,190 @@ async def remix(request: web.Request) -> web.Response:
 
 
 # ============================================================
+# Production pipeline API endpoints
+# ============================================================
+async def get_cameras(request: web.Request) -> web.Response:
+    """GET /api/cameras -- return available camera presets."""
+    presets = await _load_camera_presets()
+    return web.json_response(presets)
+
+
+async def produce_start(request: web.Request) -> web.Response:
+    """POST /api/produce/start -- start a new production job.
+
+    Body: {"title": "...", "url": "...", "camera": "ARRI", "lens": "anamorphic", ...}
+    """
+    data = await request.json()
+    title = data.get("title", "")
+    if not title:
+        return web.json_response({"error": "title required"}, status=400)
+
+    job = _new_job(
+        title=title,
+        url=data.get("url", ""),
+        camera=data.get("camera", ""),
+        lens=data.get("lens", ""),
+        aperture=data.get("aperture", ""),
+        motion=data.get("motion", ""),
+    )
+    _save_job(job)
+
+    return web.json_response({
+        "status": "created",
+        "job_id": job["job_id"],
+        "title": job["title"],
+        "pipeline_steps": STEP_IDS,
+        "next_step": STEP_IDS[0],
+    })
+
+
+async def produce_step(request: web.Request) -> web.Response:
+    """POST /api/produce/step -- advance to next pipeline step.
+
+    Body: {"job_id": "...", "step": "brief", "params": {...}}
+    """
+    data = await request.json()
+    job_id = data.get("job_id", "")
+    step_id = data.get("step", "")
+    params = data.get("params", {})
+
+    if not job_id:
+        return web.json_response({"error": "job_id required"}, status=400)
+    if step_id not in STEP_MAP:
+        return web.json_response(
+            {"error": f"Unknown step: {step_id}. Valid: {STEP_IDS}"}, status=400,
+        )
+
+    job = _load_job(job_id)
+    if job is None:
+        return web.json_response({"error": f"Job not found: {job_id}"}, status=404)
+
+    # Check step not already completed
+    if step_id in job.get("steps_completed", []):
+        return web.json_response(
+            {"error": f"Step '{step_id}' already completed. Use /api/produce/retake to redo."},
+            status=409,
+        )
+
+    handler = STEP_HANDLERS.get(step_id)
+    if not handler:
+        return web.json_response({"error": f"No handler for step: {step_id}"}, status=500)
+
+    try:
+        result, extras = await handler(job, params)
+    except Exception as exc:
+        return web.json_response({"error": f"Step failed: {exc}"}, status=500)
+
+    updated_job = _advance_job(job, step_id, extras)
+    _save_job(updated_job)
+
+    return web.json_response({
+        "status": "ok",
+        "job_id": job_id,
+        "step": step_id,
+        "step_result": result,
+        "steps_completed": updated_job["steps_completed"],
+        "next_step": updated_job["current_step"],
+    })
+
+
+async def produce_retake(request: web.Request) -> web.Response:
+    """POST /api/produce/retake -- retake a specific step.
+
+    Body: {"job_id": "...", "step": "imagegen", "scenes": [3, 5], "modifications": {...}}
+    """
+    data = await request.json()
+    job_id = data.get("job_id", "")
+    step_id = data.get("step", "")
+    scenes = data.get("scenes", [])
+    modifications = data.get("modifications", {})
+
+    if not job_id:
+        return web.json_response({"error": "job_id required"}, status=400)
+    if step_id not in STEP_MAP:
+        return web.json_response(
+            {"error": f"Unknown step: {step_id}. Valid: {STEP_IDS}"}, status=400,
+        )
+
+    job = _load_job(job_id)
+    if job is None:
+        return web.json_response({"error": f"Job not found: {job_id}"}, status=404)
+
+    # Build params with retake info
+    params = {
+        "retake": True,
+        "scenes": scenes,
+        "modifications": modifications,
+    }
+
+    handler = STEP_HANDLERS.get(step_id)
+    if not handler:
+        return web.json_response({"error": f"No handler for step: {step_id}"}, status=500)
+
+    try:
+        result, extras = await handler(job, params)
+    except Exception as exc:
+        return web.json_response({"error": f"Retake failed: {exc}"}, status=500)
+
+    # Update job without re-adding to completed (already there)
+    if extras:
+        updated_job = {**job, **extras}
+    else:
+        updated_job = dict(job)
+    _save_job(updated_job)
+
+    return web.json_response({
+        "status": "ok",
+        "job_id": job_id,
+        "step": step_id,
+        "retake": True,
+        "scenes_retaken": scenes,
+        "step_result": result,
+    })
+
+
+async def produce_status(request: web.Request) -> web.Response:
+    """GET /api/produce/status/{job_id} -- get job status."""
+    job_id = request.match_info["job_id"]
+    job = _load_job(job_id)
+    if job is None:
+        return web.json_response({"error": f"Job not found: {job_id}"}, status=404)
+
+    completed = job.get("steps_completed", [])
+    total = len(PIPELINE_STEPS)
+    progress = len(completed) / total if total > 0 else 0
+
+    steps_detail = []
+    for step in PIPELINE_STEPS:
+        steps_detail.append({
+            "id": step["id"],
+            "task_type": step["task_type"],
+            "needs_human": step["needs_human"],
+            "optional": step["optional"],
+            "completed": step["id"] in completed,
+        })
+
+    return web.json_response({
+        "job_id": job["job_id"],
+        "title": job["title"],
+        "url": job.get("url", ""),
+        "camera": job.get("camera", ""),
+        "lens": job.get("lens", ""),
+        "current_step": job.get("current_step"),
+        "steps_completed": completed,
+        "progress": round(progress, 2),
+        "steps": steps_detail,
+        "kitsu_sequence_id": job.get("kitsu_sequence_id", ""),
+        "created_at": job.get("created_at", ""),
+        "updated_at": job.get("updated_at", ""),
+    })
+
+
+# ============================================================
 # App setup
 # ============================================================
 app = web.Application()
+# Existing endpoints
 app.router.add_get("/health", health)
 app.router.add_get("/api/jobs", list_jobs)
 app.router.add_get("/api/watch", list_watch)
@@ -1416,16 +2275,24 @@ app.router.add_get("/api/search", semantic_search)
 app.router.add_post("/api/analyze", analyze)
 app.router.add_post("/api/remix", remix)
 app.router.add_post("/api/webhook/metube", webhook_metube)
+# New production pipeline endpoints
+app.router.add_get("/api/cameras", get_cameras)
+app.router.add_post("/api/produce/start", produce_start)
+app.router.add_post("/api/produce/step", produce_step)
+app.router.add_post("/api/produce/retake", produce_retake)
+app.router.add_get("/api/produce/status/{job_id}", produce_status)
 
 if __name__ == "__main__":
-    for d in [OUTPUT_DIR, COMFYUI_DIR]:
+    for d in [OUTPUT_DIR, COMFYUI_DIR, JOBS_DIR]:
         d.mkdir(parents=True, exist_ok=True)
     print(f"VideoRef Engine {VERSION} starting...")
     print(f"  WATCH_DIR: {WATCH_DIR}")
     print(f"  OUTPUT_DIR: {OUTPUT_DIR}")
     print(f"  COMFYUI_DIR: {COMFYUI_DIR}")
+    print(f"  JOBS_DIR: {JOBS_DIR}")
     print(f"  LITELLM: {'configured' if LITELLM_URL else 'NOT configured'}")
     print(f"  KITSU: {'configured' if KITSU_URL else 'NOT configured'}")
     print(f"  QDRANT: {'configured' if QDRANT_URL else 'NOT configured'}")
     print(f"  GITEA: {'configured' if GITEA_URL else 'NOT configured'}")
+    print(f"  N8N_CREATIVE: {'configured' if N8N_CREATIVE_PIPELINE_URL else 'NOT configured'}")
     web.run_app(app, host="0.0.0.0", port=8082)

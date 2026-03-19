@@ -524,14 +524,22 @@ async def _kitsu_create_shot(
     session: aiohttp.ClientSession,
     project_id: str,
     sequence_id: str,
+    episode_id: str,
     shot_name: str,
     scene_data: dict[str, Any],
 ) -> dict[str, Any]:
-    """Create a Shot under a sequence. Requires Zou >= 1.0.21."""
+    """Create a Shot under a sequence + episode. Requires Zou >= 1.0.21."""
+    body = {
+        "name": shot_name,
+        "sequence_id": sequence_id,
+        "data": scene_data,
+    }
+    if episode_id:
+        body["episode_id"] = episode_id
     return await _kitsu_api(
         session, "POST",
         f"/data/projects/{project_id}/shots",
-        {"name": shot_name, "sequence_id": sequence_id, "data": scene_data},
+        body,
     )
 
 
@@ -689,7 +697,8 @@ async def push_to_kitsu(
                     "mood": analysis.get("mood", ""),
                 }
                 shot = await _kitsu_create_shot(
-                    session, project_id, sequence_id, shot_name, scene_meta,
+                    session, project_id, sequence_id, episode_id,
+                    shot_name, scene_meta,
                 )
                 shot_ids.append(shot["id"])
 

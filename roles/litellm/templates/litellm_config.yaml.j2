@@ -242,24 +242,29 @@ litellm_settings:
   request_timeout: {{ litellm_request_timeout }}
 
   # Fallback chains: primary -> fallback1 -> fallback2
-  # Strategy: open-source fallbacks first, Anthropic/OpenAI as last resort
+  # Strategy: open-source/free fallbacks first, paid providers as last resort
+  # REX 2026-03-17: claude-haiku n'avait PAS de fallback → dead-end quand credits Anthropic $0.
+  #   deepseek-v3-free tombait en fallback vers claude-haiku (mort aussi) → boucle morte.
+  #   Fix: JAMAIS de modèle payant comme fallback terminal. Free models = filet de sécurité ultime.
   fallbacks:
     - claude-opus: ["claude-sonnet", "gpt-codex"]
 {% if openrouter_api_key | default('') | length > 0 %}
     - claude-sonnet: ["gpt-4o", "glm-5"]
+    - claude-haiku: ["qwen3-coder", "deepseek-v3-free"]
     - kimi-k2: ["glm-5", "deepseek-v3-free"]
     - deepseek-r1: ["deepseek-r1-free", "qwen3-coder"]
     - deepseek-v3: ["deepseek-v3-free", "qwen3-coder"]
     - glm-5: ["deepseek-v3-free", "qwen3-coder"]
-    - grok-search: ["claude-haiku", "deepseek-v3-free"]
+    - grok-search: ["deepseek-v3-free", "qwen3-coder"]
     - qwen3-coder: ["deepseek-v3-free", "glm-5"]
-    - deepseek-v3-free: ["qwen3-coder", "claude-haiku"]
+    - deepseek-v3-free: ["qwen3-coder", "glm-5"]
     - deepseek-r1-free: ["qwen3-coder", "deepseek-v3-free"]
 {% else %}
     - claude-sonnet: ["gpt-4o"]
+    - claude-haiku: ["gpt-4o-mini"]
 {% endif %}
-    - gpt-4o: ["claude-sonnet"]
-    - gpt-4o-mini: ["qwen3-coder"]
+    - gpt-4o: ["claude-sonnet", "glm-5"]
+    - gpt-4o-mini: ["qwen3-coder", "deepseek-v3-free"]
     - gpt-codex: ["claude-sonnet", "glm-5"]
 
   # Prometheus metrics

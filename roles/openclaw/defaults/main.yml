@@ -18,6 +18,15 @@ openclaw_default_model: "{{ openclaw_model_profiles[openclaw_model_profile].defa
 # Raised from 768 to 1024 for v2026.3.13+ (plugin-sdk bundling + dashboard v2)
 openclaw_node_heap_mb: 1024
 
+# --- OpenAI OAuth (Codex — ChatGPT Plus/Pro subscription auth) ---
+# OpenClaw gère l'OAuth nativement via auth-profiles.json (pas dans ce fichier).
+# Flow : `openclaw models auth login --provider openai-codex` sur le serveur.
+# Quand activé, OpenClaw utilise le token OAuth en priorité sur OPENAI_API_KEY.
+# L'abonnement ChatGPT Plus couvre les requêtes (pas de crédits API consommés).
+# Callback local : http://127.0.0.1:1455/auth/callback (PKCE flow).
+# Tokens auto-refresh. Credentials stockés dans :
+#   /opt/{{ project_name }}/data/openclaw/state/identity/auth-profiles.json
+
 # --- Context Engine & Compaction ---
 # Plugin slot: "legacy" (built-in) or plugin ID (e.g. "lossless-claw")
 # lossless-claw requires PR #22201 merged upstream — use "legacy" until then.
@@ -86,6 +95,7 @@ openclaw_state_subdirs:
   - telegram
   - identity
   - sandboxes
+  - devices
 
 # --- Multi-Agent Configuration ---
 # Agent names (placeholders — updated later when user chooses names)
@@ -180,6 +190,18 @@ openclaw_model_profiles:
     default_fallbacks: '["custom-litellm/glm-5", "custom-litellm/deepseek-v3-free"]'
     code_fallbacks: '["custom-litellm/qwen3-coder", "custom-litellm/deepseek-v3-free"]'
     reasoning_fallbacks: '["custom-litellm/deepseek-r1", "custom-litellm/deepseek-v3-free"]'
+  # OpenAI OAuth (provider: openai-codex) — modèles OpenAI via OAuth ChatGPT Plus/Pro.
+  # Endpoint: chatgpt.com/backend-api (pas api.openai.com) + api: openai-codex-responses.
+  # Bypass LiteLLM. Coût inclus dans l'abonnement (pas de crédits API consommés).
+  # Flow: make openclaw-oauth-start → navigateur → make openclaw-oauth-complete URL=<callback>
+  openai:
+    default: "openai-codex/gpt-5.4"
+    code: "openai-codex/gpt-5.3-codex"
+    reasoning: "openai-codex/o4-mini"
+    quick: "openai-codex/gpt-4.1-mini"
+    default_fallbacks: '["openai-codex/gpt-5.3-codex", "openai-codex/gpt-4.1-mini"]'
+    code_fallbacks: '["openai-codex/gpt-4.1-mini", "openai-codex/gpt-4.1-nano"]'
+    reasoning_fallbacks: '["openai-codex/gpt-5.3-codex", "openai-codex/gpt-4.1-mini"]'
 
 # Per-agent model assignments (resolved from active profile, overridable individually)
 openclaw_concierge_model: "{{ openclaw_model_profiles[openclaw_model_profile].default }}"

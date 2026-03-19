@@ -5,8 +5,9 @@
 comfyui_install_dir: "/opt/workstation/comfyui"
 comfyui_data_dir: "/opt/workstation/data/comfyui"
 
-# ComfyUI version (git tag from https://github.com/comfyanonymous/ComfyUI)
-comfyui_version: "v0.3.27"
+# ComfyUI version (git tag from https://github.com/Comfy-Org/ComfyUI)
+# v0.17.1 includes App Mode + App Builder (frontend >= 1.41.13)
+comfyui_version: "v0.17.1"
 
 # Ports
 comfyui_port: 8188
@@ -27,6 +28,18 @@ comfyui_models: []
 #     url: "https://huggingface.co/stabilityai/sdxl-turbo/resolve/main/sd_xl_turbo_1.0_fp16.safetensors"
 #     checksum: ""
 #     subdir: "checkpoints"
+
+# Custom nodes (API-based — no local models needed)
+comfyui_custom_nodes:
+  - name: "ComfyUI-fal-API"
+    repo: "https://github.com/gokayfem/ComfyUI-fal-API.git"
+    pip_deps: ["fal-client", "fal", "httpx", "httpx-sse", "opencv-python-headless"]
+  - name: "ComfyUI-fal-Connector"
+    repo: "https://github.com/gokayfem/ComfyUI-fal-Connector.git"
+    pip_deps: ["fal-client", "fal", "httpx", "httpx-sse"]
+
+# fal.ai API key (from vault — used by fal-API and fal-Connector nodes)
+comfyui_fal_key: "{{ vault_comfyui_fal_key | default('') }}"
 
 # Shared creative assets volume (shared with Remotion)
 creative_assets_dir: "/opt/workstation/data/creative-assets"

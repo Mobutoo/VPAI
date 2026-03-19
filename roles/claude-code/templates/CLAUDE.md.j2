@@ -48,6 +48,100 @@ Acces VPN uniquement via Tailscale mesh (Headscale).
 - `set -euo pipefail` sur tous les blocs `shell`
 - Images Docker : jamais `:latest` — pinned dans `inventory/group_vars/all/versions.yml`
 
+{% if claude_code_gsd_auto_compact_enabled | default(false) %}
+## Renouvellement de contexte autonome (GSD)
+
+Tu fonctionnes en **mode autonome** — pas d'interaction humaine pour le context management.
+Auth: {{ claude_code_auth_mode | default('oauth') }}{% if claude_code_auth_mode | default('oauth') == 'oauth' %} (Max x20, `sonnet[1m]` inclus){% endif %}.
+
+### Model routing (GSD profile: `{{ claude_code_gsd_model_profile | default('balanced') }}`)
+
+| Agent GSD | Modele | Contexte | Usage |
+|---|---|---|---|
+| **Session principale** (toi) | {{ claude_code_default_model }} | 200k | Orchestration, controle, decisions |
+| **gsd-planner** | inherit (Opus) | 200k | Decomposition en taches, architecture |
+{% if claude_code_gsd_model_overrides is defined and claude_code_gsd_model_overrides['gsd-executor'] is defined %}
+| **gsd-executor** | {{ claude_code_gsd_model_overrides['gsd-executor'] }} | **1M** | Ecriture de code, implementation |
+{% else %}
+| **gsd-executor** | inherit | 200k | Ecriture de code, implementation |
+{% endif %}
+| **gsd-verifier** | inherit (Opus) | 200k | Code review, securite, qualite |
+{% if claude_code_gsd_model_overrides is defined and claude_code_gsd_model_overrides['gsd-phase-researcher'] is defined %}
+| **gsd-phase-researcher** | {{ claude_code_gsd_model_overrides['gsd-phase-researcher'] }} | **1M** | Lecture codebase, recherche, analyse |
+{% else %}
+| **gsd-phase-researcher** | inherit | 200k | Lecture codebase, recherche, analyse |
+{% endif %}
+| **gsd-plan-checker** | inherit (Opus) | 200k | Validation du plan avant execution |
+
+> **Contexte** : Sonnet 4.6 = 200k par defaut. Le suffixe `[1m]` active la fenetre **1M tokens**.
+> **inherit** = le subagent herite du modele parent (Opus via session principale).
+> Config GSD : `~/.gsd/defaults.json` (`model_profile` + `model_overrides`).
+
+### Gestion du contexte — 100% autonome (CRITIQUE)
+
+L'utilisateur lance une tache puis part. Tu DOIS gerer ton contexte SEUL, sans interaction humaine.
+Trois mecanismes te protegent — dans cet ordre de priorite :
+
+#### 1. Subagents — contexte frais par defaut (PRIORITE ABSOLUE)
+
+**TOUJOURS deleguer le travail lourd aux subagents** via `Task()` :
+- Chaque subagent recoit un **contexte propre** (200k ou 1M tokens)
+- Toi (orchestrateur) restes sous **15% d'utilisation contexte** — tu coordonnes, tu n'executes pas
+- Passe des **chemins de fichiers**, pas du contenu, aux subagents
+- Plans GSD limites a 2-3 taches par plan (50% d'une fenetre de contexte max)
+- Le gsd-verifier ne voit jamais le contexte d'ecriture → elimine le biais d'auteur
+
+> **Regle d'or** : si une tache prend plus de 5 appels d'outils, delegue-la a un subagent.
+
+#### 2. Sauvegarde proactive a ~60% — AVANT l'auto-compact
+
+L'auto-compact se declenche automatiquement a 70%. Tu DOIS sauvegarder AVANT qu'il ne fire :
+
+**Des que le contexte atteint ~60%** (message `[GSD-AutoCompact]` ou WARNING du context monitor) :
+1. Ecris un etat **detaille** dans `.planning/STATE.md` :
+   - Tache en cours, fichiers modifies, decisions prises
+   - Ce qui est termine, ce qui reste a faire
+   - Prochaine action precise
+2. Ecris `.continue-here.md` dans `.planning/phases/XX/` (phase courante)
+3. Commit WIP si des fichiers sont modifies : `git add -A && git commit -m "wip: context renewal"`
+
+> **Ne pas attendre 70%** — a 70% l'auto-compact fire et tu perds le controle de la sauvegarde.
+> **Ne JAMAIS attendre que l'humain te dise de sauvegarder** — fais-le des que le seuil est atteint.
+
+#### 3. Auto-compact a 70% — entierement automatique
+
+Quand le contexte atteint 70%, Claude Code compacte automatiquement :
+- Le hook `pre-compact-save.sh` sauvegarde un checkpoint supplementaire
+- Le contexte est resume (reduit de ~70% a ~30%)
+- Le hook `post-compact-restore.sh` reinjecte STATE.md + .continue-here.md
+- **Tu continues automatiquement** — lis l'etat restaure et reprends
+
+Apres l'auto-compact :
+1. Lis `.planning/STATE.md` pour restaurer ta position
+2. Lis le `.continue-here.md` le plus recent
+3. Reprends exactement la ou tu t'etais arrete
+4. Ne redemande pas confirmation a l'utilisateur — **continue le travail**
+
+#### Persistence d'etat entre compactions
+
+Ce qui **survit** a l'auto-compact :
+- Ce fichier CLAUDE.md, fichiers sur disque (STATE.md, .continue-here.md), etat git
+- Les hooks restaurent automatiquement le contexte critique
+
+Ce qui est **perdu** :
+- Raisonnement intermediaire, contenu de fichiers lus, historique d'appels d'outils
+
+> C'est pourquoi la sauvegarde proactive a 60% est cruciale — plus l'etat est detaille, mieux tu reprends.
+
+#### Option manuelle (si l'utilisateur est present)
+
+Si l'utilisateur est devant l'ecran et que le contexte est tres degrade (3+ compactions) :
+1. Execute `touch /tmp/claude-clear-marker` via Bash
+2. Demande a l'utilisateur de taper `/clear`
+3. Apres le `/clear`, le hook restaurera automatiquement le contexte
+4. Cette option est un **bonus** — le workflow principal ne depend PAS de l'humain
+{% endif %}
+
 ## Workspace
 
 Tes fichiers de travail : `/home/{{ claude_code_user }}/projects/`

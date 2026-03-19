@@ -14,13 +14,18 @@ claude_code_npm_prefix: "/usr"
 
 # Pinned version — update after first validated deploy
 # Check: https://www.npmjs.com/package/@anthropic-ai/claude-code
-claude_code_npm_version: "2.1.62"
+claude_code_npm_version: "2.1.75"
 
-# Claude API key (from vault)
+# Authentication mode: oauth (Max subscription via `claude login`) or api_key (ANTHROPIC_API_KEY env var)
+# OAuth = Max x20 subscription includes sonnet[1m] (1M context window)
+claude_code_auth_mode: "oauth"
+
+# Claude API key (only used if auth_mode=api_key)
 # vault_claude_api_key defined in inventory/group_vars/all/secrets.yml
 
-# Default model for Claude Code on RPi (balanced cost/quality)
-claude_code_default_model: "claude-sonnet-4-5"
+# Default model for Claude Code orchestrator (main session)
+# Opus 4.6 = deep reasoning for planning, review, control
+claude_code_default_model: "claude-opus-4-6"
 
 # --- MCP Servers ---
 # Each MCP server is installed as npm package + registered in mcp.json
@@ -44,6 +49,35 @@ claude_code_mcp_firefly_api_url: "https://{{ firefly_subdomain | default('lola')
 # n8n-docs MCP — documentation n8n nodes (HTTP/SSE local Docker, port 3001)
 # 1 084 nodes + schémas + 2 709 templates, SQLite embarqué, zéro web
 claude_code_mcp_n8ndocs_enabled: true
+
+# Playwright MCP — headless browser for visual testing (screenshot + accessibility tree)
+claude_code_mcp_playwright_enabled: true
+
+# Auto-compact threshold (% context used before triggering compaction)
+# Lower = compact earlier = more room for recovery. Default 83%, recommended 70%
+claude_code_autocompact_pct: 70
+
+# --- GSD (Get-Shit-Done) ---
+# Pinned version — Check: https://www.npmjs.com/package/get-shit-done-cc
+claude_code_gsd_npm_version: "1.22.4"
+
+# YOLO mode: auto-approve checkpoints (no human interaction)
+claude_code_gsd_yolo_mode: true
+
+# Auto-compact: hook monitors tool calls and instructs Claude to /compact
+claude_code_gsd_auto_compact_enabled: true
+
+# Tool call threshold before suggesting compaction (lower = more aggressive)
+claude_code_gsd_compact_threshold: 40
+
+# --- GSD Model Routing ---
+# model_profile: quality (Opus everywhere), balanced (Opus plans, Sonnet executes), budget (Sonnet everywhere)
+# model_overrides: per-agent overrides using GSD agent names (gsd-planner, gsd-executor, gsd-verifier, gsd-phase-researcher, gsd-plan-checker)
+# "inherit" = subagent uses parent session model | "sonnet[1m]" = Sonnet 4.6 with 1M context window
+claude_code_gsd_model_profile: "balanced"
+claude_code_gsd_model_overrides:
+  gsd-executor: "sonnet[1m]"
+  gsd-phase-researcher: "sonnet[1m]"
 
 # Auto-fix pipeline
 claude_code_auto_fix_enabled: true

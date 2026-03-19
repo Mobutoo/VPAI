@@ -292,20 +292,52 @@
         "api": "openai-completions",
         "models": [
           {
-            "id": "gpt-4o-mini",
-            "name": "GPT-4o Mini (OpenAI direct)",
-            "reasoning": false,
+            "id": "gpt-5.4",
+            "name": "GPT-5.4 (flagship reasoning+agentic)",
+            "reasoning": true,
             "input": ["text"],
-            "contextWindow": 128000,
+            "contextWindow": 1000000,
+            "maxTokens": 32768
+          },
+          {
+            "id": "gpt-5.3-codex",
+            "name": "GPT-5.3 Codex (agentic coding)",
+            "reasoning": true,
+            "input": ["text"],
+            "contextWindow": 200000,
             "maxTokens": 16384
           },
           {
-            "id": "gpt-4o",
-            "name": "GPT-4o (OpenAI direct)",
+            "id": "o4-mini",
+            "name": "o4-mini (reasoning AIME champion)",
+            "reasoning": true,
+            "input": ["text"],
+            "contextWindow": 200000,
+            "maxTokens": 100000
+          },
+          {
+            "id": "gpt-4.1-mini",
+            "name": "GPT-4.1 Mini (fast, low cost)",
             "reasoning": false,
             "input": ["text"],
-            "contextWindow": 128000,
+            "contextWindow": 1000000,
+            "maxTokens": 32768
+          },
+          {
+            "id": "gpt-4.1-nano",
+            "name": "GPT-4.1 Nano (ultra-fast)",
+            "reasoning": false,
+            "input": ["text"],
+            "contextWindow": 1000000,
             "maxTokens": 16384
+          },
+          {
+            "id": "o3-mini",
+            "name": "o3-mini (reasoning compact)",
+            "reasoning": true,
+            "input": ["text"],
+            "contextWindow": 200000,
+            "maxTokens": 100000
           }
         ]
       },

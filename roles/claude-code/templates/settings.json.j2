@@ -1,8 +1,12 @@
 {
+  "model": "{{ claude_code_default_model }}",
   "env": {
+{% if claude_code_auth_mode | default('oauth') == 'api_key' %}
     "ANTHROPIC_API_KEY": "${CLAUDE_API_KEY}",
-    "ANTHROPIC_MODEL": "{{ claude_code_default_model }}",
-    "N8N_API_KEY": "${N8N_API_KEY}"
+{% endif %}
+    "N8N_API_KEY": "${N8N_API_KEY}",
+    "COMPACT_THRESHOLD": "{{ claude_code_gsd_compact_threshold | default(40) }}",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "{{ claude_code_autocompact_pct | default(70) }}"
   },
   "permissions": {
     "allow": [
@@ -22,7 +26,76 @@
       "Bash(mkfs:*)"
     ]
   },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/auto-compact.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ claude_code_config_dir }}/hooks/gsd-context-monitor.js 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"{{ claude_code_config_dir }}/hooks/gsd-check-update.js\""
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "touch /tmp/claude-compact-marker && bash {{ claude_code_config_dir }}/hooks/pre-compact-save.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/post-compact-restore.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/stop-gate.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "node \"{{ claude_code_config_dir }}/hooks/gsd-statusline.js\""
+  },
   "preferredNotifChannel": "terminal_bell",
   "theme": "dark",
-  "verbose": false
+  "verbose": false,
+  "skipDangerousModePermissionPrompt": true
 }

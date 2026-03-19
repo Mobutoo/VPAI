@@ -360,12 +360,25 @@ work.{{ domain_name }} {
     import security_headers
 }
 
+# === Kitsu (animation/VFX production tracker) — boss.<domain> ===
+{% if kitsu_subdomain | default('') | length > 0 %}
+{{ kitsu_subdomain }}.{{ domain_name }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy kitsu:80
+
+    import security_headers
+}
+{% endif %}
+
 # === CouchDB (Obsidian LiveSync) — Public HTTPS, auth CouchDB ===
 # REX: CORS origins=* obligatoire pour obsidian-livesync (cross-origin depuis l'app iOS/PC)
-# Pas d'import vpn_only — CouchDB est intentionnellement public pour sync iOS sans VPN.
 # L'auth est gérée par CouchDB natif (user/password configuré dans le plugin Obsidian).
 # Pour basculer en VPN-only : couchdb_vpn_enforce: true dans group_vars/all/main.yml
-# CouchDB tourne sur Seko-VPN, accessible depuis Sese-AI via le mesh Tailscale (vpn_tailscale_ip).
+# CouchDB tourne sur Sese-AI dans le réseau javisi_backend (Docker DNS: couchdb:5984).
+# REX 2026-03-17: reverse_proxy pointait vers vpn_tailscale_ip (PC Windows) → timeout.
+#   Fix: utiliser Docker DNS couchdb:5984 (même réseau backend que Caddy).
 {% if obsidian_subdomain | default('') | length > 0 %}
 {{ obsidian_subdomain }}.{{ domain_name }} {
 {% if couchdb_vpn_enforce | default(false) | bool %}
@@ -373,7 +386,7 @@ work.{{ domain_name }} {
     @blocked_couch not client_ip {{ caddy_vpn_cidr }} {{ caddy_docker_frontend_cidr }}
     error @blocked_couch 403
 {% endif %}
-    reverse_proxy {{ vpn_tailscale_ip }}:{{ couchdb_port | default(5984) }} {
+    reverse_proxy couchdb:{{ couchdb_port | default(5984) }} {
         header_up Host {host}
     }
     import security_headers

@@ -1868,11 +1868,16 @@ async def _step_review(
     total = len(PIPELINE_STEPS)
 
     # Send Telegram notification
+    camera = job.get("camera", "")
+    lens = job.get("lens", "")
+    cam_info = f"\n🎥 Camera: {camera} | Lens: {lens}" if camera else ""
+    kitsu_base = KITSU_URL or "https://boss.ewutelo.cloud"
     msg = (
-        f"*Review needed*\n"
-        f"Production: {title}\n"
-        f"Job: `{job_id}`\n"
-        f"Progress: {completed}/{total} steps completed"
+        f"🎬 *Review needed*\n\n"
+        f"📽 Production: *{title}*{cam_info}\n"
+        f"📊 Progress: {completed}/{total} steps completed\n"
+        f"🔗 [Ouvrir dans Kitsu]({kitsu_base})\n\n"
+        f"Job: `{job_id[:12]}...`"
     )
     telegram_ok = await _send_telegram(msg)
 

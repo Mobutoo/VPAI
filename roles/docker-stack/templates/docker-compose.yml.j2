@@ -114,6 +114,7 @@ services:
       - {{ openclaw_state_dir }}/telegram:{{ openclaw_system_dir }}/telegram
       - {{ openclaw_state_dir }}/identity:{{ openclaw_system_dir }}/identity
       - {{ openclaw_state_dir }}/sandboxes:{{ openclaw_system_dir }}/sandboxes
+      - {{ openclaw_state_dir }}/devices:{{ openclaw_system_dir }}/devices
 {% else %}
       - /opt/{{ project_name }}/data/openclaw:/home/node/.openclaw
 {% endif %}
@@ -231,7 +232,8 @@ services:
         max-file: "3"
 {% endif %}
 
-{% if koodia_subdomain | default('') | length > 0 %}
+{# DISABLED: koodia image not yet pushed to GHCR — uncomment when ready #}
+{% if false and koodia_subdomain | default('') | length > 0 %}
   koodia:
     image: {{ koodia_image }}
     container_name: {{ project_name }}_koodia
@@ -890,6 +892,52 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  # === KITSU (animation/VFX production tracker) ===
+  # Image all-in-one cgwire/cgwire : PG + Redis + Nginx + Zou embarqués
+  # NOTE: cap_drop ALL impossible — PG interne a besoin de SYS_CHOWN + setuid pour init
+{% if kitsu_image | default('') | length > 0 %}
+  kitsu:
+    image: {{ kitsu_image }}
+    container_name: {{ project_name }}_kitsu
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      # Named volumes — bind mounts écrasent le cluster PG14 du container
+      - kitsu_db:/var/lib/postgresql
+      - kitsu_previews:/opt/zou/previews
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: {{ kitsu_memory_limit | default('1G') }}
+          cpus: "{{ kitsu_cpu_limit | default('1.0') }}"
+        reservations:
+          memory: {{ kitsu_memory_reservation | default('512M') }}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+{% endif %}
+
+{% if kitsu_image | default('') | length > 0 %}
+volumes:
+  kitsu_db:
+    name: {{ project_name }}_kitsu_db
+  kitsu_previews:
+    name: {{ project_name }}_kitsu_previews
+{% endif %}
 
 networks:
   frontend:

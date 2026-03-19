@@ -527,6 +527,68 @@ async def _kitsu_get_project(session: aiohttp.ClientSession) -> dict[str, Any]:
     return projects[0]
 
 
+async def _kitsu_create_project(
+    session: aiohttp.ClientSession,
+    title: str,
+    production_type: str = "short",
+) -> dict[str, Any]:
+    """Create a new Kitsu project (production) for a job.
+
+    Each vref produce-start creates its own project so it appears
+    as a separate production in the Kitsu UI.
+    production_type: 'short', 'tvshow', 'featurefilm', 'shots', 'assets'
+    """
+    # Get Open status
+    statuses = await _kitsu_api(session, "GET", "/data/project-status")
+    open_status = next(
+        (s for s in statuses if s["name"].lower() == "open"), statuses[0]
+    )
+
+    project = await _kitsu_api(
+        session, "POST", "/data/projects",
+        json={
+            "name": title,
+            "production_type": production_type,
+            "project_status_id": open_status["id"],
+        },
+    )
+
+    # Associate our custom task types with the new project
+    our_task_types = [
+        "Brief", "Research", "Script", "Storyboard", "Voiceover",
+        "Music", "Image Gen", "Video Gen", "Montage", "Subtitles",
+        "Color Grade", "Review", "Export", "Publish",
+    ]
+    all_types = await _kitsu_api(session, "GET", "/data/task-types")
+    for tt in all_types:
+        if tt["name"] in our_task_types:
+            try:
+                await _kitsu_api(
+                    session, "POST",
+                    f"/data/projects/{project['id']}/settings/task-types",
+                    json={"task_type_id": tt["id"]},
+                )
+            except Exception:
+                pass  # May already be associated
+
+    # Associate VideoRef entity type
+    entity_types = await _kitsu_api(session, "GET", "/data/entity-types")
+    vref_type = next(
+        (t for t in entity_types if t["name"] == "VideoRef"), None
+    )
+    if vref_type:
+        try:
+            await _kitsu_api(
+                session, "POST",
+                f"/data/projects/{project['id']}/settings/asset-types",
+                json={"asset_type_id": vref_type["id"]},
+            )
+        except Exception:
+            pass
+
+    return project
+
+
 async def _kitsu_get_task_type_id(
     session: aiohttp.ClientSession, name: str = "Shot Analysis",
 ) -> str:
@@ -1412,16 +1474,20 @@ async def _step_brief(
     if KITSU_URL and KITSU_TOKEN:
         try:
             async with aiohttp.ClientSession() as session:
-                project = await _kitsu_get_project(session)
+                # Create a NEW Kitsu project for this production job
+                project = await _kitsu_create_project(
+                    session, job["title"], "short",
+                )
                 project_id = project["id"]
-                episode_id = project.get("first_episode_id", "")
 
+                # Create main sequence inside the new project
                 seq = await _kitsu_create_sequence(
-                    session, project_id, episode_id, job["title"][:80],
+                    session, project_id, "", job["title"][:80],
                 )
                 extras["kitsu_project_id"] = project_id
                 extras["kitsu_sequence_id"] = seq["id"]
 
+                # Create Brief task + mark done
                 task_type_id = await _kitsu_get_task_type_id(session, "Brief")
                 task = await _kitsu_get_or_create_task(
                     session, seq["id"], task_type_id, project_id,
@@ -1430,7 +1496,12 @@ async def _step_brief(
                 await _kitsu_post_comment(
                     session, task["id"], done_id, f"Brief: {description}",
                 )
-                kitsu_result = {"task_id": task["id"], "status": "done"}
+                kitsu_result = {
+                    "project_id": project_id,
+                    "project_name": job["title"],
+                    "task_id": task["id"],
+                    "status": "done",
+                }
         except Exception as exc:
             kitsu_result = {"error": str(exc)}
 
@@ -2560,6 +2631,7 @@ async def produce_status(request: web.Request) -> web.Response:
         "steps_completed": completed,
         "progress": round(progress, 2),
         "steps": steps_detail,
+        "kitsu_project_id": job.get("kitsu_project_id", ""),
         "kitsu_sequence_id": job.get("kitsu_sequence_id", ""),
         "created_at": job.get("created_at", ""),
         "updated_at": job.get("updated_at", ""),

@@ -201,12 +201,12 @@ openclaw_model_profiles:
   # Flow: make openclaw-oauth-start → navigateur → make openclaw-oauth-complete URL=<callback>
   openai:
     default: "openai-codex/gpt-5.4"
-    code: "openai-codex/gpt-5.3-codex"
-    reasoning: "openai-codex/o4-mini"
-    quick: "openai-codex/gpt-4.1-mini"
-    default_fallbacks: '["openai-codex/gpt-5.3-codex", "openai-codex/gpt-4.1-mini"]'
-    code_fallbacks: '["openai-codex/gpt-4.1-mini", "openai-codex/gpt-4.1-nano"]'
-    reasoning_fallbacks: '["openai-codex/gpt-5.3-codex", "openai-codex/gpt-4.1-mini"]'
+    code: "openai-codex/gpt-5.4"
+    reasoning: "openai-codex/gpt-5.4"
+    quick: "openai-codex/gpt-5.4"
+    default_fallbacks: '["custom-litellm/claude-sonnet", "custom-litellm/gpt-4o"]'
+    code_fallbacks: '["custom-litellm/claude-sonnet", "custom-litellm/gpt-4o"]'
+    reasoning_fallbacks: '["custom-litellm/claude-sonnet", "custom-litellm/gpt-4o"]'
 
 # Per-agent model assignments (resolved from active profile, overridable individually)
 openclaw_concierge_model: "{{ openclaw_model_profiles[openclaw_model_profile].default }}"

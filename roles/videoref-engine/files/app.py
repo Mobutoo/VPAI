@@ -3353,11 +3353,14 @@ async def _ocr_frames(
             results = [{"error": f"Vision OCR error: {exc}"}]
     else:
         results = [{"error": "LiteLLM not configured for Vision OCR"}]
-    finally:
-        # Cleanup
+
+    # Cleanup extracted frames
+    try:
         for f in tmpdir.iterdir():
             f.unlink()
         tmpdir.rmdir()
+    except Exception:
+        pass
 
     return results
 

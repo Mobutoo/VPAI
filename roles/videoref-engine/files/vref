@@ -381,12 +381,14 @@ def cmd_produce_start(args: argparse.Namespace) -> None:
     if "error" in data:
         print(f"Error: {data['error']}")
         return
+    slug = data.get("slug", "")
     print(f"Production job created!")
+    print(f"  Slug:    {slug}")
     print(f"  Job ID:  {data.get('job_id', '?')}")
     print(f"  Title:   {data.get('title', '?')}")
     print(f"  Next:    {data.get('next_step', '?')}")
     print(f"\n  Pipeline: {' -> '.join(data.get('pipeline_steps', []))}")
-    print(f"\n  Run: vref produce-step {data.get('job_id', 'JOB_ID')} brief")
+    print(f"\n  Run: vref produce-step {slug or data.get('job_id', 'JOB_ID')} brief")
 
 
 def cmd_produce_step(args: argparse.Namespace) -> None:
@@ -454,7 +456,10 @@ def cmd_produce_status(args: argparse.Namespace) -> None:
     bar = "#" * filled + "." * (bar_len - filled)
     pct = int(progress * 100)
 
+    slug = data.get("slug", "")
     print(f"Production: {data.get('title', '?')}")
+    if slug:
+        print(f"  Slug:     {slug}")
     print(f"  Job ID:   {data.get('job_id', '?')}")
     if data.get("camera"):
         print(f"  Camera:   {data.get('camera', '')} | Lens: {data.get('lens', '')}")

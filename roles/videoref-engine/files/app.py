@@ -1231,12 +1231,23 @@ def _job_path(job_id: str) -> Path:
     return JOBS_DIR / f"{job_id}.json"
 
 
-def _load_job(job_id: str) -> dict[str, Any] | None:
-    """Load a job from disk. Returns None if not found."""
-    path = _job_path(job_id)
-    if not path.exists():
-        return None
-    return json.loads(path.read_text())
+def _load_job(job_id_or_slug: str) -> dict[str, Any] | None:
+    """Load a job by UUID or slug. Returns None if not found."""
+    # Try direct UUID match first
+    path = _job_path(job_id_or_slug)
+    if path.exists():
+        return json.loads(path.read_text())
+
+    # Search by slug
+    if JOBS_DIR.exists():
+        for f in JOBS_DIR.glob("*.json"):
+            try:
+                data = json.loads(f.read_text())
+                if data.get("slug") == job_id_or_slug:
+                    return data
+            except Exception:
+                continue
+    return None
 
 
 def _save_job(job: dict[str, Any]) -> None:
@@ -1245,6 +1256,13 @@ def _save_job(job: dict[str, Any]) -> None:
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
     saved = {**job, "updated_at": datetime.now(timezone.utc).isoformat()}
     path.write_text(json.dumps(saved, indent=2))
+
+
+def _slugify(title: str, uid: str) -> str:
+    """Generate a human-readable slug from title + short UUID."""
+    import re
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")[:40]
+    return f"{slug}-{uid[:4]}"
 
 
 def _new_job(
@@ -1257,8 +1275,11 @@ def _new_job(
 ) -> dict[str, Any]:
     """Create a new immutable job state dict."""
     now = datetime.now(timezone.utc).isoformat()
+    job_id = str(uuid.uuid4())
+    slug = _slugify(title, job_id)
     return {
-        "job_id": str(uuid.uuid4()),
+        "job_id": job_id,
+        "slug": slug,
         "title": title,
         "url": url,
         "camera": camera,
@@ -1877,7 +1898,7 @@ async def _step_review(
         f"📽 Production: *{title}*{cam_info}\n"
         f"📊 Progress: {completed}/{total} steps completed\n"
         f"🔗 [Ouvrir dans Kitsu]({kitsu_base})\n\n"
-        f"Job: `{job_id[:12]}...`"
+        f"Job: `{job.get('slug', job_id[:12])}`"
     )
     telegram_ok = await _send_telegram(msg)
 
@@ -2395,6 +2416,7 @@ async def produce_start(request: web.Request) -> web.Response:
     return web.json_response({
         "status": "created",
         "job_id": job["job_id"],
+        "slug": job["slug"],
         "title": job["title"],
         "pipeline_steps": STEP_IDS,
         "next_step": STEP_IDS[0],
@@ -2529,6 +2551,7 @@ async def produce_status(request: web.Request) -> web.Response:
 
     return web.json_response({
         "job_id": job["job_id"],
+        "slug": job.get("slug", ""),
         "title": job["title"],
         "url": job.get("url", ""),
         "camera": job.get("camera", ""),

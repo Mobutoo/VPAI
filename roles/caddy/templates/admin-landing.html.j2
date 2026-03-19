@@ -187,6 +187,7 @@
         .badge-vpn { background: rgba(34, 197, 94, 0.15); color: var(--green); }
         .badge-pi { background: rgba(168, 85, 247, 0.15); color: var(--purple); }
         .badge-seko { background: rgba(6, 182, 212, 0.15); color: var(--cyan); }
+        .badge-public { background: rgba(245, 158, 11, 0.15); color: var(--amber); }
 
         /* Color themes per section */
         .ai .card-icon { background: rgba(99, 102, 241, 0.15); color: var(--accent); }
@@ -241,7 +242,7 @@
             <div class="tagline">Mission Control</div>
             <div class="status-bar">
                 <div class="status-pill"><span class="status-dot"></span> VPN Active</div>
-                <div class="status-pill">4 Servers</div>
+                <div class="status-pill">4 Servers &bull; 25+ Services</div>
                 <div class="status-pill" id="clock"></div>
             </div>
         </header>
@@ -302,7 +303,7 @@
                     <div class="card-icon">🎬</div>
                     <div class="card-info">
                         <h3>Kitsu</h3>
-                        <p>Production tracker</p>
+                        <p>Production tracker &bull; 14-step pipeline</p>
                     </div>
                     <span class="badge badge-vpn">VPN</span>
                 </a>
@@ -312,7 +313,7 @@
                     <div class="card-icon">🎨</div>
                     <div class="card-info">
                         <h3>ComfyUI</h3>
-                        <p>AI image generation</p>
+                        <p>AI Studio &bull; 1067 nodes</p>
                     </div>
                     <span class="badge badge-pi">Pi</span>
                 </a>
@@ -322,7 +323,7 @@
                     <div class="card-icon">🎥</div>
                     <div class="card-info">
                         <h3>VideoRef Engine</h3>
-                        <p>Video analysis pipeline</p>
+                        <p>Cinema Pipeline &bull; Composer v0.9</p>
                     </div>
                     <span class="badge badge-pi">Pi</span>
                 </a>
@@ -332,7 +333,7 @@
                     <div class="card-icon">📥</div>
                     <div class="card-info">
                         <h3>MeTube</h3>
-                        <p>Video downloader</p>
+                        <p>Video reference downloader</p>
                     </div>
                     <span class="badge badge-pi">Pi</span>
                 </a>
@@ -398,10 +399,20 @@
                     <div class="card-icon">📦</div>
                     <div class="card-info">
                         <h3>Gitea</h3>
-                        <p>Template registry</p>
+                        <p>Template registry &bull; 9 workflows</p>
                     </div>
                     <span class="badge badge-seko">Seko</span>
                 </a>
+{% if obsidian_subdomain | default('') | length > 0 %}
+                <a class="card" href="https://{{ obsidian_subdomain }}.{{ domain_name }}/">
+                    <div class="card-icon">📝</div>
+                    <div class="card-info">
+                        <h3>Obsidian Sync</h3>
+                        <p>Notes vault &bull; iOS + PC</p>
+                    </div>
+                    <span class="badge badge-public">Public</span>
+                </a>
+{% endif %}
             </div>
         </div>
 
@@ -503,6 +514,14 @@
                     <span class="badge badge-pi">Pi</span>
                 </a>
 {% endif %}
+                <a class="card" href="https://misu.{{ domain_name }}/">
+                    <div class="card-icon">🟢</div>
+                    <div class="card-info">
+                        <h3>Uptime Kuma</h3>
+                        <p>Status monitoring</p>
+                    </div>
+                    <span class="badge badge-seko">Seko</span>
+                </a>
             </div>
         </div>
 

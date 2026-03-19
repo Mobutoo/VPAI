@@ -360,17 +360,7 @@ work.{{ domain_name }} {
     import security_headers
 }
 
-# === Kitsu (animation/VFX production tracker) — boss.<domain> ===
-{% if kitsu_subdomain | default('') | length > 0 %}
-{{ kitsu_subdomain }}.{{ domain_name }} {
-    import vpn_only
-    import vpn_error_page
-
-    reverse_proxy kitsu:80
-
-    import security_headers
-}
-{% endif %}
+# (Kitsu block already defined above — duplicate removed)
 
 # === CouchDB (Obsidian LiveSync) — Public HTTPS, auth CouchDB ===
 # REX: CORS origins=* obligatoire pour obsidian-livesync (cross-origin depuis l'app iOS/PC)

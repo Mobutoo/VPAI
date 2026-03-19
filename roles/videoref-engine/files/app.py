@@ -2782,12 +2782,405 @@ app.router.add_get("/api/search", semantic_search)
 app.router.add_post("/api/analyze", analyze)
 app.router.add_post("/api/remix", remix)
 app.router.add_post("/api/webhook/metube", webhook_metube)
+# ============================================================
+# 20. Transcription (whisper.cpp) + OCR (EasyOCR + Claude Vision)
+# ============================================================
+WHISPER_MODEL = "/opt/whisper.cpp/models/ggml-base.bin"
+WHISPER_BIN = "whisper-cpp"
+TRANSCRIPTS_DIR = OUTPUT_DIR / "transcripts"
+
+
+async def _transcribe_audio(video_path: Path, language: str = "auto") -> dict:
+    """Transcribe audio from video using whisper.cpp. Returns segments with timestamps."""
+    import tempfile
+
+    wav_file = Path(tempfile.mktemp(suffix=".wav"))
+    try:
+        # Extract audio as 16kHz mono WAV (whisper.cpp requirement)
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-i", str(video_path),
+            "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le",
+            str(wav_file), "-y",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+        if not wav_file.exists() or wav_file.stat().st_size < 1000:
+            return {"error": "Failed to extract audio", "segments": []}
+
+        # Run whisper.cpp with JSON output
+        cmd = [
+            WHISPER_BIN,
+            "-m", WHISPER_MODEL,
+            "-f", str(wav_file),
+            "--output-json-full",
+            "--no-prints",
+        ]
+        if language != "auto":
+            cmd.extend(["-l", language])
+
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+
+        # Parse whisper output (JSON on stdout)
+        try:
+            data = json.loads(stdout)
+            segments = []
+            for seg in data.get("transcription", []):
+                segments.append({
+                    "start": seg.get("timestamps", {}).get("from", ""),
+                    "end": seg.get("timestamps", {}).get("to", ""),
+                    "text": seg.get("text", "").strip(),
+                })
+            full_text = " ".join(s["text"] for s in segments)
+            return {
+                "segments": segments,
+                "full_text": full_text,
+                "language": data.get("result", {}).get("language", language),
+                "segment_count": len(segments),
+            }
+        except json.JSONDecodeError:
+            # Fallback: parse text output
+            text = stdout.decode().strip()
+            return {"segments": [], "full_text": text, "raw": True}
+    finally:
+        wav_file.unlink(missing_ok=True)
+
+
+async def _ocr_frames(
+    video_path: Path, interval_sec: int = 10, max_frames: int = 20,
+) -> list[dict]:
+    """Extract text from video frames using EasyOCR."""
+    import tempfile
+
+    tmpdir = Path(tempfile.mkdtemp(prefix="vref_ocr_"))
+    duration = _get_duration(video_path)
+    fps_extract = max(1, duration // max_frames)
+
+    # Extract frames at interval
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-i", str(video_path),
+        "-vf", f"fps=1/{fps_extract}",
+        "-frames:v", str(max_frames),
+        "-q:v", "2",
+        str(tmpdir / "ocr_%04d.jpg"), "-y",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    await proc.communicate()
+
+    frames = sorted(tmpdir.glob("ocr_*.jpg"))
+    if not frames:
+        return []
+
+    # OCR each frame with Surya OCR (state-of-the-art, 90+ languages)
+    results = []
+    try:
+        from surya.recognition import RecognitionPredictor
+        from surya.detection import DetectionPredictor
+        from PIL import Image as PILImage
+
+        det_predictor = DetectionPredictor()
+        rec_predictor = RecognitionPredictor()
+
+        for i, frame in enumerate(frames):
+            timestamp_sec = i * fps_extract
+            img = PILImage.open(frame)
+            predictions = rec_predictor([img], [["en", "fr"]], det_predictor)
+
+            texts = []
+            if predictions and predictions[0].text_lines:
+                for line in predictions[0].text_lines:
+                    if line.confidence > 0.3:
+                        texts.append({
+                            "text": line.text,
+                            "confidence": round(line.confidence, 3),
+                        })
+
+            if texts:
+                results.append({
+                    "timestamp": f"{timestamp_sec // 60:02d}:{timestamp_sec % 60:02d}",
+                    "timestamp_sec": timestamp_sec,
+                    "texts": texts,
+                })
+    except ImportError:
+        results = [{"error": "surya-ocr not installed, falling back skipped"}]
+    finally:
+        # Cleanup
+        for f in tmpdir.iterdir():
+            f.unlink()
+        tmpdir.rmdir()
+
+    return results
+
+
+async def _extract_instructions(
+    transcript: dict, ocr_results: list, video_name: str,
+) -> dict:
+    """Use Claude Vision via LiteLLM to extract structured instructions."""
+    if not LITELLM_URL or not LITELLM_API_KEY:
+        return {"error": "LiteLLM not configured"}
+
+    full_text = transcript.get("full_text", "")[:3000]
+    ocr_text = "\n".join(
+        f"[{r['timestamp']}] {' | '.join(t['text'] for t in r['texts'])}"
+        for r in ocr_results[:15]
+    )[:2000]
+
+    prompt = (
+        f"Analyze this video content and extract structured information.\n\n"
+        f"## Audio transcript:\n{full_text}\n\n"
+        f"## On-screen text (OCR):\n{ocr_text}\n\n"
+        f"Return JSON with:\n"
+        f'{{"title": "...", "type": "tutorial|review|demo|vlog|other", '
+        f'"language": "...", "summary": "2-3 sentences", '
+        f'"instructions": ["step 1...", "step 2..."], '
+        f'"tools_mentioned": ["tool1", "tool2"], '
+        f'"key_timestamps": [{{"time": "MM:SS", "topic": "..."}}], '
+        f'"code_snippets": ["snippet1"], '
+        f'"tags": ["tag1", "tag2"]}}'
+    )
+
+    payload = {
+        "model": "claude-sonnet-4-20250514",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 2048,
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{LITELLM_URL}/v1/chat/completions",
+                json=payload,
+                headers={
+                    "Authorization": f"Bearer {LITELLM_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                timeout=aiohttp.ClientTimeout(total=60),
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    return {"error": f"LiteLLM {resp.status}: {body[:200]}"}
+                data = await resp.json()
+                content = data["choices"][0]["message"]["content"]
+                try:
+                    start = content.index("{")
+                    end = content.rindex("}") + 1
+                    return json.loads(content[start:end])
+                except (ValueError, json.JSONDecodeError):
+                    return {"raw_analysis": content}
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+async def transcribe_video(request: web.Request) -> web.Response:
+    """POST /api/transcribe — Transcribe audio from a video file.
+
+    Body: {"filename": "video.mp4", "language": "auto"}
+    Returns: {"segments": [...], "full_text": "...", "language": "fr"}
+    """
+    data = await request.json()
+    filename = data.get("filename", "")
+    language = data.get("language", "auto")
+
+    src = WATCH_DIR / filename
+    if not src.exists():
+        return web.json_response({"error": f"File not found: {filename}"}, status=404)
+
+    transcript = await _transcribe_audio(src, language)
+
+    # Save result
+    TRANSCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
+    out = TRANSCRIPTS_DIR / f"{Path(filename).stem}_transcript.json"
+    out.write_text(json.dumps(transcript, indent=2, ensure_ascii=False))
+
+    return web.json_response({
+        "status": "ok",
+        "filename": filename,
+        "transcript": transcript,
+        "saved_to": str(out),
+    })
+
+
+async def ocr_video(request: web.Request) -> web.Response:
+    """POST /api/ocr — Extract on-screen text from video frames.
+
+    Body: {"filename": "video.mp4", "interval": 10, "max_frames": 20}
+    Returns: {"frames": [{"timestamp": "00:10", "texts": [...]}]}
+    """
+    data = await request.json()
+    filename = data.get("filename", "")
+    interval = data.get("interval", 10)
+    max_frames = data.get("max_frames", 20)
+
+    src = WATCH_DIR / filename
+    if not src.exists():
+        return web.json_response({"error": f"File not found: {filename}"}, status=404)
+
+    ocr_results = await _ocr_frames(src, interval, max_frames)
+
+    TRANSCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
+    out = TRANSCRIPTS_DIR / f"{Path(filename).stem}_ocr.json"
+    out.write_text(json.dumps(ocr_results, indent=2, ensure_ascii=False))
+
+    return web.json_response({
+        "status": "ok",
+        "filename": filename,
+        "frame_count": len(ocr_results),
+        "frames": ocr_results,
+        "saved_to": str(out),
+    })
+
+
+async def video_intelligence(request: web.Request) -> web.Response:
+    """POST /api/intelligence — Full video analysis: transcript + OCR + AI extraction.
+
+    Body: {"filename": "video.mp4", "language": "auto", "store_kitsu": true}
+    Returns: combined transcript + OCR + structured instructions
+    """
+    data = await request.json()
+    filename = data.get("filename", "")
+    language = data.get("language", "auto")
+    store_kitsu = data.get("store_kitsu", True)
+
+    src = WATCH_DIR / filename
+    if not src.exists():
+        return web.json_response({"error": f"File not found: {filename}"}, status=404)
+
+    # Run transcript + OCR in parallel
+    transcript_task = asyncio.create_task(_transcribe_audio(src, language))
+    ocr_task = asyncio.create_task(_ocr_frames(src))
+
+    transcript = await transcript_task
+    ocr_results = await ocr_task
+
+    # AI-powered instruction extraction
+    instructions = await _extract_instructions(
+        transcript, ocr_results, filename,
+    )
+
+    result = {
+        "filename": filename,
+        "transcript": transcript,
+        "ocr": {"frame_count": len(ocr_results), "frames": ocr_results},
+        "intelligence": instructions,
+    }
+
+    # Save full result
+    TRANSCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
+    out = TRANSCRIPTS_DIR / f"{Path(filename).stem}_intelligence.json"
+    out.write_text(json.dumps(result, indent=2, ensure_ascii=False))
+
+    # Store in Kitsu Asset Library + Qdrant
+    kitsu_result = {}
+    qdrant_result = {}
+
+    if store_kitsu and KITSU_URL and KITSU_TOKEN:
+        try:
+            async with aiohttp.ClientSession() as session:
+                library = await _kitsu_get_asset_library(session)
+                entity_types = await _kitsu_api(session, "GET", "/data/entity-types")
+                vref_type = next(
+                    (t for t in entity_types if t["name"] == "VideoRef"), None,
+                )
+                if vref_type:
+                    summary = instructions.get("summary", "")[:200]
+                    video_type = instructions.get("type", "unknown")
+                    tags = instructions.get("tags", [])
+
+                    asset = await _kitsu_api(
+                        session, "POST",
+                        f"/data/projects/{library['id']}"
+                        f"/asset-types/{vref_type['id']}/assets/new",
+                        json={
+                            "name": f"{Path(filename).stem} [transcript]",
+                            "description": (
+                                f"Type: {video_type}\n"
+                                f"Summary: {summary}\n"
+                                f"Language: {transcript.get('language', '?')}\n"
+                                f"Segments: {transcript.get('segment_count', 0)}\n"
+                                f"Tags: {', '.join(tags[:10])}"
+                            ),
+                            "data": {
+                                "style": video_type,
+                                "mood": ", ".join(tags[:5]),
+                                "colors": "",
+                                "motion": "low",
+                                "ai_prompt": summary,
+                            },
+                        },
+                    )
+                    kitsu_result = {
+                        "asset_id": asset.get("id", ""),
+                        "asset_name": asset.get("name", ""),
+                    }
+        except Exception as exc:
+            kitsu_result = {"error": str(exc)}
+
+    if QDRANT_URL and QDRANT_API_KEY:
+        try:
+            text_to_embed = (
+                f"{filename}: {instructions.get('summary', '')} "
+                f"{transcript.get('full_text', '')[:500]}"
+            )
+            async with aiohttp.ClientSession() as session:
+                # Get embedding
+                async with session.post(
+                    f"{LITELLM_URL}/v1/embeddings",
+                    json={"model": "embedding", "input": text_to_embed[:8000]},
+                    headers={
+                        "Authorization": f"Bearer {LITELLM_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as resp:
+                    emb_data = await resp.json()
+                    vector = emb_data["data"][0]["embedding"]
+
+                point_id = abs(hash(filename)) % (2**63)
+                async with session.put(
+                    f"{QDRANT_URL}/collections/{QDRANT_COLLECTION}/points",
+                    json={
+                        "points": [{
+                            "id": point_id,
+                            "vector": vector,
+                            "payload": {
+                                "filename": filename,
+                                "type": "transcript",
+                                "summary": instructions.get("summary", ""),
+                                "tags": instructions.get("tags", []),
+                                "full_text": transcript.get("full_text", "")[:2000],
+                                "source": "video-intelligence",
+                            },
+                        }],
+                    },
+                    headers={
+                        "api-key": QDRANT_API_KEY,
+                        "Content-Type": "application/json",
+                    },
+                    timeout=aiohttp.ClientTimeout(total=15),
+                ) as resp:
+                    qdrant_result = {"indexed": resp.status in (200, 201)}
+        except Exception as exc:
+            qdrant_result = {"error": str(exc)}
+
+    result["kitsu"] = kitsu_result
+    result["qdrant"] = qdrant_result
+    result["saved_to"] = str(out)
+
+    return web.json_response(result)
+
+
 # New production pipeline endpoints
 app.router.add_get("/api/cameras", get_cameras)
 app.router.add_post("/api/produce/start", produce_start)
 app.router.add_post("/api/produce/step", produce_step)
 app.router.add_post("/api/produce/retake", produce_retake)
 app.router.add_get("/api/produce/status/{job_id}", produce_status)
+# Transcription + OCR endpoints
+app.router.add_post("/api/transcribe", transcribe_video)
+app.router.add_post("/api/ocr", ocr_video)
+app.router.add_post("/api/intelligence", video_intelligence)
 
 if __name__ == "__main__":
     for d in [OUTPUT_DIR, COMFYUI_DIR, JOBS_DIR]:

@@ -1,6 +1,6 @@
 FROM python:3.12-slim-bookworm
 
-# System deps: ffmpeg (keyframes, LUT, export), wget (healthcheck), cmake (whisper.cpp)
+# System deps: ffmpeg, wget, cmake (whisper.cpp)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ffmpeg wget git cmake build-essential && \
@@ -8,10 +8,12 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Python deps
-RUN pip install --no-cache-dir \
+# Python deps + Surya OCR (state-of-the-art, 90+ languages, works on ARM64 CPU)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir \
     aiohttp watchfiles Pillow numpy \
-    kokoro>=0.9 soundfile
+    kokoro>=0.9 soundfile \
+    surya-ocr
 
 # whisper.cpp — build from source (repo moved to ggml-org, binary is now whisper-cli)
 RUN git clone --depth 1 https://github.com/ggml-org/whisper.cpp.git /opt/whisper.cpp && \

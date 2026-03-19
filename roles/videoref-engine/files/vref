@@ -316,6 +316,98 @@ def cmd_remix(args: argparse.Namespace) -> None:
 
 # -- Commands (new: production pipeline) --------------------------
 
+def cmd_transcribe(args: argparse.Namespace) -> None:
+    """Transcribe audio from a video."""
+    data = _api("POST", "/api/transcribe", {
+        "filename": args.filename,
+        "language": args.language,
+    })
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    t = data.get("transcript", {})
+    print(f"Transcription: {args.filename}")
+    print(f"  Language: {t.get('language', '?')}")
+    print(f"  Segments: {t.get('segment_count', 0)}")
+    print(f"  Saved: {data.get('saved_to', '?')}")
+    print(f"\n--- Full text ---")
+    print(t.get("full_text", "")[:500])
+    if len(t.get("full_text", "")) > 500:
+        print("... (truncated)")
+
+
+def cmd_ocr(args: argparse.Namespace) -> None:
+    """Extract on-screen text from video."""
+    data = _api("POST", "/api/ocr", {
+        "filename": args.filename,
+        "interval": args.interval,
+        "max_frames": args.max_frames,
+    })
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    frames = data.get("frames", [])
+    print(f"OCR: {args.filename}")
+    print(f"  Frames with text: {len(frames)}")
+    for f in frames[:10]:
+        texts = " | ".join(t["text"] for t in f.get("texts", []))
+        print(f"  [{f['timestamp']}] {texts[:100]}")
+    if len(frames) > 10:
+        print(f"  ... +{len(frames) - 10} more")
+
+
+def cmd_intelligence(args: argparse.Namespace) -> None:
+    """Full video intelligence analysis."""
+    data = _api("POST", "/api/intelligence", {
+        "filename": args.filename,
+        "language": args.language,
+        "store_kitsu": not args.no_kitsu,
+    })
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+
+    intel = data.get("intelligence", {})
+    t = data.get("transcript", {})
+    ocr = data.get("ocr", {})
+
+    print(f"Video Intelligence: {args.filename}")
+    print(f"  Type: {intel.get('type', '?')}")
+    print(f"  Language: {t.get('language', '?')}")
+    print(f"  Summary: {intel.get('summary', '?')}")
+    print(f"  Transcript segments: {t.get('segment_count', 0)}")
+    print(f"  OCR frames: {ocr.get('frame_count', 0)}")
+
+    instructions = intel.get("instructions", [])
+    if instructions:
+        print(f"\n  Instructions ({len(instructions)}):")
+        for i, step in enumerate(instructions[:10], 1):
+            print(f"    {i}. {step[:100]}")
+
+    tools = intel.get("tools_mentioned", [])
+    if tools:
+        print(f"\n  Tools: {', '.join(tools[:10])}")
+
+    tags = intel.get("tags", [])
+    if tags:
+        print(f"  Tags: {', '.join(tags[:10])}")
+
+    k = data.get("kitsu", {})
+    q = data.get("qdrant", {})
+    print(f"\n  Kitsu: {k.get('asset_id', k.get('error', 'skipped'))[:30]}")
+    print(f"  Qdrant: {q.get('indexed', q.get('error', 'skipped'))}")
+    print(f"  Saved: {data.get('saved_to', '?')}")
+
+
 def cmd_cameras(args: argparse.Namespace) -> None:
     """List available camera presets."""
     data = _api("GET", "/api/cameras")
@@ -608,6 +700,23 @@ def build_parser() -> argparse.ArgumentParser:
     # cameras
     sub.add_parser("cameras", help="List available camera presets")
 
+    # transcribe
+    p = sub.add_parser("transcribe", help="Transcribe audio from a video")
+    p.add_argument("filename", help="Video filename in watch dir")
+    p.add_argument("--language", default="auto", help="Language code (auto, en, fr, etc.)")
+
+    # ocr
+    p = sub.add_parser("ocr", help="Extract on-screen text from video")
+    p.add_argument("filename", help="Video filename in watch dir")
+    p.add_argument("--interval", type=int, default=10, help="Seconds between frames (default: 10)")
+    p.add_argument("--max-frames", type=int, default=20, help="Max frames to analyze (default: 20)")
+
+    # intelligence (full analysis: transcript + OCR + AI extraction)
+    p = sub.add_parser("intelligence", help="Full video intelligence: transcript + OCR + AI extraction")
+    p.add_argument("filename", help="Video filename in watch dir")
+    p.add_argument("--language", default="auto", help="Language code")
+    p.add_argument("--no-kitsu", action="store_true", help="Skip Kitsu storage")
+
     # produce-start
     p = sub.add_parser("produce-start", help="Start a new production job")
     p.add_argument("--title", required=True, help="Production title")
@@ -671,6 +780,9 @@ def main() -> None:
         "search": cmd_search,
         "remix": cmd_remix,
         "cameras": cmd_cameras,
+        "transcribe": cmd_transcribe,
+        "ocr": cmd_ocr,
+        "intelligence": cmd_intelligence,
         "produce-start": cmd_produce_start,
         "produce-step": cmd_produce_step,
         "produce-status": cmd_produce_status,

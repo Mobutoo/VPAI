@@ -27,7 +27,7 @@ QDRANT_URL = os.environ.get("QDRANT_URL", "")
 QDRANT_API_KEY = os.environ.get("QDRANT_API_KEY", "")
 QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "videoref_styles")
 
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 SCENE_THRESHOLD = 0.3
 SHORT_VIDEO_SECONDS = 30
 
@@ -1111,13 +1111,310 @@ async def _background_analyze(filename: str) -> None:
 
 
 # ============================================================
+# Agent-friendly API: search, get, remix
+# ============================================================
+async def search_assets(request: web.Request) -> web.Response:
+    """GET /api/assets?style=X&mood=Y&q=Z -- search VideoRef assets.
+
+    Query params (all optional, combined with AND):
+      - q: free text search (matches name, description, prompt)
+      - style: filter by style substring
+      - mood: filter by mood substring
+      - motion: filter by motion level (low, medium, high)
+      - limit: max results (default 20)
+
+    Used by: OpenClaw, Claude Code, n8n agents
+    """
+    if not KITSU_URL or not KITSU_TOKEN:
+        return web.json_response({"error": "KITSU not configured"}, status=503)
+
+    q = request.query.get("q", "").lower()
+    style_filter = request.query.get("style", "").lower()
+    mood_filter = request.query.get("mood", "").lower()
+    motion_filter = request.query.get("motion", "").lower()
+    limit = int(request.query.get("limit", "20"))
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            project = await _kitsu_get_project(session)
+            assets = await _kitsu_api(
+                session, "GET",
+                f"/data/projects/{project['id']}/assets",
+            )
+
+            results = []
+            for a in (assets or []):
+                data = a.get("data") or {}
+                name = a.get("name", "").lower()
+                desc = a.get("description", "").lower()
+                prompt = data.get("ai_prompt", "").lower()
+                style = data.get("style", "").lower()
+                mood = data.get("mood", "").lower()
+                motion = data.get("motion", "").lower()
+
+                # Apply filters
+                if style_filter and style_filter not in style:
+                    continue
+                if mood_filter and mood_filter not in mood:
+                    continue
+                if motion_filter and motion_filter != motion:
+                    continue
+                if q and q not in name and q not in desc and q not in prompt and q not in style:
+                    continue
+
+                results.append({
+                    "id": a["id"],
+                    "name": a["name"],
+                    "style": data.get("style", ""),
+                    "mood": data.get("mood", ""),
+                    "colors": data.get("colors", ""),
+                    "motion": data.get("motion", ""),
+                    "ai_prompt": data.get("ai_prompt", ""),
+                    "description": a.get("description", "")[:200],
+                })
+                if len(results) >= limit:
+                    break
+
+            return web.json_response({
+                "assets": results,
+                "count": len(results),
+                "total": len(assets or []),
+            })
+    except Exception as exc:
+        return web.json_response({"error": str(exc)}, status=500)
+
+
+async def get_asset(request: web.Request) -> web.Response:
+    """GET /api/assets/{id} -- get full asset details with prompt.
+
+    Returns complete asset data ready for remix.
+    Used by: OpenClaw, Claude Code agents
+    """
+    asset_id = request.match_info["id"]
+    if not KITSU_URL or not KITSU_TOKEN:
+        return web.json_response({"error": "KITSU not configured"}, status=503)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            asset = await _kitsu_api(
+                session, "GET", f"/data/entities/{asset_id}",
+            )
+            if not asset:
+                return web.json_response({"error": "Asset not found"}, status=404)
+
+            data = asset.get("data") or {}
+            return web.json_response({
+                "id": asset["id"],
+                "name": asset.get("name", ""),
+                "description": asset.get("description", ""),
+                "style": data.get("style", ""),
+                "mood": data.get("mood", ""),
+                "colors": data.get("colors", ""),
+                "motion": data.get("motion", ""),
+                "ai_prompt": data.get("ai_prompt", ""),
+                "preview_file_id": asset.get("preview_file_id"),
+                "has_avatar": asset.get("has_avatar"),
+                "created_at": asset.get("created_at", ""),
+            })
+    except Exception as exc:
+        return web.json_response({"error": str(exc)}, status=500)
+
+
+async def semantic_search(request: web.Request) -> web.Response:
+    """GET /api/search?q=cinematic+dramatic+blue -- semantic search via Qdrant.
+
+    Returns assets ranked by embedding similarity.
+    Used by: OpenClaw, Claude Code for finding similar visual references
+    """
+    query = request.query.get("q", "")
+    limit = int(request.query.get("limit", "5"))
+    if not query:
+        return web.json_response({"error": "q parameter required"}, status=400)
+    if not QDRANT_URL or not LITELLM_URL:
+        return web.json_response({"error": "Search not configured"}, status=503)
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Get embedding
+            async with session.post(
+                f"{LITELLM_URL}/v1/embeddings",
+                json={"model": "embedding", "input": query},
+                headers={
+                    "Authorization": f"Bearer {LITELLM_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                emb = await resp.json()
+                vector = emb["data"][0]["embedding"]
+
+            # Search Qdrant
+            async with session.post(
+                f"{QDRANT_URL}/collections/{QDRANT_COLLECTION}/points/search",
+                json={"vector": vector, "limit": limit, "with_payload": True},
+                headers={
+                    "api-key": QDRANT_API_KEY,
+                    "Content-Type": "application/json",
+                },
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                data = await resp.json()
+                results = []
+                for hit in data.get("result", []):
+                    p = hit.get("payload", {})
+                    results.append({
+                        "score": round(hit["score"], 3),
+                        "filename": p.get("filename", ""),
+                        "style": p.get("style", ""),
+                        "mood": p.get("mood", ""),
+                        "colors": p.get("colors", []),
+                        "suggested_prompt": p.get("suggested_prompt", ""),
+                    })
+                return web.json_response({
+                    "query": query,
+                    "results": results,
+                    "count": len(results),
+                })
+    except Exception as exc:
+        return web.json_response({"error": str(exc)}, status=500)
+
+
+async def remix(request: web.Request) -> web.Response:
+    """POST /api/remix -- remix an existing VideoRef asset with modifications.
+
+    Body:
+    {
+        "asset_id": "uuid",           // Kitsu asset ID (or use source_prompt)
+        "source_prompt": "...",        // Alternative: provide prompt directly
+        "modifications": {             // What to change
+            "subject": "cats instead of shoes",
+            "style": "watercolor painting",
+            "mood": "melancholic",
+            "colors": "#1a1a2e, #16213e, #0f3460",
+            "extra": "add rain, twilight sky"
+        },
+        "template": "cinematic",       // ComfyUI workflow template (default/cinematic/anime)
+        "output_name": "my-remix-v1"   // Optional output name
+    }
+
+    Returns: modified prompt + generated ComfyUI workflow JSON
+    Used by: OpenClaw agent, Claude Code, n8n automation
+    """
+    data = await request.json()
+    asset_id = data.get("asset_id", "")
+    source_prompt = data.get("source_prompt", "")
+    modifications = data.get("modifications", {})
+    template_name = data.get("template", "default")
+    output_name = data.get("output_name", "remix")
+
+    # Get source prompt from Kitsu asset or direct input
+    original_analysis = {}
+    if asset_id and KITSU_URL and KITSU_TOKEN:
+        try:
+            async with aiohttp.ClientSession() as session:
+                asset = await _kitsu_api(
+                    session, "GET", f"/data/entities/{asset_id}",
+                )
+                asset_data = asset.get("data") or {}
+                source_prompt = asset_data.get("ai_prompt", "")
+                original_analysis = {
+                    "style": asset_data.get("style", ""),
+                    "mood": asset_data.get("mood", ""),
+                    "colors": asset_data.get("colors", ""),
+                    "motion": asset_data.get("motion", ""),
+                    "suggested_prompt": source_prompt,
+                    "source_asset": asset.get("name", ""),
+                }
+        except Exception as exc:
+            return web.json_response(
+                {"error": f"Failed to fetch asset: {exc}"}, status=404,
+            )
+
+    if not source_prompt:
+        return web.json_response(
+            {"error": "Provide asset_id or source_prompt"}, status=400,
+        )
+
+    # Build remix prompt via LiteLLM
+    mod_parts = []
+    for key, value in modifications.items():
+        mod_parts.append(f"- Change {key}: {value}")
+    mod_text = "\n".join(mod_parts) if mod_parts else "No modifications"
+
+    remix_prompt = source_prompt
+    if modifications and LITELLM_URL:
+        try:
+            async with aiohttp.ClientSession() as session:
+                llm_prompt = (
+                    f"You are a prompt engineer for AI image generation. "
+                    f"Take this original prompt and apply the modifications below. "
+                    f"Return ONLY the modified prompt, nothing else.\n\n"
+                    f"Original prompt:\n{source_prompt}\n\n"
+                    f"Modifications:\n{mod_text}\n\n"
+                    f"Modified prompt:"
+                )
+                async with session.post(
+                    f"{LITELLM_URL}/v1/chat/completions",
+                    json={
+                        "model": "claude-sonnet",
+                        "messages": [{"role": "user", "content": llm_prompt}],
+                        "max_tokens": 500,
+                    },
+                    headers={
+                        "Authorization": f"Bearer {LITELLM_API_KEY}",
+                        "Content-Type": "application/json",
+                    },
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as resp:
+                    if resp.status == 200:
+                        llm_data = await resp.json()
+                        remix_prompt = llm_data["choices"][0]["message"]["content"].strip()
+        except Exception:
+            pass  # Fall back to original prompt
+
+    # Apply style/colors overrides
+    remixed_analysis = dict(original_analysis)
+    remixed_analysis["suggested_prompt"] = remix_prompt
+    remixed_analysis["negative_prompt"] = original_analysis.get("negative_prompt", "blurry, low quality")
+    if modifications.get("style"):
+        remixed_analysis["style"] = modifications["style"]
+    if modifications.get("mood"):
+        remixed_analysis["mood"] = modifications["mood"]
+
+    # Generate workflow from template
+    colors = (modifications.get("colors") or original_analysis.get("colors", "")).split(", ")
+    template = await fetch_template(template_name)
+    workflow = generate_workflow(template, remixed_analysis, colors)
+
+    # Save workflow
+    wf_path = COMFYUI_DIR / f"{output_name}_workflow.json"
+    wf_path.write_text(json.dumps(workflow, indent=2))
+
+    return web.json_response({
+        "status": "ok",
+        "original_prompt": source_prompt[:300],
+        "remixed_prompt": remix_prompt[:500],
+        "modifications_applied": modifications,
+        "style": remixed_analysis.get("style", ""),
+        "mood": remixed_analysis.get("mood", ""),
+        "template": template_name,
+        "workflow_path": str(wf_path),
+        "workflow": workflow,
+    })
+
+
+# ============================================================
 # App setup
 # ============================================================
 app = web.Application()
 app.router.add_get("/health", health)
 app.router.add_get("/api/jobs", list_jobs)
 app.router.add_get("/api/watch", list_watch)
+app.router.add_get("/api/assets", search_assets)
+app.router.add_get("/api/assets/{id}", get_asset)
+app.router.add_get("/api/search", semantic_search)
 app.router.add_post("/api/analyze", analyze)
+app.router.add_post("/api/remix", remix)
 app.router.add_post("/api/webhook/metube", webhook_metube)
 
 if __name__ == "__main__":

@@ -1713,6 +1713,7 @@ async def _step_montage(
     transitions = params.get("transitions", "cut")
 
     # Call n8n creative-pipeline with type=video-composition for Remotion
+    note = "Montage pending — manual at re.ewutelo.cloud"
     if N8N_CREATIVE_PIPELINE_URL:
         try:
             async with aiohttp.ClientSession() as session:
@@ -1746,10 +1747,11 @@ async def _step_montage(
                             "result_url": result.get("result_url"),
                             "kitsu": kitsu_result,
                         }, {}
+                    else:
+                        body = await resp.text()
+                        note = f"Remotion returned {resp.status}: {body[:100]}"
         except Exception as exc:
             note = f"Remotion montage failed: {exc}. Manual montage at re.ewutelo.cloud"
-    else:
-        note = "n8n not configured. Manual montage at re.ewutelo.cloud"
 
     kitsu_result = await _kitsu_step_task(job, "Montage", "wfa", note)
     return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}

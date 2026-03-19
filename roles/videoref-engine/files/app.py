@@ -1402,6 +1402,16 @@ def _slugify(title: str, uid: str) -> str:
     return f"{slug}-{uid[:4]}"
 
 
+RESOLUTION_PRESETS = {
+    "landscape": {"resolution": "1920x1080", "ratio": "16:9"},
+    "portrait": {"resolution": "1080x1920", "ratio": "9:16"},
+    "square": {"resolution": "1080x1080", "ratio": "1:1"},
+    "4k": {"resolution": "3840x2160", "ratio": "16:9"},
+    "4k-portrait": {"resolution": "2160x3840", "ratio": "9:16"},
+    "cinescope": {"resolution": "2560x1080", "ratio": "21:9"},
+}
+
+
 def _new_job(
     title: str,
     url: str = "",
@@ -1409,11 +1419,15 @@ def _new_job(
     lens: str = "",
     aperture: str = "",
     motion: str = "",
+    fps: str = "24",
+    format: str = "landscape",
+    style: str = "2d3d",
 ) -> dict[str, Any]:
     """Create a new immutable job state dict."""
     now = datetime.now(timezone.utc).isoformat()
     job_id = str(uuid.uuid4())
     slug = _slugify(title, job_id)
+    preset = RESOLUTION_PRESETS.get(format, RESOLUTION_PRESETS["landscape"])
     return {
         "job_id": job_id,
         "slug": slug,
@@ -1423,6 +1437,11 @@ def _new_job(
         "lens": lens,
         "aperture": aperture,
         "motion": motion,
+        "fps": fps,
+        "resolution": preset["resolution"],
+        "ratio": preset["ratio"],
+        "format": format,
+        "style": style,
         "current_step": None,
         "steps_completed": [],
         "kitsu_project_id": "",
@@ -1541,9 +1560,32 @@ async def _call_n8n_video(
 async def _step_brief(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle brief step: store description, create Kitsu sequence + task."""
+    """Handle brief step: store description + specs, create Kitsu project.
+
+    params can override: fps, format, resolution, style, production_type
+    """
     description = params.get("description", job.get("title", ""))
-    extras: dict[str, Any] = {"description": description}
+
+    # Allow brief to set/override technical specs
+    fps = params.get("fps", job.get("fps", "24"))
+    fmt = params.get("format", job.get("format", "landscape"))
+    style = params.get("style", job.get("style", "2d3d"))
+    prod_type = params.get("production_type", "short")
+
+    # Resolve resolution from format preset or explicit param
+    if "resolution" in params:
+        resolution = params["resolution"]
+    else:
+        preset = RESOLUTION_PRESETS.get(fmt, RESOLUTION_PRESETS["landscape"])
+        resolution = preset["resolution"]
+
+    extras: dict[str, Any] = {
+        "description": description,
+        "fps": fps,
+        "format": fmt,
+        "resolution": resolution,
+        "style": style,
+    }
 
     kitsu_result: dict[str, Any] = {}
     if KITSU_URL and KITSU_TOKEN:
@@ -1551,7 +1593,17 @@ async def _step_brief(
             async with aiohttp.ClientSession() as session:
                 # Create a NEW Kitsu project for this production job
                 project = await _kitsu_create_project(
-                    session, job["title"], "short",
+                    session, job["title"], prod_type,
+                )
+                # Update project with technical specs from brief
+                await _kitsu_api(
+                    session, "PUT",
+                    f"/data/projects/{project['id']}",
+                    json={
+                        "fps": fps,
+                        "resolution": resolution,
+                        "production_style": style,
+                    },
                 )
                 project_id = project["id"]
 
@@ -2556,6 +2608,9 @@ async def produce_start(request: web.Request) -> web.Response:
         lens=data.get("lens", ""),
         aperture=data.get("aperture", ""),
         motion=data.get("motion", ""),
+        fps=data.get("fps", "24"),
+        format=data.get("format", "landscape"),
+        style=data.get("style", "2d3d"),
     )
     _save_job(job)
 

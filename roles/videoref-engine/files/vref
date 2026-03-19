@@ -373,6 +373,12 @@ def cmd_produce_start(args: argparse.Namespace) -> None:
         body["aperture"] = args.aperture
     if args.cam_motion:
         body["motion"] = args.cam_motion
+    if args.fps:
+        body["fps"] = args.fps
+    if args.format:
+        body["format"] = args.format
+    if args.style:
+        body["style"] = args.style
 
     data = _api("POST", "/api/produce/start", body)
     if args.json:
@@ -413,6 +419,12 @@ def cmd_produce_step(args: argparse.Namespace) -> None:
         params["scenes"] = _parse_scene_list(args.scenes)
     if args.modifications:
         params["modifications"] = _parse_modifications(args.modifications)
+    if hasattr(args, "fps") and args.fps:
+        params["fps"] = args.fps
+    if hasattr(args, "format") and args.format:
+        params["format"] = args.format
+    if hasattr(args, "resolution") and args.resolution:
+        params["resolution"] = args.resolution
 
     print(f"Executing step '{step}' for job {job_id[:8]}...")
     data = _api("POST", "/api/produce/step", {
@@ -604,12 +616,22 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--lens", help="Lens type")
     p.add_argument("--aperture", help="Aperture value")
     p.add_argument("--cam-motion", help="Camera motion")
+    p.add_argument("--fps", default="24", help="Frame rate (default: 24)")
+    p.add_argument("--format", default="landscape",
+                   choices=["landscape", "portrait", "square", "4k", "4k-portrait", "cinescope"],
+                   help="Video format/orientation (default: landscape)")
+    p.add_argument("--style", default="2d3d",
+                   choices=["2d", "3d", "2d3d", "ar", "vfx"],
+                   help="Production style (default: 2d3d)")
 
     # produce-step
     p = sub.add_parser("produce-step", help="Execute a pipeline step")
     p.add_argument("job_id", help="Production job ID")
     p.add_argument("step", help=f"Step name: {', '.join(PIPELINE_STEPS)}")
     p.add_argument("--description", help="Brief description (for brief step)")
+    p.add_argument("--fps", help="Override FPS (for brief step)")
+    p.add_argument("--format", help="Override format: landscape/portrait/square/4k (for brief)")
+    p.add_argument("--resolution", help="Override resolution e.g. 1920x1080 (for brief)")
     p.add_argument("--query-param", help="Search query (for research step)")
     p.add_argument("--url", help="Source URL (for research step)")
     p.add_argument("--skip", action="store_true", help="Skip optional step")

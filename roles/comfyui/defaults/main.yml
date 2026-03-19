@@ -48,6 +48,9 @@ comfyui_custom_nodes:
     pip_deps: ["segment-anything", "ultralytics"]
   # --- Gap 1: Soul Cast (character consistency across shots) ---
   # FaceID for persistent character identity + InstantID for face-driven generation
+  # TODO (next ComfyUI image rebuild): InstantID needs insightface which requires
+  # build-essential + cmake in the Docker image. Add to Dockerfile at next version bump.
+  # For now IPAdapterFaceID (4 nodes) covers the same character consistency use case.
   - name: "ComfyUI-InstantID"
     repo: "https://github.com/cubiq/ComfyUI_InstantID.git"
     pip_deps: ["onnxruntime"]

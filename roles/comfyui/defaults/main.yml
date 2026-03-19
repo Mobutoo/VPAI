@@ -39,10 +39,20 @@ comfyui_custom_nodes:
     pip_deps: ["fal-client", "fal", "httpx", "httpx-sse"]
   - name: "ComfyUI-IPAdapter-plus"
     repo: "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git"
-    pip_deps: ["insightface", "onnxruntime"]
+    pip_deps: ["onnxruntime"]
+  - name: "ComfyUI-AnimateDiff-Evolved"
+    repo: "https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved.git"
+    pip_deps: []
+  - name: "ComfyUI-Impact-Pack"
+    repo: "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git"
+    pip_deps: ["segment-anything", "ultralytics"]
 
 # fal.ai API key (from vault — used by fal-API and fal-Connector nodes)
 comfyui_fal_key: "{{ vault_comfyui_fal_key | default('') }}"
+
+# Google Gemini API key (for NanoBanana / Gemini image gen nodes)
+# Paid Tier required for Veo 3 video gen — image gen works on free tier
+comfyui_gemini_key: "{{ google_gemini_api_key }}"
 
 # Shared creative assets volume (shared with Remotion)
 creative_assets_dir: "/opt/workstation/data/creative-assets"

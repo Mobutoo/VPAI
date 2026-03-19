@@ -32,7 +32,7 @@ N8N_CREATIVE_PIPELINE_URL = os.environ.get("N8N_CREATIVE_PIPELINE_URL", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
-VERSION = "0.7.0"
+VERSION = "0.8.0"
 SCENE_THRESHOLD = 0.3
 SHORT_VIDEO_SECONDS = 30
 JOBS_DIR = OUTPUT_DIR / "jobs"
@@ -1539,24 +1539,114 @@ async def _step_storyboard(
 async def _step_voiceover(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle voiceover step: placeholder for ElevenLabs integration."""
+    """Handle voiceover step: Kokoro (preview) or Chatterbox (prod via CCX33)."""
     skip = params.get("skip", False)
-    status = "done" if skip else "done"
-    note = "Skipped by user" if skip else "Not yet implemented -- manual step"
+    if skip:
+        kitsu_result = await _kitsu_step_task(job, "Voice-over", "done", "Skipped by user")
+        return {"status": "ok", "note": "Skipped", "kitsu": kitsu_result}, {}
 
-    kitsu_result = await _kitsu_step_task(job, "Voice-over", status, note)
-    return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+    text = params.get("text", "")
+    voice_ref = params.get("voice_ref")
+    mode = params.get("mode", "preview")  # preview (Kokoro local) or prod (Chatterbox CCX33)
+
+    if not text:
+        kitsu_result = await _kitsu_step_task(
+            job, "Voice-over", "done", "No text provided — manual voiceover",
+        )
+        return {"status": "ok", "note": "No text — manual step", "kitsu": kitsu_result}, {}
+
+    result: dict[str, Any] = {}
+    if mode == "prod" and os.environ.get("RENDER_SERVER_URL"):
+        # Production: Chatterbox on ephemeral CCX33
+        try:
+            async with aiohttp.ClientSession() as session:
+                body: dict[str, Any] = {"text": text, "output_name": f"{job['job_id'][:8]}-vo"}
+                if voice_ref:
+                    body["voice_ref"] = voice_ref
+                async with session.post(
+                    f"{os.environ['RENDER_SERVER_URL']}/tts",
+                    json=body,
+                    timeout=aiohttp.ClientTimeout(total=120),
+                ) as resp:
+                    result = await resp.json()
+        except Exception as exc:
+            result = {"error": f"Chatterbox CCX33: {exc}"}
+    else:
+        # Preview: Kokoro local (fast, 82M params)
+        try:
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, _kokoro_generate, text, job["job_id"])
+        except Exception as exc:
+            result = {"error": f"Kokoro local: {exc}"}
+
+    note = f"Voice-over ({mode}): {result.get('output_path', result.get('error', '?'))}"
+    kitsu_result = await _kitsu_step_task(job, "Voice-over", "done", note)
+    return {"status": "ok", "mode": mode, "result": result, "kitsu": kitsu_result}, {}
+
+
+def _kokoro_generate(text: str, job_id: str) -> dict[str, Any]:
+    """Generate TTS with Kokoro (synchronous, runs in executor)."""
+    try:
+        from kokoro import KPipeline
+        import soundfile as sf
+
+        pipeline = KPipeline(lang_code="a")  # 'a' = auto-detect
+        audio_chunks = []
+        for _, _, audio in pipeline(text):
+            audio_chunks.append(audio)
+
+        if not audio_chunks:
+            return {"error": "No audio generated"}
+
+        import numpy as np
+        full_audio = np.concatenate(audio_chunks)
+        out_path = OUTPUT_DIR / f"{job_id[:8]}-kokoro-vo.wav"
+        sf.write(str(out_path), full_audio, 24000)
+        return {"output_path": str(out_path), "duration_s": len(full_audio) / 24000}
+    except ImportError:
+        return {"error": "Kokoro not installed in container"}
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 async def _step_music(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle music step: placeholder."""
+    """Handle music step: ACE-Step on ephemeral CCX33."""
     skip = params.get("skip", False)
-    note = "Skipped by user" if skip else "Not yet implemented -- manual step"
+    if skip:
+        kitsu_result = await _kitsu_step_task(job, "Music", "done", "Skipped by user")
+        return {"status": "ok", "note": "Skipped", "kitsu": kitsu_result}, {}
 
-    kitsu_result = await _kitsu_step_task(job, "Music", "done", note)
-    return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+    mood = params.get("mood", job.get("description", "cinematic"))
+    duration = params.get("duration", 60)
+    render_url = os.environ.get("RENDER_SERVER_URL", "")
+
+    if not render_url:
+        note = "No render server configured. Provide RENDER_SERVER_URL (CCX33 ephemeral)."
+        kitsu_result = await _kitsu_step_task(job, "Music", "done", note)
+        return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{render_url}/music",
+                json={
+                    "prompt": f"{mood}, cinematic background music, instrumental",
+                    "duration": duration,
+                    "output_name": f"{job['job_id'][:8]}-music",
+                },
+                timeout=aiohttp.ClientTimeout(total=600),
+            ) as resp:
+                result = await resp.json()
+
+        note = f"Music generated: {result.get('output_path', result.get('error', '?'))}"
+        kitsu_result = await _kitsu_step_task(job, "Music", "wfa", note)
+        return {"status": "ok", "result": result, "kitsu": kitsu_result}, {}
+    except Exception as exc:
+        note = f"Music generation failed: {exc}"
+        kitsu_result = await _kitsu_step_task(job, "Music", "done", note)
+        return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
 
 
 async def _step_imagegen(
@@ -1668,9 +1758,48 @@ async def _step_montage(
 async def _step_subtitles(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle subtitles step: placeholder for Whisper integration."""
+    """Handle subtitles step: whisper.cpp local transcription."""
     skip = params.get("skip", False)
-    note = "Skipped by user" if skip else "Not yet implemented -- manual step (Whisper future)"
+    if skip:
+        kitsu_result = await _kitsu_step_task(job, "Sous-titres", "done", "Skipped by user")
+        return {"status": "ok", "note": "Skipped", "kitsu": kitsu_result}, {}
+
+    language = params.get("language", "fr")
+    # Find the voiceover audio or source video
+    vo_path = OUTPUT_DIR / f"{job['job_id'][:8]}-kokoro-vo.wav"
+    src_video = WATCH_DIR / job.get("source_filename", "")
+
+    audio_input = str(vo_path) if vo_path.exists() else str(src_video)
+    if not Path(audio_input).exists():
+        note = "No audio source found for transcription"
+        kitsu_result = await _kitsu_step_task(job, "Sous-titres", "done", note)
+        return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+
+    try:
+        srt_path = OUTPUT_DIR / f"{job['job_id'][:8]}-subtitles.srt"
+        # whisper.cpp outputs SRT with --output-srt flag
+        proc = await asyncio.create_subprocess_exec(
+            "whisper-cpp",
+            "-m", "/opt/whisper.cpp/models/ggml-base.bin",
+            "-l", language,
+            "--output-srt",
+            "-of", str(srt_path.with_suffix("")),  # whisper adds .srt
+            "-f", audio_input,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        actual_srt = srt_path.with_suffix(".srt") if not srt_path.exists() else srt_path
+
+        if actual_srt.exists():
+            note = f"Subtitles generated: {actual_srt.name} ({language})"
+        else:
+            note = f"whisper.cpp ran but no SRT output. stderr: {stderr.decode()[:200]}"
+    except FileNotFoundError:
+        note = "whisper-cpp not found in container — install whisper.cpp"
+    except Exception as exc:
+        note = f"Subtitles failed: {exc}"
+
     kitsu_result = await _kitsu_step_task(job, "Sous-titres", "done", note)
     return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
 
@@ -1678,10 +1807,53 @@ async def _step_subtitles(
 async def _step_colorgrade(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle colorgrade step: placeholder for ffmpeg LUT."""
-    note = "Not yet implemented -- manual step (ffmpeg LUT future)"
+    """Handle colorgrade step: ffmpeg LUT application."""
+    lut_name = params.get("lut", "teal-orange")
+    contrast = params.get("contrast", "1.0")
+
+    lut_path = Path(f"/app/luts/{lut_name}.cube")
+    if not lut_path.exists():
+        available = [f.stem for f in Path("/app/luts").glob("*.cube")]
+        note = f"LUT '{lut_name}' not found. Available: {', '.join(available)}"
+        kitsu_result = await _kitsu_step_task(job, "Color Grade", "wfa", note)
+        return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+
+    # Find the latest video output to grade
+    montage_path = OUTPUT_DIR / f"{job['job_id'][:8]}-montage.mp4"
+    if not montage_path.exists():
+        # Fallback: try any video in output
+        videos = list(OUTPUT_DIR.glob(f"{job['job_id'][:8]}*.mp4"))
+        montage_path = videos[0] if videos else None
+
+    if not montage_path or not montage_path.exists():
+        note = f"No video found to color grade. Run montage step first."
+        kitsu_result = await _kitsu_step_task(job, "Color Grade", "wfa", note)
+        return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+
+    graded_path = OUTPUT_DIR / f"{job['job_id'][:8]}-graded.mp4"
+    try:
+        cmd = [
+            "ffmpeg", "-i", str(montage_path),
+            "-vf", f"lut3d=file={lut_path},eq=contrast={contrast}",
+            "-c:a", "copy",
+            "-y", str(graded_path),
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+
+        if graded_path.exists():
+            note = f"Color graded with {lut_name} (contrast={contrast}): {graded_path.name}"
+        else:
+            note = f"ffmpeg grading failed: {stderr.decode()[-200:]}"
+    except Exception as exc:
+        note = f"Color grade error: {exc}"
+
     kitsu_result = await _kitsu_step_task(job, "Color Grade", "wfa", note)
-    return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+    return {"status": "ok", "note": note, "lut": lut_name, "kitsu": kitsu_result}, {}
 
 
 async def _step_review(
@@ -1731,10 +1903,72 @@ async def _step_review(
 async def _step_export(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle export step: placeholder for ffmpeg encode."""
-    note = "Not yet implemented -- manual step (ffmpeg encode future)"
+    """Handle export step: ffmpeg final encode (video + audio + subtitles)."""
+    formats = params.get("formats", "mp4").split(",")
+    job_prefix = job["job_id"][:8]
+
+    # Find best available video (graded > montage > any)
+    video = None
+    for candidate in [f"{job_prefix}-graded.mp4", f"{job_prefix}-montage.mp4"]:
+        p = OUTPUT_DIR / candidate
+        if p.exists():
+            video = p
+            break
+    if not video:
+        videos = sorted(OUTPUT_DIR.glob(f"{job_prefix}*.mp4"))
+        video = videos[-1] if videos else None
+
+    if not video:
+        note = "No video found for export. Complete previous steps first."
+        kitsu_result = await _kitsu_step_task(job, "Export", "done", note)
+        return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+
+    results: list[dict[str, Any]] = []
+    for fmt in formats:
+        fmt = fmt.strip()
+        out_name = f"{job.get('title', 'export').replace(' ', '_')}-final.{fmt}"
+        out_path = OUTPUT_DIR / out_name
+
+        try:
+            cmd = ["ffmpeg", "-i", str(video)]
+
+            # Mux audio if available
+            music = OUTPUT_DIR / f"{job_prefix}-music.wav"
+            vo = OUTPUT_DIR / f"{job_prefix}-kokoro-vo.wav"
+            if music.exists():
+                cmd.extend(["-i", str(music)])
+            if vo.exists():
+                cmd.extend(["-i", str(vo)])
+
+            # Burn-in subtitles if SRT exists
+            srt = OUTPUT_DIR / f"{job_prefix}-subtitles.srt"
+            if srt.exists():
+                cmd.extend(["-vf", f"subtitles={srt}"])
+
+            if fmt == "gif":
+                cmd.extend([
+                    "-vf", "fps=10,scale=480:-1:flags=lanczos",
+                    "-y", str(out_path),
+                ])
+            else:
+                cmd.extend(["-c:v", "libx264", "-crf", "23", "-y", str(out_path)])
+
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await proc.communicate()
+
+            if out_path.exists():
+                size_mb = out_path.stat().st_size / (1024 * 1024)
+                results.append({"format": fmt, "path": str(out_path), "size_mb": round(size_mb, 2)})
+        except Exception as exc:
+            results.append({"format": fmt, "error": str(exc)})
+
+    note = f"Exported: {', '.join(r.get('path', r.get('error', '?')).split('/')[-1] for r in results)}"
     kitsu_result = await _kitsu_step_task(job, "Export", "done", note)
-    return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+    return {"status": "ok", "exports": results, "kitsu": kitsu_result}, {}
 
 
 async def _step_publish(

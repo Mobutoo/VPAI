@@ -20,12 +20,12 @@ metube_subdomain: "tube"
 # Download directory (shared with videoref-engine)
 metube_download_dir: "/opt/workstation/data/metube/downloads"
 
-# yt-dlp output template
-metube_output_template: "%(title)s.%(ext)s"
+# yt-dlp output template — unique filename with title + uploader + date + ID
+# %(title).80s = title truncated at 80 chars
+# %(uploader).30s = uploader truncated at 30 chars
+# %(upload_date>%Y%m%d)s = upload date as YYYYMMDD
+# %(id)s = video ID (unique per platform)
+metube_output_template: "%(title).80s [%(uploader).30s %(upload_date>%Y%m%d)s] %(id)s.%(ext)s"
 
 # Max video quality (height in pixels)
 metube_max_quality: "1080"
-
-# Webhook → n8n sur VPS via mesh VPN (notification quand download termine)
-# Double mode : webhook n8n + inotify filesystem local (videoref-engine)
-metube_webhook_url: "{{ vault_metube_webhook_url | default('') }}"

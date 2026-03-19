@@ -140,6 +140,12 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+      - FOWNER
     env_file:
       - {{ videoref_install_dir }}/videoref.env
     volumes:

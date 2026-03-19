@@ -26,8 +26,8 @@ videoref_watch_dir: "{{ metube_download_dir }}"
 videoref_output_dir: "/opt/workstation/data/videoref-engine/analyzed"
 videoref_comfyui_workflows_dir: "/opt/workstation/data/comfyui/input"
 
-# LiteLLM endpoint (Claude Vision via mesh VPN)
-videoref_litellm_url: "http://{{ vps_tailscale_ip }}:4000"
+# LiteLLM endpoint (via HTTPS domain — container has no VPN access)
+videoref_litellm_url: "https://{{ litellm_subdomain }}.{{ domain_name }}"
 videoref_litellm_key: "{{ litellm_master_key }}"
 
 # Gitea template registry (via mesh VPN — Seko-VPN)

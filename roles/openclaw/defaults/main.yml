@@ -109,6 +109,7 @@ openclaw_agent_marketer_name: "marketer"
 openclaw_agent_cfo_name: "cfo"
 openclaw_agent_maintainer_name: "maintainer"
 openclaw_agent_messenger_name: "messenger"
+openclaw_agent_director_name: "director"
 
 # Structured agents list — used for provisioning and workflow integration
 openclaw_agents_list:
@@ -152,6 +153,10 @@ openclaw_agents_list:
     name: "Hermes"
     type: "messenger"
     model: "{{ openclaw_messenger_model }}"
+  - id: "{{ openclaw_agent_director_name }}"
+    name: "Aigle"
+    type: "director"
+    model: "{{ openclaw_director_model }}"
 
 # --- Model Profiles ---
 # Switch ALL agent models at once by changing openclaw_model_profile.
@@ -217,6 +222,8 @@ openclaw_code_model: "{{ openclaw_model_profiles[openclaw_model_profile].code }}
 openclaw_quick_model: "{{ openclaw_model_profiles[openclaw_model_profile].quick }}"
 openclaw_cheap_model: "{{ openclaw_model_profiles[openclaw_model_profile].quick }}"
 openclaw_messenger_model: "{{ openclaw_model_profiles[openclaw_model_profile].code }}"
+# Director uses reasoning model — needs strategic thinking for production decisions
+openclaw_director_model: "{{ openclaw_model_profiles[openclaw_model_profile].reasoning }}"
 
 # --- Skills ---
 # Centralized list of all OpenClaw skills (used in 3 task loops: dirs, deploy, cleanup)
@@ -238,6 +245,7 @@ openclaw_skills:
   - idea-planning
   - palais-bridge
   - swarm-coordinator
+  - studio-produce
 
 # Skills supprimés — Ansible les supprime du répertoire global sur le VPS
 # Ajouter ici les skills obsolètes pour nettoyage automatique
@@ -317,6 +325,7 @@ openclaw_telegram_topics:
   recherche: { topic_id: "{{ telegram_openclaw_topic_ids.recherche | default('') }}", agent: "{{ openclaw_agent_explorer_name }}" }
   ecriture: { topic_id: "{{ telegram_openclaw_topic_ids.ecriture | default('') }}", agent: "{{ openclaw_agent_writer_name }}" }
   ecole: { topic_id: "{{ telegram_openclaw_topic_ids.ecole | default('') }}", agent: "{{ openclaw_agent_tutor_name }}" }
+  studio: { topic_id: "{{ telegram_openclaw_topic_ids.studio | default('') }}", agent: "{{ openclaw_agent_director_name }}" }
 
 # --- WhatsApp (Tutor channel — child tablet) ---
 # whatsapp_tutor_enabled and phone set in main.yml
@@ -341,6 +350,7 @@ plane_agent_names:
   - "{{ openclaw_agent_cfo_name }}"
   - "{{ openclaw_agent_maintainer_name }}"
   - "{{ openclaw_agent_messenger_name }}"
+  - "{{ openclaw_agent_director_name }}"
 
 plane_workspace_slug: "ewutelo"
 
@@ -376,6 +386,12 @@ openclaw_swarm_graph:
     - "{{ openclaw_agent_artist_name }}"       # Visuals for campaigns
     - "{{ openclaw_agent_explorer_name }}"     # Market research
   maintainer: []    # No lateral spawn — escalates to Concierge for fixes (prevents builder↔maintainer fork bomb cycle)
+  director:
+    - "{{ openclaw_agent_artist_name }}"       # Visual generation (storyboard, images)
+    - "{{ openclaw_agent_writer_name }}"       # Script writing, prompt engineering
+    - "{{ openclaw_agent_explorer_name }}"     # Reference research, style discovery
+    - "{{ openclaw_agent_marketer_name }}"     # Publication, social media
+    - "{{ openclaw_agent_cfo_name }}"          # Budget tracking for productions
   cfo:
     - "{{ openclaw_agent_explorer_name }}"     # Research pricing/providers
 

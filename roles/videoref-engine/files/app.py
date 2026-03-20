@@ -591,23 +591,30 @@ async def _kitsu_create_project(
         },
     )
 
-    # Associate our custom task types with the new project
-    our_task_types = [
-        "Brief", "Research", "Script", "Storyboard", "Voiceover",
-        "Music", "Image Gen", "Video Gen", "Montage", "Subtitles",
-        "Color Grade", "Review", "Export", "Publish",
-    ]
+    # Associate ALL task types with the new project (not just ours)
+    # This ensures any task type can be used, matching Paul Taff config
     all_types = await _kitsu_api(session, "GET", "/data/task-types")
     for tt in all_types:
-        if tt["name"] in our_task_types:
-            try:
-                await _kitsu_api(
-                    session, "POST",
-                    f"/data/projects/{project['id']}/settings/task-types",
-                    json_body={"task_type_id": tt["id"]},
-                )
-            except Exception:
-                pass  # May already be associated
+        try:
+            await _kitsu_api(
+                session, "POST",
+                f"/data/projects/{project['id']}/settings/task-types",
+                json_body={"task_type_id": tt["id"]},
+            )
+        except Exception:
+            pass  # May already be associated
+
+    # Associate all task statuses
+    all_statuses = await _kitsu_api(session, "GET", "/data/task-status")
+    for ts in all_statuses:
+        try:
+            await _kitsu_api(
+                session, "POST",
+                f"/data/projects/{project['id']}/settings/task-statuses",
+                json_body={"task_status_id": ts["id"]},
+            )
+        except Exception:
+            pass
 
     # Associate VideoRef entity type
     entity_types = await _kitsu_api(session, "GET", "/data/entity-types")
@@ -839,9 +846,12 @@ async def _kitsu_upload_preview(
     session: aiohttp.ClientSession,
     task_id: str,
     comment_id: str,
-    frame_path: Path,
+    frame_data: Path | bytes,
 ) -> str | None:
-    """Upload a keyframe as preview on a comment. Returns preview file ID."""
+    """Upload a keyframe as preview on a comment. Returns preview file ID.
+
+    frame_data: Path to image file, OR raw bytes.
+    """
     # Step 1: create preview entry
     preview = await _kitsu_api(
         session, "POST",
@@ -852,11 +862,18 @@ async def _kitsu_upload_preview(
         return None
     preview_id = preview["id"]
 
-    # Step 2: upload the file (POST, not PUT — Zou 1.0.21+)
+    # Step 2: upload the file
+    if isinstance(frame_data, bytes):
+        img_bytes = frame_data
+        filename = "storyboard.png"
+    else:
+        img_bytes = frame_data.read_bytes()
+        filename = frame_data.name
+
     form = aiohttp.FormData()
     form.add_field(
-        "file", frame_path.read_bytes(),
-        filename=frame_path.name, content_type="image/jpeg",
+        "file", img_bytes,
+        filename=filename, content_type="image/png",
     )
     await _kitsu_api(
         session, "POST",
@@ -1699,15 +1716,42 @@ async def _composer_select_model(
                 data = await resp.json()
                 results = data.get("result", [])
 
-                # Filter by task match + pick highest quality
-                best = None
+                # Pick first result that matches task type
+                # If task mentions "image" or "storyboard", skip video models
+                is_image_task = any(
+                    w in task.lower()
+                    for w in ["image", "storyboard", "keyframe", "character", "inpaint", "upscale"]
+                )
+                is_video_task = any(
+                    w in task.lower()
+                    for w in ["video", "animate", "clip", "motion"]
+                )
+
                 for hit in results:
                     p = hit["payload"]
-                    tasks = p.get("tasks", [])
-                    if any(t in task.lower() for t in tasks) or hit["score"] > 0.45:
-                        if best is None or p.get("quality", 0) > best.get("quality", 0):
-                            best = p
-                return best
+                    node = p.get("node", "").lower()
+                    name = p.get("name", "").lower()
+
+                    # Skip video models for image tasks
+                    if is_image_task and not is_video_task:
+                        if any(v in node or v in name for v in [
+                            "video", "kling", "veo", "seedance", "runway",
+                            "sora", "luma", "minimax", "wan2", "animate",
+                        ]):
+                            continue
+
+                    # Skip image models for video tasks
+                    if is_video_task and not is_image_task:
+                        if not any(v in node or v in name for v in [
+                            "video", "kling", "veo", "seedance", "runway",
+                            "sora", "luma", "minimax", "wan2", "animate",
+                        ]):
+                            continue
+
+                    return p  # First matching result (highest similarity)
+
+                # Fallback: return first result regardless
+                return results[0]["payload"] if results else None
     except Exception as exc:
         print(f"[composer] Model selection error: {exc}")
         return None
@@ -1762,8 +1806,14 @@ async def _composer_build_workflow(
             if reference_image:
                 inputs["image"] = reference_image
         else:
-            # Image gen
-            if "image_size" in str(model):
+            # Image gen — only add size params if the node accepts them
+            # NanoBanana only takes prompt (+ optional aspect_ratio)
+            node_lower = node_name.lower()
+            if "nanobanana" in node_lower or "gpt" in node_lower:
+                # These nodes auto-size, just pass aspect_ratio if available
+                if width != height:
+                    inputs["aspect_ratio"] = "16:9" if width > height else "9:16"
+            elif "image_size" in str(model):
                 inputs["image_size"] = f"{width}x{height}"
             else:
                 inputs["width"] = width
@@ -1777,10 +1827,19 @@ async def _composer_build_workflow(
             "class_type": node_name,
             "inputs": inputs,
         }
-        workflow["prompt"]["2"] = {
-            "class_type": "SaveImage_fal" if "video" not in node_name.lower() else "SaveImage",
-            "inputs": {"images": ["1", 0], "filename_prefix": "composer"},
-        }
+
+        # fal.ai image nodes (ComfyUI-fal-API) return IMAGE tensors directly
+        # Chain to SaveImage for local file output
+        if "video" not in node_name.lower():
+            workflow["prompt"]["2"] = {
+                "class_type": "SaveImage",
+                "inputs": {"images": ["1", 0], "filename_prefix": "composer"},
+            }
+        else:
+            workflow["prompt"]["2"] = {
+                "class_type": "SaveImage",
+                "inputs": {"images": ["1", 0], "filename_prefix": "composer"},
+            }
 
         workflow["_metadata"] = {
             "composer": True,
@@ -1825,22 +1884,97 @@ def _build_local_workflow(
     }
 
 
-async def _composer_submit(workflow: dict[str, Any]) -> dict[str, Any]:
-    """Submit a workflow to ComfyUI /prompt API and return the result."""
+async def _composer_submit(
+    workflow: dict[str, Any], wait: bool = True, timeout_s: int = 180,
+) -> dict[str, Any]:
+    """Submit a workflow to ComfyUI /prompt API, optionally wait for result.
+
+    If wait=True, polls /history/{prompt_id} until the image is ready,
+    then returns {"status": "completed", "prompt_id": ..., "images": [...]}.
+    """
     try:
         async with aiohttp.ClientSession() as session:
+            # Queue the prompt
             async with session.post(
                 f"{COMFYUI_API_URL}/prompt",
                 json={"prompt": workflow.get("prompt", workflow)},
-                timeout=aiohttp.ClientTimeout(total=120),
+                timeout=aiohttp.ClientTimeout(total=30),
             ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    return {"status": "queued", "prompt_id": data.get("prompt_id", "")}
-                body = await resp.text()
-                return {"error": f"ComfyUI {resp.status}: {body[:200]}"}
+                if resp.status != 200:
+                    body = await resp.text()
+                    return {"error": f"ComfyUI {resp.status}: {body[:200]}"}
+                data = await resp.json()
+                prompt_id = data.get("prompt_id", "")
+
+            if not wait or not prompt_id:
+                return {"status": "queued", "prompt_id": prompt_id}
+
+            # Poll /history/{prompt_id} until complete
+            for _ in range(timeout_s // 3):
+                await asyncio.sleep(3)
+                try:
+                    async with session.get(
+                        f"{COMFYUI_API_URL}/history/{prompt_id}",
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as hist_resp:
+                        if hist_resp.status != 200:
+                            continue
+                        history = await hist_resp.json()
+                        if prompt_id not in history:
+                            continue
+                        entry = history[prompt_id]
+                        status = entry.get("status", {})
+                        if status.get("completed", False):
+                            # Extract output images
+                            images = []
+                            for node_id, outputs in entry.get("outputs", {}).items():
+                                for img in outputs.get("images", []):
+                                    images.append({
+                                        "filename": img.get("filename", ""),
+                                        "subfolder": img.get("subfolder", ""),
+                                        "type": img.get("type", "output"),
+                                    })
+                            return {
+                                "status": "completed",
+                                "prompt_id": prompt_id,
+                                "images": images,
+                            }
+                        if status.get("status_str") == "error":
+                            return {
+                                "status": "error",
+                                "prompt_id": prompt_id,
+                                "error": str(status.get("messages", ""))[:300],
+                            }
+                except Exception:
+                    continue
+
+            return {"status": "timeout", "prompt_id": prompt_id}
     except Exception as exc:
         return {"error": f"ComfyUI submit failed: {exc}"}
+
+
+async def _composer_download_image(
+    image_info: dict[str, Any],
+) -> bytes | None:
+    """Download a generated image from ComfyUI /view endpoint."""
+    filename = image_info.get("filename", "")
+    subfolder = image_info.get("subfolder", "")
+    img_type = image_info.get("type", "output")
+    if not filename:
+        return None
+    try:
+        async with aiohttp.ClientSession() as session:
+            params = {"filename": filename, "subfolder": subfolder, "type": img_type}
+            async with session.get(
+                f"{COMFYUI_API_URL}/view",
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                if resp.status == 200:
+                    return await resp.read()
+    except Exception:
+        pass
+    return None
 
 
 def _generate_asset_name(analysis: dict[str, Any], filename: str = "") -> str:
@@ -1976,10 +2110,38 @@ async def _step_brief(
                 await _kitsu_post_comment(
                     session, task["id"], done_id, f"Brief: {description}",
                 )
+
+                # Create a Concept entity for the brief (visible in Concepts tab)
+                concept_result = await _kitsu_api(
+                    session, "POST",
+                    f"/data/projects/{project_id}/concepts",
+                    json_body={
+                        "name": f"Brief — {job['title'][:60]}",
+                        "description": (
+                            f"{description}\n\n"
+                            f"Camera: {job.get('camera', 'N/A')}\n"
+                            f"Lens: {job.get('lens', 'N/A')}\n"
+                            f"FPS: {fps}\n"
+                            f"Resolution: {resolution}\n"
+                            f"Style: {style}"
+                        ),
+                        "data": {
+                            "type": "brief",
+                            "camera": job.get("camera", ""),
+                            "lens": job.get("lens", ""),
+                            "fps": fps,
+                            "resolution": resolution,
+                            "style": style,
+                        },
+                    },
+                )
+                concept_id = concept_result.get("id", "") if concept_result else ""
+
                 kitsu_result = {
                     "project_id": project_id,
                     "project_name": job["title"],
                     "task_id": task["id"],
+                    "concept_id": concept_id,
                     "status": "done",
                 }
         except Exception as exc:
@@ -2028,7 +2190,7 @@ async def _step_script(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Handle script step: generate prompts per scene with camera presets."""
-    scenes = params.get("scenes", job.get("scenes", []))
+    scenes = params.get("scenes", job.get("scene_analyses", job.get("scenes", [])))
     modifications = params.get("modifications", {})
     presets = await _load_camera_presets()
 
@@ -2095,10 +2257,22 @@ async def _step_storyboard(
     model = await _composer_select_model("storyboard text-to-image fast cheap", budget)
     model_name = model["name"] if model else "fallback"
 
+    # If no scene_prompts yet, use job description as single prompt
+    if not scene_prompts:
+        desc = job.get("description", job.get("title", ""))
+        if desc:
+            scene_prompts = [{"enriched": desc, "original": desc, "scene_index": 1}]
+
     for sp in scene_prompts:
         prompt = sp.get("enriched", sp.get("original", ""))
         if not prompt:
             continue
+
+        scene_result: dict[str, Any] = {
+            "scene": sp.get("scene_index", 0),
+            "model": model_name,
+            "prompt": prompt[:100],
+        }
 
         if model:
             # Composer workflow: selected model
@@ -2110,13 +2284,44 @@ async def _step_storyboard(
                 camera=job.get("camera", ""),
                 lens=job.get("lens", ""),
             )
-            submit_result = await _composer_submit(workflow)
-            results.append({
-                "scene": sp.get("scene_index", 0),
-                "model": model_name,
-                "prompt": prompt[:100],
-                "result": submit_result,
-            })
+            # Submit and WAIT for completion
+            submit_result = await _composer_submit(workflow, wait=True, timeout_s=180)
+            scene_result["comfyui"] = submit_result
+
+            # Download generated image if available
+            images = submit_result.get("images", [])
+            if images:
+                img_bytes = await _composer_download_image(images[0])
+                if img_bytes:
+                    scene_result["image_size"] = len(img_bytes)
+                    # Save locally
+                    img_path = COMFYUI_DIR / f"storyboard_{job['job_id'][:8]}_s{sp.get('scene_index',0)}.png"
+                    img_path.write_bytes(img_bytes)
+                    scene_result["image_path"] = str(img_path)
+
+                    # Upload to Kitsu as preview on storyboard task
+                    if KITSU_URL and KITSU_TOKEN:
+                        try:
+                            shot_id = job.get("kitsu_overview_shot_id", "")
+                            project_id = job.get("kitsu_project_id", "")
+                            if shot_id and project_id:
+                                async with aiohttp.ClientSession() as ks:
+                                    task_type_id = await _kitsu_get_task_type_id(ks, "Storyboard CF")
+                                    task = await _kitsu_get_or_create_task(
+                                        ks, shot_id, task_type_id, project_id,
+                                    )
+                                    wfa_id = await _kitsu_get_status_id(ks, "wfa")
+                                    comment = await _kitsu_post_comment(
+                                        ks, task["id"], wfa_id,
+                                        f"Storyboard frame S{sp.get('scene_index',0)} — {model_name}\n{prompt[:200]}",
+                                    )
+                                    if comment and comment.get("id"):
+                                        pid = await _kitsu_upload_preview(
+                                            ks, task["id"], comment["id"], img_bytes,
+                                        )
+                                        scene_result["kitsu_preview_id"] = pid
+                        except Exception as ke:
+                            scene_result["kitsu_error"] = str(ke)
         else:
             # Fallback to n8n creative pipeline
             n8n_result = await _call_n8n_creative(
@@ -2125,7 +2330,9 @@ async def _step_storyboard(
                 scene_index=sp.get("scene_index", 0),
                 job_id=job["job_id"],
             )
-            results.append({"scene": sp.get("scene_index", 0), "model": "n8n", "result": n8n_result})
+            scene_result["n8n"] = n8n_result
+
+        results.append(scene_result)
 
     kitsu_result = await _kitsu_step_task(
         job, "Storyboard CF", "wfa",
@@ -2136,6 +2343,7 @@ async def _step_storyboard(
         "status": "ok",
         "model_used": model_name,
         "budget": budget,
+        "frames_generated": len([r for r in results if r.get("image_path")]),
         "storyboard_results": results,
         "kitsu": kitsu_result,
     }, {}
@@ -2789,16 +2997,16 @@ async def _kitsu_step_task(
     if not KITSU_URL or not KITSU_TOKEN:
         return {"skipped": "KITSU not configured"}
 
-    seq_id = job.get("kitsu_sequence_id", "")
+    shot_id = job.get("kitsu_overview_shot_id", "")
     project_id = job.get("kitsu_project_id", "")
-    if not seq_id or not project_id:
-        return {"skipped": "No Kitsu sequence in job"}
+    if not shot_id or not project_id:
+        return {"skipped": "No Kitsu shot in job"}
 
     try:
         async with aiohttp.ClientSession() as session:
             task_type_id = await _kitsu_get_task_type_id(session, task_type_name)
             task = await _kitsu_get_or_create_task(
-                session, seq_id, task_type_id, project_id,
+                session, shot_id, task_type_id, project_id,
             )
             status_id = await _kitsu_get_status_id(session, target_status)
             comment = await _kitsu_post_comment(
@@ -3212,7 +3420,12 @@ async def produce_step(request: web.Request) -> web.Response:
     data = await request.json()
     job_id = data.get("job_id", "")
     step_id = data.get("step", "")
+    # Params can be nested in "params" key OR flat in body (CLI sends flat)
     params = data.get("params", {})
+    # Merge top-level keys into params (skip control keys)
+    for k, v in data.items():
+        if k not in ("job_id", "step", "params") and k not in params:
+            params[k] = v
 
     if not job_id:
         return web.json_response({"error": "job_id required"}, status=400)

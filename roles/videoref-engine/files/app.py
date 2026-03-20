@@ -2137,11 +2137,58 @@ async def _step_brief(
                 )
                 concept_id = concept_result.get("id", "") if concept_result else ""
 
+                # Generate a mood board image for the Concept via NanoBanana
+                concept_preview_id = ""
+                try:
+                    mood_prompt = (
+                        f"cinematic mood board for: {description[:200]}, "
+                        f"{style} style, professional concept art, "
+                        f"color palette, visual reference sheet"
+                    )
+                    mood_model = await _composer_select_model(
+                        "storyboard text-to-image concept art mood board", "eco",
+                    )
+                    if mood_model:
+                        mood_wf = await _composer_build_workflow(
+                            mood_model, mood_prompt,
+                            width=1024, height=768,
+                            style=style,
+                            camera=job.get("camera", ""),
+                            lens=job.get("lens", ""),
+                        )
+                        mood_result = await _composer_submit(
+                            mood_wf, wait=True, timeout_s=120,
+                        )
+                        mood_images = mood_result.get("images", [])
+                        if mood_images:
+                            mood_bytes = await _composer_download_image(mood_images[0])
+                            if mood_bytes:
+                                # Upload as concept preview via Concept task
+                                concept_tt = await _kitsu_get_task_type_id(
+                                    session, "Concept",
+                                )
+                                concept_task = await _kitsu_get_or_create_task(
+                                    session, concept_id, concept_tt, project_id,
+                                )
+                                concept_done = await _kitsu_get_done_status_id(session)
+                                concept_comment = await _kitsu_post_comment(
+                                    session, concept_task["id"], concept_done,
+                                    f"Mood board — {description[:100]}",
+                                )
+                                if concept_comment and concept_comment.get("id"):
+                                    concept_preview_id = await _kitsu_upload_preview(
+                                        session, concept_task["id"],
+                                        concept_comment["id"], mood_bytes,
+                                    ) or ""
+                except Exception as mood_exc:
+                    concept_preview_id = f"error: {mood_exc}"
+
                 kitsu_result = {
                     "project_id": project_id,
                     "project_name": job["title"],
                     "task_id": task["id"],
                     "concept_id": concept_id,
+                    "concept_preview_id": concept_preview_id,
                     "status": "done",
                 }
         except Exception as exc:

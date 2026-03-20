@@ -2262,7 +2262,16 @@ async def _step_script(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Handle script step: generate prompts per scene with camera presets."""
     scenes = params.get("scenes", job.get("scene_analyses", job.get("scenes", [])))
-    modifications = params.get("modifications", {})
+    modifications_raw = params.get("modifications", {})
+    # Parse string modifications: "key=val,key2=val2" → dict
+    if isinstance(modifications_raw, str):
+        modifications = {}
+        for part in modifications_raw.split(","):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                modifications[k.strip()] = v.strip()
+    else:
+        modifications = modifications_raw or {}
     presets = await _load_camera_presets()
 
     scene_prompts: list[dict[str, Any]] = []

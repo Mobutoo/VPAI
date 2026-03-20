@@ -184,7 +184,7 @@ qdrant_videoref_collection: "videoref_styles"
 
 # --- LiteLLM budget caps (USD per day) ---
 # Budget global cross-providers (hard cap absolu)
-litellm_budget_global_daily: 5.00
+litellm_budget_global_daily: 10.00
 
 # Budget par provider (somme = budget global)
 # Répartition : OpenRouter 65%, Anthropic 15%, OpenAI 10%, Google 5%, zAI 5%

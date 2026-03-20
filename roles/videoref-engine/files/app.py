@@ -31,11 +31,14 @@ QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "videoref_styles")
 N8N_CREATIVE_PIPELINE_URL = os.environ.get("N8N_CREATIVE_PIPELINE_URL", "")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+TELEGRAM_TOPIC_ID = os.environ.get("TELEGRAM_TOPIC_ID", "")
 
 COMFYUI_API_URL = os.environ.get("COMFYUI_API_URL", "http://workstation_comfyui:8188")
+FAL_API_KEY = os.environ.get("FAL_API_KEY", "")
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 MODEL_REGISTRY_COLLECTION = "model-registry"
 
-VERSION = "0.9.0"
+VERSION = "0.11.0"
 SCENE_THRESHOLD = 0.3
 SHORT_VIDEO_SECONDS = 30
 JOBS_DIR = OUTPUT_DIR / "jobs"
@@ -565,12 +568,13 @@ async def _kitsu_get_asset_library(
 async def _kitsu_create_project(
     session: aiohttp.ClientSession,
     title: str,
-    production_type: str = "short",
+    production_type: str = "tvshow",
 ) -> dict[str, Any]:
     """Create a new Kitsu project (production) for a job.
 
     Each vref produce-start creates its own project so it appears
     as a separate production in the Kitsu UI.
+    Uses 'tvshow' (not 'short') so assets + shots + concepts all work.
     production_type: 'short', 'tvshow', 'featurefilm', 'shots', 'assets'
     """
     # Get Open status
@@ -616,17 +620,14 @@ async def _kitsu_create_project(
         except Exception:
             pass
 
-    # Associate VideoRef entity type
-    entity_types = await _kitsu_api(session, "GET", "/data/entity-types")
-    vref_type = next(
-        (t for t in entity_types if t["name"] == "VideoRef"), None
-    )
-    if vref_type:
+    # Associate ALL asset types with the project
+    all_asset_types = await _kitsu_api(session, "GET", "/data/asset-types")
+    for at in (all_asset_types or []):
         try:
             await _kitsu_api(
                 session, "POST",
                 f"/data/projects/{project['id']}/settings/asset-types",
-                json_body={"asset_type_id": vref_type["id"]},
+                json_body={"asset_type_id": at["id"]},
             )
         except Exception:
             pass
@@ -744,6 +745,51 @@ async def _kitsu_create_sequence(
     return result
 
 
+async def _kitsu_get_asset_type_id(
+    session: aiohttp.ClientSession,
+    name: str,
+) -> str:
+    """Get asset type ID by name. Falls back to first available type.
+
+    Does NOT create types (requires admin). Uses existing types:
+    VideoRef, Environment, Character, Prop, FX.
+    """
+    types = await _kitsu_api(session, "GET", "/data/asset-types")
+    for t in (types or []):
+        if t.get("name", "").lower() == name.lower():
+            return t["id"]
+    # Fallback: use "VideoRef" or first available
+    for t in (types or []):
+        if t.get("name", "").lower() == "videoref":
+            return t["id"]
+    return types[0]["id"] if types else ""
+
+
+async def _kitsu_create_asset(
+    session: aiohttp.ClientSession,
+    project_id: str,
+    asset_type_id: str,
+    name: str,
+    description: str = "",
+    data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create an asset in a Kitsu project.
+
+    Zou API: POST /data/projects/{project_id}/asset-types/{asset_type_id}/assets/new
+    """
+    body: dict[str, Any] = {
+        "name": name,
+        "description": description,
+    }
+    if data:
+        body["data"] = data
+    return await _kitsu_api(
+        session, "POST",
+        f"/data/projects/{project_id}/asset-types/{asset_type_id}/assets/new",
+        json_body=body,
+    )
+
+
 async def _kitsu_create_shot(
     session: aiohttp.ClientSession,
     project_id: str,
@@ -834,11 +880,14 @@ async def _kitsu_post_comment(
     status_id: str,
     text: str,
 ) -> dict[str, Any]:
-    """Post a comment on a task, setting status."""
+    """Post a comment on a task, setting status.
+
+    IMPORTANT: Zou API uses field name "comment" (not "text") for the body.
+    """
     return await _kitsu_api(
         session, "POST",
         f"/actions/tasks/{task_id}/comment",
-        json_body={"task_status_id": status_id, "text": text},
+        json_body={"task_status_id": status_id, "comment": text},
     )
 
 
@@ -892,6 +941,84 @@ async def _kitsu_upload_preview(
         pass  # Non-critical if setting main preview fails
 
     return preview_id
+
+
+async def _kitsu_upload_concept_preview(
+    session: aiohttp.ClientSession,
+    concept_id: str,
+    image_bytes: bytes,
+) -> str | None:
+    """Upload a preview image directly to a Concept entity.
+
+    In Kitsu, concept previews work differently from task previews:
+    - POST /data/concepts/{id} with multipart file creates the preview
+    - The concept thumbnail is generated from this preview
+    """
+    if not concept_id or not image_bytes:
+        return None
+
+    # Step 1: create a preview file record linked to the concept
+    # Zou API: POST /actions/entities/{entity_id}/set-main-preview
+    # But first we need to create the preview via a different mechanism.
+    #
+    # For concepts, the Kitsu web UI uploads directly via:
+    # POST /pictures/concepts/{concept_id} (multipart form)
+    # This creates a preview_file and sets it as concept thumbnail.
+    try:
+        form = aiohttp.FormData()
+        form.add_field(
+            "file", image_bytes,
+            filename="mood_board.png", content_type="image/png",
+        )
+        result = await _kitsu_api(
+            session, "POST",
+            f"/pictures/concepts/{concept_id}",
+            data=form,
+        )
+        return result.get("id", "") if result else None
+    except Exception:
+        pass
+
+    # Fallback: use the task-based approach with set-main-preview
+    # Create a task on the concept, post comment, upload preview
+    try:
+        concept_tt = await _kitsu_get_task_type_id(session, "Concept")
+        # Get project_id from the concept
+        concept_data = await _kitsu_api(
+            session, "GET", f"/data/concepts/{concept_id}",
+        )
+        project_id = concept_data.get("project_id", "") if concept_data else ""
+        if not project_id:
+            return None
+
+        concept_task = await _kitsu_get_or_create_task(
+            session, concept_id, concept_tt, project_id,
+        )
+        done_id = await _kitsu_get_done_status_id(session)
+        comment = await _kitsu_post_comment(
+            session, concept_task["id"], done_id,
+            "Mood board from video reference",
+        )
+        if comment and comment.get("id"):
+            preview_id = await _kitsu_upload_preview(
+                session, concept_task["id"],
+                comment["id"], image_bytes,
+            )
+            # Also try to set concept preview_file_id directly
+            if preview_id:
+                try:
+                    await _kitsu_api(
+                        session, "PUT",
+                        f"/data/concepts/{concept_id}",
+                        json_body={"preview_file_id": preview_id},
+                    )
+                except Exception:
+                    pass
+            return preview_id
+    except Exception:
+        pass
+
+    return None
 
 
 async def _kitsu_create_playlist(
@@ -1591,20 +1718,183 @@ def _advance_job(job: dict[str, Any], step_id: str, extras: dict[str, Any] | Non
 # 15. Telegram notification helper
 # ============================================================
 async def _send_telegram(message: str) -> bool:
-    """Send a Telegram notification. Returns True on success."""
+    """Send a Telegram notification to the Studio topic. Returns True on success."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return False
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload: dict[str, Any] = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "Markdown",
+    }
+    if TELEGRAM_TOPIC_ID:
+        payload["message_thread_id"] = int(TELEGRAM_TOPIC_ID)
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                url,
-                json={"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"},
+                url, json=payload,
                 timeout=aiohttp.ClientTimeout(total=10),
             ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    print(f"[telegram] sendMessage failed: {resp.status} {body[:200]}", flush=True)
                 return resp.status == 200
-    except Exception:
+    except Exception as exc:
+        print(f"[telegram] sendMessage error: {exc}", flush=True)
         return False
+
+
+async def _send_telegram_photo(
+    image_bytes: bytes, caption: str = "",
+) -> bool:
+    """Send a photo to the Studio topic via Telegram bot. Returns True on success."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    try:
+        form = aiohttp.FormData()
+        form.add_field("chat_id", TELEGRAM_CHAT_ID)
+        if TELEGRAM_TOPIC_ID:
+            form.add_field("message_thread_id", TELEGRAM_TOPIC_ID)
+        form.add_field(
+            "photo", image_bytes,
+            filename="preview.png", content_type="image/png",
+        )
+        if caption:
+            form.add_field("caption", caption[:1024])
+            form.add_field("parse_mode", "Markdown")
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url, data=form,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    print(f"[telegram] sendPhoto failed: {resp.status} {body[:200]}", flush=True)
+                return resp.status == 200
+    except Exception as exc:
+        print(f"[telegram] sendPhoto error: {exc}", flush=True)
+        return False
+
+
+async def _send_telegram_video(
+    video_bytes: bytes, caption: str = "",
+) -> bool:
+    """Send a video to the Studio topic via Telegram bot. Returns True on success."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendVideo"
+    try:
+        form = aiohttp.FormData()
+        form.add_field("chat_id", TELEGRAM_CHAT_ID)
+        if TELEGRAM_TOPIC_ID:
+            form.add_field("message_thread_id", TELEGRAM_TOPIC_ID)
+        form.add_field(
+            "video", video_bytes,
+            filename="clip.mp4", content_type="video/mp4",
+        )
+        if caption:
+            form.add_field("caption", caption[:1024])
+            form.add_field("parse_mode", "Markdown")
+        # Telegram accepts up to 50MB for bots
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url, data=form,
+                timeout=aiohttp.ClientTimeout(total=120),
+            ) as resp:
+                ok = resp.status == 200
+                if not ok:
+                    body = await resp.text()
+                    print(f"[telegram] sendVideo failed: {resp.status} {body[:200]}", flush=True)
+                else:
+                    print(f"[telegram] sendVideo OK ({len(video_bytes)} bytes)", flush=True)
+                return ok
+    except Exception as exc:
+        print(f"[telegram] sendVideo error: {exc}", flush=True)
+        return False
+
+
+async def _send_telegram_video_url(
+    video_url: str, job: dict[str, Any], step_id: str,
+) -> bool:
+    """Send a video URL to Telegram (Telegram downloads & streams it)."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return False
+    title = job.get("title", "Unknown")
+    slug = job.get("slug", job.get("job_id", "?")[:12])
+    completed = len(job.get("steps_completed", [])) + 1
+    total = len(PIPELINE_STEPS)
+    step_info = STEP_MAP.get(step_id, {})
+    step_label = step_info.get("task_type", step_id)
+
+    kitsu_base = KITSU_URL or "https://boss.ewutelo.cloud"
+    caption = (
+        f"*{step_label}* termine\n"
+        f"Production: *{title}*\n"
+        f"Progression: {completed}/{total}\n"
+        f"[Ouvrir Kitsu]({kitsu_base})\n"
+        f"Job: `{slug}`"
+    )
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendVideo"
+    try:
+        payload = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "video": video_url,
+            "caption": caption[:1024],
+            "parse_mode": "Markdown",
+        }
+        if TELEGRAM_TOPIC_ID:
+            payload["message_thread_id"] = int(TELEGRAM_TOPIC_ID)
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url, json=payload,
+                timeout=aiohttp.ClientTimeout(total=60),
+            ) as resp:
+                ok = resp.status == 200
+                if not ok:
+                    body = await resp.text()
+                    print(f"[telegram] sendVideo URL failed: {resp.status} {body[:200]}", flush=True)
+                else:
+                    print(f"[telegram] sendVideo URL OK", flush=True)
+                return ok
+    except Exception as exc:
+        print(f"[telegram] sendVideo URL error: {exc}", flush=True)
+        return False
+
+
+async def _notify_step_completed(
+    job: dict[str, Any], step_id: str,
+    preview_bytes: bytes | None = None,
+    video_bytes: bytes | None = None,
+) -> bool:
+    """Send Telegram notification after each pipeline step.
+
+    Sends video if video_bytes, photo if preview_bytes, otherwise text-only.
+    """
+    title = job.get("title", "Unknown")
+    slug = job.get("slug", job["job_id"][:12])
+    completed = len(job.get("steps_completed", [])) + 1
+    total = len(PIPELINE_STEPS)
+    step_info = STEP_MAP.get(step_id, {})
+    step_label = step_info.get("task_type", step_id)
+    needs_human = step_info.get("needs_human", False)
+
+    kitsu_base = KITSU_URL or "https://boss.ewutelo.cloud"
+    gate = "\n\n*Validation requise* — repondre dans Kitsu" if needs_human else ""
+    msg = (
+        f"*{step_label}* termine\n"
+        f"Production: *{title}*\n"
+        f"Progression: {completed}/{total}\n"
+        f"[Ouvrir Kitsu]({kitsu_base}){gate}\n"
+        f"Job: `{slug}`"
+    )
+
+    if video_bytes:
+        return await _send_telegram_video(video_bytes, msg)
+    if preview_bytes:
+        return await _send_telegram_photo(preview_bytes, msg)
+    return await _send_telegram(msg)
 
 
 # ============================================================
@@ -1766,6 +2056,435 @@ def _budget_tiers(budget: str) -> list[str]:
     return ["eco", "balanced", "premium"]
 
 
+def _resolve_aspect_ratio(width: int, height: int) -> str:
+    """Compute best standard aspect ratio from pixel dimensions."""
+    ratio = width / height if height > 0 else 1.0
+    if ratio > 1.8:
+        return "21:9"
+    if ratio > 1.4:
+        return "16:9"
+    if ratio > 1.2:
+        return "4:3"
+    if ratio > 0.85:
+        return "1:1"
+    if ratio > 0.65:
+        return "3:4"
+    if ratio > 0.5:
+        return "9:16"
+    return "9:21"
+
+
+# Node specs from ComfyUI-fal-API source code (2026-03-20).
+# IMAGE nodes return IMAGE tensor → need SaveImage.
+# VIDEO nodes return STRING (URL) → NO SaveImage.
+_FAL_NODE_SPECS: dict[str, dict[str, Any]] = {
+    # === IMAGE NODES (return IMAGE tensor) ===
+    "NanoBananaTextToImage_fal": {
+        "output": "IMAGE",
+        "size_param": "aspect_ratio",
+        "extra_defaults": {},
+    },
+    "NanoBanana2_fal": {
+        "output": "IMAGE",
+        "size_param": "aspect_ratio+resolution",
+        "extra_defaults": {"resolution": "1K"},
+    },
+    "NanoBananaPro_fal": {
+        "output": "IMAGE",
+        "size_param": "aspect_ratio+resolution",
+        "extra_defaults": {"resolution": "2K"},
+    },
+    "Imagen4Preview_fal": {
+        "output": "IMAGE",
+        "size_param": None,  # prompt only, zero options
+        "extra_defaults": {},
+    },
+    "FluxSchnell_fal": {
+        "output": "IMAGE",
+        "size_param": "image_size",
+        "extra_defaults": {"num_inference_steps": 4},
+    },
+    "FluxUltra_fal": {
+        "output": "IMAGE",
+        "size_param": "aspect_ratio",
+        "extra_defaults": {"raw": False},
+    },
+    "FluxProKontextTextToImage_fal": {
+        "output": "IMAGE",
+        "size_param": "aspect_ratio",
+        "extra_defaults": {},
+    },
+    "FluxLora_fal": {
+        "output": "IMAGE",
+        "size_param": "image_size",
+        "extra_defaults": {"num_inference_steps": 28, "guidance_scale": 3.0},
+    },
+    "GPTImage15_fal": {
+        "output": "IMAGE",
+        "size_param": "image_size_wxh",  # "1024x1024", "1536x1024", "1024x1536"
+        "extra_defaults": {"quality": "high"},
+    },
+    "Recraft_fal": {
+        "output": "IMAGE",
+        "size_param": "image_size",
+        "extra_defaults": {"style": "realistic_image"},
+    },
+    "Ideogramv3_fal": {
+        "output": "IMAGE",
+        "size_param": "image_size",
+        "extra_defaults": {},
+    },
+    "Hidreamfull_fal": {
+        "output": "IMAGE",
+        "size_param": "image_size",
+        "extra_defaults": {},
+    },
+    "Dreamina31TextToImage_fal": {
+        "output": "IMAGE",
+        "size_param": "image_size_preset",  # presets only, no w/h
+        "extra_defaults": {},
+    },
+    # === VIDEO NODES (return STRING = URL, NO SaveImage) ===
+    "SeedanceTextToVideo_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str",  # "5", "10"
+        "size_param": "aspect_ratio+resolution_p",
+        "extra_defaults": {"resolution": "720p", "camera_fixed": False},
+    },
+    "SeedanceImageToVideo_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str",
+        "size_param": "resolution_p",  # "480p", "720p"
+        "needs_image": True,
+        "extra_defaults": {"resolution": "720p", "camera_fixed": False},
+    },
+    "Kling25TurboPro_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str",
+        "size_param": None,  # no aspect_ratio
+        "needs_image": True,
+        "extra_defaults": {"negative_prompt": "blur, distort, and low quality", "cfg_scale": 0.5},
+    },
+    "Kling26Pro_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str",
+        "size_param": "aspect_ratio",  # t2v only
+        "extra_defaults": {"negative_prompt": "blur, distort, and low quality", "generate_audio": True},
+    },
+    "KlingMaster_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str",
+        "size_param": "aspect_ratio",
+        "extra_defaults": {},
+    },
+    "Kling21Pro_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str",
+        "size_param": None,
+        "needs_image": True,
+        "extra_defaults": {"negative_prompt": "blur, distort, and low quality", "cfg_scale": 0.5},
+    },
+    "Veo3_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str_s",  # "8s"
+        "duration_values": ["8s"],  # fixed
+        "size_param": "aspect_ratio",
+        "extra_defaults": {"enhance_prompt": True, "generate_audio": True},
+    },
+    "Veo31_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str_s",  # "4s", "6s", "8s"
+        "size_param": "aspect_ratio+resolution_p",
+        "needs_image": True,
+        "image_param": "first_frame",  # NOT "image"
+        "extra_defaults": {"resolution": "720p", "generate_audio": True},
+    },
+    "Veo31Fast_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str_s",
+        "size_param": "aspect_ratio+resolution_p",
+        "needs_image": True,
+        "image_param": "first_frame",
+        "extra_defaults": {"resolution": "720p", "generate_audio": True},
+    },
+    "Veo2ImageToVideo_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str_s",  # "5s"-"8s"
+        "size_param": "aspect_ratio",
+        "needs_image": True,
+        "extra_defaults": {},
+    },
+    "LumaDreamMachine_fal": {
+        "output": "STRING",
+        "duration_param": None,
+        "size_param": "aspect_ratio",
+        "extra_defaults": {"mode": "text-to-video"},
+    },
+    "RunwayGen3_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str",
+        "size_param": None,
+        "needs_image": True,
+        "extra_defaults": {},
+    },
+    "Sora2Pro_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "int",  # 4, 8, 12 (integers!)
+        "size_param": "aspect_ratio+resolution_p",
+        "needs_image": True,
+        "extra_defaults": {"resolution": "720p"},
+    },
+    "WanPro_fal": {
+        "output": "STRING",
+        "duration_param": None,
+        "size_param": None,
+        "needs_image": True,
+        "extra_defaults": {},
+    },
+    "Wan25_preview_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str",
+        "size_param": "resolution_p",
+        "needs_image": True,
+        "extra_defaults": {"resolution": "1080p"},
+    },
+    "Wan26_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str",  # "5", "10", "15"
+        "size_param": "aspect_ratio+resolution_p",
+        "extra_defaults": {"resolution": "1080p"},
+    },
+    "KlingOmniReferenceToVideo_fal": {
+        "output": "STRING",
+        "duration_param": "duration",
+        "duration_format": "str",
+        "size_param": "aspect_ratio",
+        "extra_defaults": {},
+    },
+    "MiniMaxSubjectReference_fal": {
+        "output": "STRING",
+        "duration_param": None,
+        "size_param": None,
+        "needs_image": True,
+        "image_param": "subject_reference_image",
+        "extra_defaults": {"prompt_optimizer": True},
+    },
+    "MiniMaxTextToVideo_fal": {
+        "output": "STRING",
+        "duration_param": None,
+        "size_param": None,
+        "extra_defaults": {"prompt_optimizer": True},
+    },
+    "KreaWan14bVideoToVideo_fal": {
+        "output": "STRING",
+        "duration_param": None,
+        "size_param": None,
+        "extra_defaults": {},
+    },
+    "WanVACEVideoEdit_fal": {
+        "output": "STRING",
+        "duration_param": None,
+        "size_param": None,
+        "extra_defaults": {},
+    },
+    "KlingOmniVideoToVideoEdit_fal": {
+        "output": "STRING",
+        "duration_param": None,
+        "size_param": None,
+        "extra_defaults": {},
+    },
+    "Krea_Wan14b_VideoToVideo_fal": {
+        "output": "STRING",
+        "duration_param": None,
+        "size_param": None,
+        "extra_defaults": {},
+    },
+}
+
+
+# Node → fal.ai API endpoint mapping (from ComfyUI-fal-API source code)
+_FAL_ENDPOINTS: dict[str, str] = {
+    "SeedanceTextToVideo_fal": "fal-ai/bytedance/seedance/v1/lite/text-to-video",
+    "SeedanceImageToVideo_fal": "fal-ai/bytedance/seedance/v1/lite/image-to-video",
+    "Kling25TurboPro_fal": "fal-ai/kling-video/v2.5-turbo/pro/image-to-video",
+    "Kling26Pro_fal": "fal-ai/kling-video/v2.6/pro/text-to-video",
+    "KlingMaster_fal": "fal-ai/kling-video/v2/master/text-to-video",
+    "Kling21Pro_fal": "fal-ai/kling-video/v2.1/pro/image-to-video",
+    "Veo3_fal": "fal-ai/veo3",
+    "Veo31_fal": "fal-ai/veo3.1/image-to-video",
+    "Veo31Fast_fal": "fal-ai/veo3.1/fast/image-to-video",
+    "Veo2ImageToVideo_fal": "fal-ai/veo2/image-to-video",
+    "LumaDreamMachine_fal": "fal-ai/luma-dream-machine/ray-2",
+    "RunwayGen3_fal": "fal-ai/runway-gen3/turbo/image-to-video",
+    "Sora2Pro_fal": "fal-ai/sora-2/image-to-video/pro",
+    "WanPro_fal": "fal-ai/wan-pro/image-to-video",
+    "Wan25_preview_fal": "fal-ai/wan-25-preview/image-to-video",
+    "Wan26_fal": "fal-ai/wan/v2.6/text-to-video",
+    "KlingOmniReferenceToVideo_fal": "fal-ai/kling-video/o1/reference-to-video",
+    "MiniMaxSubjectReference_fal": "fal-ai/minimax/video-01-subject-reference",
+    "MiniMaxTextToVideo_fal": "fal-ai/minimax/video-01/text-to-video",
+    "KreaWan14bVideoToVideo_fal": "fal-ai/krea/wan-14b-v2v",
+    "Krea_Wan14b_VideoToVideo_fal": "fal-ai/krea/wan-14b-v2v",
+    "WanVACEVideoEdit_fal": "fal-ai/wan-vace/video-edit",
+    "KlingOmniVideoToVideoEdit_fal": "fal-ai/kling-video/o1/video-to-video/edit",
+}
+
+
+async def _fal_direct_submit(
+    endpoint: str,
+    inputs: dict[str, Any],
+    timeout_s: int = 600,
+) -> dict[str, Any]:
+    """Call fal.ai REST API directly (bypass ComfyUI for video nodes).
+
+    fal.ai queue API: POST /fal/queue/submit → GET /fal/queue/requests/{id}/status
+    Returns {"video_url": "...", "status": "completed"} or {"error": "..."}.
+    """
+    if not FAL_API_KEY:
+        return {"error": "FAL_API_KEY not configured"}
+
+    fal_base = "https://queue.fal.run"
+    headers = {"Authorization": f"Key {FAL_API_KEY}", "Content-Type": "application/json"}
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Submit to queue
+            async with session.post(
+                f"{fal_base}/{endpoint}",
+                headers=headers,
+                json=inputs,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                if resp.status not in (200, 201):
+                    body = await resp.text()
+                    return {"error": f"fal.ai {resp.status}: {body[:300]}"}
+                data = await resp.json()
+
+            # If response has video URL directly (sync mode)
+            if data.get("video", {}).get("url"):
+                return {"status": "completed", "video_url": data["video"]["url"]}
+
+            # Queue mode: poll for result
+            request_id = data.get("request_id", "")
+            status_url = data.get("status_url", "")
+            response_url = data.get("response_url", "")
+
+            if not request_id and not status_url:
+                # Direct response (not queued)
+                video = data.get("video", {})
+                if isinstance(video, dict) and video.get("url"):
+                    return {"status": "completed", "video_url": video["url"]}
+                # Check for list of videos
+                videos = data.get("videos", [])
+                if videos and isinstance(videos[0], dict):
+                    return {"status": "completed", "video_url": videos[0].get("url", "")}
+                return {"status": "completed", "raw": data}
+
+            # Poll status_url
+            poll_url = status_url or f"{fal_base}/{endpoint}/requests/{request_id}/status"
+            # Use response_url from fal.ai as-is — it works for most providers
+            # (Seedance, Veo, Kling, etc.) but may fail for MiniMax.
+            result_url = response_url or f"{fal_base}/{endpoint}/requests/{request_id}"
+            print(f"[fal] Queue: id={request_id[:16]} result_url={result_url[:80]}", flush=True)
+
+            for poll_i in range(timeout_s // 5):
+                await asyncio.sleep(5)
+                try:
+                    async with session.get(
+                        poll_url, headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as poll_resp:
+                        poll_data = await poll_resp.json()
+                        status = poll_data.get("status", "")
+                        if poll_i % 6 == 0:  # Log every 30s
+                            print(f"[fal] Poll {poll_i}: {status} url={poll_url[:80]}", flush=True)
+                        if status == "COMPLETED":
+                            # Fetch result — try response_url, then
+                            # updated response_url from poll if different
+                            poll_result_url = poll_data.get("response_url", "")
+                            urls_to_try = [result_url]
+                            if poll_result_url and poll_result_url != result_url:
+                                urls_to_try.insert(0, poll_result_url)
+
+                            for try_url in urls_to_try:
+                                try:
+                                    async with session.get(
+                                        try_url, headers=headers,
+                                        timeout=aiohttp.ClientTimeout(total=30),
+                                    ) as res_resp:
+                                        if res_resp.status != 200:
+                                            print(f"[fal] Result {res_resp.status} from {try_url[:80]}", flush=True)
+                                            continue
+                                        result = await res_resp.json(content_type=None)
+                                except Exception as fetch_err:
+                                    print(f"[fal] Result fetch error: {fetch_err}", flush=True)
+                                    continue
+
+                                video = result.get("video", {})
+                                if isinstance(video, dict) and video.get("url"):
+                                    print(f"[fal] Got video URL ({len(video['url'])} chars)", flush=True)
+                                    return {"status": "completed", "video_url": video["url"]}
+                                videos = result.get("videos", [])
+                                if videos:
+                                    urls = [v.get("url", "") for v in videos if isinstance(v, dict)]
+                                    if urls:
+                                        print(f"[fal] Got {len(urls)} video URLs", flush=True)
+                                        return {"status": "completed", "video_url": urls[0], "video_urls": urls}
+                                # If got 200 but no video URL, return raw
+                                return {"status": "completed", "raw": result}
+
+                            return {"status": "error", "error": "All result URLs failed"}
+                        if status == "FAILED":
+                            return {"status": "error", "error": str(poll_data.get("error", ""))[:300]}
+                except Exception:
+                    continue
+
+            return {"status": "timeout"}
+    except Exception as exc:
+        return {"error": f"fal.ai direct call failed: {exc}"}
+
+
+def _format_duration(seconds: int, fmt: str, values: list[str] | None = None) -> str | int:
+    """Format duration for the specific node's expected format."""
+    if fmt == "int":
+        return seconds
+    if fmt == "str_s":
+        candidate = f"{seconds}s"
+        if values and candidate not in values:
+            return values[-1]  # use longest available
+        return candidate
+    # default: str
+    return str(seconds)
+
+
+def _resolve_image_size_preset(width: int, height: int) -> str:
+    """Map pixel dimensions to ComfyUI fal image_size preset."""
+    ratio = width / height if height > 0 else 1.0
+    if ratio > 1.5:
+        return "landscape_16_9"
+    if ratio > 1.2:
+        return "landscape_4_3"
+    if ratio > 0.85:
+        return "square_hd"
+    if ratio > 0.65:
+        return "portrait_4_3"
+    return "portrait_16_9"
+
+
 async def _composer_build_workflow(
     model: dict[str, Any],
     prompt: str,
@@ -1781,69 +2500,93 @@ async def _composer_build_workflow(
 ) -> dict[str, Any]:
     """Build a ComfyUI workflow JSON for the selected model.
 
-    Handles fal.ai nodes (simple prompt-based) and local nodes (full graph).
+    Uses _FAL_NODE_SPECS to set correct parameters per node.
+    Image nodes (return IMAGE) get SaveImage chained.
+    Video nodes (return STRING/URL) do NOT get SaveImage.
     """
     node_name = model.get("node", "")
 
-    # fal.ai nodes are simple: just prompt + params
+    # fal.ai nodes
     if node_name.endswith("_fal"):
-        workflow = {"prompt": {}}
+        spec = _FAL_NODE_SPECS.get(node_name, {})
+        output_type = spec.get("output", "IMAGE")
+        is_video = output_type == "STRING"
+
+        workflow: dict[str, Any] = {"prompt": {}}
 
         # Inject camera tokens into prompt
         full_prompt = _inject_camera_tokens(prompt, camera, lens)
         if style:
             full_prompt = f"{full_prompt}, {style}"
 
-        # Common inputs for fal.ai nodes
+        # Start with prompt + any node-specific defaults
         inputs: dict[str, Any] = {"prompt": full_prompt}
+        for k, v in spec.get("extra_defaults", {}).items():
+            inputs[k] = v
 
-        # Add model-specific params
-        tasks = model.get("tasks", [])
-        if any(t in tasks for t in ["txt2vid", "img2vid", "video_production",
-                                     "video_cinematic", "video_preview"]):
-            inputs["duration"] = str(duration)
-            inputs["aspect_ratio"] = f"{width}:{height}" if width > height else f"{height}:{width}"
-            if reference_image:
-                inputs["image"] = reference_image
-        else:
-            # Image gen — only add size params if the node accepts them
-            # NanoBanana only takes prompt (+ optional aspect_ratio)
-            node_lower = node_name.lower()
-            if "nanobanana" in node_lower or "gpt" in node_lower:
-                # These nodes auto-size, just pass aspect_ratio if available
-                if width != height:
-                    inputs["aspect_ratio"] = "16:9" if width > height else "9:16"
-            elif "image_size" in str(model):
-                inputs["image_size"] = f"{width}x{height}"
-            else:
-                inputs["width"] = width
-                inputs["height"] = height
-            if negative:
-                inputs["negative_prompt"] = negative
-            if reference_image:
-                inputs["image"] = reference_image
+        # --- Size params (varies per node) ---
+        size_param = spec.get("size_param", "")
+        if size_param:
+            ar = _resolve_aspect_ratio(width, height)
+            if "aspect_ratio" in size_param:
+                inputs["aspect_ratio"] = ar
+            if "resolution_p" in size_param:
+                # "480p", "720p", "1080p" format
+                if max(width, height) >= 1920:
+                    inputs["resolution"] = "1080p"
+                elif max(width, height) >= 1280:
+                    inputs["resolution"] = "720p"
+                else:
+                    inputs["resolution"] = "480p"
+            if size_param == "image_size":
+                inputs["image_size"] = _resolve_image_size_preset(width, height)
+            elif size_param == "image_size_wxh":
+                # GPTImage format: "1024x1024", "1536x1024", "1024x1536"
+                if width > height:
+                    inputs["image_size"] = "1536x1024"
+                elif height > width:
+                    inputs["image_size"] = "1024x1536"
+                else:
+                    inputs["image_size"] = "1024x1024"
+            elif size_param == "image_size_preset":
+                inputs["image_size"] = _resolve_image_size_preset(width, height)
+            elif "resolution" in size_param and "aspect_ratio" not in size_param:
+                pass  # already handled above
 
+        # --- Duration (video nodes only) ---
+        dur_param = spec.get("duration_param")
+        if dur_param and is_video:
+            dur_fmt = spec.get("duration_format", "str")
+            dur_values = spec.get("duration_values")
+            inputs[dur_param] = _format_duration(duration, dur_fmt, dur_values)
+
+        # --- Negative prompt (image nodes that accept it) ---
+        if negative and not is_video:
+            inputs["negative_prompt"] = negative
+
+        # --- Reference image ---
+        if reference_image:
+            img_param = spec.get("image_param", "image")
+            inputs[img_param] = reference_image
+
+        # Build node 1 (generator)
         workflow["prompt"]["1"] = {
             "class_type": node_name,
             "inputs": inputs,
         }
 
-        # fal.ai image nodes (ComfyUI-fal-API) return IMAGE tensors directly
-        # Chain to SaveImage for local file output
-        if "video" not in node_name.lower():
+        # Node 2: SaveImage ONLY for IMAGE nodes (not video)
+        if not is_video:
             workflow["prompt"]["2"] = {
                 "class_type": "SaveImage",
                 "inputs": {"images": ["1", 0], "filename_prefix": "composer"},
             }
-        else:
-            workflow["prompt"]["2"] = {
-                "class_type": "SaveImage",
-                "inputs": {"images": ["1", 0], "filename_prefix": "composer"},
-            }
+        # Video nodes: no SaveImage — output is a URL string in node 1 outputs
 
         workflow["_metadata"] = {
             "composer": True,
             "model": model.get("name", node_name),
+            "output_type": output_type,
             "task": model.get("tasks", []),
             "budget": model.get("budget", "?"),
             "cost": model.get("cost", model.get("cost_per_sec", 0)),
@@ -1889,9 +2632,47 @@ async def _composer_submit(
 ) -> dict[str, Any]:
     """Submit a workflow to ComfyUI /prompt API, optionally wait for result.
 
-    If wait=True, polls /history/{prompt_id} until the image is ready,
-    then returns {"status": "completed", "prompt_id": ..., "images": [...]}.
+    Handles both IMAGE outputs (images[]) and STRING outputs (video URLs).
+    Returns {"status": "completed", "prompt_id": ..., "images": [...], "video_urls": [...]}.
     """
+    is_video = workflow.get("_metadata", {}).get("output_type") == "STRING"
+
+    # Video nodes: call fal.ai directly (ComfyUI can't handle STRING output nodes)
+    if is_video and FAL_API_KEY:
+        node_name = workflow.get("_metadata", {}).get("model", "")
+        # Find the node in the workflow prompt to get its class_type and inputs
+        prompt_nodes = workflow.get("prompt", {})
+        for nid, node in prompt_nodes.items():
+            class_type = node.get("class_type", "")
+            # Check specs and endpoints for this node
+            if class_type in _FAL_ENDPOINTS or (
+                class_type.endswith("_fal")
+                and _FAL_NODE_SPECS.get(class_type, {}).get("output") == "STRING"
+            ):
+                if class_type not in _FAL_ENDPOINTS:
+                    print(f"[composer] WARNING: {class_type} not in _FAL_ENDPOINTS, skipping fal direct", flush=True)
+                    break
+                endpoint = _FAL_ENDPOINTS[class_type]
+                inputs = dict(node.get("inputs", {}))
+                print(f"[composer] Video node {class_type} → fal.ai direct: {endpoint}", flush=True)
+                fal_result = await _fal_direct_submit(endpoint, inputs, timeout_s=timeout_s)
+                video_url = fal_result.get("video_url", "")
+                if video_url:
+                    return {
+                        "status": "completed",
+                        "video_urls": [video_url],
+                        "images": [],
+                        "fal_direct": True,
+                    }
+                return {
+                    "status": fal_result.get("status", "error"),
+                    "error": fal_result.get("error", "No video URL in response"),
+                    "video_urls": [],
+                    "images": [],
+                    "fal_direct": True,
+                    "raw": fal_result.get("raw", {}),
+                }
+
     try:
         async with aiohttp.ClientSession() as session:
             # Queue the prompt
@@ -1925,20 +2706,37 @@ async def _composer_submit(
                         entry = history[prompt_id]
                         status = entry.get("status", {})
                         if status.get("completed", False):
-                            # Extract output images
-                            images = []
+                            images: list[dict[str, Any]] = []
+                            video_urls: list[str] = []
+
                             for node_id, outputs in entry.get("outputs", {}).items():
+                                # IMAGE outputs (SaveImage nodes)
                                 for img in outputs.get("images", []):
                                     images.append({
                                         "filename": img.get("filename", ""),
                                         "subfolder": img.get("subfolder", ""),
                                         "type": img.get("type", "output"),
                                     })
-                            return {
+                                # STRING outputs (video URL nodes)
+                                for text_val in outputs.get("text", []):
+                                    if isinstance(text_val, str) and (
+                                        text_val.startswith("http") or text_val.startswith("/")
+                                    ):
+                                        video_urls.append(text_val)
+                                # Also check "string" key (some nodes)
+                                for str_val in outputs.get("string", []):
+                                    if isinstance(str_val, str) and str_val.startswith("http"):
+                                        video_urls.append(str_val)
+
+                            result: dict[str, Any] = {
                                 "status": "completed",
                                 "prompt_id": prompt_id,
                                 "images": images,
                             }
+                            if video_urls:
+                                result["video_urls"] = video_urls
+                            return result
+
                         if status.get("status_str") == "error":
                             return {
                                 "status": "error",
@@ -1969,6 +2767,22 @@ async def _composer_download_image(
                 f"{COMFYUI_API_URL}/view",
                 params=params,
                 timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                if resp.status == 200:
+                    return await resp.read()
+    except Exception:
+        pass
+    return None
+
+
+async def _composer_download_video(url: str) -> bytes | None:
+    """Download a video from a fal.ai URL. Returns video bytes."""
+    if not url or not url.startswith("http"):
+        return None
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=120),
             ) as resp:
                 if resp.status == 200:
                     return await resp.read()
@@ -2034,7 +2848,7 @@ async def _step_brief(
     fps = params.get("fps", job.get("fps", "24"))
     fmt = params.get("format", job.get("format", "landscape"))
     style = params.get("style", job.get("style", "2d3d"))
-    prod_type = params.get("production_type", "short")
+    prod_type = params.get("production_type", "tvshow")
 
     # Resolve resolution from format preset or explicit param
     if "resolution" in params:
@@ -2154,45 +2968,352 @@ async def _step_brief(
     if kitsu_result.get("concept_id"):
         extras["concept_id"] = kitsu_result["concept_id"]
 
+    # Send Telegram notification
+    await _notify_step_completed(job, "brief")
+
     return {"status": "ok", "description": description, "kitsu": kitsu_result}, extras
+
+
+async def _call_gemini_direct(prompt: str, max_tokens: int = 3000) -> str:
+    """Call Google Gemini API directly (bypass LiteLLM budget).
+
+    Used as fallback when LiteLLM returns 429 (budget exceeded).
+    """
+    if not GOOGLE_API_KEY:
+        return ""
+    url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.0-flash:generateContent?key={GOOGLE_API_KEY}"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                url,
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.7},
+                },
+                headers={"Content-Type": "application/json"},
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    print(f"[gemini-direct] Failed: {resp.status} {body[:200]}", flush=True)
+                    return ""
+                data = await resp.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts:
+                        return parts[0].get("text", "")
+                return ""
+    except Exception as exc:
+        print(f"[gemini-direct] Error: {exc}", flush=True)
+        return ""
+
+
+async def _download_metube_video(url: str, watch_dir: Path) -> Path | None:
+    """Download video from MeTube (tube.ewutelo.cloud) into watch_dir.
+
+    Returns local path if successful, None otherwise.
+    """
+    from urllib.parse import unquote
+    filename = unquote(url.split("/")[-1])
+    if not filename:
+        return None
+
+    local_path = watch_dir / filename
+    if local_path.exists() and local_path.stat().st_size > 0:
+        print(f"[research] MeTube video already in watch: {local_path.name}", flush=True)
+        return local_path
+
+    print(f"[research] Downloading MeTube video: {filename}...", flush=True)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=120),
+            ) as resp:
+                if resp.status != 200:
+                    print(f"[research] MeTube download failed: {resp.status}", flush=True)
+                    return None
+                content = await resp.read()
+                if len(content) > 500 * 1024 * 1024:
+                    print(f"[research] Video too large: {len(content)} bytes", flush=True)
+                    return None
+                local_path.write_bytes(content)
+                print(f"[research] Downloaded {len(content)} bytes -> {local_path.name}", flush=True)
+                return local_path
+    except Exception as exc:
+        print(f"[research] MeTube download error: {exc}", flush=True)
+        return None
+
+
+async def _llm_decompose_scenes(
+    description: str,
+    num_scenes: int = 5,
+    style: str = "",
+    mood: str = "",
+    colors: str = "",
+) -> list[dict[str, Any]]:
+    """Use LLM to decompose a text brief into structured scenes.
+
+    Returns list of scene dicts compatible with scene_analyses format.
+    Called when no video reference is available.
+    """
+    if not LITELLM_URL or not LITELLM_API_KEY:
+        return []
+
+    style_ctx = ""
+    if style or mood or colors:
+        style_ctx = f"\nStyle de reference: {style}\nMood: {mood}\nCouleurs: {colors}"
+
+    prompt = (
+        f"Tu es un directeur artistique pour des videos courtes (reels/shorts).\n"
+        f"Decompose ce brief en exactement {num_scenes} scenes cinematographiques.{style_ctx}\n\n"
+        f"Brief: {description}\n\n"
+        f"Retourne UNIQUEMENT un JSON array valide. Pour chaque scene:\n"
+        f'[{{"scene_index": 0, "description": "Description narrative (1-2 phrases)", '
+        f'"visual_prompt": "Prompt detaille pour generation image/video en anglais, '
+        f'incluant sujet, action, eclairage, ambiance, cadrage", '
+        f'"camera_movement": "static | pan left | pan right | dolly in | dolly out | tracking | crane up | handheld", '
+        f'"mood": "mot-cle ambiance", "duration_seconds": 5}}]'
+    )
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{LITELLM_URL}/v1/chat/completions",
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.7,
+                    "max_tokens": 3000,
+                },
+                headers={
+                    "Authorization": f"Bearer {LITELLM_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                if resp.status in (429, 400):
+                    # Budget exceeded — try Gemini direct
+                    print(f"[research] LiteLLM {resp.status}, trying Gemini direct", flush=True)
+                    content = await _call_gemini_direct(prompt, max_tokens=3000)
+                    if not content:
+                        return []
+                elif resp.status != 200:
+                    print(f"[research] LLM decompose failed: {resp.status}", flush=True)
+                    return []
+                else:
+                    data = await resp.json()
+                    content = data["choices"][0]["message"]["content"]
+
+                # Extract JSON from response (handle markdown code blocks)
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0]
+                elif "```" in content:
+                    content = content.split("```")[1].split("```")[0]
+                content = content.strip()
+
+                scenes_raw = json.loads(content)
+
+                # Convert to scene_analyses format
+                scenes = []
+                for i, s in enumerate(scenes_raw):
+                    scenes.append({
+                        "scene_index": i,
+                        "start_time": i * s.get("duration_seconds", 5),
+                        "end_time": (i + 1) * s.get("duration_seconds", 5),
+                        "duration": s.get("duration_seconds", 5),
+                        "analysis": {
+                            "style": style or "cinematic",
+                            "mood": s.get("mood", mood or "dramatic"),
+                            "colors": colors or "",
+                            "description": s.get("description", ""),
+                            "suggested_prompt": s.get("visual_prompt", s.get("description", "")),
+                            "camera_movement": s.get("camera_movement", "static"),
+                            "negative_prompt": "blurry, low quality, distorted",
+                        },
+                        "llm_generated": True,
+                    })
+                print(f"[research] LLM decomposed brief into {len(scenes)} scenes", flush=True)
+                return scenes
+    except Exception as exc:
+        print(f"[research] LLM decomposition error: {exc}", flush=True)
+        return []
+
+
+async def _llm_extract_entities(description: str) -> dict[str, list[str]]:
+    """Extract characters, environments, props from a brief via LLM.
+
+    Returns {"characters": [...], "environments": [...], "props": [...]}.
+    """
+    if not LITELLM_URL or not LITELLM_API_KEY:
+        return {"characters": [], "environments": [], "props": []}
+
+    prompt = (
+        f"Extrais les entites visuelles de ce brief de video.\n"
+        f"Retourne UNIQUEMENT un JSON valide avec ces 3 cles:\n"
+        f'{{"characters": ["nom1", "nom2"], "environments": ["lieu1"], "props": ["objet1"]}}\n\n'
+        f"Brief: {description}"
+    )
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{LITELLM_URL}/v1/chat/completions",
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.3,
+                    "max_tokens": 500,
+                },
+                headers={
+                    "Authorization": f"Bearer {LITELLM_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status in (429, 400):
+                    print(f"[script] LiteLLM {resp.status}, trying Gemini direct for entities", flush=True)
+                    content = await _call_gemini_direct(prompt, max_tokens=500)
+                    if not content:
+                        return {"characters": [], "environments": [], "props": []}
+                elif resp.status != 200:
+                    return {"characters": [], "environments": [], "props": []}
+                else:
+                    data = await resp.json()
+                    content = data["choices"][0]["message"]["content"]
+                if "```" in content:
+                    content = (
+                        content.split("```json")[-1].split("```")[0]
+                        if "```json" in content
+                        else content.split("```")[1].split("```")[0]
+                    )
+                result = json.loads(content.strip())
+                print(f"[script] Entities: {sum(len(v) for v in result.values())} total", flush=True)
+                return result
+    except Exception as exc:
+        print(f"[script] Entity extraction error: {exc}", flush=True)
+        return {"characters": [], "environments": [], "props": []}
 
 
 async def _step_research(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle research step: analyze URL or search Qdrant."""
+    """Handle research step: analyze URL or search Qdrant.
+
+    If a video URL is provided, downloads from MeTube if needed, then runs
+    full analysis pipeline (ffmpeg scene detect → keyframes → Claude Vision).
+    If no URL, searches Qdrant for similar references, then uses LLM to
+    decompose the brief into multiple structured scenes.
+    """
     url = params.get("url", job.get("url", ""))
     extras: dict[str, Any] = {}
     research_result: dict[str, Any] = {}
+    num_scenes = int(params.get("num_scenes", 5))
 
     if url:
-        # Use existing analysis pipeline on a video URL
-        # (Assumes video is already downloaded to WATCH_DIR)
+        # Try to download from MeTube if not already in watch dir
         filename = Path(url).name if "/" in url else url
+        from urllib.parse import unquote
+        filename = unquote(filename)
         src = WATCH_DIR / filename
+
+        if not src.exists() and ("tube." in url or "download" in url):
+            downloaded = await _download_metube_video(url, WATCH_DIR)
+            if downloaded:
+                src = downloaded
+                filename = downloaded.name
+
         if src.exists():
             research_result = await run_analysis(filename)
             extras["scene_analyses"] = research_result.get("scenes", [])
         else:
             research_result = {"note": f"File not in watch dir: {filename}"}
+            print(f"[research] Video not found locally, falling back to LLM decomposition", flush=True)
     else:
         # Search Qdrant for similar references
         query = params.get("query", job.get("title", ""))
         results = await _search_qdrant(query, limit=5)
         research_result = {"qdrant_results": results}
 
+        # Extract style/mood/colors from Qdrant results to use as reference
+        # This ensures storyboard respects the reference even without video file
+        # Pick FIRST result that has style/mood/prompt (skip transcripts)
+        if results and isinstance(results, list):
+            payload = {}
+            for candidate in results:
+                p = candidate.get("payload", candidate) if isinstance(candidate, dict) else {}
+                has_style = bool(p.get("style"))
+                has_mood = bool(p.get("mood"))
+                has_prompt = bool(p.get("suggested_prompt"))
+                print(f"[research] candidate keys={list(p.keys())[:5]} style={has_style} mood={has_mood} prompt={has_prompt}", flush=True)
+                if has_style or has_mood or has_prompt:
+                    payload = p
+                    break
+            # Fallback to first result if none had style
+            if not payload:
+                payload = results[0].get("payload", results[0]) if isinstance(results[0], dict) else {}
+
+            qdrant_style = payload.get("style", "")
+            qdrant_mood = payload.get("mood", "")
+            qdrant_colors = payload.get("colors", "")
+            qdrant_prompt = payload.get("suggested_prompt", "")
+
+            if qdrant_style or qdrant_mood or qdrant_prompt:
+                extras["ref_style"] = qdrant_style
+                extras["ref_mood"] = qdrant_mood
+                extras["ref_colors"] = qdrant_colors
+
+                # Decompose brief into multiple scenes via LLM
+                # (instead of 1 synthetic scene)
+                llm_scenes = await _llm_decompose_scenes(
+                    description=job.get("description", job.get("title", "")),
+                    num_scenes=num_scenes,
+                    style=qdrant_style,
+                    mood=qdrant_mood,
+                    colors=qdrant_colors,
+                )
+                if llm_scenes:
+                    extras["scene_analyses"] = llm_scenes
+                    print(f"[research] LLM decomposed into {len(llm_scenes)} scenes (Qdrant ref: {qdrant_style})", flush=True)
+                else:
+                    # Fallback: single synthetic scene
+                    extras["scene_analyses"] = [{
+                        "scene_index": 0,
+                        "analysis": {
+                            "style": qdrant_style or "cinematic",
+                            "mood": qdrant_mood or "dramatic",
+                            "colors": qdrant_colors,
+                            "suggested_prompt": qdrant_prompt,
+                        },
+                    }]
+                    print(f"[research] Fallback single scene: style={qdrant_style}", flush=True)
+
+    # Final safety: if scene_analyses is still empty, decompose via LLM
+    if not extras.get("scene_analyses"):
+        print("[research] No scenes from analysis or Qdrant, decomposing via LLM", flush=True)
+        llm_scenes = await _llm_decompose_scenes(
+            description=job.get("description", job.get("title", "")),
+            num_scenes=num_scenes,
+        )
+        if llm_scenes:
+            extras["scene_analyses"] = llm_scenes
+
     kitsu_result = await _kitsu_step_task(
         job, "Recherche", "done",
-        f"Research completed.\n{json.dumps(research_result, indent=2)[:2000]}",
+        f"Research completed. {len(extras.get('scene_analyses', []))} scenes.\n{json.dumps(research_result, indent=2)[:1500]}",
     )
 
     # Generate mood board from REAL analysis (style, colors, mood from video ref)
     mood_preview_id = ""
+    mood_bytes: bytes | None = None
     concept_id = job.get("concept_id", extras.get("concept_id", ""))
     project_id = job.get("kitsu_project_id", "")
     scenes = extras.get("scene_analyses", research_result.get("scenes", []))
 
-    if concept_id and project_id and scenes and KITSU_URL:
+    if scenes:
         try:
             # Build mood prompt from REAL video analysis
             first_scene = scenes[0] if scenes else {}
@@ -2230,25 +3351,33 @@ async def _step_research(
                 if mood_images:
                     mood_bytes = await _composer_download_image(mood_images[0])
                     if mood_bytes:
+                        print(f"[research] Mood board generated: {len(mood_bytes)} bytes", flush=True)
+                    if mood_bytes and concept_id and KITSU_URL:
                         async with aiohttp.ClientSession() as ks:
-                            concept_tt = await _kitsu_get_task_type_id(ks, "Concept")
-                            concept_task = await _kitsu_get_or_create_task(
-                                ks, concept_id, concept_tt, project_id,
-                            )
-                            done_id = await _kitsu_get_done_status_id(ks)
-                            comment = await _kitsu_post_comment(
-                                ks, concept_task["id"], done_id,
-                                f"Mood board from video ref — {ref_style}, {ref_mood}",
-                            )
-                            if comment and comment.get("id"):
-                                mood_preview_id = await _kitsu_upload_preview(
-                                    ks, concept_task["id"],
-                                    comment["id"], mood_bytes,
+                            mood_preview_id = await _kitsu_upload_concept_preview(
+                                ks, concept_id, mood_bytes,
+                            ) or ""
+                        if mood_preview_id and not mood_preview_id.startswith("error"):
+                            print(f"[research] Concept preview uploaded: {mood_preview_id[:12]}", flush=True)
+                        else:
+                            # Retry once
+                            print(f"[research] Concept preview upload failed, retrying...", flush=True)
+                            async with aiohttp.ClientSession() as ks2:
+                                mood_preview_id = await _kitsu_upload_concept_preview(
+                                    ks2, concept_id, mood_bytes,
                                 ) or ""
+                            if mood_preview_id:
+                                print(f"[research] Concept preview retry OK: {mood_preview_id[:12]}", flush=True)
+                            else:
+                                print("[research] ERROR: Concept preview upload failed after retry", flush=True)
         except Exception as mood_exc:
+            print(f"[research] Mood board error: {mood_exc}", flush=True)
             mood_preview_id = f"error: {mood_exc}"
 
     kitsu_result["mood_preview_id"] = mood_preview_id
+
+    # Send Telegram notification with mood board preview
+    await _notify_step_completed(job, "research", preview_bytes=mood_bytes)
 
     return {
         "status": "ok",
@@ -2273,6 +3402,28 @@ async def _step_script(
     else:
         modifications = modifications_raw or {}
     presets = await _load_camera_presets()
+
+    # Detect poor/synthetic scene data → enrich via LLM
+    is_poor = (
+        len(scenes) <= 1
+        or all(s.get("llm_generated") for s in scenes)
+        or not any(
+            s.get("analysis", s).get("suggested_prompt", "")
+            for s in scenes
+        )
+    )
+    if is_poor:
+        num_scenes = int(params.get("num_scenes", 5))
+        print(f"[script] Scene data poor ({len(scenes)} scenes), enriching via LLM to {num_scenes}", flush=True)
+        llm_scenes = await _llm_decompose_scenes(
+            description=job.get("description", job.get("title", "")),
+            num_scenes=num_scenes,
+            style=job.get("ref_style", ""),
+            mood=job.get("ref_mood", ""),
+            colors=job.get("ref_colors", ""),
+        )
+        if llm_scenes:
+            scenes = llm_scenes
 
     scene_prompts: list[dict[str, Any]] = []
     for idx, scene in enumerate(scenes):
@@ -2302,9 +3453,11 @@ async def _step_script(
             "scene_index": idx,
             "original": base_prompt,
             "enriched": enriched,
+            "duration_seconds": scene.get("duration", scene.get("duration_seconds", 5)),
+            "camera_movement": scene.get("analysis", scene).get("camera_movement", ""),
         })
 
-    extras = {"scene_prompts": scene_prompts}
+    extras: dict[str, Any] = {"scene_prompts": scene_prompts}
 
     # Post all prompts as Kitsu comment
     comment = "\n\n".join(
@@ -2313,6 +3466,92 @@ async def _step_script(
     kitsu_result = await _kitsu_step_task(
         job, "Script", "done", f"Script prompts:\n\n{comment[:3000]}",
     )
+
+    # Create Kitsu assets (by entity) + shots (by scene) + breakdown
+    project_id = job.get("kitsu_project_id", "")
+    sequence_id = job.get("kitsu_sequence_id", "")
+    if project_id and sequence_id and KITSU_URL and KITSU_TOKEN:
+        try:
+            async with aiohttp.ClientSession() as ks:
+                # --- Assets by entity (characters, environments, props) ---
+                entities = await _llm_extract_entities(
+                    job.get("description", job.get("title", "")),
+                )
+                # Map category → asset_type_id
+                char_type_id = await _kitsu_get_asset_type_id(ks, "Characters")
+                env_type_id = await _kitsu_get_asset_type_id(ks, "Environment")
+                prop_type_id = await _kitsu_get_asset_type_id(ks, "Props")
+                category_type_map = {
+                    "characters": char_type_id,
+                    "environments": env_type_id,
+                    "props": prop_type_id,
+                }
+
+                asset_ids: list[str] = []
+                asset_names: list[str] = []
+                for category, names in entities.items():
+                    type_id = category_type_map.get(category)
+                    if not type_id:
+                        continue
+                    for name in names:
+                        asset = await _kitsu_create_asset(
+                            ks, project_id, type_id,
+                            name=name,
+                            description=f"{category.rstrip('s').title()}: {name}",
+                            data={
+                                "ai_prompt": f"{name}, {job.get('ref_style', 'cinematic')} style",
+                                "style": job.get("ref_style", ""),
+                                "mood": job.get("ref_mood", ""),
+                            },
+                        )
+                        if asset and "id" in asset:
+                            asset_ids.append(asset["id"])
+                            asset_names.append(name)
+                            print(f"[script] Asset: {name} ({category})", flush=True)
+
+                # --- Shots by scene (SH0010, SH0020, ...) ---
+                shot_ids: list[str] = list(job.get("kitsu_shot_ids", []))
+                fps = int(job.get("fps", 24))
+                for sp in scene_prompts:
+                    idx = sp.get("scene_index", 0)
+                    duration = sp.get("duration_seconds", 5)
+                    frame_in = idx * duration * fps + 1
+                    frame_out = (idx + 1) * duration * fps
+
+                    shot_name = f"SH{(idx + 1) * 10:04d}"
+                    shot = await _kitsu_create_shot(
+                        ks, project_id, sequence_id, "",
+                        shot_name,
+                        {
+                            "prompt": sp.get("enriched", "")[:300],
+                            "scene_index": idx,
+                            "duration": duration,
+                            "camera_movement": sp.get("camera_movement", ""),
+                            "frame_in": frame_in,
+                            "frame_out": frame_out,
+                        },
+                    )
+                    if shot and "id" in shot:
+                        shot_ids.append(shot["id"])
+
+                        # Cast ALL assets into each shot (simplified)
+                        for asset_id in asset_ids:
+                            await _kitsu_cast_asset_to_shot(
+                                ks, project_id, shot["id"], asset_id,
+                            )
+
+                extras["kitsu_shot_ids"] = shot_ids
+                extras["kitsu_asset_ids"] = asset_ids
+                kitsu_result["assets_created"] = len(asset_ids)
+                kitsu_result["asset_names"] = asset_names
+                kitsu_result["shots_created"] = len(scene_prompts)
+                print(f"[script] Kitsu: {len(asset_ids)} assets, {len(scene_prompts)} shots, breakdown linked", flush=True)
+        except Exception as exc:
+            kitsu_result["asset_error"] = str(exc)
+            print(f"[script] Kitsu error: {exc}", flush=True)
+
+    # Send Telegram notification
+    await _notify_step_completed(job, "script")
 
     return {
         "status": "ok",
@@ -2337,11 +3576,42 @@ async def _step_storyboard(
     model = await _composer_select_model("storyboard text-to-image fast cheap", budget)
     model_name = model["name"] if model else "fallback"
 
-    # If no scene_prompts yet, use job description as single prompt
+    # If no scene_prompts yet, build from description + reference style/mood
     if not scene_prompts:
         desc = job.get("description", job.get("title", ""))
+        ref_style = job.get("ref_style", job.get("style", ""))
+        ref_mood = job.get("ref_mood", "")
+        ref_colors = job.get("ref_colors", "")
+
+        # Enrich with video ref analysis data if available
         if desc:
-            scene_prompts = [{"enriched": desc, "original": desc, "scene_index": 1}]
+            enriched = desc
+            if ref_style:
+                enriched = f"{enriched}, {ref_style} style"
+            if ref_mood:
+                enriched = f"{enriched}, {ref_mood} mood"
+            if ref_colors:
+                enriched = f"{enriched}, color palette: {ref_colors}"
+
+            # Also check scene_analyses for richer prompts
+            scene_analyses = job.get("scene_analyses", [])
+            if scene_analyses:
+                for idx, sa in enumerate(scene_analyses):
+                    analysis = sa.get("analysis", sa)
+                    suggested = analysis.get("suggested_prompt", "")
+                    if suggested:
+                        scene_prompts.append({
+                            "enriched": _inject_camera_tokens(
+                                suggested,
+                                camera=job.get("camera", ""),
+                                lens=job.get("lens", ""),
+                            ),
+                            "original": suggested,
+                            "scene_index": idx,
+                        })
+            # Fallback: use enriched description as single prompt
+            if not scene_prompts:
+                scene_prompts = [{"enriched": enriched, "original": desc, "scene_index": 0}]
 
     for sp in scene_prompts:
         prompt = sp.get("enriched", sp.get("original", ""))
@@ -2379,11 +3649,19 @@ async def _step_storyboard(
                     img_path.write_bytes(img_bytes)
                     scene_result["image_path"] = str(img_path)
 
-                    # Upload to Kitsu as preview on storyboard task
+                    # Upload to Kitsu as preview on the scene's shot (or overview)
                     if KITSU_URL and KITSU_TOKEN:
                         try:
-                            shot_id = job.get("kitsu_overview_shot_id", "")
                             project_id = job.get("kitsu_project_id", "")
+                            scene_idx = sp.get("scene_index", 0)
+                            # shot_ids from _step_script = scene shots (no overview)
+                            shot_ids = job.get("kitsu_shot_ids", [])
+                            if scene_idx < len(shot_ids):
+                                shot_id = shot_ids[scene_idx]
+                            elif shot_ids:
+                                shot_id = shot_ids[-1]
+                            else:
+                                shot_id = job.get("kitsu_overview_shot_id", "")
                             if shot_id and project_id:
                                 async with aiohttp.ClientSession() as ks:
                                     task_type_id = await _kitsu_get_task_type_id(ks, "Storyboard CF")
@@ -2393,13 +3671,14 @@ async def _step_storyboard(
                                     wfa_id = await _kitsu_get_status_id(ks, "wfa")
                                     comment = await _kitsu_post_comment(
                                         ks, task["id"], wfa_id,
-                                        f"Storyboard frame S{sp.get('scene_index',0)} — {model_name}\n{prompt[:200]}",
+                                        f"Storyboard S{scene_idx} — {model_name}\n{prompt[:200]}",
                                     )
                                     if comment and comment.get("id"):
-                                        pid = await _kitsu_upload_preview(
+                                        preview_id = await _kitsu_upload_preview(
                                             ks, task["id"], comment["id"], img_bytes,
                                         )
-                                        scene_result["kitsu_preview_id"] = pid
+                                        scene_result["kitsu_preview_id"] = preview_id
+                                        scene_result["kitsu_shot_id"] = shot_id
                         except Exception as ke:
                             scene_result["kitsu_error"] = str(ke)
         else:
@@ -2418,6 +3697,22 @@ async def _step_storyboard(
         job, "Storyboard CF", "wfa",
         f"Storyboard: {len(results)} frames via {model_name}. Awaiting validation.",
     )
+
+    # Send Telegram notification with first storyboard frame as preview
+    # Keep the image bytes from generation (more reliable than re-reading from disk)
+    first_frame_bytes: bytes | None = None
+    for r in results:
+        # img_bytes was saved during generation — use it directly if available
+        path_str = r.get("image_path", "")
+        if path_str:
+            try:
+                first_frame_bytes = Path(path_str).read_bytes()
+                print(f"[storyboard] Read {len(first_frame_bytes)} bytes from {path_str}", flush=True)
+            except Exception as read_exc:
+                print(f"[storyboard] Failed to read {path_str}: {read_exc}", flush=True)
+            break
+    tg_ok = await _notify_step_completed(job, "storyboard", preview_bytes=first_frame_bytes)
+    print(f"[storyboard] Telegram notify: ok={tg_ok} has_preview={first_frame_bytes is not None}", flush=True)
 
     return {
         "status": "ok",
@@ -2474,6 +3769,7 @@ async def _step_voiceover(
 
     note = f"Voice-over ({mode}): {result.get('output_path', result.get('error', '?'))}"
     kitsu_result = await _kitsu_step_task(job, "Voice-over", "done", note)
+    await _notify_step_completed(job, "voiceover")
     return {"status": "ok", "mode": mode, "result": result, "kitsu": kitsu_result}, {}
 
 
@@ -2620,6 +3916,9 @@ async def _step_imagegen(
         job, "Image Gen", "wfa", kitsu_note, cost_usd=total_cost,
     )
 
+    # Send Telegram notification
+    await _notify_step_completed(job, "imagegen")
+
     return {
         "status": "ok",
         "model_used": model_name,
@@ -2644,8 +3943,22 @@ async def _step_videogen(
     """
     scene_prompts = job.get("scene_prompts", [])
     budget = params.get("budget", "balanced")
-    duration = int(params.get("duration", job.get("fps", "24") == "24" and 5 or 5))
+    duration = int(params.get("duration", 5))
     results: list[dict[str, Any]] = []
+
+    # Failsafe: if scene_prompts empty, build from description
+    if not scene_prompts:
+        print("[videogen] WARNING: scene_prompts empty, building from description", flush=True)
+        desc = job.get("description", job.get("title", ""))
+        if desc:
+            scene_prompts = [{
+                "scene_index": 0,
+                "original": desc,
+                "enriched": _inject_camera_tokens(
+                    desc, job.get("camera", ""), job.get("lens", ""),
+                ),
+                "duration_seconds": duration,
+            }]
 
     # Parse resolution
     resolution = job.get("resolution", "1920x1080")
@@ -2654,11 +3967,26 @@ async def _step_videogen(
     except (ValueError, AttributeError):
         target_w, target_h = 1920, 1080
 
-    # Select best video model
-    model = await _composer_select_model(
-        "video generation production animated clip best value", budget,
+    # Select best video model — prefer txt2vid unless reference keyframes exist
+    has_keyframes = any(
+        sp.get("keyframe_path") or sp.get("image_path")
+        for sp in scene_prompts
     )
+    if has_keyframes:
+        vid_query = "video generation img2vid keyframe to clip best value"
+    else:
+        vid_query = "video generation txt2vid text to video seedance kling best value"
+    model = await _composer_select_model(vid_query, budget)
+    # Blacklist models with broken fal.ai queue (MiniMax result URL fails)
+    _BLACKLISTED_NODES = {"MiniMaxTextToVideo_fal", "MiniMaxSubjectReference_fal"}
+    if model and model.get("node") in _BLACKLISTED_NODES:
+        print(f"[videogen] Blacklisted {model['node']}, falling back to Seedance", flush=True)
+        model = await _composer_select_model("seedance txt2vid text to video", budget)
     model_name = model["name"] if model else "fallback"
+    model_node = model.get("node", "") if model else ""
+    is_in_specs = model_node in _FAL_NODE_SPECS
+    is_in_endpoints = model_node in _FAL_ENDPOINTS
+    print(f"[videogen] Selected: {model_name} node={model_node} in_specs={is_in_specs} in_endpoints={is_in_endpoints} query={vid_query}", flush=True)
 
     for sp in scene_prompts:
         prompt = sp.get("enriched", sp.get("original", ""))
@@ -2675,13 +4003,52 @@ async def _step_videogen(
                 fps=int(job.get("fps", 24)),
                 duration=duration,
             )
-            submit_result = await _composer_submit(workflow)
-            results.append({
+            submit_result = await _composer_submit(workflow, timeout_s=600)
+            scene_result: dict[str, Any] = {
                 "scene": sp.get("scene_index", 0),
                 "model": model_name,
                 "duration": duration,
                 "result": submit_result,
-            })
+            }
+
+            # Download video from URL if available (video nodes return URLs)
+            video_urls = submit_result.get("video_urls", [])
+            if video_urls:
+                video_bytes = await _composer_download_video(video_urls[0])
+                if video_bytes:
+                    video_path = OUTPUT_DIR / f"{job['job_id'][:8]}_s{sp.get('scene_index',0)}.mp4"
+                    video_path.write_bytes(video_bytes)
+                    scene_result["video_path"] = str(video_path)
+                    scene_result["video_size"] = len(video_bytes)
+                    scene_result["video_url"] = video_urls[0]
+                    print(f"[videogen] Downloaded {len(video_bytes)} bytes → {video_path}", flush=True)
+
+                    # Upload video preview to Kitsu shot task
+                    shot_ids = job.get("kitsu_shot_ids", [])
+                    scene_idx = sp.get("scene_index", 0)
+                    project_id = job.get("kitsu_project_id", "")
+                    if scene_idx < len(shot_ids) and project_id and KITSU_URL:
+                        try:
+                            async with aiohttp.ClientSession() as ks:
+                                vg_type_id = await _kitsu_get_task_type_id(ks, "Video Gen")
+                                vg_task = await _kitsu_get_or_create_task(
+                                    ks, shot_ids[scene_idx], vg_type_id, project_id,
+                                )
+                                if vg_task:
+                                    wfa_id = await _kitsu_get_status_id(ks, "wfa")
+                                    vg_comment = await _kitsu_post_comment(
+                                        ks, vg_task["id"], wfa_id,
+                                        f"Video S{scene_idx} — {model_name}, {duration}s",
+                                    )
+                                    if vg_comment and vg_comment.get("id"):
+                                        await _kitsu_upload_preview(
+                                            ks, vg_task["id"], vg_comment["id"], video_bytes,
+                                        )
+                                        print(f"[videogen] Kitsu preview uploaded for shot {scene_idx}", flush=True)
+                        except Exception as ke:
+                            print(f"[videogen] Kitsu video preview error: {ke}", flush=True)
+
+            results.append(scene_result)
         else:
             n8n_result = await _call_n8n_video(
                 prompt=prompt,
@@ -2693,14 +4060,28 @@ async def _step_videogen(
     total_cost = sum(
         (model.get("cost", 0) if model else 0) for _ in results
     )
+    video_count = len([r for r in results if r.get("video_path")])
     kitsu_note = (
         f"Video: {len(results)} clips via {model_name}, "
-        f"{duration}s each, ~${total_cost:.2f} total. "
+        f"{duration}s each, {video_count} downloaded, ~${total_cost:.2f} total. "
         f"Awaiting validation."
     )
     kitsu_result = await _kitsu_step_task(
         job, "Video Gen", "wfa", kitsu_note, cost_usd=total_cost,
     )
+
+    # Send Telegram notification with video URL (streaming link)
+    first_video_url = ""
+    for r in results:
+        vu = r.get("video_url", "")
+        if vu and vu.startswith("http"):
+            first_video_url = vu
+            break
+    if first_video_url:
+        # Send video URL as streaming link via sendVideo (Telegram fetches it)
+        await _send_telegram_video_url(first_video_url, job, "videogen")
+    else:
+        await _notify_step_completed(job, "videogen")
 
     return {
         "status": "ok",
@@ -2716,53 +4097,111 @@ async def _step_videogen(
 async def _step_montage(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle montage step: assemble video scenes via n8n → Remotion."""
-    scene_prompts = job.get("scene_prompts", [])
-    transitions = params.get("transitions", "cut")
+    """Handle montage step: concatenate video clips with ffmpeg.
 
-    # Call n8n creative-pipeline with type=video-composition for Remotion
-    note = "Montage pending — manual at re.ewutelo.cloud"
-    if N8N_CREATIVE_PIPELINE_URL:
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    N8N_CREATIVE_PIPELINE_URL,
-                    json={
-                        "type": "video-composition",
-                        "composition": "MultiScene",
-                        "input_props": {
-                            "scenes": [
-                                sp.get("enriched", sp.get("original", ""))
-                                for sp in scene_prompts
-                            ],
-                            "transitions": transitions,
-                            "duration": len(scene_prompts) * 5,
-                        },
-                        "agent_id": "videoref-engine",
-                        "output_name": f"{job['job_id'][:8]}-montage",
-                    },
-                    timeout=aiohttp.ClientTimeout(total=300),
-                ) as resp:
-                    if resp.status == 200:
-                        result = await resp.json()
-                        note = f"Montage assembled via Remotion: {result.get('render_id', '?')}"
-                        kitsu_result = await _kitsu_step_task(
-                            job, "Montage", "wfa", note,
+    Collects all scene MP4 files from videogen, concatenates them
+    into a single output file, uploads to Kitsu, and sends via Telegram.
+    """
+    import subprocess
+    job_prefix = job["job_id"][:8]
+    extras: dict[str, Any] = {}
+
+    # Collect video files from videogen results (in order)
+    video_files: list[Path] = []
+    for i in range(20):  # Max 20 scenes
+        vpath = OUTPUT_DIR / f"{job_prefix}_s{i}.mp4"
+        if vpath.exists():
+            video_files.append(vpath)
+        else:
+            break
+
+    if not video_files:
+        note = "No video clips found for montage"
+        print(f"[montage] {note}", flush=True)
+        kitsu_result = await _kitsu_step_task(job, "Montage", "done", note)
+        await _notify_step_completed(job, "montage")
+        return {"status": "ok", "note": note, "kitsu": kitsu_result}, extras
+
+    # Build ffmpeg concat file
+    concat_path = OUTPUT_DIR / f"{job_prefix}_concat.txt"
+    concat_lines = [f"file '{vf}'" for vf in video_files]
+    concat_path.write_text("\n".join(concat_lines))
+
+    output_path = OUTPUT_DIR / f"{job_prefix}_final.mp4"
+    print(f"[montage] Concatenating {len(video_files)} clips → {output_path.name}", flush=True)
+
+    # Run ffmpeg concat
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", str(concat_path),
+                "-c", "copy",  # No re-encoding (fast)
+                str(output_path),
+            ],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode != 0:
+            # Try with re-encoding if codec mismatch
+            print(f"[montage] Concat copy failed, re-encoding...", flush=True)
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                    "-i", str(concat_path),
+                    "-c:v", "libx264", "-preset", "fast",
+                    "-c:a", "aac",
+                    "-movflags", "+faststart",
+                    str(output_path),
+                ],
+                capture_output=True, text=True, timeout=300,
+            )
+    except subprocess.TimeoutExpired:
+        note = "ffmpeg concat timed out"
+        kitsu_result = await _kitsu_step_task(job, "Montage", "wfa", note)
+        await _notify_step_completed(job, "montage")
+        return {"status": "error", "note": note, "kitsu": kitsu_result}, extras
+
+    if output_path.exists():
+        final_size = output_path.stat().st_size
+        extras["montage_path"] = str(output_path)
+        extras["montage_size"] = final_size
+        total_duration = len(video_files) * 5
+        note = (
+            f"Montage: {len(video_files)} clips assembled, "
+            f"{final_size / 1024 / 1024:.1f} MB, ~{total_duration}s total."
+        )
+        print(f"[montage] {note}", flush=True)
+
+        # Upload to Kitsu as preview on Montage task
+        project_id = job.get("kitsu_project_id", "")
+        overview_shot = job.get("kitsu_overview_shot_id", "")
+        if project_id and overview_shot and KITSU_URL:
+            try:
+                async with aiohttp.ClientSession() as ks:
+                    mt_type_id = await _kitsu_get_task_type_id(ks, "Montage")
+                    mt_task = await _kitsu_get_or_create_task(
+                        ks, overview_shot, mt_type_id, project_id,
+                    )
+                    if mt_task:
+                        wfa_id = await _kitsu_get_status_id(ks, "wfa")
+                        mt_comment = await _kitsu_post_comment(
+                            ks, mt_task["id"], wfa_id, note,
                         )
-                        return {
-                            "status": "ok",
-                            "render_id": result.get("render_id"),
-                            "result_url": result.get("result_url"),
-                            "kitsu": kitsu_result,
-                        }, {}
-                    else:
-                        body = await resp.text()
-                        note = f"Remotion returned {resp.status}: {body[:100]}"
-        except Exception as exc:
-            note = f"Remotion montage failed: {exc}. Manual montage at re.ewutelo.cloud"
+            except Exception as ke:
+                print(f"[montage] Kitsu error: {ke}", flush=True)
+
+        # Send video via Telegram (file upload if <50MB, else text)
+        if final_size < 50 * 1024 * 1024:
+            video_bytes = output_path.read_bytes()
+            await _notify_step_completed(job, "montage", video_bytes=video_bytes)
+        else:
+            await _notify_step_completed(job, "montage")
+    else:
+        note = f"ffmpeg failed: {result.stderr[:200] if result else 'unknown'}"
+        print(f"[montage] {note}", flush=True)
 
     kitsu_result = await _kitsu_step_task(job, "Montage", "wfa", note)
-    return {"status": "ok", "note": note, "kitsu": kitsu_result}, {}
+    return {"status": "ok", "note": note, "kitsu": kitsu_result}, extras
 
 
 async def _step_subtitles(

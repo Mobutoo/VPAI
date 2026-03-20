@@ -553,7 +553,7 @@ async def _kitsu_get_asset_library(
     )
     library = await _kitsu_api(
         session, "POST", "/data/projects",
-        json={
+        json_body={
             "name": "Asset Library",
             "production_type": "assets",
             "project_status_id": open_status["id"],
@@ -581,7 +581,7 @@ async def _kitsu_create_project(
 
     project = await _kitsu_api(
         session, "POST", "/data/projects",
-        json={
+        json_body={
             "name": title,
             "production_type": production_type,
             "project_status_id": open_status["id"],
@@ -604,7 +604,7 @@ async def _kitsu_create_project(
                 await _kitsu_api(
                     session, "POST",
                     f"/data/projects/{project['id']}/settings/task-types",
-                    json={"task_type_id": tt["id"]},
+                    json_body={"task_type_id": tt["id"]},
                 )
             except Exception:
                 pass  # May already be associated
@@ -619,7 +619,7 @@ async def _kitsu_create_project(
             await _kitsu_api(
                 session, "POST",
                 f"/data/projects/{project['id']}/settings/asset-types",
-                json={"asset_type_id": vref_type["id"]},
+                json_body={"asset_type_id": vref_type["id"]},
             )
         except Exception:
             pass
@@ -631,7 +631,7 @@ async def _kitsu_create_project(
             await _kitsu_api(
                 session, "POST",
                 f"/data/projects/{project['id']}/settings/task-statuses",
-                json={"task_status_id": s["id"]},
+                json_body={"task_status_id": s["id"]},
             )
         except Exception:
             pass
@@ -675,8 +675,17 @@ async def _kitsu_get_task_type_id(
     existing = next((t for t in types if t["name"] == name), None)
     if existing:
         return existing["id"]
-    created = await _kitsu_api(session, "POST", "/data/task-types", {"name": name})
+    created = await _kitsu_api(session, "POST", "/data/task-types", json_body={"name": name})
     return created["id"]
+
+
+async def _kitsu_get_todo_status_id(session: aiohttp.ClientSession) -> str:
+    """Get the 'Todo' task status ID."""
+    statuses = await _kitsu_api(session, "GET", "/data/task-status")
+    todo = next((s for s in statuses if s.get("short_name") == "todo"), None)
+    if todo:
+        return todo["id"]
+    return ""
 
 
 async def _kitsu_get_done_status_id(session: aiohttp.ClientSession) -> str:
@@ -747,7 +756,7 @@ async def _kitsu_create_shot(
     return await _kitsu_api(
         session, "POST",
         f"/data/projects/{project_id}/shots",
-        body,
+        json_body=body,
     )
 
 
@@ -770,18 +779,39 @@ async def _kitsu_get_or_create_task(
         pass
 
     # No existing task — create one
+    # IMPORTANT: Zou needs "name" field to avoid UniqueConstraint on (entity+type+name)
     try:
-        return await _kitsu_api(
+        tt_info = await _kitsu_api(
+            session, "GET", f"/data/task-types/{task_type_id}",
+        )
+        task_name = tt_info.get("name", "main") if tt_info else "main"
+    except Exception:
+        task_name = "main"
+
+    try:
+        task = await _kitsu_api(
             session, "POST", "/data/tasks",
-            {
+            json_body={
+                "name": task_name,
                 "entity_id": entity_id,
                 "task_type_id": task_type_id,
                 "project_id": project_id,
             },
         )
+        # Initialize status to "Todo" — required for /actions/tasks/{id}/comment
+        # Without a status, Zou returns 404 on comment endpoint
+        todo_id = await _kitsu_get_todo_status_id(session)
+        if todo_id and task.get("id"):
+            try:
+                await _kitsu_api(
+                    session, "PUT", f"/data/tasks/{task['id']}",
+                    json_body={"task_status_id": todo_id},
+                )
+            except Exception:
+                pass
+        return task
     except RuntimeError as e:
         if "already exists" in str(e).lower():
-            # Race condition — retry fetch
             tasks = await _kitsu_api(
                 session, "GET",
                 f"/data/entities/{entity_id}/task-types/{task_type_id}/tasks",
@@ -801,7 +831,7 @@ async def _kitsu_post_comment(
     return await _kitsu_api(
         session, "POST",
         f"/actions/tasks/{task_id}/comment",
-        {"task_status_id": status_id, "text": text},
+        json_body={"task_status_id": status_id, "text": text},
     )
 
 
@@ -816,7 +846,7 @@ async def _kitsu_upload_preview(
     preview = await _kitsu_api(
         session, "POST",
         f"/actions/tasks/{task_id}/comments/{comment_id}/add-preview",
-        {},
+        json_body={},
     )
     if not preview or "id" not in preview:
         return None
@@ -839,7 +869,7 @@ async def _kitsu_upload_preview(
         await _kitsu_api(
             session, "PUT",
             f"/actions/preview-files/{preview_id}/set-main-preview",
-            {},
+            json_body={},
         )
     except Exception:
         pass  # Non-critical if setting main preview fails
@@ -869,7 +899,7 @@ async def _kitsu_create_playlist(
         return await _kitsu_api(
             session, "POST",
             f"/data/projects/{project_id}/playlists",
-            {"name": name, "shots": shots_payload},
+            json_body={"name": name, "shots": shots_payload},
         )
     except Exception:
         return None
@@ -923,7 +953,7 @@ async def _kitsu_set_task_estimation(
         estimation_sec = int(cost_usd * 3600) if cost_usd > 0 else duration_seconds
         await _kitsu_api(
             session, "PUT", f"/data/tasks/{task_id}",
-            {"estimation": estimation_sec},
+            json_body={"estimation": estimation_sec},
         )
         return True
     except Exception:
@@ -967,7 +997,7 @@ async def push_to_kitsu(
                 await _kitsu_api(
                     session, "PUT",
                     f"/data/entities/{sequence_id}",
-                    {"description": synthesis_text},
+                    json_body={"description": synthesis_text},
                 )
             except Exception:
                 pass  # Non-critical
@@ -998,7 +1028,7 @@ async def push_to_kitsu(
                 session, "POST",
                 f"/actions/projects/{project_id}/task-types"
                 f"/{shot_task_type_id}/shots/create-tasks",
-                {},
+                json_body={},
             )
 
             # Phase 3: Post comments + previews on each shot
@@ -1062,7 +1092,7 @@ async def push_to_kitsu(
                         session, "POST",
                         f"/data/projects/{project_id}/asset-types"
                         f"/{videoref_type_id}/assets/new",
-                        {
+                        json_body={
                             "name": asset_name,
                             "description": desc,
                             "data": asset_data,
@@ -1899,7 +1929,7 @@ async def _step_brief(
                 await _kitsu_api(
                     session, "PUT",
                     f"/data/projects/{project['id']}",
-                    json={
+                    json_body={
                         "fps": fps,
                         "resolution": resolution,
                         "production_style": style,
@@ -1907,17 +1937,40 @@ async def _step_brief(
                 )
                 project_id = project["id"]
 
-                # Create main sequence inside the new project
+                # Add ALL persons to team (admin + bot)
+                try:
+                    persons = await _kitsu_api(
+                        session, "GET", "/data/persons",
+                    )
+                    for person in persons:
+                        try:
+                            await _kitsu_api(
+                                session, "POST",
+                                f"/data/projects/{project_id}/team",
+                                json_body={"person_id": person["id"]},
+                            )
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+
+                # Create main sequence + first shot inside the new project
                 seq = await _kitsu_create_sequence(
                     session, project_id, "", job["title"][:80],
                 )
+                # Create an overview shot (task types are for_entity=Shot)
+                shot = await _kitsu_create_shot(
+                    session, project_id, seq["id"], "",
+                    "SH0000", {"note": "Overview shot for pipeline tasks"},
+                )
                 extras["kitsu_project_id"] = project_id
                 extras["kitsu_sequence_id"] = seq["id"]
+                extras["kitsu_overview_shot_id"] = shot["id"]
 
-                # Create Brief task + mark done
+                # Create Brief task on the overview shot + mark done
                 task_type_id = await _kitsu_get_task_type_id(session, "Brief")
                 task = await _kitsu_get_or_create_task(
-                    session, seq["id"], task_type_id, project_id,
+                    session, shot["id"], task_type_id, project_id,
                 )
                 done_id = await _kitsu_get_done_status_id(session)
                 await _kitsu_post_comment(
@@ -3136,6 +3189,8 @@ async def produce_start(request: web.Request) -> web.Response:
         format=data.get("format", "landscape"),
         style=data.get("style", "2d3d"),
     )
+    # Kitsu project is created by _step_brief (not here)
+    # to avoid duplicate name errors when brief also creates it.
     _save_job(job)
 
     return web.json_response({
@@ -3143,6 +3198,7 @@ async def produce_start(request: web.Request) -> web.Response:
         "job_id": job["job_id"],
         "slug": job["slug"],
         "title": job["title"],
+        "note": "Kitsu project will be created at Brief step",
         "pipeline_steps": STEP_IDS,
         "next_step": STEP_IDS[0],
     })
@@ -3646,7 +3702,7 @@ async def video_intelligence(request: web.Request) -> web.Response:
                         session, "POST",
                         f"/data/projects/{library['id']}"
                         f"/asset-types/{vref_type['id']}/assets/new",
-                        json={
+                        json_body={
                             "name": _generate_asset_name(
                                 {"style": video_type,
                                  "mood": ", ".join(tags[:3]),

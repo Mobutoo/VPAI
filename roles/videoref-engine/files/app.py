@@ -3115,7 +3115,14 @@ async def _composer_submit(
                                         "subfolder": img.get("subfolder", ""),
                                         "type": img.get("type", "output"),
                                     })
-                                # STRING outputs (video URL nodes)
+                                # VIDEO outputs (SaveVideo nodes — native VIDEO type)
+                                for vid in outputs.get("videos", outputs.get("gifs", [])):
+                                    fname = vid.get("filename", "") if isinstance(vid, dict) else ""
+                                    if fname:
+                                        video_url = f"{COMFYUI_API_URL}/view?filename={fname}&type=output"
+                                        video_urls.append(video_url)
+                                        print(f"[composer] VIDEO output: {fname}", flush=True)
+                                # STRING outputs (video URL nodes via fal.ai)
                                 for text_val in outputs.get("text", []):
                                     if isinstance(text_val, str) and (
                                         text_val.startswith("http") or text_val.startswith("/")

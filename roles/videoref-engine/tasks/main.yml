@@ -32,7 +32,7 @@
     group: "{{ workstation_pi_user }}"
     mode: "0644"
   become: true
-  notify: Restart videoref-engine
+  notify: Build and restart videoref-engine
 
 - name: "Videoref-engine | Copy application"
   ansible.builtin.copy:
@@ -42,7 +42,7 @@
     group: "{{ workstation_pi_user }}"
     mode: "0644"
   become: true
-  notify: Restart videoref-engine
+  notify: Build and restart videoref-engine
 
 - name: "Videoref-engine | Deploy env file"
   ansible.builtin.template:

@@ -517,8 +517,11 @@ def cmd_produce_step(args: argparse.Namespace) -> None:
         params["format"] = args.format
     if hasattr(args, "resolution") and args.resolution:
         params["resolution"] = args.resolution
+    if getattr(args, "dry_run", False):
+        params["dry_run"] = True
 
-    print(f"Executing step '{step}' for job {job_id[:8]}...")
+    mode = " (DRY-RUN)" if params.get("dry_run") else ""
+    print(f"Executing step '{step}' for job {job_id[:8]}{mode}...")
     data = _api("POST", "/api/produce/step", {
         "job_id": job_id,
         "step": step,
@@ -744,6 +747,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--query-param", help="Search query (for research step)")
     p.add_argument("--url", help="Source URL (for research step)")
     p.add_argument("--skip", action="store_true", help="Skip optional step")
+    p.add_argument("--dry-run", action="store_true", help="Validate pipeline without generation (zero cost)")
     p.add_argument("--scenes", help="Comma-separated scene indices")
     p.add_argument("--modifications", help="key=value,key=value modifications")
 

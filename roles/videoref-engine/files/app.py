@@ -2764,7 +2764,7 @@ async def _composer_build_workflow(
     if node_name.endswith("_fal") or node_name in _FAL_NODE_SPECS:
         spec = _FAL_NODE_SPECS.get(node_name, {})
         output_type = spec.get("output", "IMAGE")
-        is_video = output_type == "STRING"
+        is_video = output_type in ("STRING", "VIDEO")
 
         workflow: dict[str, Any] = {"prompt": {}}
 
@@ -2932,14 +2932,73 @@ def _build_local_workflow(
     }
 
 
+async def _comfyui_validate_workflow(
+    workflow: dict[str, Any],
+) -> dict[str, Any]:
+    """Submit workflow to ComfyUI /prompt for graph validation only.
+
+    If ComfyUI returns 200 (graph valid), immediately cancel the queued prompt
+    to avoid actual generation. Returns {"status": "validated", "valid": true}
+    or {"status": "error", "valid": false, "error": "..."}.
+    """
+    if not COMFYUI_API_URL:
+        return {"status": "skipped", "valid": True, "note": "COMFYUI_API_URL not configured"}
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{COMFYUI_API_URL}/prompt",
+                json={"prompt": workflow.get("prompt", workflow)},
+                timeout=aiohttp.ClientTimeout(total=15),
+            ) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    print(f"[dry-run] ComfyUI validation FAILED {resp.status}: {body[:400]}", flush=True)
+                    return {"status": "error", "valid": False, "error": body[:600]}
+                data = await resp.json()
+                prompt_id = data.get("prompt_id", "")
+                print(f"[dry-run] ComfyUI graph VALID (prompt_id={prompt_id})", flush=True)
+
+            # Cancel the queued prompt immediately to avoid generation
+            if prompt_id:
+                try:
+                    async with session.post(
+                        f"{COMFYUI_API_URL}/queue",
+                        json={"delete": [prompt_id]},
+                        timeout=aiohttp.ClientTimeout(total=5),
+                    ) as cancel_resp:
+                        print(f"[dry-run] Queue cancel: {cancel_resp.status}", flush=True)
+                except Exception:
+                    pass  # Best-effort cancel
+
+        return {"status": "validated", "valid": True, "prompt_id": prompt_id}
+    except Exception as exc:
+        print(f"[dry-run] ComfyUI validation error: {exc}", flush=True)
+        return {"status": "error", "valid": False, "error": str(exc)}
+
+
+def _fal_submit_mock(scene_index: int = 0) -> dict[str, Any]:
+    """Mock fal.ai response for dry-run mode. Zero cost, zero latency."""
+    return {
+        "status": "completed",
+        "video_url": f"https://dry-run.local/mock_scene_{scene_index}.mp4",
+        "video_urls": [f"https://dry-run.local/mock_scene_{scene_index}.mp4"],
+        "dry_run": True,
+        "images": [],
+    }
+
+
 async def _composer_submit(
     workflow: dict[str, Any], wait: bool = True, timeout_s: int = 180,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Submit a workflow to ComfyUI /prompt API, optionally wait for result.
 
     Handles both IMAGE outputs (images[]) and STRING outputs (video URLs).
     Returns {"status": "completed", "prompt_id": ..., "images": [...], "video_urls": [...]}.
     """
+    # --- Dry-run: validate workflow only, cancel immediately ---
+    if dry_run:
+        return await _comfyui_validate_workflow(workflow)
     is_video = workflow.get("_metadata", {}).get("output_type") == "STRING"
 
     # VIDEO nodes (STRING output): call fal.ai directly.
@@ -4423,6 +4482,8 @@ async def _step_imagegen(
     gen_w = (gen_w // 8) * 8
     gen_h = (gen_h // 8) * 8
 
+    dry_run = params.get("dry_run", False)
+
     for sp in scene_prompts:
         prompt = sp.get("enriched", sp.get("original", ""))
         if not prompt:
@@ -4437,6 +4498,20 @@ async def _step_imagegen(
                 camera=job.get("camera", ""),
                 lens=job.get("lens", ""),
             )
+
+            if dry_run:
+                submit_result = await _composer_submit(workflow, dry_run=True)
+                scene_idx = sp.get("scene_index", 0)
+                sp["keyframe_path"] = f"/dry-run/placeholder_s{scene_idx}.png"
+                results.append({
+                    "scene": scene_idx, "model": model_name,
+                    "gen_resolution": f"{gen_w}x{gen_h}",
+                    "target_resolution": resolution,
+                    "dry_run": True, "comfyui_valid": submit_result.get("valid", False),
+                    "result": submit_result,
+                })
+                continue
+
             submit_result = await _composer_submit(workflow)
 
             # Download keyframe and link to scene_prompt for img2vid
@@ -4531,6 +4606,7 @@ async def _step_videogen(
     scene_prompts = job.get("scene_prompts", [])
     budget = params.get("budget", "balanced")
     duration = int(params.get("duration", 5))
+    dry_run = params.get("dry_run", False)
     job_prefix = job["job_id"][:8]
     results: list[dict[str, Any]] = []
 
@@ -4641,6 +4717,21 @@ async def _step_videogen(
                 fps=int(job.get("fps", 24)),
                 duration=duration,
             )
+
+            if dry_run:
+                # Validate ComfyUI workflow graph without generating
+                validate_result = await _composer_submit(workflow, dry_run=True)
+                mock_fal = _fal_submit_mock(sp.get("scene_index", 0))
+                results.append({
+                    "scene": sp.get("scene_index", 0),
+                    "model": model_name,
+                    "duration": duration,
+                    "dry_run": True,
+                    "comfyui_valid": validate_result.get("valid", False),
+                    "result": mock_fal,
+                })
+                continue
+
             submit_result = await _composer_submit(workflow, timeout_s=600)
             scene_result: dict[str, Any] = {
                 "scene": sp.get("scene_index", 0),
@@ -4818,8 +4909,28 @@ async def _step_montage(
     import shutil
     job_prefix = job["job_id"][:8]
     fps = int(job.get("fps", 24))
+    dry_run = params.get("dry_run", False)
     extras: dict[str, Any] = {}
     note = ""
+
+    # --- Dry-run: skip ffmpeg normalization + Remotion render ---
+    if dry_run:
+        scene_prompts = job.get("scene_prompts", [])
+        scene_count = len(scene_prompts) if scene_prompts else 0
+        note = (
+            f"DRY-RUN montage: {scene_count} scenes, "
+            f"Remotion skipped, ffmpeg skipped. "
+            f"Would render {scene_count * 5}s video at 720p@{fps}fps."
+        )
+        print(f"[montage] {note}", flush=True)
+        kitsu_result = await _kitsu_step_task(job, "Montage", "wfa", note)
+        await _notify_step_completed(job, "montage")
+        return {
+            "status": "ok", "dry_run": True, "note": note,
+            "scene_count": scene_count,
+            "render_method": "dry-run",
+            "kitsu": kitsu_result,
+        }, extras
 
     # --- Phase 1: Collect assets ---
     video_files: list[Path] = []

@@ -10,3 +10,16 @@
     state: restarted
   become: true
   when: not (common_molecule_mode | default(false))
+
+- name: Build and restart remotion
+  community.docker.docker_compose_v2:
+    project_src: "/opt/workstation"
+    files:
+      - docker-compose-creative.yml
+    services:
+      - remotion
+    build: always
+    state: present
+    recreate: always
+  become: true
+  when: not (common_molecule_mode | default(false))

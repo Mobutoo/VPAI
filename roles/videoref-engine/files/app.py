@@ -2434,7 +2434,12 @@ _FAL_NODE_SPECS: dict[str, dict[str, Any]] = {
         "image_param": "image",
         "model_param": "model",
         "model_default": "seedance-1-0-pro-fast-251015",
-        "extra_defaults": {"aspect_ratio": "16:9"},
+        "extra_defaults": {
+            "aspect_ratio": "16:9",
+            "seed": 0,
+            "camera_fixed": False,
+            "watermark": False,
+        },
     },
     "ByteDanceTextToVideoNode": {
         "output": "VIDEO",
@@ -2443,7 +2448,12 @@ _FAL_NODE_SPECS: dict[str, dict[str, Any]] = {
         "size_param": "resolution_p+aspect_ratio",
         "model_param": "model",
         "model_default": "seedance-1-0-pro-fast-251015",
-        "extra_defaults": {"aspect_ratio": "16:9"},
+        "extra_defaults": {
+            "aspect_ratio": "16:9",
+            "seed": 0,
+            "camera_fixed": False,
+            "watermark": False,
+        },
     },
     "KlingImage2VideoNode": {
         "output": "VIDEO",

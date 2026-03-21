@@ -3540,8 +3540,15 @@ async def _llm_decompose_scenes(
             async with session.post(
                 f"{LITELLM_URL}/v1/chat/completions",
                 json={
-                    "model": "gpt-4o-mini",
-                    "messages": [{"role": "user", "content": prompt}],
+                    "model": "gemini-flash",
+                    "messages": [
+                        {"role": "system", "content": (
+                            "Tu es un directeur artistique. Tu generes des scenes "
+                            "cinematographiques STRICTEMENT liees au brief fourni. "
+                            "Ne genere JAMAIS de contenu sans rapport avec le brief."
+                        )},
+                        {"role": "user", "content": prompt},
+                    ],
                     "temperature": 0.7,
                     "max_tokens": 3000,
                 },

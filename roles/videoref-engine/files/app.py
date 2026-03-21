@@ -3108,13 +3108,21 @@ async def _composer_submit(
                             video_urls: list[str] = []
 
                             for node_id, outputs in entry.get("outputs", {}).items():
-                                # IMAGE outputs (SaveImage nodes)
+                                is_animated = any(outputs.get("animated", []))
+                                # IMAGE or VIDEO outputs (SaveImage/SaveVideo both use "images" key)
                                 for img in outputs.get("images", []):
-                                    images.append({
-                                        "filename": img.get("filename", ""),
-                                        "subfolder": img.get("subfolder", ""),
-                                        "type": img.get("type", "output"),
-                                    })
+                                    fname = img.get("filename", "")
+                                    # SaveVideo outputs .mp4 under "images" with animated=true
+                                    if is_animated or fname.endswith((".mp4", ".webm", ".gif")):
+                                        video_url = f"{COMFYUI_API_URL}/view?filename={fname}&type=output"
+                                        video_urls.append(video_url)
+                                        print(f"[composer] VIDEO output: {fname}", flush=True)
+                                    else:
+                                        images.append({
+                                            "filename": fname,
+                                            "subfolder": img.get("subfolder", ""),
+                                            "type": img.get("type", "output"),
+                                        })
                                 # VIDEO outputs (SaveVideo nodes — native VIDEO type)
                                 for vid in outputs.get("videos", outputs.get("gifs", [])):
                                     fname = vid.get("filename", "") if isinstance(vid, dict) else ""

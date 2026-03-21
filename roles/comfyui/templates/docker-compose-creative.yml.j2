@@ -24,6 +24,9 @@ services:
       GEMINI_API_KEY: "{{ comfyui_gemini_key }}"
       GOOGLE_API_KEY: "{{ comfyui_gemini_key }}"
 {% endif %}
+{% if byteplus_api_key | default('') | length > 0 %}
+      BYTEPLUS_API_KEY: "{{ byteplus_api_key }}"
+{% endif %}
     volumes:
       - {{ comfyui_data_dir }}/models:/app/models
       - {{ comfyui_data_dir }}/output:/app/output

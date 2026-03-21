@@ -3524,10 +3524,13 @@ async def _llm_decompose_scenes(
         f"Tu es un directeur artistique pour des videos courtes (reels/shorts).\n"
         f"Decompose ce brief en exactement {num_scenes} scenes cinematographiques.{style_ctx}\n\n"
         f"Brief: {description}\n\n"
+        f"IMPORTANT: Chaque scene DOIT etre directement liee au brief ci-dessus. "
+        f"Le sujet principal du brief doit apparaitre dans TOUTES les scenes. "
+        f"Ne genere PAS de scenes sans rapport avec le brief.\n\n"
         f"Retourne UNIQUEMENT un JSON array valide. Pour chaque scene:\n"
         f'[{{"scene_index": 0, "description": "Description narrative (1-2 phrases)", '
         f'"visual_prompt": "Prompt detaille pour generation image/video en anglais, '
-        f'incluant sujet, action, eclairage, ambiance, cadrage", '
+        f'incluant le sujet du brief, action, eclairage, ambiance, cadrage", '
         f'"camera_movement": "static | pan left | pan right | dolly in | dolly out | tracking | crane up | handheld", '
         f'"mood": "mot-cle ambiance", "duration_seconds": 5}}]'
     )
@@ -4917,10 +4920,16 @@ async def _step_montage(
     if dry_run:
         scene_prompts = job.get("scene_prompts", [])
         scene_count = len(scene_prompts) if scene_prompts else 0
+        total_duration = sum(
+            sp.get("duration_seconds", 5) for sp in scene_prompts
+        ) if scene_prompts else 0
+        direction = job.get("direction", {})
         note = (
             f"DRY-RUN montage: {scene_count} scenes, "
-            f"Remotion skipped, ffmpeg skipped. "
-            f"Would render {scene_count * 5}s video at 720p@{fps}fps."
+            f"~{total_duration}s total, "
+            f"transition={direction.get('defaultTransition', 'crossfade')}, "
+            f"grade={direction.get('colorGrade', {}).get('preset', 'none')}. "
+            f"Remotion + ffmpeg skipped."
         )
         print(f"[montage] {note}", flush=True)
         kitsu_result = await _kitsu_step_task(job, "Montage", "wfa", note)
@@ -4928,6 +4937,13 @@ async def _step_montage(
         return {
             "status": "ok", "dry_run": True, "note": note,
             "scene_count": scene_count,
+            "total_duration_sec": total_duration,
+            "render_target": f"720p@{fps}fps",
+            "direction": direction,
+            "scene_prompts_summary": [
+                {"scene": sp.get("scene_index", i), "prompt": sp.get("enriched", sp.get("original", ""))[:120]}
+                for i, sp in enumerate(scene_prompts)
+            ],
             "render_method": "dry-run",
             "kitsu": kitsu_result,
         }, extras

@@ -17,7 +17,7 @@ const {
 const MAX_QUEUE_DEPTH = 10;
 
 // Allowlist of registered composition IDs
-const KNOWN_COMPOSITIONS = new Set(["HelloWorld"]);
+const KNOWN_COMPOSITIONS = new Set(["HelloWorld", "Montage"]);
 
 const RenderRequestSchema = z.object({
   compositionId: z.string().optional(),
@@ -48,12 +48,14 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
     port: Number(PORT),
     serveUrl: remotionBundleUrl,
     rendersDir,
-    chromiumExecutable: CHROME_EXECUTABLE_PATH,
+    browserExecutable: CHROME_EXECUTABLE_PATH,
     publicBaseUrl: REMOTION_PUBLIC_URL,
   });
 
   // Host renders on /renders
   app.use("/renders", express.static(rendersDir));
+  // Serve shared creative assets (video clips, keyframes, audio)
+  app.use("/creative-assets", express.static("/app/creative-assets"));
   app.use(express.json());
 
   // Root — API info (unauthenticated)

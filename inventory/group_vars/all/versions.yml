@@ -68,6 +68,9 @@ metube_image: "alexta69/metube:2026.03.14"
 # --- VideoRef Engine (video analysis pipeline — Workstation Pi) ---
 videoref_image: "ghcr.io/mobutoo/videoref-engine:v0.1.0"
 
+# --- Remotion Render Server (Workstation Pi — local build ARM64) ---
+remotion_version: "4.0.259"
+
 # --- Workstation Pi (natif — pas Docker) ---
 # Caddy : binaire custom build via xcaddy (module dns.providers.ovh)
 # Version alignee avec le prod Docker (caddy_image ci-dessus)

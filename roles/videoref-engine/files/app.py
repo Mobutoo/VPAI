@@ -35,8 +35,11 @@ TELEGRAM_TOPIC_ID = os.environ.get("TELEGRAM_TOPIC_ID", "")
 
 COMFYUI_API_URL = os.environ.get("COMFYUI_API_URL", "http://workstation_comfyui:8188")
 FAL_API_KEY = os.environ.get("FAL_API_KEY", "")
+BYTEPLUS_API_KEY = os.environ.get("BYTEPLUS_API_KEY", "")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+REMOTION_URL = os.environ.get("REMOTION_URL", "")
 MODEL_REGISTRY_COLLECTION = "model-registry"
+CREATIVE_ASSETS_DIR = Path("/app/creative-assets")
 
 VERSION = "0.11.0"
 SCENE_THRESHOLD = 0.3
@@ -1018,6 +1021,92 @@ async def _kitsu_upload_concept_preview(
     except Exception:
         pass
 
+    return None
+
+
+async def _kitsu_download_asset_preview(
+    session: aiohttp.ClientSession,
+    asset_id: str,
+) -> bytes | None:
+    """Download the latest preview image of a Kitsu asset.
+
+    Used for visual consistency: the first keyframe becomes the
+    'style anchor' for all subsequent video generations.
+    Returns raw image bytes or None if no preview exists.
+    """
+    try:
+        asset = await _kitsu_api(session, "GET", f"/data/assets/{asset_id}")
+        if not asset or not asset.get("preview_file_id"):
+            return None
+        preview_id = asset["preview_file_id"]
+        # Download the preview image directly
+        headers = {"Authorization": f"Bearer {KITSU_TOKEN}"}
+        async with session.get(
+            f"{KITSU_URL}/api/pictures/preview-files/{preview_id}.png",
+            headers=headers,
+            timeout=aiohttp.ClientTimeout(total=30),
+        ) as resp:
+            if resp.status == 200:
+                return await resp.read()
+    except Exception as exc:
+        print(f"[kitsu] Preview download error for asset {asset_id}: {exc}", flush=True)
+    return None
+
+
+async def _kitsu_upload_asset_preview(
+    session: aiohttp.ClientSession,
+    asset_id: str,
+    image_bytes: bytes,
+    note: str = "Style reference keyframe",
+) -> str | None:
+    """Upload a keyframe as preview on a Kitsu asset.
+
+    Creates a task 'Reference' on the asset, posts a comment,
+    and uploads the image as preview. Sets it as main preview
+    so it's visible in the asset library.
+    """
+    try:
+        # Get asset project
+        asset = await _kitsu_api(session, "GET", f"/data/assets/{asset_id}")
+        if not asset:
+            return None
+        project_id = asset.get("project_id", "")
+        if not project_id:
+            return None
+
+        # Get or create "Reference" task type
+        ref_tt = await _kitsu_get_task_type_id(session, "Reference")
+        if not ref_tt:
+            # Fallback to any existing task type
+            ref_tt = await _kitsu_get_task_type_id(session, "Concept")
+        if not ref_tt:
+            return None
+
+        # Get or create task on the asset
+        task = await _kitsu_get_or_create_task(session, asset_id, ref_tt, project_id)
+        if not task:
+            return None
+
+        # Post comment + upload preview
+        done_id = await _kitsu_get_done_status_id(session)
+        comment = await _kitsu_post_comment(session, task["id"], done_id, note)
+        if comment and comment.get("id"):
+            preview_id = await _kitsu_upload_preview(
+                session, task["id"], comment["id"], image_bytes,
+            )
+            # Set as asset main preview
+            if preview_id:
+                try:
+                    await _kitsu_api(
+                        session, "PUT",
+                        f"/data/assets/{asset_id}",
+                        json_body={"preview_file_id": preview_id},
+                    )
+                except Exception:
+                    pass
+            return preview_id
+    except Exception as exc:
+        print(f"[kitsu] Asset preview upload error {asset_id}: {exc}", flush=True)
     return None
 
 
@@ -2006,7 +2095,8 @@ async def _composer_select_model(
                 data = await resp.json()
                 results = data.get("result", [])
 
-                # Pick first result that matches task type
+                # Pick best result that matches task type
+                candidates: list[dict[str, Any]] = []
                 # If task mentions "image" or "storyboard", skip video models
                 is_image_task = any(
                     w in task.lower()
@@ -2021,6 +2111,10 @@ async def _composer_select_model(
                     p = hit["payload"]
                     node = p.get("node", "").lower()
                     name = p.get("name", "").lower()
+                    print(f"[model-select] candidate: {p.get('node')} score={hit.get('score',0):.3f} tasks={p.get('tasks',[])} budget={p.get('budget')}", flush=True)
+
+                    # Task-based filtering: check model's tasks match the query intent
+                    model_tasks = set(p.get("tasks", []))
 
                     # Skip video models for image tasks
                     if is_image_task and not is_video_task:
@@ -2028,6 +2122,11 @@ async def _composer_select_model(
                             "video", "kling", "veo", "seedance", "runway",
                             "sora", "luma", "minimax", "wan2", "animate",
                         ]):
+                            print(f"[model-select] SKIP (video model): {p.get('node')}", flush=True)
+                            continue
+                        # Skip upscale-only models for generation tasks
+                        if model_tasks and model_tasks <= {"upscale", "enhance"}:
+                            print(f"[model-select] SKIP (upscale-only): {p.get('node')}", flush=True)
                             continue
 
                     # Skip image models for video tasks
@@ -2036,12 +2135,20 @@ async def _composer_select_model(
                             "video", "kling", "veo", "seedance", "runway",
                             "sora", "luma", "minimax", "wan2", "animate",
                         ]):
+                            print(f"[model-select] SKIP (non-video model): {p.get('node')}", flush=True)
                             continue
 
-                    return p  # First matching result (highest similarity)
+                    candidates.append(p)
 
-                # Fallback: return first result regardless
-                return results[0]["payload"] if results else None
+                if not candidates:
+                    # Fallback: return first result regardless
+                    return results[0]["payload"] if results else None
+
+                # Prefer direct providers over fal.ai intermediaries
+                direct = [c for c in candidates if "-direct" in c.get("provider", "")]
+                selected = direct[0] if direct else candidates[0]
+                print(f"[model-select] SELECTED: {selected.get('node')} (provider={selected.get('provider', '?')})", flush=True)
+                return selected
     except Exception as exc:
         print(f"[composer] Model selection error: {exc}")
         return None
@@ -2313,6 +2420,46 @@ _FAL_NODE_SPECS: dict[str, dict[str, Any]] = {
         "size_param": None,
         "extra_defaults": {},
     },
+    # --- Native ComfyUI API nodes (output VIDEO, routed via comfy-api-liberation) ---
+    # These nodes call providers DIRECTLY (not fal.ai). They output VIDEO type
+    # which is compatible with SaveVideo. comfy-api-liberation intercepts the
+    # proxy URLs and routes to the provider with our API keys.
+    "ByteDanceImageToVideoNode": {
+        "output": "VIDEO",
+        "duration_param": "duration",
+        "duration_format": "int",  # INT slider 3-12
+        "size_param": "resolution_p+aspect_ratio",
+        "needs_image": True,
+        "image_param": "image",
+        "model_param": "model",
+        "model_default": "seedance-1-0-pro-fast-251015",
+        "extra_defaults": {"aspect_ratio": "16:9"},
+    },
+    "ByteDanceTextToVideoNode": {
+        "output": "VIDEO",
+        "duration_param": "duration",
+        "duration_format": "int",
+        "size_param": "resolution_p+aspect_ratio",
+        "model_param": "model",
+        "model_default": "seedance-1-0-pro-fast-251015",
+        "extra_defaults": {"aspect_ratio": "16:9"},
+    },
+    "KlingImage2VideoNode": {
+        "output": "VIDEO",
+        "duration_param": "duration",
+        "duration_format": "int",
+        "size_param": None,
+        "needs_image": True,
+        "image_param": "image",
+        "extra_defaults": {},
+    },
+    "KlingTextToVideoNode": {
+        "output": "VIDEO",
+        "duration_param": "duration",
+        "duration_format": "int",
+        "size_param": None,
+        "extra_defaults": {},
+    },
 }
 
 
@@ -2371,8 +2518,10 @@ async def _fal_direct_submit(
             ) as resp:
                 if resp.status not in (200, 201):
                     body = await resp.text()
+                    print(f"[fal] Submit error {resp.status}: {body[:200]}", flush=True)
                     return {"error": f"fal.ai {resp.status}: {body[:300]}"}
                 data = await resp.json()
+                print(f"[fal] Submit OK: keys={list(data.keys())[:8]}", flush=True)
 
             # If response has video URL directly (sync mode)
             if data.get("video", {}).get("url"):
@@ -2385,6 +2534,7 @@ async def _fal_direct_submit(
 
             if not request_id and not status_url:
                 # Direct response (not queued)
+                print(f"[fal] No queue id — checking direct response", flush=True)
                 video = data.get("video", {})
                 if isinstance(video, dict) and video.get("url"):
                     return {"status": "completed", "video_url": video["url"]}
@@ -2392,6 +2542,7 @@ async def _fal_direct_submit(
                 videos = data.get("videos", [])
                 if videos and isinstance(videos[0], dict):
                     return {"status": "completed", "video_url": videos[0].get("url", "")}
+                print(f"[fal] WARNING: no video_url in direct response: {json.dumps(data)[:300]}", flush=True)
                 return {"status": "completed", "raw": data}
 
             # Poll status_url
@@ -2458,6 +2609,109 @@ async def _fal_direct_submit(
         return {"error": f"fal.ai direct call failed: {exc}"}
 
 
+async def _byteplus_generate_video(
+    prompt: str,
+    reference_image: str = "",
+    duration: int = 5,
+    resolution: str = "720p",
+    seed: int = -1,
+    timeout_s: int = 600,
+) -> dict[str, Any]:
+    """Call BytePlus Seedance API directly (cheaper than fal.ai).
+
+    BytePlus API: POST /seedance/v1/videos → GET /seedance/v1/videos/{job_id}
+    Returns {"video_url": "...", "status": "completed"} or {"error": "..."}.
+    ~60% cheaper than fal.ai for the same Seedance model.
+    """
+    if not BYTEPLUS_API_KEY:
+        return {"error": "BYTEPLUS_API_KEY not configured"}
+
+    base_url = "https://api.byteplus.com/seedance/v1"
+    headers = {
+        "Authorization": f"Bearer {BYTEPLUS_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    body: dict[str, Any] = {
+        "model": "seedance-2.0",
+        "prompt": prompt,
+        "resolution": resolution,
+        "duration": duration,
+        "aspect_ratio": "16:9",
+    }
+    if seed >= 0:
+        body["seed"] = seed
+
+    # Image-to-video: add reference image
+    if reference_image:
+        body["references"] = [{
+            "type": "image",
+            "data": reference_image,  # base64 data URI or URL
+            "role": "subject",
+        }]
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Submit generation
+            async with session.post(
+                f"{base_url}/videos",
+                headers=headers,
+                json=body,
+                timeout=aiohttp.ClientTimeout(total=30),
+            ) as resp:
+                if resp.status not in (200, 201, 202):
+                    err_body = await resp.text()
+                    print(f"[byteplus] Submit error {resp.status}: {err_body[:200]}", flush=True)
+                    return {"error": f"BytePlus {resp.status}: {err_body[:300]}"}
+                data = await resp.json()
+
+            job_id = data.get("id", data.get("task_id", ""))
+            if not job_id:
+                # Synchronous response with video
+                video_url = data.get("output", {}).get("video_url", "")
+                if video_url:
+                    return {"status": "completed", "video_url": video_url}
+                return {"error": f"No job_id in response: {json.dumps(data)[:200]}"}
+
+            print(f"[byteplus] Job submitted: {job_id}", flush=True)
+
+            # Poll for completion
+            for poll_i in range(timeout_s // 5):
+                await asyncio.sleep(5)
+                try:
+                    async with session.get(
+                        f"{base_url}/videos/{job_id}",
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=10),
+                    ) as poll_resp:
+                        poll_data = await poll_resp.json()
+                        status = poll_data.get("status", "").lower()
+                        if poll_i % 6 == 0:
+                            print(f"[byteplus] Poll {poll_i}: {status}", flush=True)
+                        if status in ("completed", "succeed", "done"):
+                            video_url = (
+                                poll_data.get("output", {}).get("video_url", "")
+                                or poll_data.get("video_url", "")
+                                or poll_data.get("result", {}).get("video_url", "")
+                            )
+                            if video_url:
+                                print(f"[byteplus] Video ready: {len(video_url)} chars", flush=True)
+                                return {"status": "completed", "video_url": video_url}
+                            return {"status": "completed", "raw": poll_data}
+                        if status in ("failed", "error"):
+                            return {"error": str(poll_data.get("error", poll_data.get("message", "")))[:300]}
+                except Exception:
+                    continue
+
+            return {"status": "timeout", "error": f"BytePlus timeout after {timeout_s}s"}
+    except Exception as exc:
+        return {"error": f"BytePlus call failed: {exc}"}
+
+
+# Seedance nodes that can be routed to BytePlus directly
+_BYTEPLUS_SEEDANCE_NODES = {"SeedanceTextToVideo_fal", "SeedanceImageToVideo_fal"}
+
+
 def _format_duration(seconds: int, fmt: str, values: list[str] | None = None) -> str | int:
     """Format duration for the specific node's expected format."""
     if fmt == "int":
@@ -2506,8 +2760,8 @@ async def _composer_build_workflow(
     """
     node_name = model.get("node", "")
 
-    # fal.ai nodes
-    if node_name.endswith("_fal"):
+    # fal.ai nodes AND native API nodes (both registered in _FAL_NODE_SPECS)
+    if node_name.endswith("_fal") or node_name in _FAL_NODE_SPECS:
         spec = _FAL_NODE_SPECS.get(node_name, {})
         output_type = spec.get("output", "IMAGE")
         is_video = output_type == "STRING"
@@ -2523,6 +2777,11 @@ async def _composer_build_workflow(
         inputs: dict[str, Any] = {"prompt": full_prompt}
         for k, v in spec.get("extra_defaults", {}).items():
             inputs[k] = v
+
+        # Model selection for native nodes (COMBO input)
+        model_param = spec.get("model_param")
+        if model_param:
+            inputs[model_param] = spec.get("model_default", "")
 
         # --- Size params (varies per node) ---
         size_param = spec.get("size_param", "")
@@ -2565,9 +2824,49 @@ async def _composer_build_workflow(
             inputs["negative_prompt"] = negative
 
         # --- Reference image ---
-        if reference_image:
+        # ComfyUI nodes expect IMAGE tensor input, not URLs.
+        # Copy image to ComfyUI input dir + add LoadImage node.
+        load_image_node_id = None
+        if reference_image and spec.get("needs_image"):
             img_param = spec.get("image_param", "image")
-            inputs[img_param] = reference_image
+            ref_path = Path(reference_image) if not reference_image.startswith("data:") else None
+
+            if ref_path and ref_path.exists():
+                # Copy to ComfyUI input directory
+                import shutil
+                comfyui_input = Path(COMFYUI_DIR).parent / "input"
+                comfyui_input.mkdir(parents=True, exist_ok=True)
+                dest = comfyui_input / ref_path.name
+                shutil.copy2(str(ref_path), str(dest))
+                # Add LoadImage node and connect to video node
+                load_image_node_id = "load_ref"
+                workflow["prompt"][load_image_node_id] = {
+                    "class_type": "LoadImage",
+                    "inputs": {"image": ref_path.name},
+                }
+                inputs[img_param] = [load_image_node_id, 0]
+                print(f"[composer] LoadImage: {ref_path.name} → {img_param}", flush=True)
+            elif reference_image.startswith("data:"):
+                # Data URI: decode to file, then LoadImage
+                try:
+                    header, b64data = reference_image.split(",", 1)
+                    ext = "png" if "png" in header else "jpg"
+                    fname = f"ref_{hash(b64data[:50]) % 99999:05d}.{ext}"
+                    comfyui_input = Path(COMFYUI_DIR).parent / "input"
+                    comfyui_input.mkdir(parents=True, exist_ok=True)
+                    dest = comfyui_input / fname
+                    dest.write_bytes(base64.b64decode(b64data))
+                    load_image_node_id = "load_ref"
+                    workflow["prompt"][load_image_node_id] = {
+                        "class_type": "LoadImage",
+                        "inputs": {"image": fname},
+                    }
+                    inputs[img_param] = [load_image_node_id, 0]
+                    print(f"[composer] LoadImage (from data URI): {fname} → {img_param}", flush=True)
+                except Exception as b64_exc:
+                    print(f"[composer] Data URI decode error: {b64_exc}", flush=True)
+                    # Fallback: pass URL directly (fal.ai nodes may accept URLs)
+                    inputs[img_param] = reference_image
 
         # Build node 1 (generator)
         workflow["prompt"]["1"] = {
@@ -2581,7 +2880,13 @@ async def _composer_build_workflow(
                 "class_type": "SaveImage",
                 "inputs": {"images": ["1", 0], "filename_prefix": "composer"},
             }
-        # Video nodes: no SaveImage — output is a URL string in node 1 outputs
+        # VIDEO output nodes (native): add SaveVideo for ComfyUI to persist
+        if output_type == "VIDEO":
+            workflow["prompt"]["save_video"] = {
+                "class_type": "SaveVideo",
+                "inputs": {"video": ["1", 0], "filename_prefix": "composer_video"},
+            }
+        # STRING video nodes (fal.ai): no output node — handled by bypass in _composer_submit
 
         workflow["_metadata"] = {
             "composer": True,
@@ -2637,24 +2942,41 @@ async def _composer_submit(
     """
     is_video = workflow.get("_metadata", {}).get("output_type") == "STRING"
 
-    # Video nodes: call fal.ai directly (ComfyUI can't handle STRING output nodes)
+    # VIDEO nodes (STRING output): call fal.ai directly.
+    # ComfyUI cannot handle STRING-only nodes (prompt_no_outputs error).
+    # IMAGE nodes: go through ComfyUI /prompt API normally.
+    # NOTE: When comfy-api-liberation + native VIDEO nodes (output VIDEO)
+    # are fully wired, this bypass can be removed.
     if is_video and FAL_API_KEY:
-        node_name = workflow.get("_metadata", {}).get("model", "")
-        # Find the node in the workflow prompt to get its class_type and inputs
         prompt_nodes = workflow.get("prompt", {})
         for nid, node in prompt_nodes.items():
             class_type = node.get("class_type", "")
-            # Check specs and endpoints for this node
-            if class_type in _FAL_ENDPOINTS or (
-                class_type.endswith("_fal")
-                and _FAL_NODE_SPECS.get(class_type, {}).get("output") == "STRING"
-            ):
-                if class_type not in _FAL_ENDPOINTS:
-                    print(f"[composer] WARNING: {class_type} not in _FAL_ENDPOINTS, skipping fal direct", flush=True)
-                    break
+            if class_type in _FAL_ENDPOINTS:
                 endpoint = _FAL_ENDPOINTS[class_type]
                 inputs = dict(node.get("inputs", {}))
-                print(f"[composer] Video node {class_type} → fal.ai direct: {endpoint}", flush=True)
+                # Convert ComfyUI LoadImage refs to fal.ai image URLs
+                for k, v in list(inputs.items()):
+                    if isinstance(v, list) and len(v) == 2 and isinstance(v[0], str):
+                        ref_node_id = v[0]
+                        ref_node = prompt_nodes.get(ref_node_id, {})
+                        if ref_node.get("class_type") == "LoadImage":
+                            img_name = ref_node.get("inputs", {}).get("image", "")
+                            if img_name:
+                                # Find image in ComfyUI input dir and convert to data URI
+                                comfyui_input = Path(COMFYUI_DIR).parent / "input" / img_name
+                                if comfyui_input.exists():
+                                    # Upload to fal.ai storage for a proper URL
+                                    img_url = await _upload_to_fal_storage(str(comfyui_input))
+                                    if not img_url:
+                                        # Fallback to data URI
+                                        img_url = _image_to_fal_url(str(comfyui_input))
+                                    if img_url:
+                                        inputs[k] = img_url
+                                        is_data = "data:" in img_url[:10]
+                                        print(f"[composer] Ref image → {'data URI' if is_data else 'fal CDN'} for {k}", flush=True)
+                                        continue
+                        inputs.pop(k)  # Remove unresolvable node refs
+                print(f"[composer] Video {class_type} → fal.ai: {endpoint}", flush=True)
                 fal_result = await _fal_direct_submit(endpoint, inputs, timeout_s=timeout_s)
                 video_url = fal_result.get("video_url", "")
                 if video_url:
@@ -2662,15 +2984,13 @@ async def _composer_submit(
                         "status": "completed",
                         "video_urls": [video_url],
                         "images": [],
-                        "fal_direct": True,
+                        "provider": "fal.ai",
                     }
                 return {
                     "status": fal_result.get("status", "error"),
-                    "error": fal_result.get("error", "No video URL in response"),
+                    "error": fal_result.get("error", "No video URL"),
                     "video_urls": [],
                     "images": [],
-                    "fal_direct": True,
-                    "raw": fal_result.get("raw", {}),
                 }
 
     try:
@@ -2683,9 +3003,11 @@ async def _composer_submit(
             ) as resp:
                 if resp.status != 200:
                     body = await resp.text()
-                    return {"error": f"ComfyUI {resp.status}: {body[:200]}"}
+                    print(f"[composer] ComfyUI submit error {resp.status}: {body[:600]}", flush=True)
+                    return {"error": f"ComfyUI {resp.status}: {body[:600]}"}
                 data = await resp.json()
                 prompt_id = data.get("prompt_id", "")
+                print(f"[composer] Submitted to ComfyUI: prompt_id={prompt_id}", flush=True)
 
             if not wait or not prompt_id:
                 return {"status": "queued", "prompt_id": prompt_id}
@@ -2789,6 +3111,78 @@ async def _composer_download_video(url: str) -> bytes | None:
     except Exception:
         pass
     return None
+
+
+def _image_to_fal_url(image_path: str) -> str:
+    """Convert a local image file to a base64 data URI for fal.ai.
+
+    fal.ai accepts data URIs directly in JSON parameters.
+    This avoids the need for a public CDN or fal.ai storage upload.
+    """
+    path = Path(image_path)
+    if not path.exists():
+        return ""
+    img_bytes = path.read_bytes()
+    # Skip if image is too large (>10MB — use _upload_to_fal_storage instead)
+    if len(img_bytes) > 10 * 1024 * 1024:
+        return ""
+    ext = path.suffix.lower().lstrip(".")
+    mime_map = {
+        "png": "image/png",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "webp": "image/webp",
+    }
+    mime = mime_map.get(ext, "image/png")
+    b64 = base64.b64encode(img_bytes).decode()
+    return f"data:{mime};base64,{b64}"
+
+
+async def _upload_to_fal_storage(image_path: str) -> str:
+    """Upload image to fal.ai storage CDN, return public URL.
+
+    Fallback for images >10MB that cannot use data URIs.
+    Uses fal.ai's file upload endpoint.
+    """
+    if not FAL_API_KEY:
+        return ""
+    path = Path(image_path)
+    if not path.exists():
+        return ""
+    try:
+        headers = {"Authorization": f"Key {FAL_API_KEY}"}
+        async with aiohttp.ClientSession() as session:
+            data = aiohttp.FormData()
+            data.add_field(
+                "file",
+                path.read_bytes(),
+                filename=path.name,
+                content_type="image/png",
+            )
+            async with session.post(
+                "https://fal.ai/api/storage/upload",
+                data=data,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=60),
+            ) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    return result.get("url", result.get("access_url", ""))
+    except Exception as exc:
+        print(f"[fal-upload] Error: {exc}", flush=True)
+    return ""
+
+
+async def _get_fal_image_url(image_path: str) -> str:
+    """Get a fal.ai-compatible URL for a local image.
+
+    Tries base64 data URI first (fastest, no network).
+    Falls back to fal.ai storage upload for large images.
+    """
+    url = _image_to_fal_url(image_path)
+    if url:
+        return url
+    return await _upload_to_fal_storage(image_path)
 
 
 def _generate_asset_name(analysis: dict[str, Any], filename: str = "") -> str:
@@ -3198,6 +3592,149 @@ async def _llm_extract_entities(description: str) -> dict[str, list[str]]:
         return {"characters": [], "environments": [], "props": []}
 
 
+# --- Default artistic direction (fallback if LLM fails) ---
+_DEFAULT_DIRECTION: dict[str, Any] = {
+    "pacing": "medium",
+    "defaultTransition": "crossfade",
+    "defaultTransitionDurationFrames": 15,
+    "colorGrade": {"preset": "none", "contrast": 1, "saturation": 1, "brightness": 1},
+    "grain": 0,
+    "typography": {"fontFamily": "Inter, sans-serif", "accentColor": "#3b82f6", "textColor": "#ffffff"},
+    "subtitleStyle": "cinema",
+}
+
+
+async def _llm_artistic_direction(
+    description: str,
+    title: str,
+    ref_style: str,
+    ref_mood: str,
+    ref_colors: str,
+    scene_analyses: list[dict[str, Any]],
+    camera: str,
+    lens: str,
+    video_format: str,
+    num_scenes: int,
+) -> dict[str, Any]:
+    """Use LLM to decide artistic direction for Remotion montage.
+
+    Exploits ALL metadata from research: style, mood, lighting, composition,
+    color_grade, camera_movement, key_elements, narrative_arc.
+    Returns ArtisticDirection dict (see Remotion Montage/types.ts).
+    """
+    if not LITELLM_URL or not LITELLM_API_KEY:
+        return dict(_DEFAULT_DIRECTION)
+
+    # Build rich context from scene analyses
+    scenes_ctx = []
+    for sa in scene_analyses:
+        analysis = sa.get("analysis", sa)
+        scenes_ctx.append({
+            "lighting": analysis.get("lighting", ""),
+            "composition": analysis.get("composition", ""),
+            "color_grade": analysis.get("color_grade", ""),
+            "camera_movement": analysis.get("camera_movement", ""),
+            "key_elements": analysis.get("key_elements", []),
+            "mood": analysis.get("mood", ""),
+        })
+
+    context_json = json.dumps({
+        "brief": description,
+        "title": title,
+        "ref_style": ref_style,
+        "ref_mood": ref_mood,
+        "ref_colors": ref_colors,
+        "scenes": scenes_ctx,
+        "camera": camera,
+        "lens": lens,
+        "format": video_format,
+        "num_scenes": num_scenes,
+    }, ensure_ascii=False)
+
+    prompt = (
+        "Tu es un directeur artistique pour du contenu video court (reels, shorts).\n"
+        "Analyse ce brief et sa metadata de reference pour decider de la direction artistique du montage.\n\n"
+        "REGLES :\n"
+        "1. COHERENCE MOOD-TRANSITION : mood intense -> transitions rapides (cut, wipe). "
+        "mood contemplatif -> transitions lentes (crossfade, dip-to-black).\n"
+        "2. VARIETE : ne jamais utiliser la meme transition 5x de suite. "
+        "Utilise sceneOverrides si necessaire.\n"
+        "3. PACING DYNAMIQUE : les durees de plans varient. Plan large = plus long. "
+        "Closeup = court. Climax = plans courts rapides.\n"
+        "4. COLOR GRADE UNIQUE : un seul grade pour tout le film, base sur le mood dominant.\n"
+        "5. FONT-MOOD : serif -> elegant/cinema. sans-serif -> moderne/tech. cursive -> emotionnel.\n"
+        "6. ACCENT COLOR : extraite de ref_colors (couleur dominante de la palette).\n"
+        "7. GRAIN : vintage/film -> 0.1-0.2. modern/clean -> 0.\n"
+        "8. AUDIO : musicVolume 0.3-0.6, voiceoverVolume 0.8-1.0, duckLevel 0.1-0.3.\n\n"
+        f"Contexte :\n{context_json}\n\n"
+        "Retourne UNIQUEMENT un JSON valide conforme a ce schema :\n"
+        '{"pacing": "slow|medium|fast|dynamic", '
+        '"defaultTransition": "cut|crossfade|dip-to-black|wipe|slide", '
+        '"defaultTransitionDurationFrames": 10-45, '
+        '"sceneOverrides": {"0": {"transition": "...", "transitionDurationFrames": ...}}, '
+        '"colorGrade": {"preset": "none|warm|cold|teal-orange|vintage|bleach-bypass", '
+        '"contrast": 0.8-1.3, "saturation": 0.5-1.5, "brightness": 0.8-1.2}, '
+        '"grain": 0-0.3, '
+        '"typography": {"fontFamily": "...", "accentColor": "#hex", "textColor": "#hex"}, '
+        '"subtitleStyle": "reel|cinema|minimal|bold-center|karaoke"}'
+    )
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{LITELLM_URL}/v1/chat/completions",
+                json={
+                    "model": "fast",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.5,
+                    "max_tokens": 1500,
+                },
+                headers={
+                    "Authorization": f"Bearer {LITELLM_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                timeout=aiohttp.ClientTimeout(total=20),
+            ) as resp:
+                if resp.status in (429, 400):
+                    content = await _call_gemini_direct(prompt, max_tokens=1500)
+                    if not content:
+                        return dict(_DEFAULT_DIRECTION)
+                elif resp.status != 200:
+                    print(f"[direction] LLM failed: {resp.status}", flush=True)
+                    return dict(_DEFAULT_DIRECTION)
+                else:
+                    data = await resp.json()
+                    content = data["choices"][0]["message"]["content"]
+
+                # Extract JSON
+                if "```json" in content:
+                    content = content.split("```json")[1].split("```")[0]
+                elif "```" in content:
+                    content = content.split("```")[1].split("```")[0]
+                direction = json.loads(content.strip())
+
+                # Validate required keys
+                required = {"pacing", "defaultTransition", "colorGrade", "typography", "subtitleStyle"}
+                if not required.issubset(direction.keys()):
+                    missing = required - set(direction.keys())
+                    print(f"[direction] Missing keys: {missing}, using defaults", flush=True)
+                    merged = dict(_DEFAULT_DIRECTION)
+                    merged.update(direction)
+                    return merged
+
+                # Ensure defaultTransitionDurationFrames exists
+                if "defaultTransitionDurationFrames" not in direction:
+                    direction["defaultTransitionDurationFrames"] = 15
+
+                print(f"[direction] LLM direction: transition={direction['defaultTransition']} "
+                      f"grade={direction['colorGrade'].get('preset', '?')} "
+                      f"pacing={direction['pacing']}", flush=True)
+                return direction
+    except Exception as exc:
+        print(f"[direction] Error: {exc}", flush=True)
+        return dict(_DEFAULT_DIRECTION)
+
+
 async def _step_research(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -3550,12 +4087,28 @@ async def _step_script(
             kitsu_result["asset_error"] = str(exc)
             print(f"[script] Kitsu error: {exc}", flush=True)
 
+    # Artistic direction for Remotion montage
+    direction = await _llm_artistic_direction(
+        description=job.get("description", job.get("title", "")),
+        title=job.get("title", ""),
+        ref_style=job.get("ref_style", ""),
+        ref_mood=job.get("ref_mood", ""),
+        ref_colors=str(job.get("ref_colors", "")),
+        scene_analyses=job.get("scene_analyses", []),
+        camera=job.get("camera", ""),
+        lens=job.get("lens", ""),
+        video_format=job.get("format", "landscape"),
+        num_scenes=len(scene_prompts),
+    )
+    extras["direction"] = direction
+
     # Send Telegram notification
     await _notify_step_completed(job, "script")
 
     return {
         "status": "ok",
         "scene_prompts": scene_prompts,
+        "direction": direction,
         "kitsu": kitsu_result,
     }, extras
 
@@ -3848,6 +4401,7 @@ async def _step_imagegen(
     """
     scene_prompts = job.get("scene_prompts", [])
     budget = params.get("budget", "balanced")
+    job_prefix = job["job_id"][:8]
     results: list[dict[str, Any]] = []
 
     # Parse target resolution from Kitsu project
@@ -3860,6 +4414,7 @@ async def _step_imagegen(
     # Select best model for keyframe generation
     model = await _composer_select_model("keyframe final render high quality image", budget)
     model_name = model["name"] if model else "fallback"
+    print(f"[imagegen] Selected model: {model_name} node={model.get('node', '?') if model else '?'}", flush=True)
 
     # Generate at model-optimal resolution (not target — upscale later)
     gen_w = min(target_w, 1344) if target_w > target_h else min(target_w, 768)
@@ -3884,17 +4439,49 @@ async def _step_imagegen(
             )
             submit_result = await _composer_submit(workflow)
 
+            # Download keyframe and link to scene_prompt for img2vid
+            scene_idx = sp.get("scene_index", 0)
+            if submit_result.get("status") == "completed":
+                images = submit_result.get("images", [])
+                if images:
+                    try:
+                        img_bytes = await _composer_download_image(images[0])
+                        if img_bytes:
+                            kf_path = OUTPUT_DIR / f"{job_prefix}_keyframe_s{scene_idx}.png"
+                            kf_path.write_bytes(img_bytes)
+                            # CRITICAL WIRING: link keyframe to scene_prompt for videogen
+                            sp["keyframe_path"] = str(kf_path)
+                            print(f"[imagegen] Keyframe s{scene_idx} saved: {kf_path.name}", flush=True)
+                            # Upload to Kitsu asset as style reference
+                            asset_ids = job.get("kitsu_asset_ids", [])
+                            if asset_ids and KITSU_URL and KITSU_TOKEN:
+                                try:
+                                    async with aiohttp.ClientSession() as ks:
+                                        # First keyframe → first asset (style anchor)
+                                        target_id = asset_ids[min(scene_idx, len(asset_ids) - 1)]
+                                        preview_id = await _kitsu_upload_asset_preview(
+                                            ks, target_id, img_bytes,
+                                            note=f"Keyframe s{scene_idx} — style reference",
+                                        )
+                                        if preview_id:
+                                            print(f"[imagegen] Uploaded keyframe s{scene_idx} to Kitsu asset", flush=True)
+                                except Exception as kitsu_exc:
+                                    print(f"[imagegen] Kitsu upload error: {kitsu_exc}", flush=True)
+                    except Exception as dl_exc:
+                        print(f"[imagegen] Keyframe download error s{scene_idx}: {dl_exc}", flush=True)
+
             # Generate short asset name for Kitsu
             analysis = sp.get("analysis", {})
             asset_name = _generate_asset_name(analysis, job.get("title", ""))
 
             results.append({
-                "scene": sp.get("scene_index", 0),
+                "scene": scene_idx,
                 "model": model_name,
                 "asset_name": asset_name,
                 "gen_resolution": f"{gen_w}x{gen_h}",
                 "target_resolution": resolution,
                 "needs_upscale": gen_w < target_w or gen_h < target_h,
+                "keyframe_path": sp.get("keyframe_path", ""),
                 "result": submit_result,
             })
         else:
@@ -3944,6 +4531,7 @@ async def _step_videogen(
     scene_prompts = job.get("scene_prompts", [])
     budget = params.get("budget", "balanced")
     duration = int(params.get("duration", 5))
+    job_prefix = job["job_id"][:8]
     results: list[dict[str, Any]] = []
 
     # Failsafe: if scene_prompts empty, build from description
@@ -3988,15 +4576,65 @@ async def _step_videogen(
     is_in_endpoints = model_node in _FAL_ENDPOINTS
     print(f"[videogen] Selected: {model_name} node={model_node} in_specs={is_in_specs} in_endpoints={is_in_endpoints} query={vid_query}", flush=True)
 
+    # --- Style prefix for visual consistency across scenes ---
+    direction = job.get("direction", {})
+    style_parts: list[str] = []
+    if job.get("ref_style"):
+        style_parts.append(job["ref_style"])
+    if job.get("ref_colors"):
+        style_parts.append(f"color palette: {job['ref_colors']}")
+    if job.get("ref_mood"):
+        style_parts.append(f"{job['ref_mood']} mood")
+    grade_preset = direction.get("colorGrade", {}).get("preset", "")
+    if grade_preset and grade_preset != "none":
+        style_parts.append(f"{grade_preset} color grading")
+    if job.get("camera"):
+        style_parts.append(f"shot on {job['camera']}")
+    style_prefix = ", ".join(style_parts)
+    if style_prefix:
+        print(f"[videogen] Style prefix: {style_prefix}", flush=True)
+
     for sp in scene_prompts:
         prompt = sp.get("enriched", sp.get("original", ""))
         if not prompt:
             continue
 
+        # Inject style prefix for consistency
+        if style_prefix:
+            prompt = f"{style_prefix}. {prompt}"
+
+        # --- Reference image for img2vid (local path → ComfyUI LoadImage) ---
+        ref_image = ""
+        kf_path = sp.get("keyframe_path", "")
+        if not kf_path:
+            # Fallback: look for storyboard frame
+            sb_path = COMFYUI_DIR / f"storyboard_{job_prefix}_s{sp.get('scene_index', 0)}.png"
+            if sb_path.exists():
+                kf_path = str(sb_path)
+        if kf_path and Path(kf_path).exists():
+            # Pass local path — _composer_build_workflow copies to ComfyUI input dir
+            ref_image = kf_path
+            print(f"[videogen] Using img2vid ref for scene {sp.get('scene_index')}: {Path(kf_path).name}", flush=True)
+
+        # Fallback: download style anchor from Kitsu asset library
+        if not ref_image and job.get("kitsu_asset_ids") and KITSU_URL and KITSU_TOKEN:
+            try:
+                async with aiohttp.ClientSession() as ks:
+                    anchor_id = job["kitsu_asset_ids"][0]
+                    preview_bytes = await _kitsu_download_asset_preview(ks, anchor_id)
+                    if preview_bytes:
+                        anchor_path = OUTPUT_DIR / f"{job_prefix}_style_anchor.png"
+                        anchor_path.write_bytes(preview_bytes)
+                        ref_image = str(anchor_path)
+                        print(f"[videogen] Style anchor from Kitsu asset {anchor_id}", flush=True)
+            except Exception as kitsu_exc:
+                print(f"[videogen] Kitsu style anchor error: {kitsu_exc}", flush=True)
+
         if model:
             workflow = await _composer_build_workflow(
                 model, prompt,
                 width=target_w, height=target_h,
+                reference_image=ref_image,
                 style=job.get("style", ""),
                 camera=job.get("camera", ""),
                 lens=job.get("lens", ""),
@@ -4094,85 +4732,368 @@ async def _step_videogen(
     }, {}
 
 
+def _parse_srt(srt_text: str) -> list[dict[str, Any]]:
+    """Parse SRT string into list of {text, startMs, endMs}."""
+    import re
+    lines: list[dict[str, Any]] = []
+    blocks = re.split(r"\n\n+", srt_text.strip())
+    for block in blocks:
+        parts = block.strip().split("\n")
+        if len(parts) < 3:
+            continue
+        time_match = re.match(
+            r"(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})",
+            parts[1],
+        )
+        if not time_match:
+            continue
+        g = [int(x) for x in time_match.groups()]
+        start_ms = g[0] * 3600000 + g[1] * 60000 + g[2] * 1000 + g[3]
+        end_ms = g[4] * 3600000 + g[5] * 60000 + g[6] * 1000 + g[7]
+        text = " ".join(parts[2:]).strip()
+        if text:
+            lines.append({"text": text, "startMs": start_ms, "endMs": end_ms})
+    return lines
+
+
+def _camera_movement_to_ken_burns(movement: str) -> dict[str, Any]:
+    """Convert camera_movement string to Ken Burns params."""
+    m = movement.lower() if movement else ""
+    if "pan left" in m:
+        return {"startScale": 1.05, "endScale": 1.05, "panX": -0.8, "panY": 0}
+    if "pan right" in m:
+        return {"startScale": 1.05, "endScale": 1.05, "panX": 0.8, "panY": 0}
+    if "dolly in" in m or "push" in m or "zoom in" in m:
+        return {"startScale": 1.0, "endScale": 1.3, "panX": 0, "panY": 0}
+    if "dolly out" in m or "pull" in m or "zoom out" in m:
+        return {"startScale": 1.3, "endScale": 1.0, "panX": 0, "panY": 0}
+    if "crane up" in m or "tilt up" in m:
+        return {"startScale": 1.05, "endScale": 1.05, "panX": 0, "panY": -0.5}
+    if "crane down" in m or "tilt down" in m:
+        return {"startScale": 1.05, "endScale": 1.05, "panX": 0, "panY": 0.5}
+    if "tracking" in m:
+        return {"startScale": 1.0, "endScale": 1.1, "panX": 0.5, "panY": 0}
+    # Default: subtle zoom in
+    return {"startScale": 1.0, "endScale": 1.1, "panX": 0, "panY": 0}
+
+
+async def _montage_ffmpeg_fallback(
+    job_prefix: str, video_files: list[Path],
+) -> Path | None:
+    """Fallback: ffmpeg concat when Remotion is unavailable."""
+    concat_path = OUTPUT_DIR / f"{job_prefix}_concat.txt"
+    concat_lines = [f"file '{vf}'" for vf in video_files]
+    concat_path.write_text("\n".join(concat_lines))
+    output_path = OUTPUT_DIR / f"{job_prefix}_final.mp4"
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", str(concat_path), "-c", "copy", str(output_path),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await asyncio.wait_for(proc.communicate(), timeout=120)
+        if proc.returncode != 0:
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", str(concat_path),
+                "-c:v", "libx264", "-preset", "fast", "-c:a", "aac",
+                "-movflags", "+faststart", str(output_path),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=300)
+    except (asyncio.TimeoutError, OSError):
+        return None
+    return output_path if output_path.exists() else None
+
+
 async def _step_montage(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Handle montage step: concatenate video clips with ffmpeg.
+    """Handle montage step: render final video via Remotion (or ffmpeg fallback).
 
-    Collects all scene MP4 files from videogen, concatenates them
-    into a single output file, uploads to Kitsu, and sends via Telegram.
+    Remotion renders the full timeline: title card, scenes with transitions,
+    subtitles, audio mix, color grade, grain, outro.
+    Artistic direction comes from _step_script() via job["direction"].
     """
-    import subprocess
+    import shutil
     job_prefix = job["job_id"][:8]
+    fps = int(job.get("fps", 24))
     extras: dict[str, Any] = {}
+    note = ""
 
-    # Collect video files from videogen results (in order)
+    # --- Phase 1: Collect assets ---
     video_files: list[Path] = []
-    for i in range(20):  # Max 20 scenes
+    for i in range(20):
         vpath = OUTPUT_DIR / f"{job_prefix}_s{i}.mp4"
         if vpath.exists():
             video_files.append(vpath)
         else:
             break
 
-    if not video_files:
-        note = "No video clips found for montage"
+    keyframes: list[Path] = []
+    for i in range(20):
+        kpath = COMFYUI_DIR / f"storyboard_{job_prefix}_s{i}.png"
+        if kpath.exists():
+            keyframes.append(kpath)
+        else:
+            break
+
+    # Detect source clip fps; cap resolution to 1280x720 for ARM64 stability
+    # (Chromium on RPi5 crashes at 1920x1080 with multiple OffthreadVideo)
+    MAX_RENDER_W, MAX_RENDER_H = 1280, 720
+    if video_files:
+        probe = await _get_video_info(str(video_files[0]))
+        source_fps = round(probe.get("fps", 24))
+        if source_fps > 0:
+            fps = source_fps
+    width, height = MAX_RENDER_W, MAX_RENDER_H
+    print(f"[montage] Render target: {width}x{height}@{fps}fps (ARM64 safe)", flush=True)
+
+    if not video_files and not keyframes:
+        note = "No video clips or keyframes found for montage"
         print(f"[montage] {note}", flush=True)
         kitsu_result = await _kitsu_step_task(job, "Montage", "done", note)
         await _notify_step_completed(job, "montage")
         return {"status": "ok", "note": note, "kitsu": kitsu_result}, extras
 
-    # Build ffmpeg concat file
-    concat_path = OUTPUT_DIR / f"{job_prefix}_concat.txt"
-    concat_lines = [f"file '{vf}'" for vf in video_files]
-    concat_path.write_text("\n".join(concat_lines))
+    music_path = OUTPUT_DIR / f"{job_prefix}-music.wav"
+    vo_path = OUTPUT_DIR / f"{job_prefix}-kokoro-vo.wav"
+    srt_path = OUTPUT_DIR / f"{job_prefix}-subtitles.srt"
 
-    output_path = OUTPUT_DIR / f"{job_prefix}_final.mp4"
-    print(f"[montage] Concatenating {len(video_files)} clips → {output_path.name}", flush=True)
+    # --- Phase 2: Normalize clips + copy to creative-assets ---
+    # Re-encode clips to match composition fps/resolution to avoid
+    # Chromium ARM64 decode artifacts (black pixel blocks).
+    assets_dir = CREATIVE_ASSETS_DIR / job_prefix
+    assets_dir.mkdir(parents=True, exist_ok=True)
 
-    # Run ffmpeg concat
-    try:
-        result = subprocess.run(
-            [
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                "-i", str(concat_path),
-                "-c", "copy",  # No re-encoding (fast)
-                str(output_path),
-            ],
-            capture_output=True, text=True, timeout=120,
-        )
-        if result.returncode != 0:
-            # Try with re-encoding if codec mismatch
-            print(f"[montage] Concat copy failed, re-encoding...", flush=True)
-            result = subprocess.run(
-                [
-                    "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                    "-i", str(concat_path),
-                    "-c:v", "libx264", "-preset", "fast",
-                    "-c:a", "aac",
-                    "-movflags", "+faststart",
-                    str(output_path),
-                ],
-                capture_output=True, text=True, timeout=300,
+    normalized_video_files: list[Path] = []
+    for vf in video_files:
+        dest = assets_dir / vf.name
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-y", "-i", str(vf),
+                "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2",
+                "-r", str(fps),
+                "-c:v", "libx264", "-preset", "fast", "-crf", "18",
+                "-pix_fmt", "yuv420p",
+                "-an",  # strip audio (Remotion handles audio separately)
+                str(dest),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-    except subprocess.TimeoutExpired:
-        note = "ffmpeg concat timed out"
-        kitsu_result = await _kitsu_step_task(job, "Montage", "wfa", note)
-        await _notify_step_completed(job, "montage")
-        return {"status": "error", "note": note, "kitsu": kitsu_result}, extras
+            await asyncio.wait_for(proc.communicate(), timeout=120)
+            if dest.exists() and dest.stat().st_size > 0:
+                normalized_video_files.append(dest)
+                print(f"[montage] Normalized {vf.name} → {width}x{height}@{fps}fps", flush=True)
+            else:
+                shutil.copy2(vf, dest)
+                normalized_video_files.append(dest)
+                print(f"[montage] Normalize failed for {vf.name}, using original", flush=True)
+        except (asyncio.TimeoutError, OSError) as e:
+            shutil.copy2(vf, dest)
+            normalized_video_files.append(dest)
+            print(f"[montage] Normalize timeout {vf.name}: {e}", flush=True)
 
+    video_files = normalized_video_files
+
+    for src in keyframes:
+        shutil.copy2(src, assets_dir / src.name)
+    for src in [music_path, vo_path]:
+        if src.exists():
+            shutil.copy2(src, assets_dir / src.name)
+
+    # --- Phase 3: Build scenes[] ---
+    scene_prompts = job.get("scene_prompts", [])
+    scenes: list[dict[str, Any]] = []
+    remotion_base = REMOTION_URL or "http://workstation_remotion:3200"
+
+    for i in range(max(len(video_files), len(keyframes), len(scene_prompts))):
+        sp = scene_prompts[i] if i < len(scene_prompts) else {}
+        duration_sec = sp.get("duration_seconds", 5)
+        duration_frames = int(duration_sec * fps)
+        camera_movement = sp.get("camera_movement", "")
+
+        if i < len(video_files):
+            scenes.append({
+                "type": "video",
+                "src": f"{remotion_base}/creative-assets/{job_prefix}/{video_files[i].name}",
+                "durationInFrames": duration_frames,
+                "sceneIndex": i,
+            })
+        elif i < len(keyframes):
+            scenes.append({
+                "type": "keyframe",
+                "src": f"{remotion_base}/creative-assets/{job_prefix}/{keyframes[i].name}",
+                "durationInFrames": duration_frames,
+                "sceneIndex": i,
+                "kenBurns": _camera_movement_to_ken_burns(camera_movement),
+            })
+
+    if not scenes:
+        note = "No renderable scenes"
+        kitsu_result = await _kitsu_step_task(job, "Montage", "done", note)
+        return {"status": "ok", "note": note, "kitsu": kitsu_result}, extras
+
+    # --- Phase 4: Parse SRT ---
+    subtitles: list[dict[str, Any]] = []
+    if srt_path.exists():
+        try:
+            subtitles = _parse_srt(srt_path.read_text())
+            print(f"[montage] Parsed {len(subtitles)} subtitle lines", flush=True)
+        except Exception as srt_exc:
+            print(f"[montage] SRT parse error: {srt_exc}", flush=True)
+
+    # --- Phase 5: Build inputProps ---
+    direction = job.get("direction", _DEFAULT_DIRECTION)
+    title = job.get("title", "")
+    width, height = 1920, 1080
+    try:
+        res = job.get("resolution", "1920x1080")
+        width, height = [int(x) for x in res.split("x")]
+    except (ValueError, AttributeError):
+        pass
+
+    input_props: dict[str, Any] = {
+        "scenes": scenes,
+        "direction": direction,
+        "fps": fps,
+        "width": width,
+        "height": height,
+    }
+
+    # Title card
+    if title:
+        input_props["title"] = {
+            "text": title,
+            "color": direction.get("typography", {}).get("textColor", "#ffffff"),
+            "backgroundColor": "#0f0f0f",
+            "durationInFrames": int(3 * fps),
+            "animation": "typewriter" if "serif" in direction.get("typography", {}).get("fontFamily", "").lower() else "fade",
+        }
+
+    # Outro
+    input_props["outro"] = {
+        "text": title,
+        "subtitle": "VPAI Creative Studio",
+        "color": direction.get("typography", {}).get("textColor", "#ffffff"),
+        "backgroundColor": "#0f0f0f",
+        "durationInFrames": int(2 * fps),
+        "animation": "fade",
+    }
+
+    # Subtitles
+    if subtitles:
+        input_props["subtitles"] = subtitles
+
+    # Audio — static defaults (LLM direction does not control audio levels)
+    audio: dict[str, Any] = {}
+    if music_path.exists():
+        audio["musicSrc"] = f"{remotion_base}/creative-assets/{job_prefix}/{music_path.name}"
+        audio["musicVolume"] = 0.4
+        audio["musicFadeInFrames"] = int(2 * fps)
+        audio["musicFadeOutFrames"] = int(3 * fps)
+    if vo_path.exists():
+        audio["voiceoverSrc"] = f"{remotion_base}/creative-assets/{job_prefix}/{vo_path.name}"
+        audio["voiceoverVolume"] = 0.9
+    if audio:
+        audio.setdefault("duckMusicOnVo", True)
+        audio.setdefault("duckLevel", 0.2)
+        audio.setdefault("musicVolume", 0.4)
+        audio.setdefault("voiceoverVolume", 0.9)
+        audio.setdefault("musicFadeInFrames", int(2 * fps))
+        audio.setdefault("musicFadeOutFrames", int(3 * fps))
+        input_props["audio"] = audio
+
+    print(f"[montage] Built inputProps: {len(scenes)} scenes, "
+          f"transition={direction.get('defaultTransition', '?')}, "
+          f"grade={direction.get('colorGrade', {}).get('preset', '?')}", flush=True)
+
+    # --- Phase 6: Call Remotion ---
+    output_path = OUTPUT_DIR / f"{job_prefix}_final.mp4"
+    remotion_ok = False
+
+    if REMOTION_URL:
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{REMOTION_URL}/renders",
+                    json={"compositionId": "Montage", "inputProps": input_props},
+                    timeout=aiohttp.ClientTimeout(total=30),
+                ) as resp:
+                    if resp.status == 429:
+                        print("[montage] Remotion queue full, falling back to ffmpeg", flush=True)
+                    elif resp.status != 200:
+                        body = await resp.text()
+                        print(f"[montage] Remotion submit error {resp.status}: {body[:200]}", flush=True)
+                    else:
+                        render_data = await resp.json()
+                        render_job_id = render_data.get("jobId", "")
+                        print(f"[montage] Remotion job: {render_job_id}", flush=True)
+
+                        # Poll for completion (5s intervals, 600s timeout)
+                        for poll_i in range(120):
+                            await asyncio.sleep(5)
+                            async with session.get(
+                                f"{REMOTION_URL}/renders/{render_job_id}",
+                                timeout=aiohttp.ClientTimeout(total=10),
+                            ) as poll_resp:
+                                poll_data = await poll_resp.json()
+                                status = poll_data.get("status", "")
+                                if poll_i % 6 == 0:
+                                    progress = poll_data.get("progress", 0)
+                                    print(f"[montage] Remotion poll {poll_i}: {status} "
+                                          f"progress={progress:.0%}", flush=True)
+                                if status == "completed":
+                                    video_url = poll_data.get("videoUrl", "")
+                                    if video_url:
+                                        async with session.get(
+                                            video_url,
+                                            timeout=aiohttp.ClientTimeout(total=60),
+                                        ) as dl_resp:
+                                            if dl_resp.status == 200:
+                                                final_bytes = await dl_resp.read()
+                                                output_path.write_bytes(final_bytes)
+                                                remotion_ok = True
+                                                print(f"[montage] Remotion render OK: "
+                                                      f"{len(final_bytes)} bytes", flush=True)
+                                    break
+                                elif status == "failed":
+                                    err = poll_data.get("error", "unknown")
+                                    print(f"[montage] Remotion render failed: {err}", flush=True)
+                                    break
+        except Exception as exc:
+            print(f"[montage] Remotion error: {exc}", flush=True)
+
+    # --- Phase 7: Fallback ffmpeg ---
+    if not remotion_ok:
+        if video_files:
+            print("[montage] Falling back to ffmpeg concat", flush=True)
+            fallback_path = await _montage_ffmpeg_fallback(job_prefix, video_files)
+            if fallback_path:
+                output_path = fallback_path
+            else:
+                note = "Both Remotion and ffmpeg failed"
+                kitsu_result = await _kitsu_step_task(job, "Montage", "wfa", note)
+                await _notify_step_completed(job, "montage")
+                return {"status": "error", "note": note, "kitsu": kitsu_result}, extras
+
+    # --- Phase 8: Kitsu + Telegram ---
     if output_path.exists():
         final_size = output_path.stat().st_size
         extras["montage_path"] = str(output_path)
         extras["montage_size"] = final_size
-        total_duration = len(video_files) * 5
+        extras["remotion_rendered"] = remotion_ok
+        total_duration = sum(
+            sp.get("duration_seconds", 5) for sp in scene_prompts
+        ) if scene_prompts else len(video_files) * 5
+        render_method = "Remotion" if remotion_ok else "ffmpeg"
         note = (
-            f"Montage: {len(video_files)} clips assembled, "
+            f"Montage ({render_method}): {len(scenes)} scenes, "
             f"{final_size / 1024 / 1024:.1f} MB, ~{total_duration}s total."
         )
         print(f"[montage] {note}", flush=True)
 
-        # Upload to Kitsu as preview on Montage task
+        # Upload to Kitsu
         project_id = job.get("kitsu_project_id", "")
         overview_shot = job.get("kitsu_overview_shot_id", "")
         if project_id and overview_shot and KITSU_URL:
@@ -4184,24 +5105,22 @@ async def _step_montage(
                     )
                     if mt_task:
                         wfa_id = await _kitsu_get_status_id(ks, "wfa")
-                        mt_comment = await _kitsu_post_comment(
-                            ks, mt_task["id"], wfa_id, note,
-                        )
+                        await _kitsu_post_comment(ks, mt_task["id"], wfa_id, note)
             except Exception as ke:
                 print(f"[montage] Kitsu error: {ke}", flush=True)
 
-        # Send video via Telegram (file upload if <50MB, else text)
+        # Telegram
         if final_size < 50 * 1024 * 1024:
             video_bytes = output_path.read_bytes()
             await _notify_step_completed(job, "montage", video_bytes=video_bytes)
         else:
             await _notify_step_completed(job, "montage")
     else:
-        note = f"ffmpeg failed: {result.stderr[:200] if result else 'unknown'}"
+        note = "No output file produced"
         print(f"[montage] {note}", flush=True)
 
     kitsu_result = await _kitsu_step_task(job, "Montage", "wfa", note)
-    return {"status": "ok", "note": note, "kitsu": kitsu_result}, extras
+    return {"status": "ok", "note": note, "render_method": "remotion" if remotion_ok else "ffmpeg", "kitsu": kitsu_result}, extras
 
 
 async def _step_subtitles(
@@ -4212,6 +5131,9 @@ async def _step_subtitles(
     if skip:
         kitsu_result = await _kitsu_step_task(job, "Sous-titres", "done", "Skipped by user")
         return {"status": "ok", "note": "Skipped", "kitsu": kitsu_result}, {}
+    if job.get("remotion_rendered"):
+        kitsu_result = await _kitsu_step_task(job, "Sous-titres", "done", "Integrated in Remotion montage")
+        return {"status": "ok", "note": "Handled by Remotion montage", "kitsu": kitsu_result}, {}
 
     language = params.get("language", "fr")
     # Find the voiceover audio or source video
@@ -4257,6 +5179,9 @@ async def _step_colorgrade(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Handle colorgrade step: ffmpeg LUT application."""
+    if job.get("remotion_rendered"):
+        kitsu_result = await _kitsu_step_task(job, "Color Grade", "done", "Integrated in Remotion montage")
+        return {"status": "ok", "note": "Handled by Remotion montage", "kitsu": kitsu_result}, {}
     lut_name = params.get("lut", "teal-orange")
     contrast = params.get("contrast", "1.0")
 
@@ -4358,6 +5283,9 @@ async def _step_export(
     job: dict[str, Any], params: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Handle export step: ffmpeg final encode (video + audio + subtitles)."""
+    if job.get("remotion_rendered") and "gif" not in params.get("formats", ""):
+        kitsu_result = await _kitsu_step_task(job, "Export", "done", "Final render by Remotion montage")
+        return {"status": "ok", "note": "Handled by Remotion montage", "kitsu": kitsu_result}, {}
     formats = params.get("formats", "mp4").split(",")
     job_prefix = job["job_id"][:8]
 

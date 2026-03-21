@@ -66,7 +66,7 @@ comfyui_custom_nodes:
     pip_deps: ["mediapipe", "depth-anything-v2"]
 
 # fal.ai API key (from vault — used by fal-API and fal-Connector nodes)
-comfyui_fal_key: "{{ vault_comfyui_fal_key | default('') }}"
+comfyui_fal_key: "{{ vault_comfyui_fal_key | default(fal_ai_api_key | default('')) }}"
 
 # Google Gemini API key (for NanoBanana / Gemini image gen nodes)
 # Paid Tier required for Veo 3 video gen — image gen works on free tier

@@ -287,6 +287,7 @@ oc_subdomain: "oc"
 kitsu_subdomain: "boss"
 comfyui_subdomain: "studio"
 remotion_subdomain: "re"
+remotion_port: 3200
 opencut_subdomain: "cut"
 openpencil_subdomain: "pencil"
 

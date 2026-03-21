@@ -32,9 +32,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy package files first for layer caching
-COPY package.json package-lock.json* ./
+COPY package.json ./
 
-RUN npm ci
+RUN npm install
 
 # Copy all source files
 COPY . .

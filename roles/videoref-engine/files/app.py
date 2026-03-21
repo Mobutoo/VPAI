@@ -2890,7 +2890,7 @@ async def _composer_build_workflow(
                     "video": ["1", 0],
                     "filename_prefix": "composer_video",
                     "codec": "h264",
-                    "format": "video/mp4",
+                    "format": "mp4",
                 },
             }
         # STRING video nodes (fal.ai): no output node — handled by bypass in _composer_submit

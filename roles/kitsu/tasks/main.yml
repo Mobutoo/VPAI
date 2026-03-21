@@ -46,6 +46,18 @@
   become: true
   tags: [kitsu]
 
+- name: Deploy kitsu event_handlers (event_map for Zou 1.0.19+)
+  ansible.builtin.copy:
+    src: event_handlers/
+    dest: "{{ kitsu_config_dir }}/event_handlers/"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+    directory_mode: "0755"
+  notify: Restart kitsu stack
+  become: true
+  tags: [kitsu]
+
 - name: Deploy kitsu gunicorn override (workers={{ kitsu_gunicorn_workers | default(1) }})
   ansible.builtin.template:
     src: gunicorn.py.j2

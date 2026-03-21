@@ -2835,7 +2835,7 @@ async def _composer_build_workflow(
             if ref_path and ref_path.exists():
                 # Copy to ComfyUI input directory
                 import shutil
-                comfyui_input = Path(COMFYUI_DIR).parent / "input"
+                comfyui_input = Path(COMFYUI_DIR)
                 comfyui_input.mkdir(parents=True, exist_ok=True)
                 dest = comfyui_input / ref_path.name
                 shutil.copy2(str(ref_path), str(dest))
@@ -2853,7 +2853,7 @@ async def _composer_build_workflow(
                     header, b64data = reference_image.split(",", 1)
                     ext = "png" if "png" in header else "jpg"
                     fname = f"ref_{hash(b64data[:50]) % 99999:05d}.{ext}"
-                    comfyui_input = Path(COMFYUI_DIR).parent / "input"
+                    comfyui_input = Path(COMFYUI_DIR)
                     comfyui_input.mkdir(parents=True, exist_ok=True)
                     dest = comfyui_input / fname
                     dest.write_bytes(base64.b64decode(b64data))
@@ -2882,10 +2882,16 @@ async def _composer_build_workflow(
                 "inputs": {"images": ["1", 0], "filename_prefix": "composer"},
             }
         # VIDEO output nodes (native): add SaveVideo for ComfyUI to persist
+        # SaveVideo requires codec + format inputs (ComfyUI validation)
         if output_type == "VIDEO":
             workflow["prompt"]["save_video"] = {
                 "class_type": "SaveVideo",
-                "inputs": {"video": ["1", 0], "filename_prefix": "composer_video"},
+                "inputs": {
+                    "video": ["1", 0],
+                    "filename_prefix": "composer_video",
+                    "codec": "h264",
+                    "format": "video/mp4",
+                },
             }
         # STRING video nodes (fal.ai): no output node — handled by bypass in _composer_submit
 
@@ -3023,7 +3029,7 @@ async def _composer_submit(
                             img_name = ref_node.get("inputs", {}).get("image", "")
                             if img_name:
                                 # Find image in ComfyUI input dir and convert to data URI
-                                comfyui_input = Path(COMFYUI_DIR).parent / "input" / img_name
+                                comfyui_input = Path(COMFYUI_DIR) / img_name
                                 if comfyui_input.exists():
                                     # Upload to fal.ai storage for a proper URL
                                     img_url = await _upload_to_fal_storage(str(comfyui_input))
@@ -4090,7 +4096,10 @@ async def _step_script(
                 "duration_seconds": sp.get("duration_seconds", 5),
                 "camera_movement": sp.get("camera_movement", "static"),
             })
-        extras: dict[str, Any] = {"scene_prompts": scene_prompts}
+        extras: dict[str, Any] = {
+            "scene_prompts": scene_prompts,
+            "scene_prompts_source": "director",
+        }
         # Direction is set by the Director or defaults
         direction = params.get("direction", _DEFAULT_DIRECTION)
         extras["direction"] = direction
@@ -4302,7 +4311,15 @@ async def _step_storyboard(
 
     Composer selects: NanoBanana2 (eco), FluxSchnell (balanced), or FluxPro (premium).
     Best practice 2026: storyboard = fast + cheap, iterate quickly.
+    Auto-skipped when Director provided scene_prompts (no image generation needed).
     """
+    # Auto-skip when Director provided scene_prompts (no generation needed)
+    if job.get("scene_prompts_source") == "director" and not params.get("force"):
+        note = "Skipped — scene_prompts from Director (use --force to override)"
+        print(f"[storyboard] {note}", flush=True)
+        kitsu_result = await _kitsu_step_task(job, "Storyboard", "done", note)
+        return {"status": "ok", "skipped": True, "note": note, "kitsu": kitsu_result}, {}
+
     scene_prompts = job.get("scene_prompts", [])
     budget = params.get("budget", "eco")  # Storyboard = eco by default
     results: list[dict[str, Any]] = []
@@ -4580,7 +4597,15 @@ async def _step_imagegen(
 
     Best practice 2026: generate at model-native res, then upscale.
     Composer selects: FluxPro1.1 (premium), NanoBananaPro (balanced), HiDream (eco).
+    Auto-skipped when Director provided scene_prompts (videogen uses txt2vid directly).
     """
+    # Auto-skip when Director provided scene_prompts (no keyframe generation needed)
+    if job.get("scene_prompts_source") == "director" and not params.get("force"):
+        note = "Skipped — scene_prompts from Director, videogen will use txt2vid (use --force to override)"
+        print(f"[imagegen] {note}", flush=True)
+        kitsu_result = await _kitsu_step_task(job, "Image Gen", "done", note)
+        return {"status": "ok", "skipped": True, "note": note, "kitsu": kitsu_result}, {}
+
     scene_prompts = job.get("scene_prompts", [])
     budget = params.get("budget", "balanced")
     job_prefix = job["job_id"][:8]

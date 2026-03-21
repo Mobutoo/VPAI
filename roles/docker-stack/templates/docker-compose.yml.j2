@@ -649,15 +649,16 @@ services:
     volumes:
       - {{ kitsu_previews_dir | default('/opt/' + project_name + '/data/kitsu/previews') }}:/opt/zou/previews
       - {{ kitsu_config_dir | default('/opt/' + project_name + '/configs/kitsu') }}/supervisord.conf:/etc/supervisord.conf:ro
+      - {{ kitsu_config_dir | default('/opt/' + project_name + '/configs/kitsu') }}/gunicorn.py:/etc/zou/gunicorn.py:ro
     networks:
       - backend
     deploy:
       resources:
         limits:
-          memory: {{ kitsu_memory_limit | default('512M') }}
+          memory: {{ kitsu_memory_limit | default('768M') }}
           cpus: "{{ kitsu_cpu_limit | default('1.0') }}"
         reservations:
-          memory: {{ kitsu_memory_reservation | default('256M') }}
+          memory: {{ kitsu_memory_reservation | default('384M') }}
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://127.0.0.1/api/health || exit 1"]
       interval: 30s

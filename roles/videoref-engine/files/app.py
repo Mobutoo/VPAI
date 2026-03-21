@@ -38,6 +38,7 @@ FAL_API_KEY = os.environ.get("FAL_API_KEY", "")
 BYTEPLUS_API_KEY = os.environ.get("BYTEPLUS_API_KEY", "")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
 REMOTION_URL = os.environ.get("REMOTION_URL", "")
+CLAUDE_CLI_PATH = os.environ.get("CLAUDE_CLI_PATH", "/usr/local/bin/claude")
 MODEL_REGISTRY_COLLECTION = "model-registry"
 CREATIVE_ASSETS_DIR = Path("/app/creative-assets")
 
@@ -3501,26 +3502,14 @@ async def _download_metube_video(url: str, watch_dir: Path) -> Path | None:
         return None
 
 
-async def _llm_decompose_scenes(
-    description: str,
-    num_scenes: int = 5,
-    style: str = "",
-    mood: str = "",
-    colors: str = "",
-) -> list[dict[str, Any]]:
-    """Use LLM to decompose a text brief into structured scenes.
-
-    Returns list of scene dicts compatible with scene_analyses format.
-    Called when no video reference is available.
-    """
-    if not LITELLM_URL or not LITELLM_API_KEY:
-        return []
-
+def _scene_decomposition_prompt(
+    description: str, num_scenes: int, style: str, mood: str, colors: str,
+) -> str:
+    """Build the scene decomposition prompt (shared by Claude CLI and LiteLLM)."""
     style_ctx = ""
     if style or mood or colors:
         style_ctx = f"\nStyle de reference: {style}\nMood: {mood}\nCouleurs: {colors}"
-
-    prompt = (
+    return (
         f"Tu es un directeur artistique pour des videos courtes (reels/shorts).\n"
         f"Decompose ce brief en exactement {num_scenes} scenes cinematographiques.{style_ctx}\n\n"
         f"Brief: {description}\n\n"
@@ -3535,12 +3524,110 @@ async def _llm_decompose_scenes(
         f'"mood": "mot-cle ambiance", "duration_seconds": 5}}]'
     )
 
+
+def _parse_llm_scenes(
+    content: str, style: str, mood: str, colors: str,
+) -> list[dict[str, Any]]:
+    """Parse LLM response into scene_analyses format."""
+    if "```json" in content:
+        content = content.split("```json")[1].split("```")[0]
+    elif "```" in content:
+        content = content.split("```")[1].split("```")[0]
+    content = content.strip()
+    # Find first JSON array
+    start = content.find("[")
+    end = content.rfind("]") + 1
+    if start >= 0 and end > start:
+        content = content[start:end]
+
+    scenes_raw = json.loads(content)
+    scenes = []
+    for i, s in enumerate(scenes_raw):
+        scenes.append({
+            "scene_index": i,
+            "start_time": i * s.get("duration_seconds", 5),
+            "end_time": (i + 1) * s.get("duration_seconds", 5),
+            "duration": s.get("duration_seconds", 5),
+            "analysis": {
+                "style": style or "cinematic",
+                "mood": s.get("mood", mood or "dramatic"),
+                "colors": colors or "",
+                "description": s.get("description", ""),
+                "suggested_prompt": s.get("visual_prompt", s.get("description", "")),
+                "camera_movement": s.get("camera_movement", "static"),
+                "negative_prompt": "blurry, low quality, distorted",
+            },
+            "llm_generated": True,
+        })
+    return scenes
+
+
+async def _claude_cli_decompose_scenes(
+    description: str,
+    num_scenes: int = 5,
+    style: str = "",
+    mood: str = "",
+    colors: str = "",
+) -> list[dict[str, Any]]:
+    """Bridge to Claude Code CLI (Max OAuth, Opus 4.6) for scene decomposition.
+
+    Uses `claude -p --dangerously-skip-permissions` in non-interactive mode.
+    Returns list of scene dicts compatible with scene_analyses format.
+    """
+    import shutil
+    cli = shutil.which("claude") or CLAUDE_CLI_PATH
+    if not Path(cli).exists():
+        print("[script] Claude CLI not found, skipping", flush=True)
+        return []
+
+    prompt = _scene_decomposition_prompt(description, num_scenes, style, mood, colors)
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            cli, "-p", prompt, "--dangerously-skip-permissions",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
+        output = stdout.decode().strip()
+        if proc.returncode != 0:
+            print(f"[script] Claude CLI error rc={proc.returncode}: {stderr.decode()[:200]}", flush=True)
+            return []
+
+        scenes = _parse_llm_scenes(output, style, mood, colors)
+        print(f"[script] Claude CLI decomposed brief into {len(scenes)} scenes", flush=True)
+        return scenes
+    except asyncio.TimeoutError:
+        print("[script] Claude CLI timeout (60s)", flush=True)
+        return []
+    except (json.JSONDecodeError, Exception) as exc:
+        print(f"[script] Claude CLI parse error: {exc}", flush=True)
+        return []
+
+
+async def _llm_decompose_scenes(
+    description: str,
+    num_scenes: int = 5,
+    style: str = "",
+    mood: str = "",
+    colors: str = "",
+) -> list[dict[str, Any]]:
+    """Fallback: use LiteLLM (claude-sonnet) for scene decomposition.
+
+    Returns list of scene dicts compatible with scene_analyses format.
+    Called when Claude CLI is not available and no scene_prompts provided.
+    """
+    if not LITELLM_URL or not LITELLM_API_KEY:
+        return []
+
+    prompt = _scene_decomposition_prompt(description, num_scenes, style, mood, colors)
+
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
                 f"{LITELLM_URL}/v1/chat/completions",
                 json={
-                    "model": "gemini-flash",
+                    "model": "claude-sonnet",
                     "messages": [
                         {"role": "system", "content": (
                             "Tu es un directeur artistique. Tu generes des scenes "
@@ -3556,53 +3643,23 @@ async def _llm_decompose_scenes(
                     "Authorization": f"Bearer {LITELLM_API_KEY}",
                     "Content-Type": "application/json",
                 },
-                timeout=aiohttp.ClientTimeout(total=30),
+                timeout=aiohttp.ClientTimeout(total=60),
             ) as resp:
                 if resp.status in (429, 400):
-                    # Budget exceeded — try Gemini direct
-                    print(f"[research] LiteLLM {resp.status}, trying Gemini direct", flush=True)
+                    print(f"[script] LiteLLM {resp.status}, trying Gemini direct", flush=True)
                     content = await _call_gemini_direct(prompt, max_tokens=3000)
                     if not content:
                         return []
                 elif resp.status != 200:
-                    print(f"[research] LLM decompose failed: {resp.status}", flush=True)
+                    print(f"[script] LLM decompose failed: {resp.status}", flush=True)
                     return []
                 else:
                     data = await resp.json()
                     content = data["choices"][0]["message"]["content"]
 
-                # Extract JSON from response (handle markdown code blocks)
-                if "```json" in content:
-                    content = content.split("```json")[1].split("```")[0]
-                elif "```" in content:
-                    content = content.split("```")[1].split("```")[0]
-                content = content.strip()
-
-                scenes_raw = json.loads(content)
-
-                # Convert to scene_analyses format
-                scenes = []
-                for i, s in enumerate(scenes_raw):
-                    scenes.append({
-                        "scene_index": i,
-                        "start_time": i * s.get("duration_seconds", 5),
-                        "end_time": (i + 1) * s.get("duration_seconds", 5),
-                        "duration": s.get("duration_seconds", 5),
-                        "analysis": {
-                            "style": style or "cinematic",
-                            "mood": s.get("mood", mood or "dramatic"),
-                            "colors": colors or "",
-                            "description": s.get("description", ""),
-                            "suggested_prompt": s.get("visual_prompt", s.get("description", "")),
-                            "camera_movement": s.get("camera_movement", "static"),
-                            "negative_prompt": "blurry, low quality, distorted",
-                        },
-                        "llm_generated": True,
-                    })
-                print(f"[research] LLM decomposed brief into {len(scenes)} scenes", flush=True)
-                return scenes
+                return _parse_llm_scenes(content, style, mood, colors)
     except Exception as exc:
-        print(f"[research] LLM decomposition error: {exc}", flush=True)
+        print(f"[script] LLM decomposition error: {exc}", flush=True)
         return []
 
 
@@ -4009,6 +4066,48 @@ async def _step_script(
         modifications = modifications_raw or {}
     presets = await _load_camera_presets()
 
+    # --- Priority 1: Pre-computed scene_prompts from OpenClaw Director ---
+    pre_prompts = params.get("scene_prompts")
+    if pre_prompts:
+        if isinstance(pre_prompts, str):
+            pre_prompts = json.loads(pre_prompts)
+        print(f"[script] Using {len(pre_prompts)} pre-computed scene_prompts from Director", flush=True)
+        # Inject camera tokens and store directly
+        scene_prompts: list[dict[str, Any]] = []
+        for idx, sp in enumerate(pre_prompts):
+            prompt = sp.get("visual_prompt", sp.get("enriched", sp.get("description", "")))
+            enriched = _inject_camera_tokens(
+                prompt,
+                camera=job.get("camera", ""),
+                lens=job.get("lens", ""),
+                aperture=job.get("aperture", ""),
+                motion=job.get("motion", ""),
+            )
+            scene_prompts.append({
+                "scene_index": sp.get("scene_index", idx),
+                "original": prompt,
+                "enriched": enriched,
+                "duration_seconds": sp.get("duration_seconds", 5),
+                "camera_movement": sp.get("camera_movement", "static"),
+            })
+        extras: dict[str, Any] = {"scene_prompts": scene_prompts}
+        # Direction is set by the Director or defaults
+        direction = params.get("direction", _DEFAULT_DIRECTION)
+        extras["direction"] = direction
+        kitsu_comment = "\n\n".join(
+            f"Scene {p['scene_index']+1}:\n{p['enriched']}" for p in scene_prompts
+        )
+        kitsu_result = await _kitsu_step_task(
+            job, "Script", "done", f"Script (Director):\n\n{kitsu_comment[:3000]}",
+        )
+        await _notify_step_completed(job, "script")
+        return {
+            "status": "ok", "source": "director",
+            "scene_prompts": scene_prompts, "direction": direction,
+            "kitsu": kitsu_result,
+        }, extras
+
+    # --- Priority 2/3: Generate scenes (Claude CLI → LiteLLM fallback) ---
     # Detect poor/synthetic scene data → enrich via LLM
     is_poor = (
         len(scenes) <= 1
@@ -4020,15 +4119,29 @@ async def _step_script(
     )
     if is_poor:
         num_scenes = int(params.get("num_scenes", 5))
-        print(f"[script] Scene data poor ({len(scenes)} scenes), enriching via LLM to {num_scenes}", flush=True)
-        llm_scenes = await _llm_decompose_scenes(
-            description=job.get("description", job.get("title", "")),
-            num_scenes=num_scenes,
-            style=job.get("ref_style", ""),
-            mood=job.get("ref_mood", ""),
-            colors=job.get("ref_colors", ""),
+        description = job.get("description", job.get("title", ""))
+        ref_style = job.get("ref_style", "")
+        ref_mood = job.get("ref_mood", "")
+        ref_colors = job.get("ref_colors", "")
+
+        # Priority 2: Claude Code CLI (Max OAuth, Opus 4.6)
+        llm_scenes = await _claude_cli_decompose_scenes(
+            description=description, num_scenes=num_scenes,
+            style=ref_style, mood=ref_mood, colors=ref_colors,
         )
+        source = "claude-cli"
+
+        # Priority 3: LiteLLM fallback (claude-sonnet, not eco)
+        if not llm_scenes:
+            print(f"[script] Claude CLI unavailable, falling back to LiteLLM claude-sonnet", flush=True)
+            llm_scenes = await _llm_decompose_scenes(
+                description=description, num_scenes=num_scenes,
+                style=ref_style, mood=ref_mood, colors=ref_colors,
+            )
+            source = "litellm-sonnet"
+
         if llm_scenes:
+            print(f"[script] Decomposed into {len(llm_scenes)} scenes via {source}", flush=True)
             scenes = llm_scenes
 
     scene_prompts: list[dict[str, Any]] = []

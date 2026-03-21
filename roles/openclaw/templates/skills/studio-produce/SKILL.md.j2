@@ -85,10 +85,19 @@ vref produce-step <slug> research --query-param "dramatic dark cinematic"
 **Kitsu** : Task Recherche → Done + previews keyframes + assets VideoRef crees.
 
 ### Etape 3 : SCRIPT
+**TU es le LLM.** Decompose le brief en scenes TOI-MEME, puis passe-les a vref.
+Ne laisse PAS vref appeler un LLM interne — TU es le directeur, TU decides des scenes.
+
+1. Genere N scenes (JSON array) avec: scene_index, description, visual_prompt (EN ANGLAIS),
+   camera_movement (static|pan left|dolly in|tracking|crane up|handheld), mood, duration_seconds
+2. Passe-les directement :
+```bash
+vref produce-step <slug> script --scene-prompts '[{"scene_index":0, "visual_prompt":"...", "camera_movement":"dolly in", "mood":"dramatic", "duration_seconds":5}]'
+```
+**Alternative** : si tu veux que vref remixe des prompts existants :
 ```bash
 vref produce-step <slug> script --modifications "subject=X,style=Y,mood=Z"
 ```
-**Quoi** : Remixer les prompts de chaque scene avec les modifications du brief + camera presets.
 **Delegation** : Spawner **Thot** (writer) pour le travail de prompt engineering avance.
 **Decision** : Proposer les prompts au producteur AVANT de generer.
 **Kitsu** : Task Script → Done + 1 commentaire par scene.

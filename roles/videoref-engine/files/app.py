@@ -3359,13 +3359,14 @@ async def _step_brief(
                     session, job["title"], prod_type,
                 )
                 # Update project with technical specs from brief
+                # Note: fps/resolution stored in project.data (not top-level fields)
                 await _kitsu_api(
                     session, "PUT",
                     f"/data/projects/{project['id']}",
                     json_body={
                         "fps": fps,
                         "resolution": resolution,
-                        "production_style": style,
+                        "data": {"style": style},
                     },
                 )
                 project_id = project["id"]

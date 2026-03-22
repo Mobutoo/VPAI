@@ -5311,10 +5311,17 @@ async def _step_montage(
     # --- Phase 5: Build inputProps ---
     direction = job.get("direction", _DEFAULT_DIRECTION)
     title = job.get("title", "")
-    width, height = 1920, 1080
+    width, height = 1280, 720  # ARM64: cap at 720p (Chromium OOM at 1080p)
     try:
-        res = job.get("resolution", "1920x1080")
-        width, height = [int(x) for x in res.split("x")]
+        res = job.get("resolution", "1280x720")
+        w, h = [int(x) for x in res.split("x")]
+        # Cap at 720p on ARM64 to prevent Chromium OOM
+        if max(w, h) <= 1280:
+            width, height = w, h
+        else:
+            # Scale down proportionally
+            scale = 1280 / max(w, h)
+            width, height = int(w * scale), int(h * scale)
     except (ValueError, AttributeError):
         pass
 
@@ -5395,8 +5402,10 @@ async def _step_montage(
                         render_job_id = render_data.get("jobId", "")
                         print(f"[montage] Remotion job: {render_job_id}", flush=True)
 
-                        # Poll for completion (5s intervals, 600s timeout)
-                        for poll_i in range(120):
+                        # Poll for completion (5s intervals, 300s timeout, stall detection)
+                        last_progress = -1.0
+                        stall_count = 0
+                        for poll_i in range(60):  # 60 * 5s = 300s max
                             await asyncio.sleep(5)
                             async with session.get(
                                 f"{REMOTION_URL}/renders/{render_job_id}",
@@ -5404,23 +5413,41 @@ async def _step_montage(
                             ) as poll_resp:
                                 poll_data = await poll_resp.json()
                                 status = poll_data.get("status", "")
+                                progress = poll_data.get("progress", 0)
                                 if poll_i % 6 == 0:
-                                    progress = poll_data.get("progress", 0)
                                     print(f"[montage] Remotion poll {poll_i}: {status} "
                                           f"progress={progress:.0%}", flush=True)
+                                # Stall detection: cancel if stuck for 60s
+                                if progress == last_progress and status == "in-progress":
+                                    stall_count += 1
+                                    if stall_count >= 12:  # 12 * 5s = 60s stalled
+                                        print(f"[montage] Remotion stalled at {progress:.0%} "
+                                              f"for 60s, cancelling", flush=True)
+                                        try:
+                                            await session.delete(
+                                                f"{REMOTION_URL}/renders/{render_job_id}",
+                                                timeout=aiohttp.ClientTimeout(total=5),
+                                            )
+                                        except Exception:
+                                            pass
+                                        break
+                                else:
+                                    stall_count = 0
+                                    last_progress = progress
                                 if status == "completed":
                                     video_url = poll_data.get("videoUrl", "")
                                     # Remotion returns localhost URLs — rewrite to Docker hostname
                                     if video_url and REMOTION_URL:
                                         from urllib.parse import urlparse
                                         remotion_parsed = urlparse(REMOTION_URL)
-                                        video_url = video_url.replace(
-                                            "localhost:3200",
-                                            f"{remotion_parsed.hostname}:{remotion_parsed.port or 3200}",
-                                        ).replace(
-                                            "127.0.0.1:3200",
-                                            f"{remotion_parsed.hostname}:{remotion_parsed.port or 3200}",
-                                        )
+                                        rewrite_host = f"{remotion_parsed.hostname}:{remotion_parsed.port or 3200}"
+                                        if "localhost:3200" in video_url or "127.0.0.1:3200" in video_url:
+                                            video_url = video_url.replace(
+                                                "localhost:3200", rewrite_host,
+                                            ).replace(
+                                                "127.0.0.1:3200", rewrite_host,
+                                            )
+                                            print(f"[montage] Rewrote videoUrl → {rewrite_host}", flush=True)
                                     if video_url:
                                         async with session.get(
                                             video_url,

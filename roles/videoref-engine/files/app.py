@@ -5410,6 +5410,17 @@ async def _step_montage(
                                           f"progress={progress:.0%}", flush=True)
                                 if status == "completed":
                                     video_url = poll_data.get("videoUrl", "")
+                                    # Remotion returns localhost URLs — rewrite to Docker hostname
+                                    if video_url and REMOTION_URL:
+                                        from urllib.parse import urlparse
+                                        remotion_parsed = urlparse(REMOTION_URL)
+                                        video_url = video_url.replace(
+                                            "localhost:3200",
+                                            f"{remotion_parsed.hostname}:{remotion_parsed.port or 3200}",
+                                        ).replace(
+                                            "127.0.0.1:3200",
+                                            f"{remotion_parsed.hostname}:{remotion_parsed.port or 3200}",
+                                        )
                                     if video_url:
                                         async with session.get(
                                             video_url,

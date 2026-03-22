@@ -48,7 +48,7 @@ def git_commit(config: Dict, message: str, paths: List[str], delete: bool = Fals
     try:
         # Stage changes
         if delete:
-            _run_git(workflows_dir, ["add", "-A"])
+            _run_git(workflows_dir, ["rm", "--cached", "--ignore-unmatch", "--"] + paths)
         else:
             _run_git(workflows_dir, ["add", "--"] + paths)
 

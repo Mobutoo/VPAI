@@ -36,6 +36,15 @@ class ComfyUIClient:
         return self._get("/system_stats").json()
 
     # --- Workflows (userdata) ---
+    #
+    # ComfyUI routes use /userdata/{file} where {file} is a single aiohttp
+    # path parameter. Slashes MUST be URL-encoded (%2F) so aiohttp matches
+    # the entire "workflows/name.json" as one {file} segment.
+
+    @staticmethod
+    def _userdata_path(path: str) -> str:
+        """Encode a userdata relative path for aiohttp {file} matching."""
+        return quote(f"workflows/{path}", safe="")
 
     def list_workflows(self) -> List[str]:
         """GET /userdata?dir=workflows — list workflow files."""
@@ -44,15 +53,15 @@ class ComfyUIClient:
         return resp.json()
 
     def get_workflow(self, path: str) -> Dict[str, Any]:
-        """GET /userdata/workflows/<path> — read workflow JSON."""
-        resp = self._get(f"/userdata/workflows/{quote(path, safe='/')}")
+        """GET /userdata/<encoded_path> — read workflow JSON."""
+        resp = self._get(f"/userdata/{self._userdata_path(path)}")
         resp.raise_for_status()
         return resp.json()
 
     def save_workflow(self, path: str, data: Dict[str, Any]) -> None:
-        """POST /userdata/workflows/<path> — save workflow JSON."""
+        """POST /userdata/<encoded_path> — save workflow JSON."""
         resp = self._post(
-            f"/userdata/workflows/{quote(path, safe='/')}",
+            f"/userdata/{self._userdata_path(path)}",
             data=json.dumps(data),
             headers={"Content-Type": "application/json"},
             params={"overwrite": "true"},
@@ -60,18 +69,17 @@ class ComfyUIClient:
         resp.raise_for_status()
 
     def delete_workflow(self, path: str) -> None:
-        """DELETE /userdata/workflows/<path>"""
+        """DELETE /userdata/<encoded_path>"""
         resp = self.session.delete(
-            f"{self.base_url}/userdata/workflows/{quote(path, safe='/')}",
+            f"{self.base_url}/userdata/{self._userdata_path(path)}",
             timeout=self.timeout,
         )
         resp.raise_for_status()
 
     def move_workflow(self, old_path: str, new_path: str) -> None:
-        """POST /userdata/workflows/<old>?rename=<new> — rename/move."""
+        """POST /userdata/<old>/move/<new> — rename/move."""
         resp = self._post(
-            f"/userdata/workflows/{quote(old_path, safe='/')}",
-            params={"rename": new_path},
+            f"/userdata/{self._userdata_path(old_path)}/move/{self._userdata_path(new_path)}",
         )
         resp.raise_for_status()
 
@@ -124,8 +132,10 @@ class ComfyUIClient:
 
     def upload_image(self, file_path: str, subfolder: str = "") -> Dict[str, Any]:
         """POST /upload/image — upload an image file."""
+        import mimetypes
+        mime_type = mimetypes.guess_type(file_path)[0] or "image/png"
         with open(file_path, "rb") as f:
-            files = {"image": (Path(file_path).name, f, "image/png")}
+            files = {"image": (Path(file_path).name, f, mime_type)}
             data = {}
             if subfolder:
                 data["subfolder"] = subfolder

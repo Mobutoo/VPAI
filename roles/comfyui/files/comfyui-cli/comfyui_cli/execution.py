@@ -138,6 +138,12 @@ def exec_workflow(ctx, workflow_path, text_prompt, param, width, height, seed, d
     if do_wait:
         try:
             entry = ctx.client.wait_for_completion(prompt_id)
+            status = entry.get("status", {})
+            status_str = status.get("status_str", "unknown")
+            if status_str == "error":
+                messages = status.get("messages", [])
+                ctx.error(f"Execution failed: {'; '.join(str(m) for m in messages) if messages else 'unknown error'}")
+                return
             ctx.output({"prompt_id": prompt_id, "status": "completed", "outputs": entry.get("outputs", {})})
         except TimeoutError:
             ctx.error(f"Timeout waiting for {prompt_id}")

@@ -15,6 +15,7 @@ def nodes(ctx, node_class):
         data = ctx.client.get_object_info(node_class)
     except Exception as e:
         ctx.error(str(e))
+        return
 
     if node_class:
         ctx.output(data)
@@ -34,6 +35,7 @@ def models(ctx, folder):
         data = ctx.client.get_models(folder)
     except Exception as e:
         ctx.error(str(e))
+        return
 
     def human(d):
         if isinstance(d, list):
@@ -53,6 +55,7 @@ def upload(ctx, image_path, subfolder):
         result = ctx.client.upload_image(image_path, subfolder)
     except Exception as e:
         ctx.error(str(e))
+        return
 
     ctx.output(result, lambda d: f"Uploaded: {d.get('name', 'unknown')}")
 
@@ -65,6 +68,7 @@ def status(ctx):
         data = ctx.client.system_stats()
     except Exception as e:
         ctx.error(str(e))
+        return
 
     def human(d):
         sys_info = d.get("system", {})

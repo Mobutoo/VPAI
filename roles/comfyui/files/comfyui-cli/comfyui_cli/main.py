@@ -29,8 +29,8 @@ class Context:
         else:
             click.echo(json_module.dumps(data, indent=2, ensure_ascii=False))
 
-    def error(self, msg: str, exit_code: int = 1):
-        """Print error and exit."""
+    def error(self, msg: str, exit_code: int = 1) -> None:
+        """Print error and exit (raises SystemExit)."""
         if self.json_output:
             click.echo(json_module.dumps({"error": msg}), err=True)
         else:

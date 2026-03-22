@@ -5,13 +5,11 @@ Thin wrapper that calls comfyui-cli subprocess for each tool.
 import json
 import subprocess
 import sys
-from typing import Optional
-
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
-CLI_CMD = "comfyui-cli"
+CLI_CMD = "/usr/local/bin/comfyui-cli"
 
 server = Server("comfyui-studio")
 
@@ -169,9 +167,13 @@ async def call_tool(name: str, arguments: dict):
             cmd = [CLI_CMD, "--json", "workflows", "save", arguments["path"], "--stdin"]
             result = subprocess.run(
                 cmd, input=arguments["workflow_json"],
-                capture_output=True, text=True, timeout=30,
+                capture_output=True, text=True, timeout=300,
             )
-            output = result.stdout if result.returncode == 0 else json.dumps({"error": result.stderr})
+            if result.returncode != 0:
+                error = result.stderr.strip() or result.stdout.strip() or "Unknown error"
+                output = json.dumps({"error": error})
+            else:
+                output = result.stdout
 
         elif name == "execute_workflow":
             args = ["exec", arguments["path"]]

@@ -1,7 +1,5 @@
 """Execution commands: exec, queue, cancel, history, output."""
 import json
-import os
-import uuid
 from pathlib import Path
 
 import click
@@ -83,8 +81,10 @@ def exec_workflow(ctx, workflow_path, text_prompt, param, width, height, seed, d
                 api_workflow["4"]["inputs"]["ckpt_name"] = models[0]
             else:
                 ctx.error("No checkpoint models found. Upload a model first.")
+                return
         except Exception:
             ctx.error("Cannot list models. Is ComfyUI running?")
+            return
 
     elif workflow_path:
         # Load workflow from file or API
@@ -92,15 +92,17 @@ def exec_workflow(ctx, workflow_path, text_prompt, param, width, height, seed, d
             workflow_data = ctx.client.get_workflow(workflow_path)
         except Exception as e:
             ctx.error(f"Cannot load workflow '{workflow_path}': {e}")
+            return
 
-        # Detect format: UI format has 'nodes' key, API format has node IDs with class_type
-        if "nodes" in workflow_data:
-            from .converter import ui_to_api
+        # Detect format: UI format has 'nodes'+'links', API format has class_type values
+        from .converter import is_api_format, ui_to_api
+        if not is_api_format(workflow_data):
             try:
                 object_info = ctx.client.get_object_info()
                 api_workflow = ui_to_api(workflow_data, object_info)
             except Exception as e:
                 ctx.error(f"UI->API conversion failed: {e}")
+                return
         else:
             api_workflow = workflow_data
 
@@ -108,17 +110,22 @@ def exec_workflow(ctx, workflow_path, text_prompt, param, width, height, seed, d
         for p in param:
             if "=" not in p:
                 ctx.error(f"Invalid param format '{p}', use key=value (e.g., 3.inputs.seed=42)")
+                return
             key, val = p.split("=", 1)
             parts = key.split(".")
             target = api_workflow
             for part in parts[:-1]:
-                target = target.get(part, {})
+                if part not in target:
+                    ctx.error(f"Invalid param path '{key}': '{part}' not found")
+                    return
+                target = target[part]
             try:
                 target[parts[-1]] = json.loads(val)
             except json.JSONDecodeError:
                 target[parts[-1]] = val
     else:
         ctx.error("Provide a workflow path or --prompt")
+        return
 
     # Submit
     try:
@@ -126,6 +133,7 @@ def exec_workflow(ctx, workflow_path, text_prompt, param, width, height, seed, d
         prompt_id = result.get("prompt_id", "unknown")
     except Exception as e:
         ctx.error(f"Execution failed: {e}")
+        return
 
     if do_wait:
         try:
@@ -148,6 +156,7 @@ def queue_status(ctx):
         data = ctx.client.get_queue()
     except Exception as e:
         ctx.error(str(e))
+        return
 
     def human(d):
         running = d.get("queue_running", [])
@@ -175,8 +184,10 @@ def cancel_prompt(ctx, prompt_id, cancel_all):
             ctx.client.cancel(prompt_id)
         else:
             ctx.error("Provide a prompt_id or --all")
+            return
     except Exception as e:
         ctx.error(str(e))
+        return
     ctx.output({"status": "cancelled"}, lambda d: "Cancelled.")
 
 
@@ -189,6 +200,7 @@ def history(ctx, limit):
         data = ctx.client.get_history(limit)
     except Exception as e:
         ctx.error(str(e))
+        return
 
     def human(d):
         if not d:
@@ -212,9 +224,11 @@ def output(ctx, prompt_id, save_to):
         entry = ctx.client.get_prompt_output(prompt_id)
     except Exception as e:
         ctx.error(str(e))
+        return
 
     if not entry:
         ctx.error(f"No output found for {prompt_id}")
+        return
 
     outputs = entry.get("outputs", {})
 

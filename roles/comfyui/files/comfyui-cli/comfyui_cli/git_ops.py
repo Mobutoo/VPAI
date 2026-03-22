@@ -84,7 +84,7 @@ def git_log(workflows_dir: str, path: Optional[str] = None, limit: int = 10) -> 
     """Get git log entries, optionally filtered to a specific file."""
     args = [
         "log", f"--max-count={limit}",
-        "--format=%H|%an|%ae|%at|%s",
+        "--format=%H%x00%an%x00%ae%x00%at%x00%s",
     ]
     if path:
         args += ["--", path]
@@ -97,7 +97,7 @@ def git_log(workflows_dir: str, path: Optional[str] = None, limit: int = 10) -> 
     for line in result.stdout.strip().split("\n"):
         if not line:
             continue
-        parts = line.split("|", 4)
+        parts = line.split("\x00", 4)
         if len(parts) == 5:
             entries.append({
                 "commit": parts[0],

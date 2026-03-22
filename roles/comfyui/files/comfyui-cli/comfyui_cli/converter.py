@@ -9,7 +9,7 @@ API format: { "node_id": { "class_type": "...", "inputs": { named_key: value } }
   - Links resolved to ["source_node_id_str", output_index]
 """
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
 log = logging.getLogger(__name__)
 

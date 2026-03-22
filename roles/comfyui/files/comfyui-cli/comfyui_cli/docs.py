@@ -19,6 +19,7 @@ def docs(ctx, query, limit, category):
 
     if not qdrant_url or not litellm_url:
         ctx.error("Qdrant/LiteLLM not configured. Set qdrant_url and litellm_url in config.")
+        return
 
     try:
         from openai import OpenAI
@@ -26,6 +27,7 @@ def docs(ctx, query, limit, category):
         from urllib.parse import urlparse
     except ImportError:
         ctx.error("Install docs extras: pip install comfyui-cli[docs]")
+        return
 
     # Generate query embedding
     openai_client = OpenAI(base_url=litellm_url, api_key=litellm_api_key)
@@ -37,6 +39,7 @@ def docs(ctx, query, limit, category):
         query_vector = embedding_resp.data[0].embedding
     except Exception as e:
         ctx.error(f"Embedding generation failed: {e}")
+        return
 
     # Search Qdrant
     parsed = urlparse(qdrant_url)
@@ -62,6 +65,7 @@ def docs(ctx, query, limit, category):
         )
     except Exception as e:
         ctx.error(f"Qdrant search failed: {e}")
+        return
 
     docs_results = [
         {

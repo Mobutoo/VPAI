@@ -19,6 +19,7 @@ def versions(ctx, workflow_path, limit):
 
     if not entries:
         ctx.error(f"No version history for '{workflow_path}'")
+        return
 
     def human(data):
         lines = [f"Versions of {workflow_path}:"]
@@ -39,6 +40,7 @@ def revert(ctx, workflow_path, commit_sha):
     success = git_revert_file(ctx.config, workflow_path, commit_sha)
     if not success:
         ctx.error(f"Cannot revert '{workflow_path}' to {commit_sha}")
+        return
 
     # Also update via API so ComfyUI picks up the change
     from pathlib import Path

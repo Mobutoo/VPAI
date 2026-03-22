@@ -21,6 +21,7 @@ def list_workflows(ctx):
         items = ctx.client.list_workflows()
     except Exception as e:
         ctx.error(str(e))
+        return
 
     def human(data):
         if not data:
@@ -40,6 +41,7 @@ def get_workflow(ctx, path, raw):
         data = ctx.client.get_workflow(path)
     except Exception as e:
         ctx.error(f"Cannot read '{path}': {e}")
+        return
 
     if raw:
         click.echo(json.dumps(data, indent=2, ensure_ascii=False))
@@ -69,11 +71,13 @@ def save_workflow(ctx, path, input_file, from_stdin):
         data = json.load(sys.stdin)
     else:
         ctx.error("Provide --file or --stdin")
+        return
 
     try:
         ctx.client.save_workflow(path, data)
     except Exception as e:
         ctx.error(f"Cannot save '{path}': {e}")
+        return
 
     # Git commit if enabled
     if ctx.config.get("git_enabled"):
@@ -92,6 +96,7 @@ def delete_workflow(ctx, path):
         ctx.client.delete_workflow(path)
     except Exception as e:
         ctx.error(f"Cannot delete '{path}': {e}")
+        return
 
     if ctx.config.get("git_enabled"):
         from .git_ops import git_commit
@@ -110,6 +115,7 @@ def rename_workflow(ctx, old_path, new_path):
         ctx.client.move_workflow(old_path, new_path)
     except Exception as e:
         ctx.error(f"Cannot rename '{old_path}': {e}")
+        return
 
     if ctx.config.get("git_enabled"):
         from .git_ops import git_commit

@@ -4514,6 +4514,18 @@ async def _step_voiceover(
     voice_ref = params.get("voice_ref")
     mode = params.get("mode", "preview")  # preview (Kokoro local) or prod (Chatterbox CCX33)
 
+    # Auto-narration from scene_prompts when no text provided
+    if not text:
+        scene_prompts = job.get("scene_prompts", [])
+        if scene_prompts:
+            text = ". ".join(
+                sp.get("enriched", sp.get("original", ""))[:150]
+                for sp in scene_prompts
+                if sp.get("enriched") or sp.get("original")
+            )[:500]
+            if text:
+                print(f"[voiceover] Auto-narration from {len(scene_prompts)} scene prompts", flush=True)
+
     if not text:
         kitsu_result = await _kitsu_step_task(
             job, "Voice-over", "done", "No text provided — manual voiceover",
@@ -4650,11 +4662,19 @@ async def _step_imagegen(
     gen_h = (gen_h // 8) * 8
 
     dry_run = params.get("dry_run", False)
+    anchor_prompt = ""  # Visual anchor from scene 0 for cross-scene consistency
 
     for sp in scene_prompts:
         prompt = sp.get("enriched", sp.get("original", ""))
         if not prompt:
             continue
+
+        # Inject visual anchor from scene 0 for consistency across scenes
+        if anchor_prompt and sp.get("scene_index", 0) > 0:
+            prompt = (
+                f"CRITICAL: maintain exact same subject, visual style, colors, "
+                f"lighting as: {anchor_prompt[:200]}. New scene: {prompt}"
+            )
 
         if model:
             workflow = await _composer_build_workflow(
@@ -4694,6 +4714,10 @@ async def _step_imagegen(
                             # CRITICAL WIRING: link keyframe to scene_prompt for videogen
                             sp["keyframe_path"] = str(kf_path)
                             print(f"[imagegen] Keyframe s{scene_idx} saved: {kf_path.name}", flush=True)
+                            # Capture scene 0 as visual anchor for subsequent scenes
+                            if scene_idx == 0 and not anchor_prompt:
+                                anchor_prompt = sp.get("enriched", sp.get("original", ""))
+                                print(f"[imagegen] Visual anchor set from scene 0", flush=True)
                             # Upload to Kitsu asset as style reference
                             asset_ids = job.get("kitsu_asset_ids", [])
                             if asset_ids and KITSU_URL and KITSU_TOKEN:
@@ -5054,28 +5078,61 @@ def _camera_movement_to_ken_burns(movement: str) -> dict[str, Any]:
 
 async def _montage_ffmpeg_fallback(
     job_prefix: str, video_files: list[Path],
+    vo_path: Path | None = None, music_path: Path | None = None,
 ) -> Path | None:
-    """Fallback: ffmpeg concat when Remotion is unavailable."""
+    """Fallback: ffmpeg concat when Remotion is unavailable. Mixes audio if available."""
     concat_path = OUTPUT_DIR / f"{job_prefix}_concat.txt"
     concat_lines = [f"file '{vf}'" for vf in video_files]
     concat_path.write_text("\n".join(concat_lines))
     output_path = OUTPUT_DIR / f"{job_prefix}_final.mp4"
+    has_audio = vo_path or music_path
+
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-            "-i", str(concat_path), "-c", "copy", str(output_path),
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
-        await asyncio.wait_for(proc.communicate(), timeout=120)
-        if proc.returncode != 0:
+        if not has_audio:
+            # No audio — try fast copy first
             proc = await asyncio.create_subprocess_exec(
                 "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                "-i", str(concat_path),
-                "-c:v", "libx264", "-preset", "fast", "-c:a", "aac",
-                "-movflags", "+faststart", str(output_path),
+                "-i", str(concat_path), "-c", "copy", str(output_path),
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
             )
-            await asyncio.wait_for(proc.communicate(), timeout=300)
+            await asyncio.wait_for(proc.communicate(), timeout=120)
+            if proc.returncode == 0 and output_path.exists():
+                return output_path
+
+        # Re-encode with audio mixing
+        cmd: list[str] = [
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+            "-i", str(concat_path),
+        ]
+        audio_inputs: list[str] = []
+        if vo_path:
+            cmd.extend(["-i", str(vo_path)])
+            audio_inputs.append("voiceover")
+        if music_path:
+            cmd.extend(["-i", str(music_path)])
+            audio_inputs.append("music")
+
+        cmd.extend(["-c:v", "libx264", "-preset", "fast", "-movflags", "+faststart"])
+
+        if len(audio_inputs) == 2:
+            # Mix voiceover + music: vo at full volume, music at 0.3
+            cmd.extend([
+                "-filter_complex",
+                f"[1:a]volume=1.0[vo];[2:a]volume=0.3[bg];[vo][bg]amix=inputs=2:duration=first[aout]",
+                "-map", "0:v", "-map", "[aout]", "-c:a", "aac",
+            ])
+        elif len(audio_inputs) == 1:
+            # Single audio track
+            cmd.extend(["-map", "0:v", "-map", "1:a", "-c:a", "aac", "-shortest"])
+        else:
+            cmd.append("-an")
+
+        cmd.append(str(output_path))
+        print(f"[montage] ffmpeg with audio: {audio_inputs}", flush=True)
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await asyncio.wait_for(proc.communicate(), timeout=300)
     except (asyncio.TimeoutError, OSError):
         return None
     return output_path if output_path.exists() else None
@@ -5376,7 +5433,11 @@ async def _step_montage(
     if not remotion_ok:
         if video_files:
             print("[montage] Falling back to ffmpeg concat", flush=True)
-            fallback_path = await _montage_ffmpeg_fallback(job_prefix, video_files)
+            fallback_path = await _montage_ffmpeg_fallback(
+                job_prefix, video_files,
+                vo_path=vo_path if vo_path.exists() else None,
+                music_path=music_path if music_path.exists() else None,
+            )
             if fallback_path:
                 output_path = fallback_path
             else:

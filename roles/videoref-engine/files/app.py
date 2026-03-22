@@ -4570,7 +4570,7 @@ def _kokoro_generate(text: str, job_id: str) -> dict[str, Any]:
 
         pipeline = KPipeline(lang_code="a")  # 'a' = auto-detect
         audio_chunks = []
-        for _, _, audio in pipeline(text):
+        for _, _, audio in pipeline(text, voice="af_heart"):
             audio_chunks.append(audio)
 
         if not audio_chunks:

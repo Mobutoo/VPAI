@@ -15,7 +15,7 @@ echo "JOB: $JOB"
 step() {
   local s="$1"; local extra="$2"
   echo "--- $s ---"
-  RESULT=$(curl -sf -X POST "$URL/api/produce/step" \
+  RESULT=$(curl -sf --max-time 600 -X POST "$URL/api/produce/step" \
     -H "Content-Type: application/json" \
     -d "{\"job_id\": \"$JOB\", \"step\": \"$s\", \"params\": {$extra}}" 2>&1) || RESULT='{"error":"curl failed"}'
   STATUS=$(echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('status','?'))" 2>/dev/null) || STATUS="FAIL"
@@ -53,7 +53,7 @@ step imagegen '"budget": "eco"'
 
 # VideoGen — REAL Seedance 5s (eco ~$0.10/clip)
 echo "--- videogen (REAL Seedance eco) ---"
-VG_RESULT=$(curl -sf -X POST "$URL/api/produce/step" \
+VG_RESULT=$(curl -sf --max-time 600 -X POST "$URL/api/produce/step" \
   -H "Content-Type: application/json" \
   -d "{\"job_id\": \"$JOB\", \"step\": \"videogen\", \"params\": {\"budget\": \"eco\", \"duration\": 5}}" 2>&1)
 echo "  videogen: $(echo "$VG_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); r=d.get('step_result',{}); print(d.get('status','?'), f'videos={len(r.get(\"videogen_results\",[]))}')" 2>/dev/null)"
@@ -61,7 +61,7 @@ echo "$VG_RESULT" > /tmp/step_videogen.json
 
 # Montage — REAL Remotion render
 echo "--- montage (REAL Remotion) ---"
-MONTAGE_RESULT=$(curl -sf -X POST "$URL/api/produce/step" \
+MONTAGE_RESULT=$(curl -sf --max-time 600 -X POST "$URL/api/produce/step" \
   -H "Content-Type: application/json" \
   -d "{\"job_id\": \"$JOB\", \"step\": \"montage\", \"params\": {}}" 2>&1)
 echo "  montage: $(echo "$MONTAGE_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); r=d.get('step_result',{}); print(d.get('status','?'), r.get('render_method','?'), r.get('note','')[:100])" 2>/dev/null)"

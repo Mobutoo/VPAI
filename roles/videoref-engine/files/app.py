@@ -4826,19 +4826,21 @@ async def _step_videogen(
     print(f"[videogen] Selected: {model_name} node={model_node} in_specs={is_in_specs} in_endpoints={is_in_endpoints} query={vid_query}", flush=True)
 
     # --- Style prefix for visual consistency across scenes ---
+    # Skip Qdrant style injection when Director provided scene_prompts
+    # (Director prompts are already complete and self-consistent)
     direction = job.get("direction", {})
     style_parts: list[str] = []
-    if job.get("ref_style"):
-        style_parts.append(job["ref_style"])
-    if job.get("ref_colors"):
-        style_parts.append(f"color palette: {job['ref_colors']}")
-    if job.get("ref_mood"):
-        style_parts.append(f"{job['ref_mood']} mood")
+    if job.get("scene_prompts_source") != "director":
+        if job.get("ref_style"):
+            style_parts.append(job["ref_style"])
+        if job.get("ref_colors"):
+            style_parts.append(f"color palette: {job['ref_colors']}")
+        if job.get("ref_mood"):
+            style_parts.append(f"{job['ref_mood']} mood")
     grade_preset = direction.get("colorGrade", {}).get("preset", "")
     if grade_preset and grade_preset != "none":
         style_parts.append(f"{grade_preset} color grading")
-    if job.get("camera"):
-        style_parts.append(f"shot on {job['camera']}")
+    # Camera tokens already injected in enriched prompt by _step_script — don't duplicate
     style_prefix = ", ".join(style_parts)
     if style_prefix:
         print(f"[videogen] Style prefix: {style_prefix}", flush=True)

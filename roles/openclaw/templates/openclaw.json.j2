@@ -31,12 +31,12 @@
         "workspaceAccess": "rw",
         "docker": {
           "image": "{{ openclaw_sandbox_image | default('openclaw-sandbox:bookworm-slim') }}",
-          "readOnlyRoot": true,
+          "readOnlyRoot": false,
           "tmpfs": ["/tmp", "/var/tmp", "/run"],
-          "network": "{{ project_name }}_sandbox",
+          "network": "{{ project_name }}_egress",
           "user": "1000:1000",
           "capDrop": ["ALL"],
-          "pidsLimit": 256,
+          "pidsLimit": 512,
           "memory": "{{ openclaw_sandbox_memory | default('1g') }}",
           "cpus": {{ openclaw_sandbox_cpus | default(1) }}
         },
@@ -292,11 +292,11 @@
           "mode": "all",
           "docker": {
             "network": "{{ project_name }}_egress",
-            "readOnlyRoot": true,
+            "readOnlyRoot": false,
             "tmpfs": ["/tmp", "/var/tmp", "/run"],
             "user": "1000:1000",
             "capDrop": ["ALL"],
-            "memory": "1024m",
+              "memory": "1024m",
             "cpus": 1,
             "env": {
               "VREF_URL": "https://cine.{{ domain_name }}",

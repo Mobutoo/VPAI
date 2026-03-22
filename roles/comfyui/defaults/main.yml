@@ -74,3 +74,24 @@ comfyui_gemini_key: "{{ google_gemini_api_key }}"
 
 # Shared creative assets volume (shared with Remotion)
 creative_assets_dir: "/opt/workstation/data/creative-assets"
+
+# --- Concurrent Access (CLI + browser) ---
+# Workflows directory (inside user volume, ComfyUI v0.17.1+ default profile)
+comfyui_workflows_dir: "{{ comfyui_data_dir }}/user/default/workflows"
+
+# CLI config
+comfyui_cli_install_dir: "/opt/workstation/comfyui-cli"
+comfyui_cli_author_name: "Claude CLI"
+comfyui_cli_author_email: "claude@localhost"
+
+# MCP server
+comfyui_studio_install_dir: "/opt/workstation/comfyui-studio"
+
+# Git versioning
+comfyui_git_enabled: true
+comfyui_git_remote: "git@seko-vpn:mobuone/comfyui-workflows.git"
+comfyui_git_push_interval: 5  # minutes
+
+# Qdrant doc search
+comfyui_qdrant_url: "https://qd.ewutelo.cloud"
+comfyui_qdrant_collection: "comfyui-docs"

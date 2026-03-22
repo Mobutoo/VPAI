@@ -33,6 +33,7 @@ services:
       - {{ comfyui_data_dir }}/input:/app/input
       - {{ comfyui_data_dir }}/custom_nodes:/app/custom_nodes
       - {{ creative_assets_dir }}:/app/creative-assets
+      - {{ comfyui_data_dir }}/user:/app/user
     ports:
       - "127.0.0.1:{{ comfyui_port }}:8188"
     networks:

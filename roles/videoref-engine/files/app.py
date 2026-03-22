@@ -493,15 +493,43 @@ def _build_fallback_workflow(
 # ============================================================
 # 8. Kitsu API helper
 # ============================================================
+_kitsu_cached_token: str = ""
+
+
+async def _kitsu_refresh_token(session: aiohttp.ClientSession) -> str:
+    """Login to Kitsu and cache fresh token. Called on 401/422."""
+    global _kitsu_cached_token
+    email = os.environ.get("KITSU_ADMIN_EMAIL", "admin@admin.com")
+    password = os.environ.get("KITSU_ADMIN_PASSWORD", "mysecretpassword")
+    async with session.post(
+        f"{KITSU_URL}/api/auth/login",
+        json={"email": email, "password": password},
+        timeout=aiohttp.ClientTimeout(total=10),
+    ) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f"Kitsu login failed: {resp.status}")
+        data = await resp.json()
+        _kitsu_cached_token = data["access_token"]
+        print(f"[kitsu] Token refreshed (was expired)", flush=True)
+        return _kitsu_cached_token
+
+
+def _kitsu_get_token() -> str:
+    """Return cached token or env token."""
+    return _kitsu_cached_token or KITSU_TOKEN
+
+
 async def _kitsu_api(
     session: aiohttp.ClientSession,
     method: str,
     path: str,
     json_body: dict | None = None,
     data: aiohttp.FormData | None = None,
+    _retried: bool = False,
 ) -> dict[str, Any] | list | None:
-    """Call Kitsu/Zou API. Handles empty response bodies (DELETE)."""
-    headers = {"Authorization": f"Bearer {KITSU_TOKEN}"}
+    """Call Kitsu/Zou API. Auto-refreshes token on 401/422."""
+    token = _kitsu_get_token()
+    headers: dict[str, str] = {"Authorization": f"Bearer {token}"}
     if json_body is not None:
         headers["Content-Type"] = "application/json"
 
@@ -513,10 +541,16 @@ async def _kitsu_api(
         kwargs["json"] = json_body
     if data is not None:
         kwargs["data"] = data
-        kwargs["headers"] = {"Authorization": f"Bearer {KITSU_TOKEN}"}
+        kwargs["headers"] = {"Authorization": f"Bearer {token}"}
 
     url = f"{KITSU_URL}/api{path}"
     async with session.request(method, url, **kwargs) as resp:
+        # Auto-refresh on expired token (401/422)
+        if resp.status in (401, 422) and not _retried:
+            await _kitsu_refresh_token(session)
+            return await _kitsu_api(
+                session, method, path, json_body=json_body, data=data, _retried=True,
+            )
         if resp.status not in (200, 201, 204):
             body = await resp.text()
             raise RuntimeError(f"Kitsu {method} {path}: {resp.status} {body[:300]}")
@@ -681,13 +715,21 @@ async def _kitsu_create_project(
 
 async def _kitsu_get_task_type_id(
     session: aiohttp.ClientSession, name: str = "Shot Analysis",
+    for_entity: str = "Shot",
 ) -> str:
-    """Get or create a task type by name. Returns its ID."""
+    """Get or create a task type by name. Returns its ID.
+
+    for_entity must match the entity type where tasks will be created.
+    Pipeline steps use Shot (overview shot), assets use Asset.
+    """
     types = await _kitsu_api(session, "GET", "/data/task-types")
     existing = next((t for t in types if t["name"] == name), None)
     if existing:
         return existing["id"]
-    created = await _kitsu_api(session, "POST", "/data/task-types", json_body={"name": name})
+    created = await _kitsu_api(
+        session, "POST", "/data/task-types",
+        json_body={"name": name, "for_entity": for_entity},
+    )
     return created["id"]
 
 

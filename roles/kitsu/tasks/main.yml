@@ -68,3 +68,27 @@
   notify: Restart kitsu stack
   become: true
   tags: [kitsu]
+
+- name: Initialize Kitsu/Zou database (idempotent)
+  ansible.builtin.shell:
+    cmd: >-
+      set -euo pipefail;
+      docker exec {{ project_name }}_kitsu /opt/zou/env/bin/zou init-db 2>&1
+    executable: /bin/bash
+  register: kitsu_init_db
+  changed_when: "'Creating' in kitsu_init_db.stdout"
+  failed_when: kitsu_init_db.rc != 0
+  become: true
+  tags: [kitsu]
+
+- name: Ensure Kitsu admin user exists
+  ansible.builtin.shell:
+    cmd: >-
+      set -euo pipefail;
+      docker exec {{ project_name }}_kitsu /opt/zou/env/bin/zou create-admin {{ kitsu_admin_email | default('admin@admin.com') }} 2>&1
+    executable: /bin/bash
+  register: kitsu_admin
+  changed_when: "'Creating' in kitsu_admin.stdout"
+  failed_when: false
+  become: true
+  tags: [kitsu]

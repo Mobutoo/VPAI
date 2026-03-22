@@ -1,0 +1,55 @@
+---
+# penpot — defaults
+# Penpot: self-hosted open-source design platform (Figma alternative)
+# Deployed on ephemeral Hetzner CX23 VPS — created on-demand, destroyed after use
+# All data persisted in S3 bucket (assets + PostgreSQL dumps)
+
+# --- Hetzner VPS ---
+penpot_server_name: "penpot-ephemeral"
+penpot_server_type: "cx23"             # 2 vCPU, 4GB RAM, 40GB SSD — €0.006/h
+penpot_location: "nbg1"                # Nuremberg, Germany
+penpot_os_image: "ubuntu-24.04"
+penpot_ssh_key_name: "seko-vpn-deploy"
+penpot_ssh_key_pub_path: "~/.ssh/seko-vpn-deploy.pub"
+
+# --- Domain ---
+penpot_subdomain: "design"
+penpot_domain: "{{ penpot_subdomain }}.{{ domain_name }}"
+
+# --- Docker images (pinned in versions.yml) ---
+penpot_image_frontend: "{{ penpot_frontend_image }}"
+penpot_image_backend: "{{ penpot_backend_image }}"
+penpot_image_exporter: "{{ penpot_exporter_image }}"
+penpot_image_valkey: "{{ penpot_valkey_image }}"
+penpot_image_pg: "{{ penpot_pg_image }}"
+
+# --- Ports ---
+penpot_frontend_port: 9001
+
+# --- Database ---
+penpot_db_name: "penpot"
+penpot_db_user: "penpot"
+penpot_db_password: "{{ vault_penpot_db_password | default('changeme') }}"
+
+# --- Application secrets ---
+penpot_secret_key: "{{ vault_penpot_secret_key | default('changeme-generate-random') }}"
+
+# --- Admin user (created on first deploy) ---
+penpot_admin_email: "{{ vault_penpot_admin_email }}"
+penpot_admin_password: "{{ vault_penpot_admin_password }}"
+penpot_admin_fullname: "{{ vault_penpot_admin_fullname | default('Admin') }}"
+
+# --- S3 Backup ---
+penpot_s3_bucket: "vpai-penpot"
+penpot_s3_endpoint: "https://{{ s3_endpoint }}"
+penpot_s3_access_key: "{{ vault_s3_access_key | default('') }}"
+penpot_s3_secret_key: "{{ vault_s3_secret_key | default('') }}"
+penpot_s3_region: "{{ s3_region }}"
+penpot_backup_cron: "*/30 * * * *"     # Every 30 minutes while VPS is running
+
+# --- Install paths (on ephemeral VPS) ---
+penpot_install_dir: "/opt/penpot"
+penpot_data_dir: "/opt/penpot/data"
+
+# --- Tailscale ---
+penpot_tailscale_auth_key: "{{ vault_penpot_tailscale_auth_key | default(headscale_auth_key | default('')) }}"

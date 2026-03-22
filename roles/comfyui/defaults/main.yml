@@ -5,8 +5,9 @@
 comfyui_install_dir: "/opt/workstation/comfyui"
 comfyui_data_dir: "/opt/workstation/data/comfyui"
 
-# ComfyUI version (git tag from https://github.com/comfyanonymous/ComfyUI)
-comfyui_version: "v0.3.27"
+# ComfyUI version (git tag from https://github.com/Comfy-Org/ComfyUI)
+# v0.17.1 includes App Mode + App Builder (frontend >= 1.41.13)
+comfyui_version: "v0.17.1"
 
 # Ports
 comfyui_port: 8188
@@ -27,6 +28,49 @@ comfyui_models: []
 #     url: "https://huggingface.co/stabilityai/sdxl-turbo/resolve/main/sd_xl_turbo_1.0_fp16.safetensors"
 #     checksum: ""
 #     subdir: "checkpoints"
+
+# Custom nodes (API-based — no local models needed)
+comfyui_custom_nodes:
+  - name: "ComfyUI-fal-API"
+    repo: "https://github.com/gokayfem/ComfyUI-fal-API.git"
+    pip_deps: ["fal-client", "fal", "httpx", "httpx-sse", "opencv-python-headless"]
+  - name: "ComfyUI-fal-Connector"
+    repo: "https://github.com/gokayfem/ComfyUI-fal-Connector.git"
+    pip_deps: ["fal-client", "fal", "httpx", "httpx-sse"]
+  - name: "ComfyUI-IPAdapter-plus"
+    repo: "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git"
+    pip_deps: ["onnxruntime"]
+  - name: "ComfyUI-AnimateDiff-Evolved"
+    repo: "https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved.git"
+    pip_deps: []
+  - name: "ComfyUI-Impact-Pack"
+    repo: "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git"
+    pip_deps: ["segment-anything", "ultralytics"]
+  # --- Gap 1: Soul Cast (character consistency across shots) ---
+  # FaceID for persistent character identity + InstantID for face-driven generation
+  # TODO (next ComfyUI image rebuild): InstantID needs insightface which requires
+  # build-essential + cmake in the Docker image. Add to Dockerfile at next version bump.
+  # For now IPAdapterFaceID (4 nodes) covers the same character consistency use case.
+  - name: "ComfyUI-InstantID"
+    repo: "https://github.com/cubiq/ComfyUI_InstantID.git"
+    pip_deps: ["onnxruntime"]
+  # --- Gap 2: 3D scene control (depth-aware generation) ---
+  # Depth estimation (MiDaS/DPT) + 3D-aware generation
+  - name: "comfyui-art-venture"
+    repo: "https://github.com/sipherxyz/comfyui-art-venture.git"
+    pip_deps: ["timm"]
+  # --- Gap 3: Optical physics (depth of field, bokeh, lens effects) ---
+  # Advanced ControlNet preprocessors: depth, normal, canny, openpose
+  - name: "comfyui_controlnet_aux"
+    repo: "https://github.com/Fannovel16/comfyui_controlnet_aux.git"
+    pip_deps: ["mediapipe", "depth-anything-v2"]
+
+# fal.ai API key (from vault — used by fal-API and fal-Connector nodes)
+comfyui_fal_key: "{{ vault_comfyui_fal_key | default(fal_ai_api_key | default('')) }}"
+
+# Google Gemini API key (for NanoBanana / Gemini image gen nodes)
+# Paid Tier required for Veo 3 video gen — image gen works on free tier
+comfyui_gemini_key: "{{ google_gemini_api_key }}"
 
 # Shared creative assets volume (shared with Remotion)
 creative_assets_dir: "/opt/workstation/data/creative-assets"

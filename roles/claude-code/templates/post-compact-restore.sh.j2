@@ -1,0 +1,64 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Post-clear/compact context restoration hook (UserPromptSubmit)
+# Injects critical context back after /clear or auto-compact
+#
+# Two trigger conditions:
+#   1. /tmp/claude-compact-marker exists (set by PreCompact hook = auto-compact)
+#   2. /tmp/claude-clear-marker exists (set by Claude before requesting /clear)
+#
+# The hook removes the marker after firing to prevent repeated injection.
+set -euo pipefail
+
+COMPACT_MARKER="/tmp/claude-compact-marker"
+CLEAR_MARKER="/tmp/claude-clear-marker"
+
+# Check if either marker exists
+if [ ! -f "$COMPACT_MARKER" ] && [ ! -f "$CLEAR_MARKER" ]; then
+  exit 0
+fi
+
+# Remove markers to prevent re-triggering
+rm -f "$COMPACT_MARKER" "$CLEAR_MARKER"
+
+# Find project root (look for .planning/ in CWD or parents)
+DIR=$(pwd)
+PROJECT_ROOT=""
+while [ "$DIR" != "/" ]; do
+  if [ -d "$DIR/.planning" ]; then
+    PROJECT_ROOT="$DIR"
+    break
+  fi
+  DIR=$(dirname "$DIR")
+done
+
+if [ -z "$PROJECT_ROOT" ]; then
+  echo "[Context restored] No GSD project found. Continue normally."
+  exit 0
+fi
+
+echo "=== POST-CLEAR CONTEXT RECOVERY ==="
+echo ""
+
+# Inject STATE.md
+if [ -f "$PROJECT_ROOT/.planning/STATE.md" ]; then
+  echo "## Project State (from .planning/STATE.md)"
+  head -40 "$PROJECT_ROOT/.planning/STATE.md"
+  echo ""
+fi
+
+# Check for continue-here files (both GSD standard and legacy locations)
+CHECKPOINT=""
+if ls "$PROJECT_ROOT"/.planning/phases/*/.continue-here*.md 1>/dev/null 2>&1; then
+  CHECKPOINT=$(ls -t "$PROJECT_ROOT"/.planning/phases/*/.continue-here*.md 2>/dev/null | head -1)
+elif [ -f "$PROJECT_ROOT/.continue-here.md" ]; then
+  CHECKPOINT="$PROJECT_ROOT/.continue-here.md"
+fi
+
+if [ -n "$CHECKPOINT" ]; then
+  echo "## Resume Point (from $CHECKPOINT)"
+  head -30 "$CHECKPOINT"
+  echo ""
+fi
+
+echo "=== END RECOVERY — Continue from where you left off ==="

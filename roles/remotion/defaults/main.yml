@@ -13,8 +13,8 @@ remotion_version: "4.0.259"
 remotion_port: 3200
 
 # Docker resource limits (RPi 5 16GB — Chrome headless for rendering)
-remotion_memory_limit: "512M"
-remotion_memory_reservation: "256M"
+remotion_memory_limit: "8G"
+remotion_memory_reservation: "512M"
 remotion_cpu_limit: "2.0"
 
 # Subdomain (VPN-only via workstation Caddy)

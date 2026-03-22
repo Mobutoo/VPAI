@@ -157,10 +157,11 @@ deploy-role: ## Déployer un rôle spécifique (usage: make deploy-role ROLE=n8n
 .PHONY: openclaw-profile
 openclaw-profile: ## Basculer le profil modèle OpenClaw (usage: make openclaw-profile PROFILE=premium)
 	@if [ -z "$(PROFILE)" ]; then \
-		echo "$(RED)>>> Usage: make openclaw-profile PROFILE=<eco|balanced|premium>$(NC)"; \
+		echo "$(RED)>>> Usage: make openclaw-profile PROFILE=<eco|balanced|premium|openai>$(NC)"; \
 		echo "$(YELLOW)>>>   eco      = modèles gratuits (DeepSeek, Qwen) — $$0/jour$(NC)"; \
 		echo "$(YELLOW)>>>   balanced = mid-tier (GLM-5, DeepSeek R1) — ~$$1-2/jour$(NC)"; \
 		echo "$(YELLOW)>>>   premium  = qualité max (Claude, GPT-4o) — ~$$3-5/jour$(NC)"; \
+		echo "$(YELLOW)>>>   openai   = OpenAI OAuth only (GPT-5.4, 5.3-Codex, o4-mini) — abo Plus$(NC)"; \
 		exit 1; \
 	fi
 	@echo "$(YELLOW)>>> Switching OpenClaw to profile: $(PROFILE)$(NC)"
@@ -169,6 +170,33 @@ openclaw-profile: ## Basculer le profil modèle OpenClaw (usage: make openclaw-p
 		-e "openclaw_model_profile=$(PROFILE)" \
 		--tags "openclaw" \
 		--diff
+	@if [ "$(PROFILE)" = "openai" ]; then \
+		echo "$(YELLOW)>>> IMPORTANT: Run 'make openclaw-oauth-login' to authenticate with OpenAI$(NC)"; \
+	fi
+
+.PHONY: openclaw-oauth-start
+openclaw-oauth-start: ## Étape 1 OAuth : générer l'URL d'autorisation OpenAI
+	@echo "$(YELLOW)>>> Generating OpenAI OAuth URL...$(NC)"
+	$(ANSIBLE_PLAYBOOK) playbooks/openclaw-oauth.yml \
+		-e "target_env=prod" \
+		-e "oauth_step=start"
+
+.PHONY: openclaw-oauth-complete
+openclaw-oauth-complete: ## Étape 2 OAuth : échanger le code (usage: make openclaw-oauth-complete URL=<redirect-url>)
+	@if [ -z "$(URL)" ]; then \
+		echo "$(RED)>>> Usage: make openclaw-oauth-complete URL=<redirect-url-from-browser>$(NC)"; exit 1; \
+	fi
+	@echo "$(YELLOW)>>> Exchanging auth code for token...$(NC)"
+	$(ANSIBLE_PLAYBOOK) playbooks/openclaw-oauth.yml \
+		-e "target_env=prod" \
+		-e "oauth_step=complete" \
+		-e "oauth_callback_url=$(URL)"
+
+.PHONY: openclaw-oauth-status
+openclaw-oauth-status: ## Vérifier le statut OAuth OpenAI sur OpenClaw
+	ansible prod-server -m raw \
+		-a 'docker exec {{ project_name }}_openclaw openclaw models status' \
+		-e "target_env=prod"
 
 .PHONY: smoke-test
 smoke-test: ## Lancer les smoke tests
@@ -276,6 +304,20 @@ deploy-remotion: ## Deployer Remotion (video render) sur RPi
 .PHONY: deploy-opencut
 deploy-opencut: ## Deployer OpenCut (video editor on-demand) sur RPi
 	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "opencut" --diff
+
+.PHONY: deploy-openpencil
+deploy-openpencil: ## Deployer OpenPencil (design editor AI) sur RPi
+	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "openpencil" --diff
+
+.PHONY: penpot-up
+penpot-up: ## Provisionner VPS ephemere + deployer Penpot (CX23 Hetzner)
+	@echo "$(GREEN)>>> Provisioning Penpot ephemeral VPS...$(NC)"
+	$(ANSIBLE_PLAYBOOK) playbooks/penpot-up.yml --diff
+
+.PHONY: penpot-down
+penpot-down: ## Backup S3 + detruire VPS Penpot (cout = 0 apres)
+	@echo "$(YELLOW)>>> Backing up Penpot to S3 and destroying VPS...$(NC)"
+	$(ANSIBLE_PLAYBOOK) playbooks/penpot-down.yml --diff
 
 .PHONY: deploy-workstation-monitoring
 deploy-workstation-monitoring: ## Deployer node_exporter + metriques custom sur RPi

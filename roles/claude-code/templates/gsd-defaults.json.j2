@@ -1,0 +1,20 @@
+{# GSD defaults.json — YOLO mode + model routing #}
+{# Schema: https://www.npmjs.com/package/get-shit-done-cc #}
+{# model_profile: quality|balanced|budget #}
+{# model_overrides: gsd-planner, gsd-executor, gsd-verifier, gsd-phase-researcher, gsd-plan-checker #}
+{# "inherit" = use parent model | "sonnet[1m]" = Sonnet 4.6 with 1M context #}
+{
+  "mode": "yolo",
+  "model_profile": "{{ claude_code_gsd_model_profile | default('balanced') }}",
+{% if claude_code_gsd_model_overrides is defined and claude_code_gsd_model_overrides | length > 0 %}
+  "model_overrides": {
+{% for agent, model in claude_code_gsd_model_overrides.items() %}
+    "{{ agent }}": "{{ model }}"{{ ',' if not loop.last else '' }}
+{% endfor %}
+  },
+{% endif %}
+  "workflow": {
+    "auto_advance": true
+  },
+  "granularity": "standard"
+}

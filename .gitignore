@@ -66,3 +66,6 @@ terraform.tfstate*
 PRD.md
 docs/PLAN-*.md
 docs/TASKS-*.md
+
+# --- Worktrees ---
+.worktrees/

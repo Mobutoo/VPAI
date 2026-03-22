@@ -1,0 +1,807 @@
+#!/usr/bin/env python3
+"""vref — VideoRef Engine CLI v0.7.0.
+
+Universal CLI for the VideoRef creative pipeline.
+Calls the VideoRef Engine REST API on Waza (RPi5).
+
+Usage:
+    vref health                          # Check service status
+    vref watch                           # List downloaded videos awaiting analysis
+    vref jobs                            # List completed analyses
+    vref analyze <filename> [--template] # Analyze a video (multi-scene)
+    vref assets [--style X] [--mood Y]   # Search VideoRef assets in Kitsu
+    vref get <asset_id>                  # Get full asset details + prompt
+    vref search <query>                  # Semantic search via Qdrant embeddings
+    vref remix <asset_id> [--subject X]  # Remix an asset with modifications
+    vref prompt <asset_id>               # Print just the AI prompt (for piping)
+    vref cameras                         # List available camera presets
+    vref produce-start [--title T]       # Start a new production job
+    vref produce-step JOB_ID STEP        # Execute a pipeline step
+    vref produce-status JOB_ID           # Show job status
+    vref produce-retake JOB_ID STEP      # Retake a specific step
+
+Environment:
+    VREF_URL    Base URL (default: https://cine.ewutelo.cloud)
+
+Examples:
+    vref assets --style 3D --mood playful
+    vref get abc123 | jq .ai_prompt
+    vref remix abc123 --subject "cats" --style "watercolor" --mood "sad"
+    vref remix abc123 --camera ARRI --lens anamorphic --subject "cats"
+    vref search "dramatic cinematic dark blue"
+    vref prompt abc123 | pbcopy   # Copy prompt to clipboard
+    vref analyze "video.mp4" --template cinematic
+    vref cameras
+    vref produce-start --title "Cats Ghibli" --camera ARRI --lens anamorphic
+    vref produce-step JOB_ID brief --description "A short film about cats"
+    vref produce-status JOB_ID
+    vref produce-retake JOB_ID imagegen --scenes 3,5
+"""
+import argparse
+import json
+import os
+import sys
+import urllib.request
+import urllib.error
+
+BASE_URL = os.environ.get("VREF_URL", "https://cine.ewutelo.cloud")
+
+PIPELINE_STEPS = [
+    "brief", "research", "script", "storyboard", "voiceover", "music",
+    "imagegen", "videogen", "montage", "subtitles", "colorgrade",
+    "review", "export", "publish",
+]
+
+
+def _api(method: str, path: str, body: dict | None = None) -> dict:
+    """Call VideoRef Engine API."""
+    from urllib.parse import quote
+    # Encode query string spaces but keep ? and & and =
+    if "?" in path:
+        base, qs = path.split("?", 1)
+        parts = []
+        for param in qs.split("&"):
+            if "=" in param:
+                k, v = param.split("=", 1)
+                parts.append(f"{k}={quote(v)}")
+            else:
+                parts.append(quote(param))
+        path = f"{base}?{'&'.join(parts)}"
+    url = f"{BASE_URL}{path}"
+    data = json.dumps(body).encode() if body else None
+    headers = {"Content-Type": "application/json"} if body else {}
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        err = e.read().decode()[:500]
+        try:
+            return json.loads(err)
+        except Exception:
+            return {"error": f"HTTP {e.code}: {err}"}
+    except urllib.error.URLError as e:
+        return {"error": f"Connection failed: {e.reason}"}
+
+
+def _print_json(data: dict, compact: bool = False) -> None:
+    """Print JSON to stdout."""
+    if compact:
+        print(json.dumps(data))
+    else:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+
+
+def _print_table(rows: list[dict], columns: list[str], widths: list[int]) -> None:
+    """Print a simple table."""
+    header = "  ".join(c.upper().ljust(w) for c, w in zip(columns, widths))
+    print(header)
+    print("-" * len(header))
+    for row in rows:
+        line = "  ".join(
+            str(row.get(c, ""))[:w].ljust(w) for c, w in zip(columns, widths)
+        )
+        print(line)
+
+
+# -- Commands (existing) ------------------------------------------
+
+def cmd_health(args: argparse.Namespace) -> None:
+    """Check service health."""
+    data = _api("GET", "/health")
+    if args.json:
+        _print_json(data)
+        return
+    status = data.get("status", "?")
+    version = data.get("version", "?")
+    integrations = data.get("integrations", {})
+    icon = "OK" if status == "ok" else "FAIL"
+    print(f"[{icon}] VideoRef Engine v{version}")
+    for name, active in integrations.items():
+        print(f"  [{'x' if active else ' '}] {name}")
+
+
+def cmd_watch(args: argparse.Namespace) -> None:
+    """List files in watch directory."""
+    data = _api("GET", "/api/watch")
+    if args.json:
+        _print_json(data)
+        return
+    files = data.get("files", [])
+    print(f"{data.get('count', 0)} files in watch dir:\n")
+    for f in files:
+        print(f"  {f}")
+
+
+def cmd_jobs(args: argparse.Namespace) -> None:
+    """List completed analyses."""
+    data = _api("GET", "/api/jobs")
+    if args.json:
+        _print_json(data)
+        return
+    analyzed = data.get("analyzed", [])
+    print(f"{data.get('count', 0)} completed analyses:\n")
+    for f in analyzed:
+        print(f"  {f}")
+
+
+def cmd_analyze(args: argparse.Namespace) -> None:
+    """Analyze a video file."""
+    body = {"filename": args.filename, "template": args.template}
+    print(f"Analyzing '{args.filename}' (template: {args.template})...")
+    print("   This may take 1-5 minutes for Claude Vision analysis.\n")
+    data = _api("POST", "/api/analyze", body)
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    print(f"Status: {data.get('status')} | Scenes: {data.get('scene_count')}")
+    k = data.get("kitsu", {})
+    if isinstance(k.get("sequence_id"), str):
+        print(f"   Kitsu: {k.get('shot_count')} shots, {k.get('asset_count')} assets, {k.get('preview_count')} previews")
+    elif k.get("error"):
+        print(f"   Kitsu: {k['error'][:80]}")
+    print(f"   Qdrant: {'indexed' if data.get('qdrant', {}).get('indexed') else 'skipped'}")
+    print(f"   Gitea: {'versioned' if data.get('gitea', {}).get('versioned') else 'skipped'}")
+    print(f"\n{'=' * 70}")
+    for i, scene in enumerate(data.get("scenes", [])):
+        a = scene.get("analysis", {})
+        print(f"  Scene {i+1}: {a.get('style', '?')[:35]} | {a.get('mood', '?')[:25]}")
+
+
+def cmd_assets(args: argparse.Namespace) -> None:
+    """Search VideoRef assets."""
+    params = []
+    if args.style:
+        params.append(f"style={args.style}")
+    if args.mood:
+        params.append(f"mood={args.mood}")
+    if args.motion:
+        params.append(f"motion={args.motion}")
+    if args.query:
+        params.append(f"q={args.query}")
+    if args.limit:
+        params.append(f"limit={args.limit}")
+    qs = "&".join(params)
+    path = f"/api/assets?{qs}" if qs else "/api/assets"
+    data = _api("GET", path)
+    if args.json:
+        _print_json(data)
+        return
+    assets = data.get("assets", [])
+    print(f"{data.get('count', 0)} assets found (of {data.get('total', '?')} total):\n")
+    for a in assets:
+        print(f"  {a['name'][:65]}")
+        print(f"     ID: {a['id']}")
+        print(f"     Style: {a.get('style', '')[:40]} | Mood: {a.get('mood', '')[:25]}")
+        prompt = a.get("ai_prompt", "")
+        if prompt:
+            print(f"     Prompt: {prompt[:80]}...")
+        print()
+
+
+def cmd_get(args: argparse.Namespace) -> None:
+    """Get full asset details."""
+    data = _api("GET", f"/api/assets/{args.asset_id}")
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    print(f"Asset: {data.get('name', '?')}")
+    print(f"   ID:      {data.get('id', '?')}")
+    print(f"   Style:   {data.get('style', '?')}")
+    print(f"   Mood:    {data.get('mood', '?')}")
+    print(f"   Colors:  {data.get('colors', '?')}")
+    print(f"   Motion:  {data.get('motion', '?')}")
+    print(f"   Created: {data.get('created_at', '?')}")
+    print(f"\n{'=' * 70}")
+    print(f"AI Prompt:\n{data.get('ai_prompt', 'N/A')}")
+
+
+def cmd_prompt(args: argparse.Namespace) -> None:
+    """Print just the AI prompt (for piping)."""
+    data = _api("GET", f"/api/assets/{args.asset_id}")
+    prompt = data.get("ai_prompt", data.get("error", ""))
+    print(prompt)
+
+
+def cmd_search(args: argparse.Namespace) -> None:
+    """Semantic search via Qdrant."""
+    query = " ".join(args.query)
+    params = f"q={query}&limit={args.limit}"
+    data = _api("GET", f"/api/search?{params}")
+    if args.json:
+        _print_json(data)
+        return
+    results = data.get("results", [])
+    print(f"'{query}' -- {data.get('count', 0)} results:\n")
+    for r in results:
+        score = r.get("score", 0)
+        bar = "#" * int(score * 20) + "." * (20 - int(score * 20))
+        print(f"  [{bar}] {score:.3f}")
+        print(f"    Style: {r.get('style', '?')[:40]} | Mood: {r.get('mood', '?')[:25]}")
+        prompt = r.get("suggested_prompt", "")
+        if prompt:
+            print(f"    Prompt: {prompt[:80]}...")
+        print()
+
+
+def cmd_remix(args: argparse.Namespace) -> None:
+    """Remix an asset with modifications."""
+    modifications = {}
+    if args.subject:
+        modifications["subject"] = args.subject
+    if args.style:
+        modifications["style"] = args.style
+    if args.mood:
+        modifications["mood"] = args.mood
+    if args.colors:
+        modifications["colors"] = args.colors
+    if args.extra:
+        modifications["extra"] = args.extra
+
+    if not modifications and not args.source_prompt and not args.camera:
+        print("Error: Provide at least one modification (--subject, --style, --mood, --colors, --extra, --camera)")
+        sys.exit(1)
+
+    body = {
+        "template": args.template,
+        "output_name": args.output or "remix",
+        "modifications": modifications,
+    }
+    if args.source_prompt:
+        body["source_prompt"] = args.source_prompt
+    else:
+        body["asset_id"] = args.asset_id
+
+    # Camera params
+    if args.camera:
+        body["camera"] = args.camera
+    if args.lens:
+        body["lens"] = args.lens
+    if args.aperture:
+        body["aperture"] = args.aperture
+    if args.cam_motion:
+        body["motion"] = args.cam_motion
+
+    print(f"Remixing with: {modifications}")
+    if args.camera:
+        print(f"   Camera: {args.camera} | Lens: {args.lens or 'default'}")
+    print(f"   Template: {args.template}\n")
+
+    data = _api("POST", "/api/remix", body)
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    print(f"Remix complete!")
+    print(f"\n{'=' * 70}")
+    print(f"Original:  {data.get('original_prompt', '')[:80]}...")
+    print(f"\n{'=' * 70}")
+    print(f"Remixed:   {data.get('remixed_prompt', '')}")
+    print(f"\n{'=' * 70}")
+    print(f"Style:     {data.get('style', '?')}")
+    print(f"Mood:      {data.get('mood', '?')}")
+    cam = data.get("camera_tokens", {})
+    if cam.get("camera"):
+        print(f"Camera:    {cam.get('camera', '')} | Lens: {cam.get('lens', '')} | f/{cam.get('aperture', '')}")
+    print(f"Workflow:   {data.get('workflow_path', '?')}")
+
+
+# -- Commands (new: production pipeline) --------------------------
+
+def cmd_transcribe(args: argparse.Namespace) -> None:
+    """Transcribe audio from a video."""
+    data = _api("POST", "/api/transcribe", {
+        "filename": args.filename,
+        "language": args.language,
+    })
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    t = data.get("transcript", {})
+    print(f"Transcription: {args.filename}")
+    print(f"  Language: {t.get('language', '?')}")
+    print(f"  Segments: {t.get('segment_count', 0)}")
+    print(f"  Saved: {data.get('saved_to', '?')}")
+    print(f"\n--- Full text ---")
+    print(t.get("full_text", "")[:500])
+    if len(t.get("full_text", "")) > 500:
+        print("... (truncated)")
+
+
+def cmd_ocr(args: argparse.Namespace) -> None:
+    """Extract on-screen text from video."""
+    data = _api("POST", "/api/ocr", {
+        "filename": args.filename,
+        "interval": args.interval,
+        "max_frames": args.max_frames,
+    })
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    frames = data.get("frames", [])
+    print(f"OCR: {args.filename}")
+    print(f"  Frames with text: {len(frames)}")
+    for f in frames[:10]:
+        texts = " | ".join(t["text"] for t in f.get("texts", []))
+        print(f"  [{f['timestamp']}] {texts[:100]}")
+    if len(frames) > 10:
+        print(f"  ... +{len(frames) - 10} more")
+
+
+def cmd_intelligence(args: argparse.Namespace) -> None:
+    """Full video intelligence analysis."""
+    data = _api("POST", "/api/intelligence", {
+        "filename": args.filename,
+        "language": args.language,
+        "store_kitsu": not args.no_kitsu,
+    })
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+
+    intel = data.get("intelligence", {})
+    t = data.get("transcript", {})
+    ocr = data.get("ocr", {})
+
+    print(f"Video Intelligence: {args.filename}")
+    print(f"  Type: {intel.get('type', '?')}")
+    print(f"  Language: {t.get('language', '?')}")
+    print(f"  Summary: {intel.get('summary', '?')}")
+    print(f"  Transcript segments: {t.get('segment_count', 0)}")
+    print(f"  OCR frames: {ocr.get('frame_count', 0)}")
+
+    instructions = intel.get("instructions", [])
+    if instructions:
+        print(f"\n  Instructions ({len(instructions)}):")
+        for i, step in enumerate(instructions[:10], 1):
+            print(f"    {i}. {step[:100]}")
+
+    tools = intel.get("tools_mentioned", [])
+    if tools:
+        print(f"\n  Tools: {', '.join(tools[:10])}")
+
+    tags = intel.get("tags", [])
+    if tags:
+        print(f"  Tags: {', '.join(tags[:10])}")
+
+    k = data.get("kitsu", {})
+    q = data.get("qdrant", {})
+    print(f"\n  Kitsu: {k.get('asset_id', k.get('error', 'skipped'))[:30]}")
+    print(f"  Qdrant: {q.get('indexed', q.get('error', 'skipped'))}")
+    print(f"  Saved: {data.get('saved_to', '?')}")
+
+
+def cmd_cameras(args: argparse.Namespace) -> None:
+    """List available camera presets."""
+    data = _api("GET", "/api/cameras")
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    cameras = data.get("cameras", {})
+    lenses = data.get("lenses", {})
+    apertures = data.get("apertures", {})
+    motions = data.get("motions", {})
+
+    print("Camera Presets\n")
+    if cameras:
+        print("  Cameras:")
+        for name, desc in cameras.items():
+            label = desc if isinstance(desc, str) else json.dumps(desc)
+            print(f"    {name:20s}  {label[:50]}")
+    if lenses:
+        print("\n  Lenses:")
+        for name, desc in lenses.items():
+            label = desc if isinstance(desc, str) else json.dumps(desc)
+            print(f"    {name:20s}  {label[:50]}")
+    if apertures:
+        print("\n  Apertures:")
+        for name, desc in apertures.items():
+            label = desc if isinstance(desc, str) else json.dumps(desc)
+            print(f"    {name:20s}  {label[:50]}")
+    if motions:
+        print("\n  Motions:")
+        for name, desc in motions.items():
+            label = desc if isinstance(desc, str) else json.dumps(desc)
+            print(f"    {name:20s}  {label[:50]}")
+    if not any([cameras, lenses, apertures, motions]):
+        print("  No presets loaded (camera-presets.json not found in Gitea)")
+
+
+def cmd_produce_start(args: argparse.Namespace) -> None:
+    """Start a new production job."""
+    title = args.title
+    if not title:
+        print("Error: --title is required")
+        sys.exit(1)
+
+    body = {"title": title}
+    if args.url:
+        body["url"] = args.url
+    if args.camera:
+        body["camera"] = args.camera
+    if args.lens:
+        body["lens"] = args.lens
+    if args.aperture:
+        body["aperture"] = args.aperture
+    if args.cam_motion:
+        body["motion"] = args.cam_motion
+    if args.fps:
+        body["fps"] = args.fps
+    if args.format:
+        body["format"] = args.format
+    if args.style:
+        body["style"] = args.style
+
+    data = _api("POST", "/api/produce/start", body)
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    slug = data.get("slug", "")
+    print(f"Production job created!")
+    print(f"  Slug:    {slug}")
+    print(f"  Job ID:  {data.get('job_id', '?')}")
+    print(f"  Title:   {data.get('title', '?')}")
+    print(f"  Next:    {data.get('next_step', '?')}")
+    print(f"\n  Pipeline: {' -> '.join(data.get('pipeline_steps', []))}")
+    print(f"\n  Run: vref produce-step {slug or data.get('job_id', 'JOB_ID')} brief")
+
+
+def cmd_produce_step(args: argparse.Namespace) -> None:
+    """Execute a pipeline step."""
+    job_id = args.job_id
+    step = args.step
+
+    if step not in PIPELINE_STEPS:
+        print(f"Error: Unknown step '{step}'. Valid: {', '.join(PIPELINE_STEPS)}")
+        sys.exit(1)
+
+    params = {}
+    if args.description:
+        params["description"] = args.description
+    if args.query_param:
+        params["query"] = args.query_param
+    if args.url:
+        params["url"] = args.url
+    if args.skip:
+        params["skip"] = True
+    if args.scenes:
+        params["scenes"] = _parse_scene_list(args.scenes)
+    if args.modifications:
+        params["modifications"] = _parse_modifications(args.modifications)
+    if hasattr(args, "fps") and args.fps:
+        params["fps"] = args.fps
+    if hasattr(args, "format") and args.format:
+        params["format"] = args.format
+    if hasattr(args, "resolution") and args.resolution:
+        params["resolution"] = args.resolution
+    if getattr(args, "dry_run", False):
+        params["dry_run"] = True
+    if getattr(args, "scene_prompts", None):
+        params["scene_prompts"] = args.scene_prompts
+
+    mode = " (DRY-RUN)" if params.get("dry_run") else ""
+    print(f"Executing step '{step}' for job {job_id[:8]}{mode}...")
+    data = _api("POST", "/api/produce/step", {
+        "job_id": job_id,
+        "step": step,
+        "params": params,
+    })
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    print(f"Step '{step}' completed!")
+    completed = data.get("steps_completed", [])
+    next_step = data.get("next_step", "done")
+    print(f"  Completed: {', '.join(completed)}")
+    print(f"  Next:      {next_step or 'DONE'}")
+    result = data.get("step_result", {})
+    kitsu = result.get("kitsu", {})
+    if kitsu.get("task_id"):
+        print(f"  Kitsu:     task {kitsu['task_id'][:8]}... -> {kitsu.get('status', '?')}")
+    if next_step:
+        print(f"\n  Run: vref produce-step {job_id} {next_step}")
+
+
+def cmd_produce_status(args: argparse.Namespace) -> None:
+    """Show production job status."""
+    job_id = args.job_id
+    data = _api("GET", f"/api/produce/status/{job_id}")
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+
+    progress = data.get("progress", 0)
+    bar_len = 30
+    filled = int(progress * bar_len)
+    bar = "#" * filled + "." * (bar_len - filled)
+    pct = int(progress * 100)
+
+    slug = data.get("slug", "")
+    print(f"Production: {data.get('title', '?')}")
+    if slug:
+        print(f"  Slug:     {slug}")
+    print(f"  Job ID:   {data.get('job_id', '?')}")
+    if data.get("camera"):
+        print(f"  Camera:   {data.get('camera', '')} | Lens: {data.get('lens', '')}")
+    print(f"  Progress: [{bar}] {pct}%")
+    print(f"  Current:  {data.get('current_step') or 'DONE'}")
+    if data.get("kitsu_sequence_id"):
+        print(f"  Kitsu:    sequence {data['kitsu_sequence_id'][:8]}...")
+    print(f"  Created:  {data.get('created_at', '?')[:19]}")
+    print(f"  Updated:  {data.get('updated_at', '?')[:19]}")
+
+    print(f"\n  Steps:")
+    for s in data.get("steps", []):
+        status = "[x]" if s["completed"] else "[ ]"
+        human = " (human)" if s["needs_human"] else ""
+        optional = " (optional)" if s["optional"] else ""
+        print(f"    {status} {s['id']:15s} {s['task_type']}{human}{optional}")
+
+
+def cmd_produce_retake(args: argparse.Namespace) -> None:
+    """Retake a specific pipeline step."""
+    job_id = args.job_id
+    step = args.step
+
+    if step not in PIPELINE_STEPS:
+        print(f"Error: Unknown step '{step}'. Valid: {', '.join(PIPELINE_STEPS)}")
+        sys.exit(1)
+
+    body: dict = {
+        "job_id": job_id,
+        "step": step,
+    }
+    if args.scenes:
+        body["scenes"] = _parse_scene_list(args.scenes)
+    if args.modifications:
+        body["modifications"] = _parse_modifications(args.modifications)
+
+    print(f"Retaking step '{step}' for job {job_id[:8]}...")
+    data = _api("POST", "/api/produce/retake", body)
+    if args.json:
+        _print_json(data)
+        return
+    if "error" in data:
+        print(f"Error: {data['error']}")
+        return
+    print(f"Retake of '{step}' completed!")
+    if data.get("scenes_retaken"):
+        print(f"  Scenes retaken: {data['scenes_retaken']}")
+
+
+# -- Helpers -------------------------------------------------------
+
+def _parse_scene_list(scenes_str: str) -> list[int]:
+    """Parse comma-separated scene indices string to list of ints."""
+    result = []
+    for part in scenes_str.split(","):
+        part = part.strip()
+        if part.isdigit():
+            result.append(int(part))
+    return result
+
+
+def _parse_modifications(mods_str: str) -> dict:
+    """Parse key=value modifications string to dict."""
+    result = {}
+    for part in mods_str.split(","):
+        if "=" in part:
+            k, v = part.split("=", 1)
+            result[k.strip()] = v.strip()
+    return result
+
+
+# -- Parser --------------------------------------------------------
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="vref",
+        description="VideoRef Engine CLI -- creative video reference pipeline v0.7.0",
+        epilog="Environment: VREF_URL (default: https://cine.ewutelo.cloud)",
+    )
+    parser.add_argument("--json", action="store_true", help="Output raw JSON")
+    sub = parser.add_subparsers(dest="command", help="Command")
+
+    # health
+    sub.add_parser("health", help="Check service health")
+
+    # watch
+    sub.add_parser("watch", help="List downloaded videos")
+
+    # jobs
+    sub.add_parser("jobs", help="List completed analyses")
+
+    # analyze
+    p = sub.add_parser("analyze", help="Analyze a video file")
+    p.add_argument("filename", help="Video filename in watch dir")
+    p.add_argument("--template", default="default", help="ComfyUI template (default/cinematic/anime)")
+
+    # assets
+    p = sub.add_parser("assets", help="Search VideoRef assets in Kitsu")
+    p.add_argument("--style", help="Filter by style")
+    p.add_argument("--mood", help="Filter by mood")
+    p.add_argument("--motion", help="Filter by motion (low/medium/high)")
+    p.add_argument("-q", "--query", help="Free text search")
+    p.add_argument("--limit", type=int, default=20, help="Max results")
+
+    # get
+    p = sub.add_parser("get", help="Get full asset details")
+    p.add_argument("asset_id", help="Kitsu asset UUID")
+
+    # prompt
+    p = sub.add_parser("prompt", help="Print AI prompt (for piping)")
+    p.add_argument("asset_id", help="Kitsu asset UUID")
+
+    # search
+    p = sub.add_parser("search", help="Semantic search via Qdrant")
+    p.add_argument("query", nargs="+", help="Search query")
+    p.add_argument("--limit", type=int, default=5, help="Max results")
+
+    # remix (updated with camera params)
+    p = sub.add_parser("remix", help="Remix an asset with modifications")
+    p.add_argument("asset_id", nargs="?", help="Kitsu asset UUID (or use --source-prompt)")
+    p.add_argument("--source-prompt", help="Direct prompt instead of asset_id")
+    p.add_argument("--subject", help="Change subject (e.g. 'cats instead of shoes')")
+    p.add_argument("--style", help="Change style (e.g. 'watercolor painting')")
+    p.add_argument("--mood", help="Change mood (e.g. 'melancholic')")
+    p.add_argument("--colors", help="Override colors (e.g. '#1a1a2e, #16213e')")
+    p.add_argument("--extra", help="Additional modifications")
+    p.add_argument("--camera", help="Camera preset (e.g. ARRI, RED, Sony)")
+    p.add_argument("--lens", help="Lens type (e.g. anamorphic, prime, zoom)")
+    p.add_argument("--aperture", help="Aperture value (e.g. 1.4, 2.8)")
+    p.add_argument("--cam-motion", help="Camera motion (e.g. dolly, pan, steadicam)")
+    p.add_argument("--template", default="cinematic", help="ComfyUI template")
+    p.add_argument("--output", help="Output workflow name")
+
+    # cameras
+    sub.add_parser("cameras", help="List available camera presets")
+
+    # transcribe
+    p = sub.add_parser("transcribe", help="Transcribe audio from a video")
+    p.add_argument("filename", help="Video filename in watch dir")
+    p.add_argument("--language", default="auto", help="Language code (auto, en, fr, etc.)")
+
+    # ocr
+    p = sub.add_parser("ocr", help="Extract on-screen text from video")
+    p.add_argument("filename", help="Video filename in watch dir")
+    p.add_argument("--interval", type=int, default=10, help="Seconds between frames (default: 10)")
+    p.add_argument("--max-frames", type=int, default=20, help="Max frames to analyze (default: 20)")
+
+    # intelligence (full analysis: transcript + OCR + AI extraction)
+    p = sub.add_parser("intelligence", help="Full video intelligence: transcript + OCR + AI extraction")
+    p.add_argument("filename", help="Video filename in watch dir")
+    p.add_argument("--language", default="auto", help="Language code")
+    p.add_argument("--no-kitsu", action="store_true", help="Skip Kitsu storage")
+
+    # produce-start
+    p = sub.add_parser("produce-start", help="Start a new production job")
+    p.add_argument("--title", required=True, help="Production title")
+    p.add_argument("--url", help="Source video URL")
+    p.add_argument("--camera", help="Camera preset")
+    p.add_argument("--lens", help="Lens type")
+    p.add_argument("--aperture", help="Aperture value")
+    p.add_argument("--cam-motion", help="Camera motion")
+    p.add_argument("--fps", default="24", help="Frame rate (default: 24)")
+    p.add_argument("--format", default="landscape",
+                   choices=["landscape", "portrait", "square", "4k", "4k-portrait", "cinescope"],
+                   help="Video format/orientation (default: landscape)")
+    p.add_argument("--style", default="2d3d",
+                   choices=["2d", "3d", "2d3d", "ar", "vfx"],
+                   help="Production style (default: 2d3d)")
+
+    # produce-step
+    p = sub.add_parser("produce-step", help="Execute a pipeline step")
+    p.add_argument("job_id", help="Production job ID")
+    p.add_argument("step", help=f"Step name: {', '.join(PIPELINE_STEPS)}")
+    p.add_argument("--description", help="Brief description (for brief step)")
+    p.add_argument("--fps", help="Override FPS (for brief step)")
+    p.add_argument("--format", help="Override format: landscape/portrait/square/4k (for brief)")
+    p.add_argument("--resolution", help="Override resolution e.g. 1920x1080 (for brief)")
+    p.add_argument("--query-param", help="Search query (for research step)")
+    p.add_argument("--url", help="Source URL (for research step)")
+    p.add_argument("--skip", action="store_true", help="Skip optional step")
+    p.add_argument("--dry-run", action="store_true", help="Validate pipeline without generation (zero cost)")
+    p.add_argument("--scene-prompts", help="JSON array of pre-computed scene prompts (from OpenClaw Director)")
+    p.add_argument("--scenes", help="Comma-separated scene indices")
+    p.add_argument("--modifications", help="key=value,key=value modifications")
+
+    # produce-status
+    p = sub.add_parser("produce-status", help="Show production job status")
+    p.add_argument("job_id", help="Production job ID")
+
+    # produce-retake
+    p = sub.add_parser("produce-retake", help="Retake a specific pipeline step")
+    p.add_argument("job_id", help="Production job ID")
+    p.add_argument("step", help=f"Step to retake: {', '.join(PIPELINE_STEPS)}")
+    p.add_argument("--scenes", help="Comma-separated scene indices to retake")
+    p.add_argument("--modifications", help="key=value,key=value modifications")
+
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        sys.exit(0)
+
+    commands = {
+        "health": cmd_health,
+        "watch": cmd_watch,
+        "jobs": cmd_jobs,
+        "analyze": cmd_analyze,
+        "assets": cmd_assets,
+        "get": cmd_get,
+        "prompt": cmd_prompt,
+        "search": cmd_search,
+        "remix": cmd_remix,
+        "cameras": cmd_cameras,
+        "transcribe": cmd_transcribe,
+        "ocr": cmd_ocr,
+        "intelligence": cmd_intelligence,
+        "produce-start": cmd_produce_start,
+        "produce-step": cmd_produce_step,
+        "produce-status": cmd_produce_status,
+        "produce-retake": cmd_produce_retake,
+    }
+
+    fn = commands.get(args.command)
+    if fn:
+        fn(args)
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

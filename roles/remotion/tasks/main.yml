@@ -41,6 +41,7 @@
     - remotion/ReelMemeSkit
     - remotion/ReelFeatureShowcase
     - remotion/ReelTeaser
+    - remotion/Montage
 
 - name: Copy Remotion root files
   ansible.builtin.copy:
@@ -87,9 +88,25 @@
     - { src: "remotion/ReelMemeSkit/ReelMemeSkit.tsx", dest: "remotion/ReelMemeSkit/ReelMemeSkit.tsx" }
     - { src: "remotion/ReelFeatureShowcase/ReelFeatureShowcase.tsx", dest: "remotion/ReelFeatureShowcase/ReelFeatureShowcase.tsx" }
     - { src: "remotion/ReelTeaser/ReelTeaser.tsx", dest: "remotion/ReelTeaser/ReelTeaser.tsx" }
+    - { src: "remotion/Montage/index.ts", dest: "remotion/Montage/index.ts" }
+    - { src: "remotion/Montage/types.ts", dest: "remotion/Montage/types.ts" }
+    - { src: "remotion/Montage/Montage.tsx", dest: "remotion/Montage/Montage.tsx" }
+    - { src: "remotion/Montage/Scene.tsx", dest: "remotion/Montage/Scene.tsx" }
+    - { src: "remotion/Montage/TitleCard.tsx", dest: "remotion/Montage/TitleCard.tsx" }
+    - { src: "remotion/Montage/Subtitles.tsx", dest: "remotion/Montage/Subtitles.tsx" }
+    - { src: "remotion/Montage/AudioMix.tsx", dest: "remotion/Montage/AudioMix.tsx" }
+    - { src: "remotion/Montage/effects.tsx", dest: "remotion/Montage/effects.tsx" }
   register: remotion_composition_files
 
-- name: Generate package-lock.json for reproducible builds (npm install --package-lock-only)
+- name: Remove stale package-lock.json when package.json changes
+  ansible.builtin.file:
+    path: "{{ remotion_install_dir }}/package-lock.json"
+    state: absent
+  become: true
+  when: remotion_root_files.changed
+  changed_when: false
+
+- name: Generate package-lock.json for reproducible builds
   ansible.builtin.command:
     cmd: npm install --package-lock-only --ignore-scripts
     chdir: "{{ remotion_install_dir }}"

@@ -23,6 +23,7 @@ const KNOWN_COMPOSITIONS = new Set([
   "ReelMemeSkit",
   "ReelFeatureShowcase",
   "ReelTeaser",
+  "Montage",
 ]);
 
 const RenderRequestSchema = z.object({
@@ -54,12 +55,14 @@ function setupApp({ remotionBundleUrl }: { remotionBundleUrl: string }) {
     port: Number(PORT),
     serveUrl: remotionBundleUrl,
     rendersDir,
-    chromiumExecutable: CHROME_EXECUTABLE_PATH,
+    browserExecutable: CHROME_EXECUTABLE_PATH,
     publicBaseUrl: REMOTION_PUBLIC_URL,
   });
 
   // Host renders on /renders
   app.use("/renders", express.static(rendersDir));
+  // Serve shared creative assets (video clips, keyframes, audio)
+  app.use("/creative-assets", express.static("/app/creative-assets"));
   app.use(express.json());
 
   // Root — API info (unauthenticated)

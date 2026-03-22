@@ -1,3 +1,9 @@
+{# Compute which MCP blocks will actually render #}
+{%- set _firefly_render = claude_code_mcp_firefly_enabled | default(false) and firefly_pat is defined -%}
+{%- set _n8ndocs_render = claude_code_mcp_n8ndocs_enabled | default(false) and n8n_mcp_port is defined and n8n_mcp_auth_token is defined -%}
+{%- set _playwright_render = claude_code_mcp_playwright_enabled | default(false) -%}
+{%- set _openpencil_render = claude_code_mcp_openpencil_enabled | default(false) -%}
+{%- set _penpot_render = claude_code_mcp_penpot_enabled | default(false) -%}
 {
   "mcpServers": {
 {% if claude_code_mcp_context7_enabled | default(false) %}
@@ -6,7 +12,7 @@
       "command": "{{ claude_code_npm_prefix }}/bin/context7-mcp",
       "args": [],
       "env": {}
-    }{{ ',' if claude_code_mcp_filesystem_enabled | default(false) or claude_code_mcp_n8n_enabled | default(false) or claude_code_mcp_firefly_enabled | default(false) or claude_code_mcp_n8ndocs_enabled | default(false) else '' }}
+    }{{ ',' if claude_code_mcp_filesystem_enabled | default(false) or claude_code_mcp_n8n_enabled | default(false) or _firefly_render or _n8ndocs_render or _playwright_render or _openpencil_render or _penpot_render else '' }}
 {% endif %}
 {% if claude_code_mcp_filesystem_enabled | default(false) %}
     "filesystem": {
@@ -14,7 +20,7 @@
       "command": "{{ claude_code_npm_prefix }}/bin/mcp-server-filesystem",
       "args": ["{{ claude_code_mcp_filesystem_workspace }}"],
       "env": {}
-    }{{ ',' if claude_code_mcp_n8n_enabled | default(false) or claude_code_mcp_firefly_enabled | default(false) or claude_code_mcp_n8ndocs_enabled | default(false) else '' }}
+    }{{ ',' if claude_code_mcp_n8n_enabled | default(false) or _firefly_render or _n8ndocs_render or _playwright_render or _openpencil_render or _penpot_render else '' }}
 {% endif %}
 {% if claude_code_mcp_n8n_enabled | default(false) %}
     "n8n": {
@@ -23,9 +29,9 @@
       "headers": {
         "Authorization": "Bearer ${N8N_API_KEY}"
       }
-    }{{ ',' if claude_code_mcp_firefly_enabled | default(false) or claude_code_mcp_n8ndocs_enabled | default(false) else '' }}
+    }{{ ',' if _firefly_render or _n8ndocs_render or _playwright_render or _openpencil_render or _penpot_render else '' }}
 {% endif %}
-{% if claude_code_mcp_firefly_enabled | default(false) %}
+{% if _firefly_render %}
     "firefly": {
       "type": "stdio",
       "command": "uvx",
@@ -35,15 +41,35 @@
         "FIREFLY_PAT": "{{ firefly_pat }}",
         "FIREFLY_VERIFY_SSL": "true"
       }
-    }{{ ',' if claude_code_mcp_n8ndocs_enabled | default(false) else '' }}
+    }{{ ',' if _n8ndocs_render or _playwright_render or _openpencil_render or _penpot_render else '' }}
 {% endif %}
-{% if claude_code_mcp_n8ndocs_enabled | default(false) %}
+{% if _n8ndocs_render %}
     "n8n-docs": {
       "type": "sse",
       "url": "http://localhost:{{ n8n_mcp_port }}/mcp",
       "headers": {
         "Authorization": "Bearer {{ n8n_mcp_auth_token }}"
       }
+    }{{ ',' if _playwright_render or _openpencil_render or _penpot_render else '' }}
+{% endif %}
+{% if _playwright_render %}
+    "playwright": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["@playwright/mcp@latest", "--headless", "--browser", "chromium", "--caps", "vision"],
+      "env": {}
+    }{{ ',' if _openpencil_render or _penpot_render else '' }}
+{% endif %}
+{% if _openpencil_render %}
+    "openpencil": {
+      "type": "http",
+      "url": "http://localhost:{{ openpencil_mcp_port | default(3150) }}/mcp"
+    }{{ ',' if _penpot_render else '' }}
+{% endif %}
+{% if _penpot_render %}
+    "penpot": {
+      "type": "http",
+      "url": "http://localhost:{{ penpot_mcp_port | default(4401) }}/mcp"
     }
 {% endif %}
   }

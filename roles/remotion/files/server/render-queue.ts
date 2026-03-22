@@ -42,13 +42,13 @@ export const makeRenderQueue = ({
   port,
   serveUrl,
   rendersDir,
-  chromiumExecutable,
+  browserExecutable,
   publicBaseUrl,
 }: {
   port: number;
   serveUrl: string;
   rendersDir: string;
-  chromiumExecutable?: string;
+  browserExecutable?: string;
   publicBaseUrl?: string;
 }) => {
   const jobs = new Map<string, JobState>();
@@ -76,7 +76,7 @@ export const makeRenderQueue = ({
         id: compositionId,
         inputProps,
         // ARM64: use system Chromium if configured
-        ...(chromiumExecutable ? { chromiumExecutable } : {}),
+        ...(browserExecutable ? { browserExecutable } : {}),
       });
 
       await renderMedia({
@@ -86,7 +86,7 @@ export const makeRenderQueue = ({
         inputProps,
         codec: "h264",
         // ARM64: use system Chromium if configured
-        ...(chromiumExecutable ? { chromiumExecutable } : {}),
+        ...(browserExecutable ? { browserExecutable } : {}),
         chromiumOptions: {
           disableWebSecurity: false,
           gl: "angle",

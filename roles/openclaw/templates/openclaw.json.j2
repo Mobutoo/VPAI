@@ -31,12 +31,12 @@
         "workspaceAccess": "rw",
         "docker": {
           "image": "{{ openclaw_sandbox_image | default('openclaw-sandbox:bookworm-slim') }}",
-          "readOnlyRoot": true,
+          "readOnlyRoot": false,
           "tmpfs": ["/tmp", "/var/tmp", "/run"],
-          "network": "{{ project_name }}_sandbox",
+          "network": "{{ project_name }}_egress",
           "user": "1000:1000",
           "capDrop": ["ALL"],
-          "pidsLimit": 256,
+          "pidsLimit": 512,
           "memory": "{{ openclaw_sandbox_memory | default('1g') }}",
           "cpus": {{ openclaw_sandbox_cpus | default(1) }}
         },
@@ -280,6 +280,43 @@
           "exec": { "timeoutSec": 30 },
           "elevated": { "enabled": false }
         }
+      },
+      {
+        "id": "{{ openclaw_agent_director_name }}",
+        "model": {
+          "primary": "{{ openclaw_director_model }}",
+          "fallbacks": {{ openclaw_reasoning_fallbacks }}
+        },
+        "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_director_name }}",
+        "sandbox": {
+          "mode": "all",
+          "docker": {
+            "network": "{{ project_name }}_egress",
+            "readOnlyRoot": false,
+            "tmpfs": ["/tmp", "/var/tmp", "/run"],
+            "user": "1000:1000",
+            "capDrop": ["ALL"],
+              "memory": "1024m",
+            "cpus": 1,
+            "env": {
+              "VREF_URL": "https://cine.{{ domain_name }}",
+              "KITSU_URL": "https://{{ kitsu_subdomain }}.{{ domain_name }}",
+              "QDRANT_URL": "https://{{ qdrant_subdomain }}.{{ domain_name }}",
+              "QDRANT_API_KEY": "${QDRANT_API_KEY}"
+            }
+          }
+        },
+        "subagents": {
+          "allowAgents": {{ agent_allow('director') }}
+        },
+        "tools": {
+          "fs": { "workspaceOnly": true },
+          "exec": {
+            "applyPatch": { "workspaceOnly": true },
+            "timeoutSec": 600
+          },
+          "elevated": { "enabled": false }
+        }
       }
     ]
   },
@@ -292,20 +329,52 @@
         "api": "openai-completions",
         "models": [
           {
-            "id": "gpt-4o-mini",
-            "name": "GPT-4o Mini (OpenAI direct)",
-            "reasoning": false,
+            "id": "gpt-5.4",
+            "name": "GPT-5.4 (flagship reasoning+agentic)",
+            "reasoning": true,
             "input": ["text"],
-            "contextWindow": 128000,
+            "contextWindow": 1000000,
+            "maxTokens": 32768
+          },
+          {
+            "id": "gpt-5.3-codex",
+            "name": "GPT-5.3 Codex (agentic coding)",
+            "reasoning": true,
+            "input": ["text"],
+            "contextWindow": 200000,
             "maxTokens": 16384
           },
           {
-            "id": "gpt-4o",
-            "name": "GPT-4o (OpenAI direct)",
+            "id": "o4-mini",
+            "name": "o4-mini (reasoning AIME champion)",
+            "reasoning": true,
+            "input": ["text"],
+            "contextWindow": 200000,
+            "maxTokens": 100000
+          },
+          {
+            "id": "gpt-4.1-mini",
+            "name": "GPT-4.1 Mini (fast, low cost)",
             "reasoning": false,
             "input": ["text"],
-            "contextWindow": 128000,
+            "contextWindow": 1000000,
+            "maxTokens": 32768
+          },
+          {
+            "id": "gpt-4.1-nano",
+            "name": "GPT-4.1 Nano (ultra-fast)",
+            "reasoning": false,
+            "input": ["text"],
+            "contextWindow": 1000000,
             "maxTokens": 16384
+          },
+          {
+            "id": "o3-mini",
+            "name": "o3-mini (reasoning compact)",
+            "reasoning": true,
+            "input": ["text"],
+            "contextWindow": 200000,
+            "maxTokens": 100000
           }
         ]
       },

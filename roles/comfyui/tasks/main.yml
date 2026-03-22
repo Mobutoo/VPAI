@@ -61,6 +61,41 @@
     force_source: "{{ comfyui_dockerfile.changed }}"
   become: true
 
+- name: Clone custom nodes # noqa: latest[git]
+  ansible.builtin.git:
+    repo: "{{ item.repo }}"
+    dest: "{{ comfyui_data_dir }}/custom_nodes/{{ item.name }}"
+    depth: 1
+    version: "HEAD"
+    force: false
+  become: true
+  loop: "{{ comfyui_custom_nodes }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: comfyui_custom_nodes_clone
+
+- name: Set ownership on custom nodes
+  ansible.builtin.file:
+    path: "{{ comfyui_data_dir }}/custom_nodes/{{ item.name }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    recurse: true
+  become: true
+  loop: "{{ comfyui_custom_nodes }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Patch comfy-api-liberation BytePlus URL (upstream fix pending)
+  ansible.builtin.replace:
+    path: "{{ comfyui_data_dir }}/custom_nodes/comfy-api-liberation/mappings/byteplus.py"
+    regexp: 'api\.byteplus\.com'
+    replace: 'ark.ap-southeast.bytepluses.com'
+  become: true
+  changed_when: false
+  failed_when: false
+  tags: [comfyui]
+
 - name: Deploy creative studio Docker Compose
   ansible.builtin.template:
     src: docker-compose-creative.yml.j2
@@ -86,6 +121,35 @@
     timeout: 120
     state: started
   changed_when: false
+
+- name: Install custom node Python dependencies in container
+  ansible.builtin.command:
+    cmd: >
+      docker exec -u root workstation_comfyui
+      pip install --no-cache-dir {{ item.pip_deps | join(' ') }}
+  become: true
+  loop: "{{ comfyui_custom_nodes | selectattr('pip_deps', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+  changed_when: "'Successfully installed' in _comfyui_pip.stdout"
+  failed_when: _comfyui_pip.rc != 0
+  register: _comfyui_pip
+
+- name: Restart ComfyUI to load custom nodes (if deps changed)
+  ansible.builtin.command:
+    cmd: docker restart workstation_comfyui
+  become: true
+  when: _comfyui_pip.results | selectattr('changed', 'true') | list | length > 0
+  changed_when: true
+
+- name: Wait for ComfyUI restart after custom node install
+  ansible.builtin.wait_for:
+    host: localhost
+    port: "{{ comfyui_port }}"
+    timeout: 120
+    state: started
+  changed_when: false
+  when: _comfyui_pip.results | selectattr('changed', 'true') | list | length > 0
 
 - name: Check ComfyUI system stats endpoint
   ansible.builtin.uri:

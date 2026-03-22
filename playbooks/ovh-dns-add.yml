@@ -1,0 +1,112 @@
+---
+# playbooks/ovh-dns-add.yml
+# Add a DNS A record to OVH via REST API
+# Usage: ansible-playbook playbooks/ovh-dns-add.yml -e "dns_subdomain=biki dns_target=137.74.114.167"
+#
+# OVH API requires HMAC-SHA1 signature per request.
+# Docs: https://api.ovh.com/console/#/domain/zone/%7BzoneName%7D/record#POST
+
+- name: "Add OVH DNS record"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    dns_zone: "{{ domain_name }}"
+    dns_subdomain: "{{ dns_subdomain }}"
+    dns_target: "{{ dns_target }}"
+    dns_type: "A"
+    dns_ttl: 3600
+    ovh_api_base: "https://eu.api.ovh.com/1.0"
+
+  tasks:
+    - name: "Get OVH API server time"
+      ansible.builtin.uri:
+        url: "{{ ovh_api_base }}/auth/time"
+        method: GET
+        return_content: true
+      register: _ovh_time
+
+    - name: "Check if record already exists"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          TIMESTAMP=$(curl -s {{ ovh_api_base }}/auth/time)
+          METHOD="GET"
+          URL="{{ ovh_api_base }}/domain/zone/{{ dns_zone }}/record?subDomain={{ dns_subdomain }}&fieldType={{ dns_type }}"
+          BODY=""
+          SIG_RAW="{{ ovh_application_secret }}+{{ ovh_consumer_key }}+${METHOD}+${URL}+${BODY}+${TIMESTAMP}"
+          SIG=$(echo -n "$SIG_RAW" | sha1sum | cut -d' ' -f1)
+          curl -s -X GET "$URL" \
+            -H "X-Ovh-Application: {{ ovh_application_key }}" \
+            -H "X-Ovh-Timestamp: ${TIMESTAMP}" \
+            -H "X-Ovh-Signature: \$1\$${SIG}" \
+            -H "X-Ovh-Consumer: {{ ovh_consumer_key }}" \
+            -H "Content-Type: application/json"
+      register: _existing_records
+      changed_when: false
+      no_log: true
+
+    - name: "Parse existing records"
+      ansible.builtin.set_fact:
+        _record_ids: "{{ _existing_records.stdout | from_json }}"
+
+    - name: "Skip if record exists"
+      ansible.builtin.debug:
+        msg: "Record {{ dns_subdomain }}.{{ dns_zone }} already exists (IDs: {{ _record_ids }}). Skipping creation."
+      when: _record_ids | length > 0
+
+    - name: "Create DNS A record"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          TIMESTAMP=$(curl -s {{ ovh_api_base }}/auth/time)
+          METHOD="POST"
+          URL="{{ ovh_api_base }}/domain/zone/{{ dns_zone }}/record"
+          BODY='{"fieldType":"{{ dns_type }}","subDomain":"{{ dns_subdomain }}","target":"{{ dns_target }}","ttl":{{ dns_ttl }}}'
+          SIG_RAW="{{ ovh_application_secret }}+{{ ovh_consumer_key }}+${METHOD}+${URL}+${BODY}+${TIMESTAMP}"
+          SIG=$(echo -n "$SIG_RAW" | sha1sum | cut -d' ' -f1)
+          curl -s -X POST "$URL" \
+            -H "X-Ovh-Application: {{ ovh_application_key }}" \
+            -H "X-Ovh-Timestamp: ${TIMESTAMP}" \
+            -H "X-Ovh-Signature: \$1\$${SIG}" \
+            -H "X-Ovh-Consumer: {{ ovh_consumer_key }}" \
+            -H "Content-Type: application/json" \
+            -d "$BODY"
+      register: _create_result
+      changed_when: "'id' in _create_result.stdout"
+      when: _record_ids | length == 0
+      no_log: true
+
+    - name: "Show creation result"
+      ansible.builtin.debug:
+        msg: "{{ _create_result.stdout | default('skipped') }}"
+      when: _record_ids | length == 0
+
+    - name: "Refresh DNS zone"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          TIMESTAMP=$(curl -s {{ ovh_api_base }}/auth/time)
+          METHOD="POST"
+          URL="{{ ovh_api_base }}/domain/zone/{{ dns_zone }}/refresh"
+          BODY=""
+          SIG_RAW="{{ ovh_application_secret }}+{{ ovh_consumer_key }}+${METHOD}+${URL}+${BODY}+${TIMESTAMP}"
+          SIG=$(echo -n "$SIG_RAW" | sha1sum | cut -d' ' -f1)
+          curl -s -X POST "$URL" \
+            -H "X-Ovh-Application: {{ ovh_application_key }}" \
+            -H "X-Ovh-Timestamp: ${TIMESTAMP}" \
+            -H "X-Ovh-Signature: \$1\$${SIG}" \
+            -H "X-Ovh-Consumer: {{ ovh_consumer_key }}" \
+            -H "Content-Type: application/json"
+      changed_when: true
+      when: _record_ids | length == 0
+      no_log: true
+
+    - name: "Done"
+      ansible.builtin.debug:
+        msg: "DNS record {{ dns_subdomain }}.{{ dns_zone }} -> {{ dns_target }} created and zone refreshed. TTL={{ dns_ttl }}s. Allow 1-5 min for propagation."
+      when: _record_ids | length == 0

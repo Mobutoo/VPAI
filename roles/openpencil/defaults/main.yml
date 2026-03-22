@@ -1,0 +1,26 @@
+---
+# openpencil — defaults
+# OpenPencil: AI-native open-source design editor (Figma alternative)
+# Runs natively on Waza (RPi5) via Bun + systemd
+# Web UI + built-in MCP server for Claude Code integration
+
+# Git source
+openpencil_repo: "https://github.com/open-pencil/open-pencil.git"
+openpencil_version: "{{ openpencil_version_pinned | default('main') }}"
+openpencil_install_dir: "/opt/workstation/openpencil"
+openpencil_data_dir: "/opt/workstation/data/openpencil"
+
+# Ports (3100 already used by OpenCut)
+openpencil_port: 1420          # Web UI (Vite default)
+openpencil_mcp_port: 3150      # MCP server for Claude Code
+
+# Service
+openpencil_service_name: "openpencil"
+openpencil_user: "{{ workstation_pi_user }}"
+
+# Subdomain (VPN-only via workstation Caddy)
+openpencil_subdomain: "pencil"
+
+# System requirements
+# Bun >= 1.0 (installed by this role if absent)
+openpencil_bun_version: "latest"

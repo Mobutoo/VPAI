@@ -66,3 +66,64 @@
   notify: Restart kitsu stack
   become: true
   tags: [kitsu]
+
+- name: Deploy kitsu event_handlers (event_map for Zou 1.0.19+)
+  ansible.builtin.copy:
+    src: event_handlers/
+    dest: "{{ kitsu_config_dir }}/event_handlers/"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+    directory_mode: "0755"
+  notify: Restart kitsu stack
+  become: true
+  tags: [kitsu]
+
+- name: Deploy kitsu gunicorn override (workers={{ kitsu_gunicorn_workers | default(1) }})
+  ansible.builtin.template:
+    src: gunicorn.py.j2
+    dest: "{{ kitsu_config_dir }}/gunicorn.py"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  notify: Restart kitsu stack
+  become: true
+  tags: [kitsu]
+
+- name: Initialize Kitsu/Zou database schema (idempotent)
+  ansible.builtin.shell:
+    cmd: >-
+      set -euo pipefail;
+      docker exec {{ project_name }}_kitsu /opt/zou/env/bin/zou init-db 2>&1
+    executable: /bin/bash
+  register: kitsu_init_db
+  changed_when: "'Creating' in kitsu_init_db.stdout"
+  failed_when: kitsu_init_db.rc != 0
+  become: true
+  tags: [kitsu]
+
+- name: Initialize Kitsu/Zou reference data (task types, statuses)
+  ansible.builtin.shell:
+    cmd: >-
+      set -euo pipefail;
+      docker exec {{ project_name }}_kitsu /opt/zou/env/bin/zou init-data 2>&1
+    executable: /bin/bash
+  register: kitsu_init_data
+  changed_when: "'initialized' in kitsu_init_data.stdout"
+  failed_when: kitsu_init_data.rc != 0
+  become: true
+  tags: [kitsu]
+
+- name: Ensure Kitsu admin user exists
+  ansible.builtin.shell:
+    cmd: >-
+      set -euo pipefail;
+      docker exec {{ project_name }}_kitsu /opt/zou/env/bin/zou create-admin
+      --password {{ kitsu_admin_password | default('mysecretpassword') }}
+      {{ kitsu_admin_email | default('admin@admin.com') }} 2>&1
+    executable: /bin/bash
+  register: kitsu_admin
+  changed_when: "'successfully' in kitsu_admin.stdout"
+  failed_when: false
+  become: true
+  tags: [kitsu]

@@ -1,0 +1,372 @@
+---
+# penpot — tasks/main.yml
+# Orchestrates Penpot deployment on the target host
+# Called by penpot-up.yml playbook after VPS provisioning
+
+# --- Directories ---
+- name: Create Penpot install directory
+  ansible.builtin.file:
+    path: "{{ penpot_install_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Create Penpot data directories
+  ansible.builtin.file:
+    path: "{{ penpot_data_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  loop:
+    - assets
+    - pg-dumps
+
+# --- Install AWS CLI v2 for S3 backups ---
+- name: Install prerequisites for AWS CLI
+  ansible.builtin.apt:
+    name:
+      - cron
+      - unzip
+      - curl
+    state: present
+    update_cache: true
+  become: true
+
+- name: Install AWS CLI v2
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      cd /tmp
+      curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o awscliv2.zip
+      unzip -qo awscliv2.zip
+      ./aws/install --update
+      rm -rf awscliv2.zip aws/
+    executable: /bin/bash
+    creates: /usr/local/bin/aws
+  become: true
+
+# --- Configure AWS CLI for S3 ---
+- name: Create AWS config directory
+  ansible.builtin.file:
+    path: /root/.aws
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+
+- name: Deploy AWS credentials for S3 backup
+  ansible.builtin.copy:
+    content: |
+      [default]
+      aws_access_key_id = {{ penpot_s3_access_key }}
+      aws_secret_access_key = {{ penpot_s3_secret_key }}
+      region = {{ penpot_s3_region }}
+    dest: /root/.aws/credentials
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+
+# --- Restore from S3 (if backup exists) ---
+- name: Check if S3 backup exists
+  ansible.builtin.command:
+    cmd: >
+      aws s3 ls "s3://{{ penpot_s3_bucket }}/pg-dumps/"
+      --endpoint-url "{{ penpot_s3_endpoint }}"
+  changed_when: false
+  failed_when: false
+  register: _penpot_s3_check
+  become: true
+  tags: [restore]
+
+- name: Restore assets from S3
+  ansible.builtin.command:
+    cmd: >
+      aws s3 sync
+      "s3://{{ penpot_s3_bucket }}/assets/"
+      "{{ penpot_data_dir }}/assets/"
+      --endpoint-url "{{ penpot_s3_endpoint }}"
+      --only-show-errors
+  become: true
+  when: _penpot_s3_check.rc == 0 and _penpot_s3_check.stdout | length > 0
+  changed_when: true
+  tags: [restore]
+
+# --- Deploy Docker Compose ---
+- name: Deploy Penpot Docker Compose
+  ansible.builtin.template:
+    src: docker-compose-penpot.yml.j2
+    dest: "{{ penpot_install_dir }}/docker-compose-penpot.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart penpot stack
+
+- name: Start Penpot stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ penpot_install_dir }}"
+    files:
+      - docker-compose-penpot.yml
+    state: present
+    pull: always
+  become: true
+
+# --- Restore PostgreSQL dump (after stack is up) ---
+- name: Wait for PostgreSQL to be healthy
+  ansible.builtin.command:
+    cmd: docker exec penpot_postgres pg_isready -U {{ penpot_db_user }}
+  retries: 12
+  delay: 5
+  register: _penpot_pg_ready
+  until: _penpot_pg_ready.rc == 0
+  changed_when: false
+  become: true
+
+- name: Get latest S3 dump filename
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      aws s3 ls "s3://{{ penpot_s3_bucket }}/pg-dumps/" \
+        --endpoint-url "{{ penpot_s3_endpoint }}" \
+        | sort -r \
+        | head -1 \
+        | awk '{print $4}'
+    executable: /bin/bash
+  changed_when: false
+  failed_when: false
+  register: _penpot_latest_dump
+  become: true
+  when: _penpot_s3_check.rc == 0 and _penpot_s3_check.stdout | length > 0
+  tags: [restore]
+
+- name: Download latest PostgreSQL dump
+  ansible.builtin.command:
+    cmd: >
+      aws s3 cp
+      "s3://{{ penpot_s3_bucket }}/pg-dumps/{{ _penpot_latest_dump.stdout | trim }}"
+      "/tmp/penpot-restore.dump"
+      --endpoint-url "{{ penpot_s3_endpoint }}"
+      --only-show-errors
+  become: true
+  when:
+    - _penpot_latest_dump.stdout is defined
+    - _penpot_latest_dump.stdout | trim | length > 0
+  changed_when: true
+  tags: [restore]
+
+- name: Restore PostgreSQL dump
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      docker exec -i penpot_postgres pg_restore \
+        -U {{ penpot_db_user }} \
+        -d {{ penpot_db_name }} \
+        --clean --if-exists --no-owner \
+        < /tmp/penpot-restore.dump
+    executable: /bin/bash
+  become: true
+  when:
+    - _penpot_latest_dump.stdout is defined
+    - _penpot_latest_dump.stdout | trim | length > 0
+  changed_when: true
+  failed_when: false  # pg_restore may warn on clean of non-existing objects
+  tags: [restore]
+
+- name: Remove temporary dump file
+  ansible.builtin.file:
+    path: /tmp/penpot-restore.dump
+    state: absent
+  become: true
+  tags: [restore]
+
+# --- Install Caddy for TLS ---
+- name: Install Caddy
+  ansible.builtin.apt:
+    name: caddy
+    state: present
+  become: true
+
+- name: Deploy Penpot Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile-penpot.j2
+    dest: /etc/caddy/Caddyfile
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+
+- name: Restart Caddy
+  ansible.builtin.systemd:
+    name: caddy
+    state: restarted
+    enabled: true
+  become: true
+
+# --- Backup cron ---
+- name: Deploy backup script
+  ansible.builtin.template:
+    src: backup-penpot.sh.j2
+    dest: "{{ penpot_install_dir }}/backup-penpot.sh"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Set up backup cron job
+  ansible.builtin.cron:
+    name: "Penpot S3 backup"
+    job: "{{ penpot_install_dir }}/backup-penpot.sh"
+    minute: "*/30"
+    user: root
+  become: true
+  tags: [backup]
+
+# --- Healthcheck ---
+- name: Wait for Penpot frontend to respond
+  ansible.builtin.uri:
+    url: "http://localhost:{{ penpot_frontend_port }}/"
+    method: GET
+    status_code: [200, 301, 302]
+  retries: 12
+  delay: 10
+  register: _penpot_health
+  until: _penpot_health.status in [200, 301, 302]
+  changed_when: false
+
+# --- Admin user provisioning ---
+# Uses the REST API with registration temporarily enabled to create the admin
+# user if it doesn't already exist (idempotent — skips if login succeeds)
+- name: Deploy admin provisioning script
+  ansible.builtin.copy:
+    content: |
+      #!/usr/bin/env python3
+      """Provision Penpot admin user via JSON REST API (idempotent)."""
+      import json, urllib.request, urllib.error, sys, time, re
+
+      API = "http://localhost:{{ penpot_frontend_port }}/api/rpc/command"
+
+      def api_post(endpoint, data):
+          payload = json.dumps(data).encode()
+          req = urllib.request.Request(
+              f"{API}/{endpoint}",
+              data=payload,
+              headers={"Content-Type": "application/json", "Accept": "application/json"},
+              method="POST",
+          )
+          try:
+              resp = urllib.request.urlopen(req)
+              body = resp.read().decode()
+              return body, resp.status
+          except urllib.error.HTTPError as e:
+              body = e.read().decode()
+              return body, e.code
+          except Exception as ex:
+              return str(ex), 0
+
+      # Wait for backend to be ready (up to 90s after recreate)
+      for attempt in range(18):
+          body, code = api_post("login-with-password", {
+              "email": "probe@test.invalid",
+              "password": "probe",
+          })
+          if code != 502 and code != 0:
+              break
+          time.sleep(5)
+
+      # Check if user already exists by trying to login
+      body, code = api_post("login-with-password", {
+          "email": "{{ penpot_admin_email }}",
+          "password": "{{ penpot_admin_password }}",
+      })
+      if code == 200:
+          print(json.dumps({"changed": False, "msg": "Admin user already exists"}))
+          sys.exit(0)
+
+      # Step 1: prepare-register-profile
+      body1, code1 = api_post("prepare-register-profile", {
+          "email": "{{ penpot_admin_email }}",
+          "password": "{{ penpot_admin_password }}",
+      })
+      if code1 != 200:
+          print(json.dumps({"changed": False, "failed": True, "msg": f"prepare-register failed HTTP {code1}: {body1[:200]}"}))
+          sys.exit(1)
+
+      # Extract token from response
+      try:
+          parsed = json.loads(body1)
+          token = parsed.get("token", "")
+      except Exception:
+          token_match = re.search(r'"(?:~:)?token"\s*[,:]?\s*"([^"]+)"', body1)
+          token = token_match.group(1) if token_match else ""
+
+      if not token:
+          print(json.dumps({"changed": False, "failed": True, "msg": f"No token in response: {body1[:200]}"}))
+          sys.exit(1)
+
+      # Step 2: register-profile with token
+      body2, code2 = api_post("register-profile", {
+          "fullname": "{{ penpot_admin_fullname }}",
+          "email": "{{ penpot_admin_email }}",
+          "password": "{{ penpot_admin_password }}",
+          "token": token,
+      })
+      if code2 in (200, 201):
+          print(json.dumps({"changed": True, "msg": "Admin user created successfully"}))
+      else:
+          print(json.dumps({"changed": False, "failed": True, "msg": f"register-profile returned HTTP {code2}: {body2[:200]}"}))
+          sys.exit(1)
+    dest: "{{ penpot_install_dir }}/provision-admin.py"
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+  no_log: true
+
+- name: Temporarily enable registration for user provisioning
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      cd {{ penpot_install_dir }}
+      sed -i 's/disable-registration/enable-registration/' docker-compose-penpot.yml
+      docker compose -f docker-compose-penpot.yml up -d --force-recreate penpot-backend penpot-frontend
+    executable: /bin/bash
+  become: true
+  changed_when: true
+
+- name: Provision admin user
+  ansible.builtin.command:
+    cmd: "python3 {{ penpot_install_dir }}/provision-admin.py"
+  become: true
+  register: _penpot_admin
+  changed_when: "(_penpot_admin.stdout | from_json).changed | default(false)"
+  failed_when: "(_penpot_admin.stdout | from_json).failed | default(false)"
+
+- name: Re-disable registration
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      cd {{ penpot_install_dir }}
+      sed -i 's/enable-registration/disable-registration/' docker-compose-penpot.yml
+      docker compose -f docker-compose-penpot.yml up -d --force-recreate penpot-backend penpot-frontend
+    executable: /bin/bash
+  become: true
+  changed_when: true
+
+- name: Display Penpot status
+  ansible.builtin.debug:
+    msg: |
+      ========================================
+      Penpot: {{ 'healthy' if _penpot_health.status in [200, 301, 302] else 'unhealthy' }}
+      URL: https://{{ penpot_domain }}
+      Admin: {{ penpot_admin_email }}
+      Backup: S3 every 30 min
+      ========================================
+      To destroy: make penpot-down
+      ========================================

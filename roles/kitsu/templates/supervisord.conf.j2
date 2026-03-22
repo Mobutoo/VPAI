@@ -39,13 +39,12 @@ stdout_events_enabled=true
 stderr_events_enabled=true
 
 [program:postgresql]
+command=/bin/true
 autostart=false
 
 [program:redis]
+command=/bin/true
 autostart=false
 
-[eventlistener:stdout]
-command=supervisor_stdout
-buffer_size=100
-events=PROCESS_LOG
-result_handler=supervisor_stdout:event_handler
+; eventlistener:stdout removed — supervisor_stdout not available in cgwire 1.0.19+
+; Logs go to docker logs instead (stdout/stderr via NONE logfiles above)

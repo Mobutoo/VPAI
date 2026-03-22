@@ -1,0 +1,44 @@
+---
+# videoref-engine — defaults
+# Video reference analysis pipeline: keyframe extraction, optical flow, color analysis
+# Generates ComfyUI workflow JSON from templates
+# Deployed as Docker container on Workstation Pi (ARM64)
+
+videoref_install_dir: "/opt/workstation/videoref-engine"
+videoref_data_dir: "/opt/workstation/data/videoref-engine"
+
+# Version (local build tag)
+videoref_version: "v0.2.0"
+
+# Ports
+videoref_port: 8082
+
+# Docker resource limits (RPi 5 16GB — EasyOCR/Surya + PyTorch need ~2.5GB)
+videoref_memory_limit: "3072M"
+videoref_memory_reservation: "1024M"
+videoref_cpu_limit: "3.0"
+
+# Subdomain (VPN-only via workstation Caddy)
+videoref_subdomain: "cine"
+
+# Shared paths (exchange with MeTube + ComfyUI)
+videoref_watch_dir: "{{ metube_download_dir }}"
+videoref_output_dir: "/opt/workstation/data/videoref-engine/analyzed"
+videoref_comfyui_workflows_dir: "/opt/workstation/data/comfyui/input"
+
+# LiteLLM endpoint (via HTTPS domain — container has no VPN access)
+videoref_litellm_url: "https://{{ litellm_subdomain }}.{{ domain_name }}"
+videoref_litellm_key: "{{ litellm_master_key }}"
+
+# Gitea template registry (via mesh VPN — Seko-VPN)
+videoref_gitea_url: "{{ vault_videoref_gitea_url | default('') }}"
+videoref_gitea_token: "{{ vault_videoref_gitea_token | default('') }}"
+
+# Kitsu (production tracker — via HTTPS domain)
+videoref_kitsu_url: "https://{{ kitsu_subdomain }}.{{ domain_name }}"
+videoref_kitsu_token: "{{ vault_kitsu_bot_token | default('') }}"
+
+# Qdrant (semantic search — via HTTPS domain)
+videoref_qdrant_url: "https://{{ qdrant_subdomain }}.{{ domain_name }}"
+videoref_qdrant_key: "{{ qdrant_api_key }}"
+videoref_qdrant_collection: "{{ qdrant_videoref_collection }}"

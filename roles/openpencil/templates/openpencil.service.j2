@@ -1,0 +1,21 @@
+[Unit]
+Description=OpenPencil — AI-native Design Editor (Web UI + MCP Server)
+After=network.target
+
+[Service]
+Type=simple
+User={{ openpencil_user }}
+WorkingDirectory={{ openpencil_install_dir }}
+Environment="HOME=/home/{{ openpencil_user }}"
+Environment="PATH={{ openpencil_install_dir }}/node_modules/.bin:/home/{{ openpencil_user }}/.bun/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PORT={{ openpencil_port }}"
+Environment="OPENPENCIL_MCP_PORT={{ openpencil_mcp_port }}"
+ExecStart=/home/{{ openpencil_user }}/.bun/bin/bun --bun run preview --host 0.0.0.0 --port {{ openpencil_port }}
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openpencil
+
+[Install]
+WantedBy=multi-user.target

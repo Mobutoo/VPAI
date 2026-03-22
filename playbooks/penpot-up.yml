@@ -1,0 +1,182 @@
+---
+# playbooks/penpot-up.yml — Provision ephemeral Hetzner VPS + deploy Penpot
+#
+# Usage:
+#   ansible-playbook playbooks/penpot-up.yml
+#   make penpot-up
+#
+# What it does:
+#   1. Creates a CX23 VPS on Hetzner Cloud (if not exists)
+#   2. Installs Docker CE
+#   3. Restores data from S3 (if backup exists)
+#   4. Deploys Penpot Docker Compose stack
+#   5. Creates DNS A record at OVH (design.ewutelo.cloud → VPS IP)
+#   6. Configures Caddy TLS + S3 backup cron
+#
+# Cost: ~€0.006/hour (€0.05/day, €3.49/month max)
+# Destroy with: make penpot-down
+
+# --- Phase 1: Provision VPS ---
+- name: Provision Penpot ephemeral VPS
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars_files:
+    - ../roles/penpot/defaults/main.yml
+
+  tasks:
+    - name: Ensure SSH key is registered in Hetzner
+      hetzner.hcloud.ssh_key:
+        api_token: "{{ hetzner_api_token }}"
+        name: "{{ penpot_ssh_key_name }}"
+        public_key: "{{ lookup('file', penpot_ssh_key_pub_path) }}"
+        state: present
+
+    - name: Create Penpot CX23 VPS
+      hetzner.hcloud.server:
+        api_token: "{{ hetzner_api_token }}"
+        name: "{{ penpot_server_name }}"
+        server_type: "{{ penpot_server_type }}"
+        location: "{{ penpot_location }}"
+        image: "{{ penpot_os_image }}"
+        ssh_keys:
+          - "{{ penpot_ssh_key_name }}"
+        state: present
+      register: _penpot_server
+
+    - name: Assert server is starting or running
+      ansible.builtin.assert:
+        that:
+          - _penpot_server.hcloud_server.status in ['starting', 'running']
+        fail_msg: >-
+          Penpot VPS is in unexpected state:
+          {{ _penpot_server.hcloud_server.status }}
+
+    - name: Wait for SSH to be available
+      ansible.builtin.wait_for:
+        host: "{{ _penpot_server.hcloud_server.ipv4_address }}"
+        port: 22
+        delay: 10
+        timeout: 300
+        state: started
+
+    - name: Display Penpot VPS info
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Penpot VPS: {{ penpot_server_name }}
+          IP: {{ _penpot_server.hcloud_server.ipv4_address }}
+          Status: {{ _penpot_server.hcloud_server.status }}
+          ========================================
+
+    # --- DNS: Create/update A record at OVH ---
+    - name: Create or update DNS A record for Penpot
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          python3 -c "
+          import ovh, sys, json
+          client = ovh.Client(
+              endpoint='ovh-eu',
+              application_key='{{ ovh_application_key }}',
+              application_secret='{{ ovh_application_secret }}',
+              consumer_key='{{ ovh_consumer_key }}',
+          )
+          zone = '{{ domain_name }}'
+          sub = '{{ penpot_subdomain }}'
+          ip = '{{ _penpot_server.hcloud_server.ipv4_address }}'
+          records = client.get(f'/domain/zone/{zone}/record', fieldType='A', subDomain=sub)
+          if records:
+              r = client.get(f'/domain/zone/{zone}/record/{records[0]}')
+              if r['target'] == ip:
+                  print(json.dumps({'changed': False, 'msg': f'A record {sub}.{zone} already points to {ip}'}))
+                  sys.exit(0)
+              client.put(f'/domain/zone/{zone}/record/{records[0]}', target=ip, ttl=60)
+              print(json.dumps({'changed': True, 'msg': f'Updated A record {sub}.{zone} -> {ip}'}))
+          else:
+              client.post(f'/domain/zone/{zone}/record', fieldType='A', subDomain=sub, target=ip, ttl=60)
+              print(json.dumps({'changed': True, 'msg': f'Created A record {sub}.{zone} -> {ip}'}))
+          client.post(f'/domain/zone/{zone}/refresh')
+          "
+        executable: /bin/bash
+      register: _penpot_dns
+      changed_when: "(_penpot_dns.stdout | from_json).changed | default(true)"
+      tags: [dns]
+
+    - name: Display DNS result
+      ansible.builtin.debug:
+        msg: "{{ (_penpot_dns.stdout | from_json).msg }}"
+      tags: [dns]
+
+    - name: Add Penpot VPS to in-memory inventory
+      ansible.builtin.add_host:
+        name: penpot-ephemeral
+        ansible_host: "{{ _penpot_server.hcloud_server.ipv4_address }}"
+        ansible_user: root
+        ansible_ssh_private_key_file: "{{ penpot_ssh_key_pub_path | replace('.pub', '') }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+        groups:
+          - penpot_ephemeral
+
+# --- Phase 2: Bootstrap + Deploy ---
+- name: Bootstrap and deploy Penpot
+  hosts: penpot-ephemeral
+  gather_facts: true
+
+  pre_tasks:
+    - name: Install Docker prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: true
+      become: true
+
+    - name: Add Docker GPG key
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          install -m 0755 -d /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+          chmod a+r /etc/apt/keyrings/docker.asc
+        executable: /bin/bash
+        creates: /etc/apt/keyrings/docker.asc
+      become: true
+
+    - name: Add Docker repository
+      ansible.builtin.shell:
+        cmd: |
+          set -euo pipefail
+          ARCH=$(dpkg --print-architecture)
+          CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+          echo "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu ${CODENAME} stable" \
+            > /etc/apt/sources.list.d/docker.list
+        executable: /bin/bash
+        creates: /etc/apt/sources.list.d/docker.list
+      become: true
+
+    - name: Install Docker CE
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+      become: true
+
+    - name: Ensure Docker is running
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+      become: true
+
+  roles:
+    - role: penpot
+      tags: [penpot]

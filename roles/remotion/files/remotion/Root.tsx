@@ -5,6 +5,8 @@ import { ReelMotionText } from "./ReelMotionText/ReelMotionText";
 import { ReelMemeSkit } from "./ReelMemeSkit/ReelMemeSkit";
 import { ReelFeatureShowcase } from "./ReelFeatureShowcase/ReelFeatureShowcase";
 import { ReelTeaser } from "./ReelTeaser/ReelTeaser";
+import { Montage, calculateMontageMetadata } from "./Montage";
+import type { MontageProps } from "./Montage";
 
 // Root compositions registry
 // Add new compositions here as the Creative Studio grows
@@ -13,6 +15,31 @@ const defaultBrand = {
   name: "Default",
   palette: { primary: "#FF6B35", accent: "#2EC4B6" },
   typography: { heading: "sans-serif", body: "sans-serif" },
+};
+
+const defaultMontageProps: MontageProps = {
+  scenes: [],
+  fps: 30,
+  width: 1920,
+  height: 1080,
+  direction: {
+    pacing: "medium",
+    defaultTransition: "crossfade",
+    defaultTransitionDurationFrames: 15,
+    colorGrade: {
+      preset: "none",
+      contrast: 1,
+      saturation: 1,
+      brightness: 1,
+    },
+    grain: 0,
+    typography: {
+      fontFamily: "Inter, sans-serif",
+      accentColor: "#3b82f6",
+      textColor: "#ffffff",
+    },
+    subtitleStyle: "cinema",
+  },
 };
 
 export const RemotionRoot: React.FC = () => {
@@ -65,6 +92,16 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1920}
         defaultProps={{ scenes: [], brand: defaultBrand }}
+      />
+      <Composition
+        id="Montage"
+        component={Montage}
+        durationInFrames={300}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={defaultMontageProps}
+        calculateMetadata={calculateMontageMetadata}
       />
     </>
   );

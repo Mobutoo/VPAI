@@ -1,0 +1,25 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    workstation_pi_user: molecule
+    domain_name: molecule.example.com
+    videoref_subdomain: cine
+    vps_tailscale_ip: "100.64.0.14"
+    litellm_master_key: molecule-stub-llm-key
+    vault_videoref_gitea_url: ""
+    vault_videoref_gitea_token: ""
+    metube_download_dir: /opt/workstation/data/metube/downloads
+  pre_tasks:
+    - name: Create molecule test user
+      ansible.builtin.user:
+        name: molecule
+        state: present
+        create_home: true
+    - name: Create metube downloads dir (dependency)
+      ansible.builtin.file:
+        path: /opt/workstation/data/metube/downloads
+        state: directory
+        mode: "0755"
+  roles:
+    - role: videoref-engine

@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: videoref_engine
+  author: VPAI
+  namespace: mobutoo
+  description: Video reference analysis pipeline + ComfyUI workflow generator on Workstation Pi
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+
+dependencies: []

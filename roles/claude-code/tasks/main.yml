@@ -64,7 +64,55 @@
     mode: "0600"
   become: true
 
-# --- Deploy Claude Code settings ---
+# --- GSD hooks directory ---
+- name: Create Claude Code hooks directory
+  ansible.builtin.file:
+    path: "{{ claude_code_config_dir }}/hooks"
+    state: directory
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0700"
+  become: true
+
+# --- Deploy context management hooks ---
+- name: Deploy GSD auto-compact hook script
+  ansible.builtin.template:
+    src: auto-compact.sh.j2
+    dest: "{{ claude_code_config_dir }}/hooks/auto-compact.sh"
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0755"
+  become: true
+  when: claude_code_gsd_auto_compact_enabled | default(false)
+
+- name: Deploy pre-compact state preservation hook
+  ansible.builtin.template:
+    src: pre-compact-save.sh.j2
+    dest: "{{ claude_code_config_dir }}/hooks/pre-compact-save.sh"
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy post-compact context restoration hook
+  ansible.builtin.template:
+    src: post-compact-restore.sh.j2
+    dest: "{{ claude_code_config_dir }}/hooks/post-compact-restore.sh"
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy stop-gate hook (blocks exit without state save)
+  ansible.builtin.template:
+    src: stop-gate.sh.j2
+    dest: "{{ claude_code_config_dir }}/hooks/stop-gate.sh"
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0755"
+  become: true
+
+# --- Deploy Claude Code settings (hooks registered here) ---
 - name: Deploy Claude Code settings (settings.json)
   ansible.builtin.template:
     src: settings.json.j2
@@ -78,6 +126,7 @@
 - name: Install get-shit-done-cc (GSD meta-prompting system)
   community.general.npm:
     name: "get-shit-done-cc"
+    version: "{{ claude_code_gsd_npm_version }}"
     global: true
     state: present
   become: true
@@ -93,6 +142,31 @@
   changed_when: "'installed' in gsd_install_result.stdout | lower or 'created' in gsd_install_result.stdout | lower"
   failed_when: false
   when: claude_code_gsd_enabled | default(true)
+
+# --- GSD YOLO mode: autonomous operation without human interaction ---
+- name: Create GSD default config directory for YOLO mode
+  ansible.builtin.file:
+    path: "/home/{{ claude_code_user }}/.gsd"
+    state: directory
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0755"
+  become: true
+  when:
+    - claude_code_gsd_enabled | default(true)
+    - claude_code_gsd_yolo_mode | default(false)
+
+- name: Deploy GSD default config (YOLO mode + model routing)
+  ansible.builtin.template:
+    src: gsd-defaults.json.j2
+    dest: "/home/{{ claude_code_user }}/.gsd/defaults.json"
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0644"
+  become: true
+  when:
+    - claude_code_gsd_enabled | default(true)
+    - claude_code_gsd_yolo_mode | default(false)
 
 # --- Install MCP server packages ---
 - name: Install Context7 MCP server via npm global
@@ -126,6 +200,41 @@
   become_user: "{{ claude_code_user }}"
   changed_when: false
   when: claude_code_mcp_firefly_enabled | default(false)
+
+# --- Playwright MCP — headless browser for visual testing ---
+- name: Install Playwright system dependencies
+  ansible.builtin.command:
+    cmd: npx playwright install-deps
+  become: true
+  changed_when: false
+  when: claude_code_mcp_playwright_enabled | default(false)
+
+- name: Install Playwright Chromium (ARM64)
+  ansible.builtin.command:
+    cmd: npx playwright install chromium
+  become: true
+  become_user: "{{ claude_code_user }}"
+  changed_when: false
+  when: claude_code_mcp_playwright_enabled | default(false)
+
+# --- Autonomous loop script ---
+- name: Create scripts directory for Claude autonomous tools
+  ansible.builtin.file:
+    path: "/home/{{ claude_code_user }}/scripts"
+    state: directory
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy claude-auto autonomous loop script
+  ansible.builtin.template:
+    src: claude-auto.sh.j2
+    dest: "/home/{{ claude_code_user }}/scripts/claude-auto.sh"
+    owner: "{{ claude_code_user }}"
+    group: "{{ claude_code_user }}"
+    mode: "0755"
+  become: true
 
 # --- Auto-fix pipeline ---
 - name: Create autofix workspace directory

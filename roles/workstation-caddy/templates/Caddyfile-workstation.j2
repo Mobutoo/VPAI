@@ -112,3 +112,45 @@ VPNERR 403
     }
 }
 {% endif %}
+
+# OpenPencil — AI design editor (on-demand, native Bun)
+{% if openpencil_subdomain | default('') | length > 0 %}
+{{ openpencil_subdomain }}.{{ domain_name }} {
+    import ovh_tls
+    import vpn_only
+    import security_headers
+    reverse_proxy localhost:{{ openpencil_port | default(1420) }}
+    handle_errors {
+{{ standby_page('OpenPencil', 'PENCILSTOPPED') }}
+{{ vpn_error_fallback('PENCILVPN') }}
+    }
+}
+{% endif %}
+
+# MeTube — Video downloader (Docker, on-demand)
+{% if metube_subdomain | default('') | length > 0 %}
+{{ metube_subdomain }}.{{ domain_name }} {
+    import ovh_tls
+    import vpn_only
+    import security_headers
+    reverse_proxy localhost:{{ metube_port | default(8081) }}
+    handle_errors {
+{{ standby_page('MeTube', 'METUBESTOPPED') }}
+{{ vpn_error_fallback('METUBEVPN') }}
+    }
+}
+{% endif %}
+
+# VideoRef Engine — Video analysis pipeline (Docker, on-demand)
+{% if videoref_subdomain | default('') | length > 0 %}
+{{ videoref_subdomain }}.{{ domain_name }} {
+    import ovh_tls
+    import vpn_only
+    import security_headers
+    reverse_proxy localhost:{{ videoref_port | default(8082) }}
+    handle_errors {
+{{ standby_page('VideoRef Engine', 'VIDEOREFSTOPPED') }}
+{{ vpn_error_fallback('VIDEOREFVPN') }}
+    }
+}
+{% endif %}

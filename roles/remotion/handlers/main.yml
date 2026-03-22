@@ -16,3 +16,16 @@
   # NOTE: state: present + recreate: always force la recreation du container.
   # state: restarted = docker compose restart = ne recharge PAS la nouvelle image.
   # REX: Phase 06-03 — compositions non detectees car ancien image reutilise.
+
+- name: Build and restart remotion
+  community.docker.docker_compose_v2:
+    project_src: "/opt/workstation"
+    files:
+      - docker-compose-creative.yml
+    services:
+      - remotion
+    build: always
+    state: present
+    recreate: always
+  become: true
+  when: not (common_molecule_mode | default(false))

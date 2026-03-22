@@ -4622,15 +4622,9 @@ async def _step_imagegen(
 
     Best practice 2026: generate at model-native res, then upscale.
     Composer selects: FluxPro1.1 (premium), NanoBananaPro (balanced), HiDream (eco).
-    Auto-skipped when Director provided scene_prompts (videogen uses txt2vid directly).
+    Keyframes are REQUIRED for visual coherence — videogen uses them as img2vid reference.
+    Never skip imagegen: Director scene_prompts define WHAT, keyframes define HOW it looks.
     """
-    # Auto-skip when Director provided scene_prompts (no keyframe generation needed)
-    if job.get("scene_prompts_source") == "director" and not params.get("force"):
-        note = "Skipped — scene_prompts from Director, videogen will use txt2vid (use --force to override)"
-        print(f"[imagegen] {note}", flush=True)
-        kitsu_result = await _kitsu_step_task(job, "Image Gen", "done", note)
-        return {"status": "ok", "skipped": True, "note": note, "kitsu": kitsu_result}, {}
-
     scene_prompts = job.get("scene_prompts", [])
     budget = params.get("budget", "balanced")
     job_prefix = job["job_id"][:8]

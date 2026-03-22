@@ -4106,7 +4106,7 @@ async def _step_script(
         # Inject camera tokens and store directly
         scene_prompts: list[dict[str, Any]] = []
         for idx, sp in enumerate(pre_prompts):
-            prompt = sp.get("visual_prompt", sp.get("enriched", sp.get("description", "")))
+            prompt = sp.get("visual_prompt", sp.get("enriched", sp.get("original", sp.get("description", ""))))
             enriched = _inject_camera_tokens(
                 prompt,
                 camera=job.get("camera", ""),

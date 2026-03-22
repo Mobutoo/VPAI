@@ -319,3 +319,30 @@
     job: "cd {{ comfyui_workflows_dir }} && git push --quiet origin main 2>/dev/null || git push --quiet -u origin main 2>/dev/null || true"
     user: "{{ workstation_pi_user }}"
   become: true
+
+# --- MCP Server (comfyui-studio) ---
+
+- name: Create MCP server directory
+  ansible.builtin.file:
+    path: "{{ comfyui_studio_install_dir }}"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  become: true
+
+- name: Copy MCP server source
+  ansible.builtin.copy:
+    src: comfyui-studio/
+    dest: "{{ comfyui_studio_install_dir }}/"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+
+- name: Install MCP server dependencies in CLI venv
+  ansible.builtin.pip:
+    requirements: "{{ comfyui_studio_install_dir }}/requirements.txt"
+    virtualenv: "{{ comfyui_cli_install_dir }}/.venv"
+  become: true
+  become_user: "{{ workstation_pi_user }}"

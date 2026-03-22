@@ -172,21 +172,21 @@ openclaw_model_profile: "eco"
 
 openclaw_model_profiles:
   eco:
-    default: "custom-litellm/deepseek-v3-free"
+    default: "custom-litellm/qwen3-coder"
     code: "custom-litellm/qwen3-coder"
     reasoning: "custom-litellm/deepseek-r1-free"
-    quick: "custom-litellm/deepseek-v3-free"
-    default_fallbacks: '["custom-litellm/qwen3-coder", "openai/gpt-4o-mini"]'
-    code_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
-    reasoning_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
+    quick: "custom-litellm/qwen3-coder"
+    default_fallbacks: '["custom-litellm/deepseek-r1-free", "openai/gpt-4o-mini"]'
+    code_fallbacks: '["custom-litellm/deepseek-r1-free", "openai/gpt-4o-mini"]'
+    reasoning_fallbacks: '["custom-litellm/qwen3-coder", "openai/gpt-4o-mini"]'
   balanced:
     default: "custom-litellm/glm-5"
     code: "custom-litellm/qwen3-coder"
     reasoning: "custom-litellm/deepseek-r1"
     quick: "custom-litellm/deepseek-v3"
-    default_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
-    code_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
-    reasoning_fallbacks: '["custom-litellm/deepseek-v3-free", "openai/gpt-4o-mini"]'
+    default_fallbacks: '["custom-litellm/qwen3-coder", "openai/gpt-4o-mini"]'
+    code_fallbacks: '["custom-litellm/qwen3-coder", "openai/gpt-4o-mini"]'
+    reasoning_fallbacks: '["custom-litellm/qwen3-coder", "openai/gpt-4o-mini"]'
   premium:
     default: "custom-litellm/claude-haiku"
     code: "custom-litellm/claude-sonnet"

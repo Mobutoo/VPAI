@@ -9,7 +9,7 @@ zimboo_config_dir: "/opt/{{ project_name }}/configs/zimboo"
 zimboo_port: 3000
 
 # LLM model for chat feature (via LiteLLM proxy)
-zimboo_llm_model: "deepseek-v3-free"
+zimboo_llm_model: "qwen3-coder"
 
 # Subdomain (VPN-only, served by Caddy)
 # Overridden by zimboo_subdomain in inventory/group_vars/all/main.yml

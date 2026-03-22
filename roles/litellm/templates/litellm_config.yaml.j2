@@ -167,18 +167,6 @@ model_list:
         tier: "free"
         tags: ["code", "code-gen", "trivial", "formatting", "bash"]
 
-  # DeepSeek V3 FREE — Concierge, agents légers, pipeline
-  - model_name: "deepseek-v3-free"
-    litellm_params:
-      model: "openrouter/deepseek/deepseek-chat:free"
-      api_key: "os.environ/OPENROUTER_API_KEY"
-      max_tokens: 4096
-    model_info:
-      max_output_tokens: 4096
-      metadata:
-        tier: "free"
-        tags: ["concierge", "agent", "code", "pipeline", "fallback-free"]
-
   # DeepSeek R1 FREE — Raisonnement, math (tier gratuit)
   - model_name: "deepseek-r1-free"
     litellm_params:
@@ -328,6 +316,8 @@ general_settings:
   # l'interprète comme "interval de 0s" = check permanent (~2500 appels/jour/modèle).
   # Coût constaté : $10.66/semaine en health checks parasites (mars 2026).
   # Solution : supprimer health_check_interval + background_health_checks: false.
+  # ATTENTION : le Docker healthcheck doit utiliser /health/readiness (pas /health)
+  # car /health fait de vrais appels LLM à chaque modèle à chaque invocation.
   # Pannes détectées via fallbacks et métriques Prometheus.
   background_health_checks: false
   # Credit error alerting — webhook → n8n → Telegram (monitoring bot)

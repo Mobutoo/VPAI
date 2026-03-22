@@ -1,12 +1,17 @@
 {
   "mode": "yolo",
-  "depth": "quick",
   "parallelization": true,
   "commit_docs": true,
   "model_profile": "quality",
   "workflow": {
     "research": true,
     "plan_check": true,
-    "verifier": true
+    "verifier": true,
+    "_auto_chain_active": false
+  },
+  "granularity": "coarse",
+  "plane": {
+    "project_id": "e0cb95f0-0ea5-41b8-a3e3-aec45e8cc37e",
+    "module_id": "c04ac29e-9842-4eec-8ff6-6923e9fe75d7"
   }
 }

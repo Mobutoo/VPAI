@@ -1,0 +1,174 @@
+# {{ ansible_managed }}
+# Flash Suite — Docker Compose stack
+# Deployed by Ansible role flash-suite
+
+name: {{ flash_suite_compose_project }}
+
+services:
+  caddy:
+    image: {{ flash_suite_caddy_image }}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - {{ flash_suite_base_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      CLIENT_DOMAIN: "{{ flash_suite_domain }}"
+      SUITE_INTERNAL_KEY: "{{ flash_suite_internal_key }}"
+    networks:
+      - frontend
+    depends_on:
+      shell:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: {{ flash_suite_postgres_image }}
+    container_name: suite_postgres
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      POSTGRES_USER: "{{ flash_suite_postgres_user }}"
+      POSTGRES_PASSWORD: "{{ flash_suite_postgres_password }}"
+      POSTGRES_DB: "{{ flash_suite_postgres_db }}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - {{ flash_suite_docker_dir }}/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ flash_suite_postgres_user }} -d {{ flash_suite_postgres_db }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  shell:
+    image: {{ flash_suite_shell_image }}
+    container_name: suite_shell
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      NODE_ENV: production
+      PORT: "{{ flash_suite_shell_port }}"
+      ZITADEL_ISSUER: "{{ flash_suite_zitadel_issuer }}"
+      ZITADEL_CLIENT_ID: "{{ flash_suite_zitadel_client_id }}"
+      ZITADEL_CLIENT_SECRET: "{{ flash_suite_zitadel_client_secret }}"
+      AUTH_SECRET: "{{ flash_suite_auth_secret }}"
+      AUTH_URL: "https://{{ flash_suite_domain }}"
+      AUTH_TRUST_HOST: "true"
+      SUITE_DATABASE_URL: "postgresql://{{ flash_suite_postgres_user }}:{{ flash_suite_postgres_password }}@postgres:{{ flash_suite_postgres_port }}/{{ flash_suite_postgres_db }}"
+      SUITE_INTERNAL_KEY: "{{ flash_suite_internal_key }}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:{{ flash_suite_shell_port }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  event-cron:
+    image: alpine:3.21
+    container_name: suite_event_cron
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    entrypoint: /bin/sh
+    command: >-
+      -c "while true; do
+        wget -q -O - --header='X-Internal-Key: $${SUITE_INTERNAL_KEY}' http://shell:{{ flash_suite_shell_port }}/api/events/dispatch || true;
+        sleep {{ flash_suite_event_cron_interval }};
+      done"
+    environment:
+      SUITE_INTERNAL_KEY: "{{ flash_suite_internal_key }}"
+    networks:
+      - backend
+    depends_on:
+      shell:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  ase:
+    image: {{ flash_suite_ase_image }}
+    container_name: suite_ase
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      FORCE_SCRIPT_NAME: /flow
+      STATIC_URL: /flow/static/
+      VITE_BASE_PATH: /flow/
+      ALLOWED_HOSTS: "*"
+      CSRF_TRUSTED_ORIGINS: "https://{{ flash_suite_domain }}"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/flow/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  zimboo:
+    image: {{ flash_suite_zimboo_image }}
+    container_name: suite_zimboo
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      SUITE_BASE_PATH: /finance
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/finance/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  koodia:
+    image: {{ flash_suite_koodia_image }}
+    container_name: suite_koodia
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      SUITE_BASE_PATH: /food
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/food/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  caddy_data:
+  caddy_config:
+  postgres_data:

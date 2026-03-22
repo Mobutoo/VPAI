@@ -1,0 +1,16 @@
+---
+# flash-suite — handlers
+
+- name: Restart flash-suite stack
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      cd {{ flash_suite_base_dir }}
+      docker compose --env-file {{ flash_suite_config_dir }}/flash-suite.env up -d --force-recreate 2>&1
+  become: true
+  register: flash_suite_restart
+  changed_when: false
+  failed_when: flash_suite_restart.rc | default(0) != 0
+  when: not (common_molecule_mode | default(false))
+  listen: Restart flash-suite stack

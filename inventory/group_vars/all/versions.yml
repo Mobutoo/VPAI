@@ -99,3 +99,11 @@ penpot_pg_image: "postgres:15-bookworm"
 # 4401 → penpot-mcp (Penpot design tool MCP)
 n8n_mcp_image_version_pinned: "2.35.5"  # pinned 2026-02-27 (sans v — Docker metadata semver pattern)
 n8n_mcp_port_pi: 3001
+
+# --- Flash Suite (unified shell + gamification engine) ---
+flash_suite_shell_image: "ghcr.io/mobutoo/flash-suite:v1.0.0"
+flash_suite_caddy_image: "caddy:2.10.2-alpine"
+flash_suite_postgres_image: "postgres:16-alpine"
+flash_suite_ase_image: "ghcr.io/mobutoo/ase:suite-v1.0.0"
+flash_suite_zimboo_image: "ghcr.io/mobutoo/zimboo:suite-v1.0.0"
+flash_suite_koodia_image: "ghcr.io/mobutoo/koodia:suite-v1.0.0"

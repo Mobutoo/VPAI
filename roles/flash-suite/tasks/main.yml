@@ -1,0 +1,164 @@
+---
+# flash-suite — tasks
+# Deploy Flash Suite as a self-contained Docker Compose stack.
+
+- name: Validate required variables
+  ansible.builtin.assert:
+    that:
+      - flash_suite_domain is defined and flash_suite_domain | length > 0
+      - flash_suite_auth_secret is defined and flash_suite_auth_secret | length > 0
+      - flash_suite_postgres_password is defined and flash_suite_postgres_password | length > 0
+      - flash_suite_internal_key is defined and flash_suite_internal_key | length > 0
+      - flash_suite_zitadel_issuer is defined and flash_suite_zitadel_issuer | length > 0
+      - flash_suite_zitadel_client_id is defined and flash_suite_zitadel_client_id | length > 0
+      - flash_suite_zitadel_client_secret is defined and flash_suite_zitadel_client_secret | length > 0
+    fail_msg: >-
+      Missing required flash-suite secrets. Ensure vault contains:
+      flash_suite_domain, flash_suite_auth_secret, flash_suite_postgres_password,
+      flash_suite_internal_key, flash_suite_zitadel_issuer/client_id/client_secret
+
+- name: Create Flash Suite directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ deploy_user | default(ansible_user) }}"
+    group: "{{ deploy_user | default(ansible_user) }}"
+    mode: "0755"
+  loop:
+    - "{{ flash_suite_base_dir }}"
+    - "{{ flash_suite_config_dir }}"
+    - "{{ flash_suite_docker_dir }}"
+  become: true
+
+- name: Deploy environment file
+  ansible.builtin.template:
+    src: flash-suite.env.j2
+    dest: "{{ flash_suite_config_dir }}/flash-suite.env"
+    owner: "{{ deploy_user | default(ansible_user) }}"
+    group: "{{ deploy_user | default(ansible_user) }}"
+    mode: "0600"
+  become: true
+  notify: Restart flash-suite stack
+
+- name: Deploy Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ flash_suite_base_dir }}/Caddyfile"
+    owner: "{{ deploy_user | default(ansible_user) }}"
+    group: "{{ deploy_user | default(ansible_user) }}"
+    mode: "0644"
+  become: true
+  notify: Restart flash-suite stack
+
+- name: Deploy PostgreSQL init script
+  ansible.builtin.copy:
+    src: init.sql
+    dest: "{{ flash_suite_docker_dir }}/init.sql"
+    owner: "{{ deploy_user | default(ansible_user) }}"
+    group: "{{ deploy_user | default(ansible_user) }}"
+    mode: "0644"
+  become: true
+
+- name: Deploy docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ flash_suite_base_dir }}/docker-compose.yml"
+    owner: "{{ deploy_user | default(ansible_user) }}"
+    group: "{{ deploy_user | default(ansible_user) }}"
+    mode: "0644"
+  become: true
+  notify: Restart flash-suite stack
+
+- name: Pull latest images
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      cd {{ flash_suite_base_dir }}
+      docker compose pull 2>&1
+  become: true
+  register: flash_suite_pull
+  changed_when: "'Pull complete' in flash_suite_pull.stdout or 'Downloaded' in flash_suite_pull.stdout"
+  when: not (common_molecule_mode | default(false))
+
+- name: Start Flash Suite stack
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      cd {{ flash_suite_base_dir }}
+      docker compose --env-file {{ flash_suite_config_dir }}/flash-suite.env up -d 2>&1
+  become: true
+  register: flash_suite_up
+  changed_when: "'Started' in flash_suite_up.stdout or 'Created' in flash_suite_up.stdout"
+  failed_when: flash_suite_up.rc | default(0) != 0
+  when: not (common_molecule_mode | default(false))
+
+# --- Health checks ---
+- name: Wait for PostgreSQL to be healthy
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}'
+      suite_postgres
+  register: flash_pg_health
+  changed_when: false
+  retries: 20
+  delay: 5
+  until: flash_pg_health.stdout | default('') == 'healthy'
+  become: true
+  failed_when: false
+  when: not (common_molecule_mode | default(false))
+
+- name: Show PostgreSQL logs if unhealthy
+  ansible.builtin.command:
+    cmd: "docker logs suite_postgres --tail 30"
+  become: true
+  changed_when: false
+  when:
+    - not (common_molecule_mode | default(false))
+    - flash_pg_health.stdout | default('') != 'healthy'
+
+- name: Fail if PostgreSQL is unhealthy
+  ansible.builtin.fail:
+    msg: "Flash Suite PostgreSQL failed to become healthy."
+  when:
+    - not (common_molecule_mode | default(false))
+    - flash_pg_health.stdout | default('') != 'healthy'
+
+- name: Wait for Shell to be healthy
+  ansible.builtin.command:
+    cmd: >-
+      docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}'
+      suite_shell
+  register: flash_shell_health
+  changed_when: false
+  retries: 20
+  delay: 10
+  until: flash_shell_health.stdout | default('') == 'healthy'
+  become: true
+  failed_when: false
+  when: not (common_molecule_mode | default(false))
+
+- name: Show Shell logs if unhealthy
+  ansible.builtin.command:
+    cmd: "docker logs suite_shell --tail 30"
+  become: true
+  changed_when: false
+  when:
+    - not (common_molecule_mode | default(false))
+    - flash_shell_health.stdout | default('') != 'healthy'
+
+- name: Fail if Shell is unhealthy
+  ansible.builtin.fail:
+    msg: "Flash Suite Shell failed to become healthy."
+  when:
+    - not (common_molecule_mode | default(false))
+    - flash_shell_health.stdout | default('') != 'healthy'
+
+- name: Display Flash Suite health summary
+  ansible.builtin.debug:
+    msg: >-
+      Flash Suite:
+      PostgreSQL={{ flash_pg_health.stdout | default('?') }}
+      Shell={{ flash_shell_health.stdout | default('?') }}
+      Domain={{ flash_suite_domain }}

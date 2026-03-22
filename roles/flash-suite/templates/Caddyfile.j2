@@ -1,0 +1,35 @@
+# {{ ansible_managed }}
+# Flash Suite — Caddy reverse proxy
+{
+	admin off
+}
+
+{{ flash_suite_domain }} {
+	# WebSocket bypass for Ase (Django Channels)
+	@ase_ws {
+		path /flow/ws/*
+		header Connection *Upgrade*
+		header Upgrade websocket
+	}
+	handle @ase_ws {
+		reverse_proxy ase:8000 {
+			header_up X-Internal-Key {env.SUITE_INTERNAL_KEY}
+		}
+	}
+
+	# SSE bypass for Koodia (shopping list streams)
+	@koodia_sse {
+		path /food/api/*/stream
+	}
+	handle @koodia_sse {
+		reverse_proxy koodia:3100 {
+			header_up X-Internal-Key {env.SUITE_INTERNAL_KEY}
+			flush_interval -1
+		}
+	}
+
+	# Everything else goes to the shell
+	handle {
+		reverse_proxy shell:{{ flash_suite_shell_port }}
+	}
+}

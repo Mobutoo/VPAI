@@ -1,0 +1,56 @@
+---
+# playbooks/flash-suite.yml — Deploy Flash Suite
+# Deploys the unified shell + gamification engine on the target host.
+#
+# Usage:
+#   ansible-playbook playbooks/flash-suite.yml -e "target_host=app-prod-server"
+#   ansible-playbook playbooks/flash-suite.yml -e "target_host=preprod-server"
+
+- name: Deploy Flash Suite
+  hosts: "{{ target_host | default('app_prod') }}"
+  gather_facts: true
+
+  pre_tasks:
+    - name: Display deployment info
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Flash Suite Deployment
+          Target: {{ inventory_hostname }}
+          Domain: {{ flash_suite_domain }}
+          Date: {{ ansible_facts['date_time']['iso8601'] }}
+          ========================================
+      tags: [always]
+
+    - name: Verify Ansible version
+      ansible.builtin.assert:
+        that:
+          - ansible_version.full is version('2.16', '>=')
+        fail_msg: "Ansible 2.16+ required. Current: {{ ansible_version.full }}"
+      tags: [always]
+
+  roles:
+    - role: common
+      tags: [common]
+    - role: docker
+      tags: [docker]
+    - role: flash-suite
+      tags: [flash-suite]
+
+  post_tasks:
+    - name: Smoke test — Shell responds
+      ansible.builtin.uri:
+        url: "http://localhost:{{ flash_suite_shell_port | default(3500) }}"
+        status_code: [200, 302, 307]
+        timeout: 10
+      register: smoke_shell
+      retries: 3
+      delay: 5
+      until: smoke_shell.status | default(0) in [200, 302, 307]
+      when: not (common_molecule_mode | default(false))
+      tags: [smoke-tests]
+
+    - name: Display smoke test result
+      ansible.builtin.debug:
+        msg: "Flash Suite smoke test: HTTP {{ smoke_shell.status | default('skipped') }}"
+      tags: [smoke-tests]

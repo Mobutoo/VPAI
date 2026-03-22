@@ -1,0 +1,21 @@
+---
+# flash-suite — role metadata
+
+galaxy_info:
+  role_name: flash_suite
+  author: Mobutoo
+  description: Deploy Flash Suite (unified shell with gamification engine)
+  license: AGPL-3.0
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: Ubuntu
+      versions:
+        - noble
+
+dependencies:
+  - role: common
+  - role: docker

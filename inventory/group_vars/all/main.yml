@@ -310,6 +310,16 @@ n8n_mcp_auth_token: "{{ vault_n8n_mcp_auth_token }}"
 deploy_ssh_key_name: "{{ project_name }}-deploy"
 deploy_ssh_key_pub_path: "~/.ssh/id_ed25519.pub"
 
+# === FLASH SUITE (unified shell + gamification engine) ===
+flash_suite_subdomain: "suite"
+flash_suite_domain: "{{ flash_suite_subdomain }}.{{ domain_name }}"
+flash_suite_auth_secret: "{{ vault_flash_suite_auth_secret }}"
+flash_suite_postgres_password: "{{ vault_flash_suite_postgres_password }}"
+flash_suite_internal_key: "{{ vault_flash_suite_internal_key }}"
+flash_suite_zitadel_issuer: "{{ vault_flash_suite_zitadel_issuer }}"
+flash_suite_zitadel_client_id: "{{ vault_flash_suite_zitadel_client_id }}"
+flash_suite_zitadel_client_secret: "{{ vault_flash_suite_zitadel_client_secret }}"
+
 # === CONTENT FACTORY (Phase 7) ===
 # Plane project/module IDs for editorial calendar sync (cf-calendar-sync workflow)
 plane_workspace_slug: "ewutelo"

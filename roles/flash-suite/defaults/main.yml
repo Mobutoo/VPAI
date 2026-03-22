@@ -1,0 +1,26 @@
+---
+# flash-suite — defaults
+# Flash Suite: unified shell aggregating flow, finance, food apps
+# with gamification engine, event system, and single-sign-on.
+# Runs as a self-contained Docker Compose stack (Caddy + PostgreSQL + Shell + apps).
+
+flash_suite_base_dir: "/opt/flash-suite"
+flash_suite_config_dir: "{{ flash_suite_base_dir }}/config"
+flash_suite_docker_dir: "{{ flash_suite_base_dir }}/docker/postgres"
+
+# Domain (required — no default)
+# flash_suite_domain: "suite.example.com"
+
+# Container ports (internal only — Caddy handles TLS)
+flash_suite_shell_port: 3500
+flash_suite_postgres_port: 5432
+
+# PostgreSQL
+flash_suite_postgres_user: "flash"
+flash_suite_postgres_db: "flash"
+
+# Event cron interval (seconds)
+flash_suite_event_cron_interval: 30
+
+# Docker Compose project name
+flash_suite_compose_project: "flash-suite"

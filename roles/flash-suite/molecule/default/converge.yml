@@ -1,0 +1,14 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    common_molecule_mode: true
+    flash_suite_domain: "suite.test.local"
+    flash_suite_auth_secret: "test-auth-secret-32chars-minimum!!"
+    flash_suite_postgres_password: "test-pg-password"
+    flash_suite_internal_key: "test-internal-key-32chars-min!!"
+    flash_suite_zitadel_issuer: "https://auth.test.local"
+    flash_suite_zitadel_client_id: "test-client-id"
+    flash_suite_zitadel_client_secret: "test-client-secret"
+  roles:
+    - role: flash-suite

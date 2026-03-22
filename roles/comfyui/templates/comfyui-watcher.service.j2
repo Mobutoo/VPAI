@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+[Unit]
+Description=ComfyUI Workflow Watcher (inotify + git)
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User={{ workstation_pi_user }}
+Group={{ workstation_pi_user }}
+ExecStart=/opt/workstation/comfyui-watcher.sh
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=comfyui-watcher
+
+[Install]
+WantedBy=multi-user.target

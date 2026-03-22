@@ -1,0 +1,39 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# inotify watcher for ComfyUI browser workflow changes
+# Commits browser-initiated changes to git with attribution
+set -euo pipefail
+
+WATCH_DIR="{{ comfyui_workflows_dir }}"
+
+if [ ! -d "$WATCH_DIR/.git" ]; then
+    echo "Not a git repo: $WATCH_DIR" >&2
+    exit 1
+fi
+
+cd "$WATCH_DIR"
+
+inotifywait -m -r -e modify,create,delete,moved_to,moved_from \
+  --exclude '\.git/' \
+  --format '%w%f' "$WATCH_DIR" | while read -r file; do
+    # Belt and suspenders: skip .git events
+    [[ "$file" == *"/.git/"* ]] && continue
+    # Background subprocess debounce: one pending commit at a time
+    if ! [ -f /tmp/comfyui-watcher-pending ]; then
+        touch /tmp/comfyui-watcher-pending
+        (
+            set -uo pipefail
+            sleep 5
+            rm -f /tmp/comfyui-watcher-pending
+            # Skip if last CLI commit was recent (avoid double-committing)
+            last_cli=$(git log -1 --author="{{ comfyui_cli_author_name }}" --format=%ct 2>/dev/null || echo 0)
+            now=$(date +%s)
+            if [ $((now - last_cli)) -lt 10 ]; then exit 0; fi
+            cd "$WATCH_DIR" || { echo "Cannot cd to $WATCH_DIR" >&2; exit 1; }
+            git add -A || { echo "git add failed" >&2; exit 1; }
+            git diff --cached --quiet || \
+              git -c user.name="Browser UI" -c user.email="browser@localhost" \
+                commit -m "browser: modified workflows" || echo "git commit failed" >&2
+        ) &
+    fi
+done

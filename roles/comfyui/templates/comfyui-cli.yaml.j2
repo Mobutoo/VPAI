@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+# comfyui-cli configuration
+comfyui_url: "http://localhost:{{ comfyui_port }}"
+workflows_dir: "{{ comfyui_workflows_dir }}"
+git_enabled: {{ comfyui_git_enabled | lower }}
+git_author_name: "{{ comfyui_cli_author_name }}"
+git_author_email: "{{ comfyui_cli_author_email }}"
+qdrant_url: "{{ comfyui_qdrant_url }}"
+qdrant_api_key: "{{ qdrant_api_key | default('') }}"
+qdrant_collection: "{{ comfyui_qdrant_collection }}"
+litellm_url: "https://llm.{{ domain_name }}/v1"
+litellm_api_key: "{{ litellm_api_key | default('') }}"

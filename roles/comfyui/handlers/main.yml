@@ -10,3 +10,11 @@
   become: true
   failed_when: false
   when: not (common_molecule_mode | default(false))
+
+- name: Restart comfyui-watcher
+  ansible.builtin.systemd:
+    name: comfyui-watcher
+    state: restarted
+    daemon_reload: true
+  become: true
+  when: not (common_molecule_mode | default(false))

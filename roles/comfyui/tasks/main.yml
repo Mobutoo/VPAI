@@ -166,3 +166,156 @@
 - name: Display ComfyUI health status
   ansible.builtin.debug:
     msg: "ComfyUI: {{ 'healthy' if comfyui_health.status == 200 else 'unhealthy (status: ' ~ comfyui_health.status ~ ')' }}"
+
+# --- Concurrent Access: CLI + Git + Watcher ---
+
+- name: Create user data directory for workflows
+  ansible.builtin.file:
+    path: "{{ comfyui_workflows_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  become: true
+
+- name: Create CLI install directory
+  ansible.builtin.file:
+    path: "{{ comfyui_cli_install_dir }}"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  become: true
+
+- name: Copy CLI source code
+  ansible.builtin.copy:
+    src: comfyui-cli/
+    dest: "{{ comfyui_cli_install_dir }}/"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+  register: _comfyui_cli_src
+
+- name: Install CLI Python dependencies in venv
+  ansible.builtin.pip:
+    requirements: "{{ comfyui_cli_install_dir }}/requirements.txt"
+    virtualenv: "{{ comfyui_cli_install_dir }}/.venv"
+    virtualenv_command: "python3 -m venv"
+  become: true
+  become_user: "{{ workstation_pi_user }}"
+
+- name: Install CLI package in venv (editable)
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      {{ comfyui_cli_install_dir }}/.venv/bin/pip install -e "{{ comfyui_cli_install_dir }}"
+    executable: /bin/bash
+  become: true
+  become_user: "{{ workstation_pi_user }}"
+  register: _comfyui_cli_pip
+  changed_when: "'Successfully installed' in _comfyui_cli_pip.stdout"
+
+- name: Create CLI symlink in /usr/local/bin
+  ansible.builtin.file:
+    src: "{{ comfyui_cli_install_dir }}/.venv/bin/comfyui-cli"
+    dest: /usr/local/bin/comfyui-cli
+    state: link
+  become: true
+
+- name: Deploy CLI config
+  ansible.builtin.template:
+    src: comfyui-cli.yaml.j2
+    dest: "/home/{{ workstation_pi_user }}/.comfyui-cli.yaml"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0600"
+  become: true
+
+- name: Initialize git repo in workflows directory
+  ansible.builtin.command:
+    cmd: git init
+    chdir: "{{ comfyui_workflows_dir }}"
+    creates: "{{ comfyui_workflows_dir }}/.git"
+  become: true
+  become_user: "{{ workstation_pi_user }}"
+
+- name: Create .gitignore in workflows repo
+  ansible.builtin.copy:
+    content: |
+      *.tmp
+      *.bak
+      .DS_Store
+      __pycache__/
+      *.pyc
+    dest: "{{ comfyui_workflows_dir }}/.gitignore"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+
+- name: Add Gitea remote to workflows repo
+  ansible.builtin.command:
+    cmd: git remote add origin {{ comfyui_git_remote }}
+    chdir: "{{ comfyui_workflows_dir }}"
+  become: true
+  become_user: "{{ workstation_pi_user }}"
+  changed_when: false
+  failed_when: false
+
+- name: Initial git commit in workflows repo
+  ansible.builtin.shell:
+    cmd: |
+      set -euo pipefail
+      cd {{ comfyui_workflows_dir }}
+      git add -A
+      git diff --cached --quiet || git -c user.name="Ansible" -c user.email="ansible@localhost" commit -m "init: workflow repository"
+      git push -u origin main 2>/dev/null || true
+    executable: /bin/bash
+  become: true
+  become_user: "{{ workstation_pi_user }}"
+  changed_when: false
+  failed_when: false
+
+- name: Install inotify-tools
+  ansible.builtin.apt:
+    name: inotify-tools
+    state: present
+  become: true
+
+- name: Deploy watcher script
+  ansible.builtin.template:
+    src: comfyui-watcher.sh.j2
+    dest: /opt/workstation/comfyui-watcher.sh
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  become: true
+  notify: Restart comfyui-watcher
+
+- name: Deploy watcher systemd service
+  ansible.builtin.template:
+    src: comfyui-watcher.service.j2
+    dest: /etc/systemd/system/comfyui-watcher.service
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Restart comfyui-watcher
+
+- name: Enable and start watcher service
+  ansible.builtin.systemd:
+    name: comfyui-watcher
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  when: not (common_molecule_mode | default(false))
+
+- name: Set up git push cron job
+  ansible.builtin.cron:
+    name: "comfyui-workflows-git-push"
+    minute: "*/{{ comfyui_git_push_interval }}"
+    job: "cd {{ comfyui_workflows_dir }} && git push --quiet origin main 2>/dev/null || git push --quiet -u origin main 2>/dev/null || true"
+    user: "{{ workstation_pi_user }}"
+  become: true

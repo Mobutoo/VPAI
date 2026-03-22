@@ -4917,6 +4917,10 @@ async def _step_videogen(
 
             # Download video from URL if available (video nodes return URLs)
             video_urls = submit_result.get("video_urls", [])
+            if not video_urls:
+                error_msg = submit_result.get("error", submit_result.get("status", "no video_urls"))
+                scene_result["failed"] = True
+                print(f"[videogen] Scene {sp.get('scene_index', 0)} FAILED: {str(error_msg)[:200]}", flush=True)
             if video_urls:
                 video_bytes = await _composer_download_video(video_urls[0])
                 if video_bytes:
@@ -4987,11 +4991,22 @@ async def _step_videogen(
     else:
         await _notify_step_completed(job, "videogen")
 
+    failed_scenes = [r["scene"] for r in results if r.get("failed")]
+    if video_count == 0:
+        status = "error"
+    elif video_count < len(scene_prompts):
+        status = "partial"
+    else:
+        status = "ok"
+
     return {
-        "status": "ok",
+        "status": status,
         "model_used": model_name,
         "budget": budget,
         "duration_per_clip": duration,
+        "video_count": video_count,
+        "scene_count": len(scene_prompts),
+        "failed_scenes": failed_scenes,
         "estimated_cost_usd": total_cost,
         "videogen_results": results,
         "kitsu": kitsu_result,

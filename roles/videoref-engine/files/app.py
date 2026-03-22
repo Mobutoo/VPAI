@@ -3355,8 +3355,10 @@ async def _step_brief(
         try:
             async with aiohttp.ClientSession() as session:
                 # Create a NEW Kitsu project for this production job
+                # Use job_id prefix to ensure unique name
+                project_name = f"{job['title']} ({job['job_id'][:8]})"
                 project = await _kitsu_create_project(
-                    session, job["title"], prod_type,
+                    session, project_name, prod_type,
                 )
                 # Update project with technical specs from brief
                 # Note: fps/resolution stored in project.data (not top-level fields)

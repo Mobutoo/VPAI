@@ -92,6 +92,9 @@ comfyui_git_enabled: true
 comfyui_git_remote: "git@seko-vpn:mobuone/comfyui-workflows.git"
 comfyui_git_push_interval: 5  # minutes
 
+# LiteLLM (embeddings for doc search)
+litellm_api_key: "{{ litellm_master_key }}"
+
 # Qdrant doc search
 comfyui_qdrant_url: "https://qd.ewutelo.cloud"
 comfyui_qdrant_collection: "comfyui-docs"

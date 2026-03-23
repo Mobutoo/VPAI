@@ -7,7 +7,7 @@ comfyui_data_dir: "/opt/workstation/data/comfyui"
 
 # ComfyUI version (git tag from https://github.com/Comfy-Org/ComfyUI)
 # v0.17.1 includes App Mode + App Builder (frontend >= 1.41.13)
-comfyui_version: "v0.17.1"
+comfyui_version: "v0.18.1"
 
 # Ports
 comfyui_port: 8188

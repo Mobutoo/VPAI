@@ -63,13 +63,13 @@ grocy_image: "lscr.io/linuxserver/grocy:4.6.0"
 koodia_image: "ghcr.io/mobutoo/koodia:v0.1.0"
 
 # --- MeTube (video downloader — Workstation Pi) ---
-metube_image: "alexta69/metube:2026.03.14"
+metube_image: "alexta69/metube:2026.03.21"
 
 # --- VideoRef Engine (video analysis pipeline — Workstation Pi) ---
 videoref_image: "ghcr.io/mobutoo/videoref-engine:v0.1.0"
 
 # --- Remotion Render Server (Workstation Pi — local build ARM64) ---
-remotion_version: "4.0.259"
+remotion_version: "4.0.437"
 
 # --- Workstation Pi (natif — pas Docker) ---
 # Caddy : binaire custom build via xcaddy (module dns.providers.ovh)
@@ -109,7 +109,7 @@ penpot_pg_image: "postgres:15-bookworm"
 # 3002 → réservé futur MCP server
 # 3150 → openpencil-mcp (design editor MCP)
 # 4401 → penpot-mcp (Penpot design tool MCP)
-n8n_mcp_image_version_pinned: "2.35.5"  # pinned 2026-02-27 (sans v — Docker metadata semver pattern)
+n8n_mcp_image_version_pinned: "2.40.5"  # pinned 2026-03-23 (sans v — Docker metadata semver pattern)
 n8n_mcp_port_pi: 3001
 
 # --- Flash Suite (unified shell + gamification engine) ---

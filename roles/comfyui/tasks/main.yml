@@ -129,6 +129,7 @@
       pip install --no-cache-dir {{ item.pip_deps | join(' ') }}
   become: true
   loop: "{{ comfyui_custom_nodes | selectattr('pip_deps', 'defined') | list }}"
+  when: item.pip_deps | length > 0
   loop_control:
     label: "{{ item.name }}"
   changed_when: "'Successfully installed' in _comfyui_pip.stdout"

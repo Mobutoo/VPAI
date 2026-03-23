@@ -85,7 +85,7 @@ services:
         reservations:
           memory: {{ remotion_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:{{ remotion_port }}/health || exit 1"]
+      test: ["CMD-SHELL", "node -e \"const h=require('http');h.get('http://127.0.0.1:{{ remotion_port }}/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -124,7 +124,7 @@ services:
         reservations:
           memory: {{ metube_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/ || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8081/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

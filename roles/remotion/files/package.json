@@ -14,6 +14,8 @@
     "@remotion/cli": "4.0.437",
     "@remotion/media-utils": "4.0.437",
     "@remotion/renderer": "4.0.437",
+    "@remotion/light-leaks": "4.0.437",
+    "@remotion/sfx": "4.0.437",
     "@remotion/transitions": "4.0.437",
     "express": "^4.21.0",
     "react": "^18.3.1",

@@ -7,7 +7,7 @@ remotion_install_dir: "/opt/workstation/remotion"
 remotion_data_dir: "/opt/workstation/data/remotion"
 
 # Remotion version (npm package version)
-remotion_version: "4.0.259"
+remotion_version: "4.0.437"
 
 # Ports
 remotion_port: 3200

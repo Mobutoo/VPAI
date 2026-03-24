@@ -54,10 +54,12 @@ class MontageBuilder:
         width, height = FORMATS[format]
         scene_frames = PACING_FRAMES[pacing]
 
+        video_exts = (".mp4", ".webm", ".mov", ".avi", ".mkv")
         scenes = []
         for i, asset_url in enumerate(assets):
+            scene_type = "video" if asset_url.lower().split("?")[0].endswith(video_exts) else "keyframe"
             scenes.append({
-                "type": "keyframe",
+                "type": scene_type,
                 "src": asset_url,
                 "durationInFrames": scene_frames,
                 "sceneIndex": i,
@@ -204,6 +206,15 @@ def montage_diff(
             "type": "audio_changed",
             "description": "Audio config changed",
             "details": {"before": before.get("audio"), "after": after.get("audio")},
+        })
+
+    # Compare subtitles
+    if before.get("subtitles") != after.get("subtitles"):
+        changes.append({
+            "type": "subtitles_changed",
+            "description": "Subtitles changed",
+            "details": {"before_count": len(before.get("subtitles", [])),
+                         "after_count": len(after.get("subtitles", []))},
         })
 
     return {"changes": changes}

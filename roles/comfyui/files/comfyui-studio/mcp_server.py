@@ -2,6 +2,7 @@
 
 Thin wrapper that calls comfyui-cli subprocess for each tool.
 """
+import asyncio
 import json
 import subprocess
 import sys
@@ -340,19 +341,24 @@ async def call_tool(name: str, arguments: dict):
             props = arguments["montage_props"]
             quality = arguments.get("quality", "draft")
             if quality == "draft":
-                props = {**props, "width": min(props.get("width", 1080), 1280),
-                         "height": min(props.get("height", 1920), 1280)}
-            result = _montage_renderer.render(props)
-            output = json.dumps(result)
+                w, h = props.get("width", 1080), props.get("height", 1920)
+                scale = min(1.0, 1280 / max(w, h))
+                props = {**props, "width": int(w * scale), "height": int(h * scale)}
+            result = await asyncio.to_thread(_montage_renderer.render, props)
+            output = json.dumps({
+                "status": result.get("status"),
+                "videoUrl": result.get("videoUrl"),
+            })
 
         elif name == "montage_adjust":
             if _montage_agent is None:
                 output = json.dumps(
                     {"error": "LiteLLM not configured — set litellm_url in config"})
             else:
-                result = _montage_agent.adjust(
-                    montage_props=arguments["montage_props"],
-                    instruction=arguments["instruction"],
+                result = await asyncio.to_thread(
+                    _montage_agent.adjust,
+                    arguments["montage_props"],
+                    arguments["instruction"],
                 )
                 output = json.dumps(result)
 

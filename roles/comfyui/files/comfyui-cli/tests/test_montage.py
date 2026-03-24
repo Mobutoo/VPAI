@@ -110,6 +110,17 @@ class TestMontageBuilder:
         with pytest.raises(ValueError, match="format"):
             builder.build(assets=["https://example.com/a.png"], format="unknown", pacing="medium")
 
+    def test_build_infers_video_type(self):
+        """Video URLs get type 'video', images get 'keyframe'."""
+        builder = MontageBuilder()
+        props = builder.build(
+            assets=["https://example.com/clip.mp4", "https://example.com/img.png"],
+            format="reel_9_16",
+            pacing="medium",
+        )
+        assert props["scenes"][0]["type"] == "video"
+        assert props["scenes"][1]["type"] == "keyframe"
+
 
 class TestMontageDiff:
     """Test montage_diff produces readable change list."""
@@ -152,3 +163,13 @@ class TestMontageDiff:
         result = montage_diff(before, after)
         types = [c["type"] for c in result["changes"]]
         assert "direction_changed" in types
+
+    def test_diff_subtitles_changed(self):
+        """Detect subtitles changes."""
+        builder = MontageBuilder()
+        before = builder.build(assets=["https://example.com/a.png"], format="reel_9_16", pacing="medium")
+        after = builder.build(assets=["https://example.com/a.png"], format="reel_9_16", pacing="medium")
+        after["subtitles"] = [{"text": "Hello", "startMs": 0, "endMs": 3000}]
+        result = montage_diff(before, after)
+        types = [c["type"] for c in result["changes"]]
+        assert "subtitles_changed" in types

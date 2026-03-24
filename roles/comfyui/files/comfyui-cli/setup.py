@@ -6,6 +6,7 @@ setup(
     packages=find_packages(),
     install_requires=[
         "click>=8.1,<9",
+        "httpx>=0.27,<1",
         "requests>=2.31,<3",
         "pyyaml>=6.0,<7",
     ],

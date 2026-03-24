@@ -22,6 +22,9 @@ DEFAULTS = {
     "qdrant_collection": "comfyui-docs",
     "litellm_url": "",
     "litellm_api_key": "",
+    "remotion_api_url": "http://localhost:3200",
+    "remotion_api_token": "",
+    "montage_adjust_model": "qwen/qwen3-coder",
 }
 
 ENV_MAP = {
@@ -32,6 +35,9 @@ ENV_MAP = {
     "QDRANT_API_KEY": "qdrant_api_key",
     "LITELLM_BASE_URL": "litellm_url",
     "LITELLM_API_KEY": "litellm_api_key",
+    "REMOTION_API_URL": "remotion_api_url",
+    "REMOTION_API_TOKEN": "remotion_api_token",
+    "MONTAGE_ADJUST_MODEL": "montage_adjust_model",
 }
 
 

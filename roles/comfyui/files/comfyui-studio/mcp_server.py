@@ -11,6 +11,26 @@ from mcp.types import Tool, TextContent
 
 CLI_CMD = "/usr/local/bin/comfyui-cli"
 
+# Montage bridge modules (direct import, not subprocess — complex JSON I/O)
+import os as _os
+sys.path.insert(0, _os.path.join(_os.path.dirname(__file__), "..", "comfyui-cli"))
+from comfyui_cli.config import load_config
+from comfyui_cli.montage import MontageBuilder, montage_diff
+from comfyui_cli.montage_render import MontageRenderer
+from comfyui_cli.montage_agent import MontageAgent
+
+_config = load_config()
+_montage_builder = MontageBuilder()
+_montage_renderer = MontageRenderer(
+    api_url=_config.get("remotion_api_url", "http://localhost:3200"),
+    api_token=_config.get("remotion_api_token") or None,
+)
+_montage_agent = MontageAgent(
+    litellm_url=_config.get("litellm_url", ""),
+    litellm_api_key=_config.get("litellm_api_key", ""),
+    model=_config.get("montage_adjust_model", "qwen/qwen3-coder"),
+) if _config.get("litellm_url") else None
+
 server = Server("comfyui-studio")
 
 
@@ -151,6 +171,81 @@ async def list_tools():
                 "required": ["query"],
             },
         ),
+        Tool(
+            name="montage_build",
+            description="Assemble assets into a MontageProps JSON ready for Remotion render",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "assets": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": "List of asset URLs (images or videos)",
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["reel_9_16", "landscape_16_9", "square_1_1"],
+                        "description": "Output format",
+                    },
+                    "pacing": {
+                        "type": "string", "enum": ["fast", "medium", "slow"],
+                        "description": "Pacing preset",
+                    },
+                    "title": {"type": "string", "description": "Optional title card text"},
+                    "brand_style": {
+                        "type": "object",
+                        "description": "Optional brand style (palette, typography, tone)",
+                    },
+                },
+                "required": ["assets", "format", "pacing"],
+            },
+        ),
+        Tool(
+            name="montage_render",
+            description="Send MontageProps to Remotion and return render result (MP4)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "montage_props": {
+                        "type": "object", "description": "MontageProps JSON",
+                    },
+                    "quality": {
+                        "type": "string", "enum": ["draft", "final"],
+                        "description": "Render quality: draft (720p) or final (1080p). Default: draft",
+                        "default": "draft",
+                    },
+                },
+                "required": ["montage_props"],
+            },
+        ),
+        Tool(
+            name="montage_adjust",
+            description="Modify a MontageProps via natural language instruction (uses LLM)",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "montage_props": {
+                        "type": "object", "description": "Current MontageProps JSON",
+                    },
+                    "instruction": {
+                        "type": "string",
+                        "description": "Natural language edit instruction",
+                    },
+                },
+                "required": ["montage_props", "instruction"],
+            },
+        ),
+        Tool(
+            name="montage_diff",
+            description="Compare two MontageProps and return a readable list of changes",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "before": {"type": "object", "description": "Original MontageProps"},
+                    "after": {"type": "object", "description": "Modified MontageProps"},
+                },
+                "required": ["before", "after"],
+            },
+        ),
     ]
 
 
@@ -230,6 +325,40 @@ async def call_tool(name: str, arguments: dict):
             if arguments.get("category"):
                 args.extend(["--category", arguments["category"]])
             output = _run_cli(*args)
+
+        elif name == "montage_build":
+            props = _montage_builder.build(
+                assets=arguments["assets"],
+                format=arguments["format"],
+                pacing=arguments["pacing"],
+                title=arguments.get("title"),
+                brand_style=arguments.get("brand_style"),
+            )
+            output = json.dumps(props)
+
+        elif name == "montage_render":
+            props = arguments["montage_props"]
+            quality = arguments.get("quality", "draft")
+            if quality == "draft":
+                props = {**props, "width": min(props.get("width", 1080), 1280),
+                         "height": min(props.get("height", 1920), 1280)}
+            result = _montage_renderer.render(props)
+            output = json.dumps(result)
+
+        elif name == "montage_adjust":
+            if _montage_agent is None:
+                output = json.dumps(
+                    {"error": "LiteLLM not configured — set litellm_url in config"})
+            else:
+                result = _montage_agent.adjust(
+                    montage_props=arguments["montage_props"],
+                    instruction=arguments["instruction"],
+                )
+                output = json.dumps(result)
+
+        elif name == "montage_diff":
+            result = montage_diff(arguments["before"], arguments["after"])
+            output = json.dumps(result)
 
         else:
             output = json.dumps({"error": f"Unknown tool: {name}"})

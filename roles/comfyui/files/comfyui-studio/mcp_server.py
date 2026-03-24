@@ -29,7 +29,7 @@ _montage_renderer = MontageRenderer(
 _montage_agent = MontageAgent(
     litellm_url=_config.get("litellm_url", ""),
     litellm_api_key=_config.get("litellm_api_key", ""),
-    model=_config.get("montage_adjust_model", "qwen/qwen3-coder"),
+    model=_config.get("montage_adjust_model", "qwen3-coder"),
 ) if _config.get("litellm_url") else None
 
 server = Server("comfyui-studio")

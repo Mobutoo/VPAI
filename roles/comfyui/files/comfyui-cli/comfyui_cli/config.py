@@ -24,7 +24,7 @@ DEFAULTS = {
     "litellm_api_key": "",
     "remotion_api_url": "http://localhost:3200",
     "remotion_api_token": "",
-    "montage_adjust_model": "qwen/qwen3-coder",
+    "montage_adjust_model": "qwen3-coder",
 }
 
 ENV_MAP = {

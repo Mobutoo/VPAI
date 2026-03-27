@@ -1,11 +1,11 @@
 ---
 # inventory/group_vars/all/versions.yml — Images Docker pinnées
 # JAMAIS de :latest ou :stable — Tout est versionné
-# Vérifié le : 11 février 2026
+# Vérifié le : 27 mars 2026
 
 # --- Données ---
-postgresql_image: "postgres:18.1-bookworm"
-redis_image: "redis:8.0-bookworm"  # 8.0.10 n'existe pas, utiliser 8.0
+postgresql_image: "postgres:18.3-bookworm"  # CVE-2025-8714/8715 + buffer overflows (fix 18.3, 2026-02-26)
+redis_image: "redis:8.4.0-bookworm"  # CVE-2025-49844 RediShell CVSS 10.0 (fix 8.2.2+, 2025-10)
 qdrant_image: "qdrant/qdrant:v1.16.3"
 
 # --- Applications ---
@@ -16,7 +16,7 @@ openclaw_image: "ghcr.io/openclaw/openclaw:2026.3.13-1"
 n8n_image: "ghcr.io/mobutoo/n8n-enterprise:2.7.3"
 n8n_upstream_version: "2.7.3"  # version officielle n8nio/n8n sous-jacente
 litellm_image: "ghcr.io/berriai/litellm:v1.81.3-stable"
-nocodb_image: "nocodb/nocodb:0.301.2"
+nocodb_image: "nocodb/nocodb:0.301.3"  # SQL injection DATEADD + stored XSS + SSRF (fix 0.301.3, 2026-02-27)
 kitsu_image: "cgwire/cgwire:1.0.19"  # dedup — source de verite ligne 47
 plane_web_image: "makeplane/plane-frontend:v1.2.2"
 plane_admin_image: "makeplane/plane-admin:v1.2.2"
@@ -25,10 +25,10 @@ plane_worker_image: "makeplane/plane-backend:v1.2.2"
 plane_minio_image: "minio/minio:RELEASE.2024-11-07T00-52-20Z"
 
 # --- Reverse Proxy ---
-caddy_image: "caddy:2.10.2-alpine"
+caddy_image: "caddy:2.11.2-alpine"  # CVE-2026-30851/30852 identity injection + env leak (fix 2.11.2)
 
 # --- Observabilité ---
-grafana_image: "grafana/grafana:12.3.2"
+grafana_image: "grafana/grafana:12.4.2"  # CVE-2026-27876 CVSS 9.1 RCE SQL expressions (fix 12.4.2, 2026-03-25)
 victoriametrics_image: "victoriametrics/victoria-metrics:v1.135.0"
 loki_image: "grafana/loki:3.6.5"
 alloy_image: "grafana/alloy:v1.13.0"
@@ -74,7 +74,7 @@ remotion_version: "4.0.437"
 # --- Workstation Pi (natif — pas Docker) ---
 # Caddy : binaire custom build via xcaddy (module dns.providers.ovh)
 # Version alignee avec le prod Docker (caddy_image ci-dessus)
-workstation_caddy_image: "caddy:2.10.2-alpine"  # reference version prod
+workstation_caddy_image: "caddy:2.11.2-alpine"  # reference version prod
 # OpenCode : pinne apres premier deploy valide
 # opencode_npm_version dans roles/opencode/defaults/main.yml
 opencode_npm_version_pinned: "1.2.15"  # updated 2026-02-27
@@ -114,7 +114,7 @@ n8n_mcp_port_pi: 3001
 
 # --- Flash Suite (unified shell + gamification engine) ---
 flash_suite_shell_image: "ghcr.io/mobutoo/flash-suite:v1.0.0"
-flash_suite_caddy_image: "caddy:2.10.2-alpine"
+flash_suite_caddy_image: "caddy:2.11.2-alpine"
 flash_suite_postgres_image: "postgres:16-alpine"
 flash_suite_ase_image: "ghcr.io/mobutoo/ase:suite-v1.0.0"
 flash_suite_zimboo_image: "ghcr.io/mobutoo/zimboo:suite-v1.0.0"

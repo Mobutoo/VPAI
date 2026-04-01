@@ -1,0 +1,31 @@
+{# {{ ansible_managed }} #}
+# CLAUDE.md — {{ app_name }}
+
+## Project
+
+{{ app_description }}
+
+**Stack:** {{ app_stack }}
+**Deploy target:** Hetzner ({{ app_env }})
+
+## Conventions
+
+- All commits MUST include `[PLANE-<id>]` suffix (8 first chars of Plane work item UUID)
+- Commit format: `<type>(<scope>): <description> [PLANE-<id>]`
+- Types: feat, fix, test, chore, docs, deploy
+- Docker images: tagged with full git SHA, pushed to GHCR
+- No `:latest` tags
+- TDD: write failing test first, then implement
+
+## Deploy
+
+Images auto-push to GHCR on merge to main.
+Deploy is triggered manually via `deploy-app` GitHub Actions workflow in VPAI repo.
+
+## Testing
+
+```bash
+# Run tests
+# TODO: replace with stack-specific commands
+npm test      # or pytest, go test, etc.
+```

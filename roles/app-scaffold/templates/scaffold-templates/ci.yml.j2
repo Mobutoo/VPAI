@@ -1,0 +1,49 @@
+# {{ ansible_managed }}
+# CI pipeline for {{ app_name }} — Lint, Test, Build, Push to GHCR
+---
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        # TODO: Stack-specific setup (Node, Python, Go, etc.)
+        run: echo "Setup placeholder — replace with stack-specific steps"
+      - name: Lint
+        run: echo "Lint placeholder — replace with stack-specific linter"
+      - name: Test
+        run: echo "Test placeholder — replace with stack-specific test runner"
+
+  build-push:
+    needs: lint-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: {% raw %}${{ github.actor }}{% endraw %}
+          password: {% raw %}${{ secrets.GITHUB_TOKEN }}{% endraw %}
+      - name: Build & Push
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: ghcr.io/mobutoo/{% raw %}${{ github.event.repository.name }}:${{ github.sha }}{% endraw %}
+      - name: Notify n8n
+        run: |
+          curl -sf -X POST "{% raw %}${{ secrets.N8N_DEPLOY_WEBHOOK }}{% endraw %}" \
+            -H "Content-Type: application/json" \
+            -H "X-AF-Secret: {% raw %}${{ secrets.AF_WEBHOOK_SECRET }}{% endraw %}" \
+            -d '{"repo":"{% raw %}${{ github.event.repository.name }}{% endraw %}","image_tag":"{% raw %}${{ github.sha }}{% endraw %}","event":"image_pushed"}'

@@ -1,0 +1,129 @@
+# .github/workflows/deploy-app.yml — Deploy app to Hetzner (manual)
+---
+name: Deploy App (Hetzner)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy-app" to confirm'
+        required: true
+        type: string
+      app_name:
+        description: 'App name (Ansible role tag)'
+        required: true
+        type: string
+      image_tag:
+        description: 'Docker image SHA tag to deploy'
+        required: true
+        type: string
+      plane_project_id:
+        description: 'Plane project ID (for n8n callback)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  ANSIBLE_FORCE_COLOR: "1"
+
+jobs:
+  validate:
+    name: Validate Confirmation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "deploy-app" ]; then
+            echo "ERROR: You must type 'deploy-app' to confirm"
+            exit 1
+          fi
+          echo "Confirmation validated for app: ${{ github.event.inputs.app_name }}"
+
+  lint:
+    name: Lint
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install ansible ansible-lint yamllint
+      - run: ansible-galaxy install -r requirements.yml
+      - name: Create dummy vault password (lint only)
+        run: echo "dummy" > .vault_password
+      - run: ansible-lint playbooks/app-prod.yml
+
+  deploy:
+    name: Deploy to Hetzner
+    needs: lint
+    runs-on: ubuntu-latest
+    environment: app-prod
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install ansible jmespath
+          ansible-galaxy install -r requirements.yml
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.APP_PROD_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p ${{ secrets.APP_PROD_SSH_PORT || 22 }} \
+            -H "${{ secrets.APP_PROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Create vault password file
+        run: |
+          printf '%s' "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > .vault_password
+          chmod 600 .vault_password
+
+      - name: Deploy app
+        run: |
+          ansible-playbook playbooks/app-prod.yml \
+            -e "target_env=app_prod" \
+            --tags "${{ github.event.inputs.app_name }}" \
+            --diff
+
+  smoke-tests:
+    name: Smoke Tests
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.APP_PROD_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -p ${{ secrets.APP_PROD_SSH_PORT || 22 }} \
+            -H "${{ secrets.APP_PROD_SERVER_IP }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Wait for services to stabilize
+        run: sleep 15
+
+      - name: Check container is running
+        run: |
+          ssh -p ${{ secrets.APP_PROD_SSH_PORT || 22 }} root@${{ secrets.APP_PROD_SERVER_IP }} \
+            "docker ps --filter 'name=${{ github.event.inputs.app_name }}' --format 'table {{ '{{' }}.Names{{ '}}' }}\t{{ '{{' }}.Status{{ '}}' }}'"
+
+      - name: Notify n8n (deploy complete)
+        if: always()
+        run: |
+          STATUS="pass"
+          if [ "${{ job.status }}" != "success" ]; then
+            STATUS="fail"
+          fi
+          curl -sf -X POST "${{ secrets.N8N_DEPLOY_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -H "X-AF-Secret: ${{ secrets.AF_WEBHOOK_SECRET }}" \
+            -d "{\"repo\":\"${{ github.event.inputs.app_name }}\",\"image_tag\":\"${{ github.event.inputs.image_tag }}\",\"event\":\"deploy_complete\",\"smoke_result\":\"${STATUS}\",\"plane_project_id\":\"${{ github.event.inputs.plane_project_id }}\"}" || true

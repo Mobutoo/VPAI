@@ -1,0 +1,43 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Qdrant App Factory collections provisioning — idempotent
+# Creates collections: app-factory-rex, app-factory-patterns
+
+set -euo pipefail
+
+QDRANT_URL="{{ app_factory_qdrant_base_url }}"
+QDRANT_KEY="{{ qdrant_api_key }}"
+VECTOR_SIZE="{{ app_factory_qdrant_vector_size }}"
+DISTANCE="{{ app_factory_qdrant_distance }}"
+SENTINEL="{{ app_factory_config_dir }}/.qdrant-provision-complete"
+
+if [ -f "$SENTINEL" ]; then
+  echo "Qdrant app-factory already provisioned (sentinel exists). Skipping."
+  exit 0
+fi
+
+echo "[$(date)] Starting Qdrant App Factory provisioning..."
+
+create_collection() {
+  local NAME="$1"
+  echo "[$(date)] Creating/verifying collection ${NAME}..."
+  HTTP_CODE=$(curl -sf -o /dev/null -w '%{http_code}' -X PUT \
+    -H "api-key: ${QDRANT_KEY}" \
+    -H "Content-Type: application/json" \
+    "${QDRANT_URL}/collections/${NAME}" \
+    -d "{\"vectors\": {\"size\": ${VECTOR_SIZE}, \"distance\": \"${DISTANCE}\"}}" \
+    2>/dev/null || echo "000")
+
+  if [ "$HTTP_CODE" = "200" ] || [ "$HTTP_CODE" = "409" ]; then
+    echo "[$(date)] Collection ${NAME} ready (HTTP ${HTTP_CODE})"
+  else
+    echo "[$(date)] ERROR: Failed to create collection ${NAME} (HTTP ${HTTP_CODE})"
+    exit 1
+  fi
+}
+
+create_collection "{{ app_factory_qdrant_rex_collection }}"
+create_collection "{{ app_factory_qdrant_patterns_collection }}"
+
+touch "$SENTINEL"
+echo "[$(date)] Qdrant App Factory provisioning complete."

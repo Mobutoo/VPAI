@@ -1,0 +1,8 @@
+{# {{ ansible_managed }} #}
+{
+  "auths": {
+    "ghcr.io": {
+      "auth": "{{ (app_scaffold_ghcr_user + ':' + app_scaffold_ghcr_token) | b64encode }}"
+    }
+  }
+}

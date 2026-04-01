@@ -1,0 +1,23 @@
+---
+# app-scaffold — defaults
+# Base infrastructure for App Factory apps on Hetzner
+
+# GHCR pull authentication
+app_scaffold_ghcr_user: "Mobutoo"
+app_scaffold_ghcr_token: "{{ vault_ghcr_pull_token }}"
+
+# Docker config location (for GHCR pull)
+app_scaffold_docker_config_dir: "/root/.docker"
+
+# Base directory for app configs on Hetzner
+app_scaffold_apps_dir: "/opt/apps"
+
+# Default resource limits (overridable per app)
+app_scaffold_default_memory_limit: "512M"
+app_scaffold_default_cpu_limit: "0.5"
+
+# Docker networks for app-prod server
+app_scaffold_frontend_network: "app_frontend"
+app_scaffold_backend_network: "app_backend"
+app_scaffold_frontend_subnet: "172.21.1.0/24"
+app_scaffold_backend_subnet: "172.21.2.0/24"

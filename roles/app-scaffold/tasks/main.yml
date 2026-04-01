@@ -1,0 +1,52 @@
+---
+# app-scaffold — tasks
+# Prepares Hetzner server for App Factory deployments
+
+- name: Create Docker config directory
+  ansible.builtin.file:
+    path: "{{ app_scaffold_docker_config_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  become: true
+  tags: [app-scaffold]
+
+- name: Deploy GHCR pull credentials
+  ansible.builtin.template:
+    src: docker-config.json.j2
+    dest: "{{ app_scaffold_docker_config_dir }}/config.json"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  tags: [app-scaffold]
+
+- name: Create apps base directory
+  ansible.builtin.file:
+    path: "{{ app_scaffold_apps_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  tags: [app-scaffold]
+
+- name: Create app frontend Docker network
+  community.docker.docker_network:
+    name: "{{ app_scaffold_frontend_network }}"
+    driver: bridge
+    ipam_config:
+      - subnet: "{{ app_scaffold_frontend_subnet }}"
+  become: true
+  tags: [app-scaffold]
+
+- name: Create app backend Docker network
+  community.docker.docker_network:
+    name: "{{ app_scaffold_backend_network }}"
+    driver: bridge
+    internal: true
+    ipam_config:
+      - subnet: "{{ app_scaffold_backend_subnet }}"
+  become: true
+  tags: [app-scaffold]

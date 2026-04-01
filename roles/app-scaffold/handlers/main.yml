@@ -1,0 +1,8 @@
+---
+# app-scaffold — handlers (generic app restart)
+# Per-app roles define their own handlers. This is a fallback.
+
+- name: Restart app container
+  ansible.builtin.debug:
+    msg: "app-scaffold handler: restart delegated to per-app role handler"
+  listen: Restart app stack

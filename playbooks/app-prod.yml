@@ -1,0 +1,37 @@
+# playbooks/app-prod.yml — Deploy apps to Hetzner (app-prod server)
+#
+# Usage:
+#   ansible-playbook playbooks/app-prod.yml -e "target_env=app_prod"
+#   ansible-playbook playbooks/app-prod.yml -e "target_env=app_prod" --tags "my-app"
+
+---
+- name: Deploy App Factory Apps
+  hosts: "{{ target_env | default('app_prod') }}"
+  gather_facts: true
+
+  pre_tasks:
+    - name: Display deployment info
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          App Factory Deploy
+          Environment: {{ target_env | default('app_prod') }}
+          Target: {{ inventory_hostname }}
+          Date: {{ ansible_facts['date_time']['iso8601'] }}
+          ========================================
+      tags: [always]
+
+  roles:
+    # Phase 1 — Base infrastructure (run once, then skip via tags)
+    - role: common
+      tags: [common, phase1]
+    - role: docker
+      tags: [docker, phase1]
+    - role: app-scaffold
+      tags: [app-scaffold, phase1]
+
+    # Per-app roles are added below as apps are created.
+    # Deploy a specific app with: --tags <app-name>
+    # Example:
+    #   - role: my-app
+    #     tags: [my-app, phase3]

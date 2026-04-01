@@ -1,0 +1,68 @@
+---
+# app-factory-provision — tasks
+
+- name: Create app-factory config directory
+  ansible.builtin.file:
+    path: "{{ app_factory_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [app-factory-provision]
+
+- name: Deploy NocoDB table provisioning script
+  ansible.builtin.template:
+    src: provision-nocodb-tables.sh.j2
+    dest: "{{ app_factory_config_dir }}/provision-nocodb-tables.sh"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  become: true
+  tags: [app-factory-provision]
+
+- name: Execute NocoDB table provisioning
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: "{{ app_factory_config_dir }}/provision-nocodb-tables.sh"
+    creates: "{{ app_factory_config_dir }}/.nocodb-provision-complete"
+  become: true
+  register: af_nocodb_provision_result
+  changed_when: af_nocodb_provision_result.rc == 0
+  failed_when: af_nocodb_provision_result.rc != 0
+  when: not (common_molecule_mode | default(false))
+  tags: [app-factory-provision]
+
+- name: Display NocoDB provision summary
+  ansible.builtin.debug:
+    msg: "{{ af_nocodb_provision_result.stdout_lines }}"
+  when: af_nocodb_provision_result.stdout_lines is defined
+  tags: [app-factory-provision]
+
+- name: Deploy Qdrant provisioning script
+  ansible.builtin.template:
+    src: provision-qdrant.sh.j2
+    dest: "{{ app_factory_config_dir }}/provision-qdrant.sh"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  become: true
+  tags: [app-factory-provision]
+
+- name: Execute Qdrant provisioning
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: "{{ app_factory_config_dir }}/provision-qdrant.sh"
+    creates: "{{ app_factory_config_dir }}/.qdrant-provision-complete"
+  become: true
+  register: af_qdrant_provision_result
+  changed_when: af_qdrant_provision_result.rc == 0
+  failed_when: af_qdrant_provision_result.rc != 0
+  when: not (common_molecule_mode | default(false))
+  tags: [app-factory-provision]
+
+- name: Display Qdrant provision summary
+  ansible.builtin.debug:
+    msg: "{{ af_qdrant_provision_result.stdout_lines }}"
+  when: af_qdrant_provision_result.stdout_lines is defined
+  tags: [app-factory-provision]

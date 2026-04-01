@@ -1,0 +1,226 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# NocoDB App Factory table provisioning — idempotent
+# Creates tables: projects, commits, phase_logs, decisions, deployments, error_logs
+
+set -euo pipefail
+
+BASE_URL="{{ app_factory_nocodb_base_url }}"
+TOKEN="{{ nocodb_api_token }}"
+SENTINEL="{{ app_factory_config_dir }}/.nocodb-provision-complete"
+
+if [ -f "$SENTINEL" ]; then
+  echo "NocoDB app-factory tables already provisioned (sentinel exists). Skipping."
+  exit 0
+fi
+
+echo "[$(date)] Starting NocoDB App Factory provisioning..."
+
+# Step 1: Find or create the app-factory base
+echo "[$(date)] Looking for app-factory base..."
+BASES=$(curl -sf -H "xc-token: ${TOKEN}" "${BASE_URL}/api/v2/meta/bases/")
+BASE_ID=$(echo "$BASES" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for b in data.get('list', []):
+    if b['title'] == '{{ app_factory_nocodb_base_name }}':
+        print(b['id'])
+        break
+" 2>/dev/null || true)
+
+if [ -z "$BASE_ID" ]; then
+  echo "[$(date)] Creating app-factory base..."
+  CREATE_RESULT=$(curl -sf -X POST \
+    -H "xc-token: ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    "${BASE_URL}/api/v2/meta/bases/" \
+    -d '{"title": "{{ app_factory_nocodb_base_name }}", "type": "database"}')
+  BASE_ID=$(echo "$CREATE_RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+  echo "[$(date)] Base created: $BASE_ID"
+else
+  echo "[$(date)] Base found: $BASE_ID"
+fi
+
+# Step 2: List existing tables
+TABLES=$(curl -sf -H "xc-token: ${TOKEN}" "${BASE_URL}/api/v2/meta/bases/${BASE_ID}/tables")
+
+table_exists() {
+  echo "$TABLES" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for t in data.get('list', []):
+    if t['title'] == '$1':
+        print(t['id'])
+        break
+" 2>/dev/null || true
+}
+
+# Step 3: Create projects table
+PROJECTS_ID=$(table_exists "projects")
+if [ -z "$PROJECTS_ID" ]; then
+  echo "[$(date)] Creating projects table..."
+  RESULT=$(curl -sf -X POST \
+    -H "xc-token: ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    "${BASE_URL}/api/v2/meta/bases/${BASE_ID}/tables" \
+    -d '{
+      "title": "projects",
+      "columns": [
+        {"title": "name", "uidt": "SingleLineText"},
+        {"title": "repo", "uidt": "SingleLineText"},
+        {"title": "stack", "uidt": "SingleLineText"},
+        {"title": "plane_id", "uidt": "SingleLineText"},
+        {"title": "status", "uidt": "SingleSelect", "dtxp": "intake,design,build,ci,ship,operate,learn,complete"},
+        {"title": "started_at", "uidt": "DateTime"},
+        {"title": "phases_completed", "uidt": "Number"},
+        {"title": "total_duration", "uidt": "Number"},
+        {"title": "total_commits", "uidt": "Number"},
+        {"title": "last_rex_at", "uidt": "DateTime"}
+      ]
+    }')
+  PROJECTS_ID=$(echo "$RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+  echo "[$(date)] projects table created: $PROJECTS_ID"
+else
+  echo "[$(date)] projects table exists: $PROJECTS_ID"
+fi
+
+# Step 4: Create commits table
+COMMITS_ID=$(table_exists "commits")
+if [ -z "$COMMITS_ID" ]; then
+  echo "[$(date)] Creating commits table..."
+  RESULT=$(curl -sf -X POST \
+    -H "xc-token: ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    "${BASE_URL}/api/v2/meta/bases/${BASE_ID}/tables" \
+    -d '{
+      "title": "commits",
+      "columns": [
+        {"title": "hash", "uidt": "SingleLineText"},
+        {"title": "repo", "uidt": "SingleLineText"},
+        {"title": "message", "uidt": "LongText"},
+        {"title": "plane_work_item", "uidt": "SingleLineText"},
+        {"title": "files_changed", "uidt": "Number"},
+        {"title": "timestamp", "uidt": "DateTime"}
+      ]
+    }')
+  COMMITS_ID=$(echo "$RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+  echo "[$(date)] commits table created: $COMMITS_ID"
+else
+  echo "[$(date)] commits table exists: $COMMITS_ID"
+fi
+
+# Step 5: Create phase_logs table
+PHASE_LOGS_ID=$(table_exists "phase_logs")
+if [ -z "$PHASE_LOGS_ID" ]; then
+  echo "[$(date)] Creating phase_logs table..."
+  RESULT=$(curl -sf -X POST \
+    -H "xc-token: ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    "${BASE_URL}/api/v2/meta/bases/${BASE_ID}/tables" \
+    -d '{
+      "title": "phase_logs",
+      "columns": [
+        {"title": "project", "uidt": "SingleLineText"},
+        {"title": "phase", "uidt": "Number"},
+        {"title": "phase_name", "uidt": "SingleLineText"},
+        {"title": "duration_min", "uidt": "Number"},
+        {"title": "files_count", "uidt": "Number"},
+        {"title": "decisions_count", "uidt": "Number"},
+        {"title": "timestamp", "uidt": "DateTime"}
+      ]
+    }')
+  PHASE_LOGS_ID=$(echo "$RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+  echo "[$(date)] phase_logs table created: $PHASE_LOGS_ID"
+else
+  echo "[$(date)] phase_logs table exists: $PHASE_LOGS_ID"
+fi
+
+# Step 6: Create decisions table
+DECISIONS_ID=$(table_exists "decisions")
+if [ -z "$DECISIONS_ID" ]; then
+  echo "[$(date)] Creating decisions table..."
+  RESULT=$(curl -sf -X POST \
+    -H "xc-token: ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    "${BASE_URL}/api/v2/meta/bases/${BASE_ID}/tables" \
+    -d '{
+      "title": "decisions",
+      "columns": [
+        {"title": "project", "uidt": "SingleLineText"},
+        {"title": "phase", "uidt": "Number"},
+        {"title": "context", "uidt": "LongText"},
+        {"title": "options", "uidt": "JSON"},
+        {"title": "choice", "uidt": "SingleLineText"},
+        {"title": "reason", "uidt": "LongText"},
+        {"title": "timestamp", "uidt": "DateTime"}
+      ]
+    }')
+  DECISIONS_ID=$(echo "$RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+  echo "[$(date)] decisions table created: $DECISIONS_ID"
+else
+  echo "[$(date)] decisions table exists: $DECISIONS_ID"
+fi
+
+# Step 7: Create deployments table
+DEPLOYMENTS_ID=$(table_exists "deployments")
+if [ -z "$DEPLOYMENTS_ID" ]; then
+  echo "[$(date)] Creating deployments table..."
+  RESULT=$(curl -sf -X POST \
+    -H "xc-token: ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    "${BASE_URL}/api/v2/meta/bases/${BASE_ID}/tables" \
+    -d '{
+      "title": "deployments",
+      "columns": [
+        {"title": "repo", "uidt": "SingleLineText"},
+        {"title": "version", "uidt": "SingleLineText"},
+        {"title": "env", "uidt": "SingleLineText"},
+        {"title": "duration_sec", "uidt": "Number"},
+        {"title": "smoke_result", "uidt": "SingleSelect", "dtxp": "pass,fail,rollback"},
+        {"title": "ansible_rc", "uidt": "Number"},
+        {"title": "timestamp", "uidt": "DateTime"}
+      ]
+    }')
+  DEPLOYMENTS_ID=$(echo "$RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+  echo "[$(date)] deployments table created: $DEPLOYMENTS_ID"
+else
+  echo "[$(date)] deployments table exists: $DEPLOYMENTS_ID"
+fi
+
+# Step 8: Create error_logs table
+ERROR_LOGS_ID=$(table_exists "error_logs")
+if [ -z "$ERROR_LOGS_ID" ]; then
+  echo "[$(date)] Creating error_logs table..."
+  RESULT=$(curl -sf -X POST \
+    -H "xc-token: ${TOKEN}" \
+    -H "Content-Type: application/json" \
+    "${BASE_URL}/api/v2/meta/bases/${BASE_ID}/tables" \
+    -d '{
+      "title": "error_logs",
+      "columns": [
+        {"title": "workflow", "uidt": "SingleLineText"},
+        {"title": "error_message", "uidt": "LongText"},
+        {"title": "error_node", "uidt": "SingleLineText"},
+        {"title": "project", "uidt": "SingleLineText"},
+        {"title": "timestamp", "uidt": "DateTime"},
+        {"title": "resolved_at", "uidt": "DateTime"}
+      ]
+    }')
+  ERROR_LOGS_ID=$(echo "$RESULT" | python3 -c "import sys, json; print(json.load(sys.stdin)['id'])")
+  echo "[$(date)] error_logs table created: $ERROR_LOGS_ID"
+else
+  echo "[$(date)] error_logs table exists: $ERROR_LOGS_ID"
+fi
+
+# Output table IDs for Ansible to capture
+echo "NOCODB_AF_BASE_ID=${BASE_ID}"
+echo "NOCODB_PROJECTS_TABLE_ID=${PROJECTS_ID}"
+echo "NOCODB_COMMITS_TABLE_ID=${COMMITS_ID}"
+echo "NOCODB_PHASE_LOGS_TABLE_ID=${PHASE_LOGS_ID}"
+echo "NOCODB_DECISIONS_TABLE_ID=${DECISIONS_ID}"
+echo "NOCODB_DEPLOYMENTS_TABLE_ID=${DEPLOYMENTS_ID}"
+echo "NOCODB_ERROR_LOGS_TABLE_ID=${ERROR_LOGS_ID}"
+
+# Write sentinel
+touch "$SENTINEL"
+echo "[$(date)] NocoDB App Factory provisioning complete."

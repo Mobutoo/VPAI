@@ -1,0 +1,14 @@
+---
+# app-factory-provision — defaults
+app_factory_config_dir: "/opt/{{ project_name }}/configs/app-factory"
+
+# NocoDB API (uses existing deployed instance)
+app_factory_nocodb_base_url: "https://{{ nocodb_subdomain }}.{{ domain_name }}"
+app_factory_nocodb_base_name: "app-factory"
+
+# Qdrant API (uses existing deployed instance)
+app_factory_qdrant_base_url: "https://{{ qdrant_subdomain }}.{{ domain_name }}"
+app_factory_qdrant_rex_collection: "app-factory-rex"
+app_factory_qdrant_patterns_collection: "app-factory-patterns"
+app_factory_qdrant_vector_size: 1536
+app_factory_qdrant_distance: "Cosine"

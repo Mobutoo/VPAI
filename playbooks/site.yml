@@ -80,18 +80,10 @@
       tags: [openclaw, phase3]
     - role: palais
       tags: [palais, phase3]
-    - role: firefly
-      tags: [firefly, phase3]
-    - role: zimboo
-      tags: [zimboo, phase3]
-    - role: mealie
-      tags: [mealie, phase3]
-    - role: grocy
-      tags: [grocy, phase3]
-    - role: koodia
-      tags: [koodia, phase3]
     - role: kitsu
       tags: [kitsu, phase3]
+    - role: flash-suite
+      tags: [flash-suite, phase3]
 
     # Phase 4 — Observabilité
     - role: monitoring
@@ -114,6 +106,8 @@
       tags: [kitsu-provision, phase4]
     - role: content-factory-provision
       tags: [content-factory-provision, phase4]
+    - role: app-factory-provision
+      tags: [app-factory-provision, phase4]
 
     # Phase 5 — Résilience
     - role: backup-config

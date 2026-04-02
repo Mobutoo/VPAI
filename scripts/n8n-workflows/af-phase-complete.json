@@ -1,0 +1,686 @@
+{
+  "name": "af-phase-complete",
+  "nodes": [
+    {
+      "id": "webhook-phase",
+      "name": "Webhook Phase Complete",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
+      "webhookId": "af-phase-complete",
+      "parameters": {
+        "path": "af-phase-complete",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate-secret",
+      "name": "Validate AF Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-secret",
+              "leftValue": "={{ $json.headers['x-af-secret'] }}",
+              "rightValue": "={{ $env.AF_WEBHOOK_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-403",
+      "name": "Respond 403",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        690,
+        480
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'Forbidden', message: 'Invalid AF secret' }) }}",
+        "options": {
+          "responseCode": 403
+        }
+      }
+    },
+    {
+      "id": "parse-phase",
+      "name": "Parse Phase Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\nconst required = ['project_name', 'phase_number', 'phase_name', 'summary'];\nconst missing = required.filter(f => !body[f] && body[f] !== 0);\nif (missing.length > 0) {\n  throw new Error(`Missing required fields: ${missing.join(', ')}`);\n}\n\nreturn [{\n  json: {\n    project_name: body.project_name,\n    phase_number: body.phase_number,\n    phase_name: body.phase_name,\n    summary: body.summary,\n    duration_min: body.duration_min || 0,\n    files_changed: body.files_changed || 0,\n    decisions: body.decisions || [],\n    timestamp: new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "nocodb-insert-phase-log",
+      "name": "NocoDB Insert Phase Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1350,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://javisi_nocodb:8080/api/v2/tables/mx5x4nb739fjld1/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_name: $json.project_name, phase_number: $json.phase_number, phase_name: $json.phase_name, summary: $json.summary, duration_min: $json.duration_min, files_changed: $json.files_changed, timestamp: $json.timestamp }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "split-decisions",
+      "name": "Split Decisions",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2450,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const parsed = $('Parse Phase Data').first().json;\nconst decisions = parsed.decisions || [];\n\nif (decisions.length === 0) {\n  return [{ json: { _skip_decisions: true, project_name: parsed.project_name, phase_number: parsed.phase_number, phase_name: parsed.phase_name, summary: parsed.summary } }];\n}\n\nreturn decisions.map((d, idx) => ({\n  json: {\n    _skip_decisions: false,\n    project_name: parsed.project_name,\n    phase_number: parsed.phase_number,\n    phase_name: parsed.phase_name,\n    decision_index: idx,\n    decision_title: d.title || d.name || `Decision ${idx + 1}`,\n    decision_rationale: d.rationale || d.description || '',\n    decision_category: d.category || 'general',\n    timestamp: parsed.timestamp\n  }\n}));"
+      }
+    },
+    {
+      "id": "check-has-decisions",
+      "name": "Has Decisions?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2670,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-decisions",
+              "leftValue": "={{ $json._skip_decisions }}",
+              "rightValue": "={{ false }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "nocodb-insert-decision",
+      "name": "NocoDB Insert Decision",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2890,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://javisi_nocodb:8080/api/v2/tables/m9spg53b1co2zkq/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_name: $json.project_name, phase_number: $json.phase_number, phase_name: $json.phase_name, title: $json.decision_title, rationale: $json.decision_rationale, category: $json.decision_category, timestamp: $json.timestamp }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "call-rex-indexer",
+      "name": "Call REX Indexer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3110,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL || 'http://javisi_n8n:5678' }}/webhook/af-rex-indexer",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-af-secret",
+              "value": "={{ $env.AF_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ source: 'phase-complete', project_name: $('Parse Phase Data').first().json.project_name, phase_number: $('Parse Phase Data').first().json.phase_number, phase_name: $('Parse Phase Data').first().json.phase_name, text: 'Phase ' + $('Parse Phase Data').first().json.phase_number + ' (' + $('Parse Phase Data').first().json.phase_name + ') for ' + $('Parse Phase Data').first().json.project_name + ': ' + $('Parse Phase Data').first().json.summary, metadata: { duration_min: $('Parse Phase Data').first().json.duration_min, files_changed: $('Parse Phase Data').first().json.files_changed } }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "no-op-skip",
+      "name": "No Decisions",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        2890,
+        400
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "respond-ok",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        3330,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, project_updated: true, status: $('Compute Project Status').first().json.status, phases_completed: $('Compute Project Status').first().json.phases_completed, rex_indexed: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        250,
+        600
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "error-nocodb-log",
+      "name": "NocoDB Log Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        470,
+        600
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://javisi_nocodb:8080/api/v2/tables/m4dnzmgvhmwymy3/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workflow: 'af-phase-complete', error_message: $json.execution?.error?.message || 'Unknown error', error_node: $json.execution?.lastNodeExecuted || 'unknown', timestamp: new Date().toISOString(), execution_id: $json.execution?.id || null }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "error-telegram",
+      "name": "Telegram Alert Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        690,
+        600
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: '\\u26a0\\ufe0f AF-PHASE-COMPLETE ERROR\\n\\nNode: ' + ($json.execution?.lastNodeExecuted || 'unknown') + '\\nError: ' + ($json.execution?.error?.message || 'Unknown error') + '\\nTime: ' + new Date().toISOString(), parse_mode: 'HTML' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "check-duplicate",
+      "name": "Check Duplicate Phase Log",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        910,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://javisi_nocodb:8080/api/v2/tables/mx5x4nb739fjld1/records?where=(project_name,eq,{{ encodeURIComponent($json.project_name) }})~and(phase_number,eq,{{ $json.phase_number }})&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "is-new-phase",
+      "name": "Is New Phase?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1130,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-new-phase",
+              "leftValue": "={{ $json.pageInfo.totalRows }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fetch-current-status",
+      "name": "Fetch Current Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1570,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://javisi_nocodb:8080/api/v2/tables/mvhxrbdyetpoyjb/records?where=(name,eq,{{ encodeURIComponent($('Parse Phase Data').first().json.project_name) }})&fields=status&limit=1",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "count-phase-logs",
+      "name": "Count Phase Logs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1790,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=http://javisi_nocodb:8080/api/v2/tables/mx5x4nb739fjld1/records?where=(project_name,eq,{{ encodeURIComponent($('Parse Phase Data').first().json.project_name) }})&fields=duration_min&limit=1000",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "compute-status",
+      "name": "Compute Project Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2010,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const countResult = $('Count Phase Logs').first().json;\nconst records = countResult.list || [];\nconst phases_completed = countResult.pageInfo?.totalRows || 0;\nconst total_duration = records.reduce((sum, r) => sum + (r.duration_min || 0), 0);\n\nconst statusResult = $('Fetch Current Status').first().json;\nconst current_status = (statusResult.list && statusResult.list[0]?.status) || 'intake';\n\nlet new_status = current_status;\nif (current_status === 'intake' || current_status === 'design') {\n  new_status = 'building';\n}\n\nreturn [{\n  json: {\n    project_name: $('Parse Phase Data').first().json.project_name,\n    phases_completed,\n    total_duration,\n    status: new_status\n  }\n}];"
+      }
+    },
+    {
+      "id": "nocodb-update-project",
+      "name": "NocoDB Update Project",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2230,
+        300
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://javisi_nocodb:8080/api/v2/tables/mvhxrbdyetpoyjb/records?where=(name,eq,{{ encodeURIComponent($json.project_name) }})",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phases_completed: $json.phases_completed, total_duration: $json.total_duration, status: $json.status }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Phase Complete": {
+      "main": [
+        [
+          {
+            "node": "Validate AF Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate AF Secret": {
+      "main": [
+        [
+          {
+            "node": "Parse Phase Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 403",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Phase Data": {
+      "main": [
+        [
+          {
+            "node": "Check Duplicate Phase Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Duplicate Phase Log": {
+      "main": [
+        [
+          {
+            "node": "Is New Phase?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New Phase?": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Insert Phase Log",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Fetch Current Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Insert Phase Log": {
+      "main": [
+        [
+          {
+            "node": "Fetch Current Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Current Status": {
+      "main": [
+        [
+          {
+            "node": "Count Phase Logs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Phase Logs": {
+      "main": [
+        [
+          {
+            "node": "Compute Project Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Project Status": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Update Project",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Update Project": {
+      "main": [
+        [
+          {
+            "node": "Split Decisions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Decisions": {
+      "main": [
+        [
+          {
+            "node": "Has Decisions?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Decisions?": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Insert Decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Decisions",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Insert Decision": {
+      "main": [
+        [
+          {
+            "node": "Call REX Indexer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Decisions": {
+      "main": [
+        [
+          {
+            "node": "Call REX Indexer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call REX Indexer": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Log Error": {
+      "main": [
+        [
+          {
+            "node": "Telegram Alert Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

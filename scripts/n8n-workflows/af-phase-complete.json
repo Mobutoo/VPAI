@@ -107,7 +107,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_name: $json.project_name, phase_number: $json.phase_number, phase_name: $json.phase_name, summary: $json.summary, duration_min: $json.duration_min, files_changed: $json.files_changed, timestamp: $json.timestamp }) }}",
+        "jsonBody": "={{ JSON.stringify({ project: $('Parse Phase Data').first().json.project_name, phase: $('Parse Phase Data').first().json.phase_number, phase_name: $('Parse Phase Data').first().json.phase_name, duration_min: $('Parse Phase Data').first().json.duration_min, files_count: $('Parse Phase Data').first().json.files_changed, decisions_count: ($('Parse Phase Data').first().json.decisions || []).length, timestamp: $('Parse Phase Data').first().json.timestamp }) }}",
         "options": {}
       }
     },
@@ -183,7 +183,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ project_name: $json.project_name, phase_number: $json.phase_number, phase_name: $json.phase_name, title: $json.decision_title, rationale: $json.decision_rationale, category: $json.decision_category, timestamp: $json.timestamp }) }}",
+        "jsonBody": "={{ JSON.stringify({ project: $json.project_name, phase: $json.phase_number, choice: $json.decision_title, reason: $json.decision_rationale, context: $json.decision_category, timestamp: $json.timestamp }) }}",
         "options": {}
       }
     },
@@ -319,7 +319,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "=http://javisi_nocodb:8080/api/v2/tables/mx5x4nb739fjld1/records?where=(project_name,eq,{{ encodeURIComponent($json.project_name) }})~and(phase_number,eq,{{ $json.phase_number }})&limit=1",
+        "url": "=http://javisi_nocodb:8080/api/v2/tables/mx5x4nb739fjld1/records?where=(project,eq,{{ encodeURIComponent($('Parse Phase Data').first().json.project_name) }})~and(phase,eq,{{ $('Parse Phase Data').first().json.phase_number }})&limit=1",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -379,7 +379,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "=http://javisi_nocodb:8080/api/v2/tables/mvhxrbdyetpoyjb/records?where=(name,eq,{{ encodeURIComponent($('Parse Phase Data').first().json.project_name) }})&fields=status&limit=1",
+        "url": "=http://javisi_nocodb:8080/api/v2/tables/mvhxrbdyetpoyjb/records?where=(name,eq,{{ encodeURIComponent($('Parse Phase Data').first().json.project_name) }})&fields=Id,status&limit=1",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -407,7 +407,7 @@
       ],
       "parameters": {
         "method": "GET",
-        "url": "=http://javisi_nocodb:8080/api/v2/tables/mx5x4nb739fjld1/records?where=(project_name,eq,{{ encodeURIComponent($('Parse Phase Data').first().json.project_name) }})&fields=duration_min&limit=1000",
+        "url": "=http://javisi_nocodb:8080/api/v2/tables/mx5x4nb739fjld1/records?where=(project,eq,{{ encodeURIComponent($('Parse Phase Data').first().json.project_name) }})&fields=duration_min&limit=1000",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -434,7 +434,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "const countResult = $('Count Phase Logs').first().json;\nconst records = countResult.list || [];\nconst phases_completed = countResult.pageInfo?.totalRows || 0;\nconst total_duration = records.reduce((sum, r) => sum + (r.duration_min || 0), 0);\n\nconst statusResult = $('Fetch Current Status').first().json;\nconst current_status = (statusResult.list && statusResult.list[0]?.status) || 'intake';\n\nlet new_status = current_status;\nif (current_status === 'intake' || current_status === 'design') {\n  new_status = 'building';\n}\n\nreturn [{\n  json: {\n    project_name: $('Parse Phase Data').first().json.project_name,\n    phases_completed,\n    total_duration,\n    status: new_status\n  }\n}];"
+        "jsCode": "const countResult = $('Count Phase Logs').first().json;\nconst records = countResult.list || [];\nconst phases_completed = countResult.pageInfo?.totalRows || 0;\nconst total_duration = records.reduce((sum, r) => sum + (r.duration_min || 0), 0);\n\nconst statusResult = $('Fetch Current Status').first().json;\nconst current_status = (statusResult.list && statusResult.list[0]?.status) || 'intake';\n\nlet new_status = current_status;\nif (current_status === 'intake' || current_status === 'design') {\n  new_status = 'build';\n}\n\nreturn [{\n  json: {\n    project_name: $('Parse Phase Data').first().json.project_name,\n    phases_completed,\n    total_duration,\n    status: new_status\n  }\n}];"
       }
     },
     {
@@ -448,7 +448,7 @@
       ],
       "parameters": {
         "method": "PATCH",
-        "url": "=http://javisi_nocodb:8080/api/v2/tables/mvhxrbdyetpoyjb/records?where=(name,eq,{{ encodeURIComponent($json.project_name) }})",
+        "url": "http://javisi_nocodb:8080/api/v2/tables/mvhxrbdyetpoyjb/records",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -464,7 +464,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ phases_completed: $json.phases_completed, total_duration: $json.total_duration, status: $json.status }) }}",
+        "jsonBody": "={{ JSON.stringify({ Id: $('Fetch Current Status').first().json.list[0].Id, phases_completed: $json.phases_completed, total_duration: $json.total_duration, status: $json.status }) }}",
         "options": {}
       }
     }

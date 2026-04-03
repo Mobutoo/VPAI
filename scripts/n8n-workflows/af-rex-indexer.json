@@ -6,21 +6,28 @@
       "name": "Webhook REX Indexer",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [250, 300],
+      "position": [
+        250,
+        300
+      ],
       "webhookId": "af-rex-indexer",
       "parameters": {
         "path": "af-rex-indexer",
         "httpMethod": "POST",
         "responseMode": "responseNode",
         "options": {}
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "id": "validate-secret",
       "name": "Validate AF Secret",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [470, 300],
+      "position": [
+        470,
+        300
+      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -49,7 +56,10 @@
       "name": "Respond 403",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [690, 480],
+      "position": [
+        690,
+        480
+      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify({ error: 'Forbidden', message: 'Invalid AF secret' }) }}",
@@ -63,7 +73,10 @@
       "name": "Prepare Embedding Text",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [690, 300],
+      "position": [
+        690,
+        300
+      ],
       "parameters": {
         "jsCode": "const body = $input.first().json.body;\n\nif (!body.text) {\n  throw new Error('Missing required field: text');\n}\n\n// Build a rich text document for embedding\nconst parts = [];\n\nif (body.source) parts.push(`Source: ${body.source}`);\nif (body.project_name) parts.push(`Project: ${body.project_name}`);\nif (body.phase_number !== undefined) parts.push(`Phase: ${body.phase_number}`);\nif (body.phase_name) parts.push(`Phase Name: ${body.phase_name}`);\n\nparts.push('');\nparts.push(body.text);\n\n// Generate a deterministic point ID from content\nconst hashCode = (str) => {\n  let hash = 0;\n  for (let i = 0; i < str.length; i++) {\n    const char = str.charCodeAt(i);\n    hash = ((hash << 5) - hash) + char;\n    hash |= 0;\n  }\n  return Math.abs(hash);\n};\n\nconst pointId = hashCode(body.project_name + '-' + body.phase_number + '-' + body.source + '-' + Date.now());\n\nreturn [{\n  json: {\n    embedding_text: parts.join('\\n'),\n    point_id: pointId,\n    payload: {\n      source: body.source || 'unknown',\n      project_name: body.project_name || 'unknown',\n      phase_number: body.phase_number || null,\n      phase_name: body.phase_name || null,\n      text: body.text,\n      metadata: body.metadata || {},\n      indexed_at: new Date().toISOString()\n    }\n  }\n}];"
       }
@@ -73,7 +86,10 @@
       "name": "LiteLLM Embed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [910, 300],
+      "position": [
+        910,
+        300
+      ],
       "parameters": {
         "method": "POST",
         "url": "http://javisi_litellm:4000/embeddings",
@@ -103,9 +119,12 @@
       "name": "Prepare Qdrant Upsert",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1130, 300],
+      "position": [
+        1130,
+        300
+      ],
       "parameters": {
-        "jsCode": "const embedResponse = $input.first().json;\nconst prevData = $('Prepare Embedding Text').first().json;\n\n// Extract the embedding vector from LiteLLM response\nconst vector = embedResponse.data?.[0]?.embedding;\nif (!vector || !Array.isArray(vector)) {\n  throw new Error('Failed to get embedding vector from LiteLLM response');\n}\n\nreturn [{\n  json: {\n    points: [\n      {\n        id: prevData.point_id,\n        vector: vector,\n        payload: prevData.payload\n      }\n    ]\n  }\n}];"
+        "jsCode": "const embedResponse = $input.first().json;\nconst prevData = $('Prepare Embedding Text').first().json;\n\n// Extract the embedding vector from LiteLLM response\nconst vector = (embedResponse.data && embedResponse.data.length > 0) ? embedResponse.data[0].embedding : null;\nif (!vector || !Array.isArray(vector)) {\n  throw new Error('Failed to get embedding vector from LiteLLM response');\n}\n\nreturn [{\n  json: {\n    points: [\n      {\n        id: prevData.point_id,\n        vector: vector,\n        payload: prevData.payload\n      }\n    ]\n  }\n}];"
       }
     },
     {
@@ -113,7 +132,10 @@
       "name": "Qdrant Upsert",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1350, 300],
+      "position": [
+        1350,
+        300
+      ],
       "parameters": {
         "method": "PUT",
         "url": "http://javisi_qdrant:6333/collections/app-factory-rex/points",
@@ -143,7 +165,10 @@
       "name": "Respond OK",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1570, 300],
+      "position": [
+        1570,
+        300
+      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ JSON.stringify({ ok: true, indexed: true, collection: 'app-factory-rex', point_id: $('Prepare Embedding Text').first().json.point_id }) }}",
@@ -157,7 +182,10 @@
       "name": "Error Trigger",
       "type": "n8n-nodes-base.errorTrigger",
       "typeVersion": 1,
-      "position": [250, 600],
+      "position": [
+        250,
+        600
+      ],
       "parameters": {}
     },
     {
@@ -165,7 +193,10 @@
       "name": "NocoDB Log Error",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [470, 600],
+      "position": [
+        470,
+        600
+      ],
       "parameters": {
         "method": "POST",
         "url": "http://javisi_nocodb:8080/api/v2/tables/m4dnzmgvhmwymy3/records",
@@ -184,7 +215,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ workflow: 'af-rex-indexer', error_message: $json.execution?.error?.message || 'Unknown error', error_node: $json.execution?.lastNodeExecuted || 'unknown', timestamp: new Date().toISOString(), execution_id: $json.execution?.id || null }) }}",
+        "jsonBody": "={{ JSON.stringify({ workflow: 'af-rex-indexer', error_message: ($json.execution && $json.execution.error && $json.execution.error.message) || 'Unknown error', error_node: ($json.execution && $json.execution.lastNodeExecuted) || 'unknown', timestamp: new Date().toISOString(), execution_id: ($json.execution && $json.execution.id) || null }) }}",
         "options": {}
       }
     },
@@ -193,13 +224,16 @@
       "name": "Telegram Alert Error",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [690, 600],
+      "position": [
+        690,
+        600
+      ],
       "parameters": {
         "method": "POST",
         "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: '\\u26a0\\ufe0f AF-REX-INDEXER ERROR\\n\\nNode: ' + ($json.execution?.lastNodeExecuted || 'unknown') + '\\nError: ' + ($json.execution?.error?.message || 'Unknown error') + '\\nTime: ' + new Date().toISOString(), parse_mode: 'HTML' }) }}",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: '\\u26a0\\ufe0f AF-REX-INDEXER ERROR\\n\\nNode: ' + (($json.execution && $json.execution.lastNodeExecuted) || 'unknown') + '\\nError: ' + (($json.execution && $json.execution.error && $json.execution.error.message) || 'Unknown error') + '\\nTime: ' + new Date().toISOString(), parse_mode: 'HTML' }) }}",
         "options": {}
       }
     }

@@ -1,0 +1,308 @@
+{
+  "name": "af-rex-indexer",
+  "nodes": [
+    {
+      "id": "webhook-rex",
+      "name": "Webhook REX Indexer",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "af-rex-indexer",
+      "parameters": {
+        "path": "af-rex-indexer",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate-secret",
+      "name": "Validate AF Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [470, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-secret",
+              "leftValue": "={{ $json.headers['x-af-secret'] }}",
+              "rightValue": "={{ $env.AF_WEBHOOK_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-403",
+      "name": "Respond 403",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [690, 480],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'Forbidden', message: 'Invalid AF secret' }) }}",
+        "options": {
+          "responseCode": 403
+        }
+      }
+    },
+    {
+      "id": "prepare-embedding",
+      "name": "Prepare Embedding Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300],
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\nif (!body.text) {\n  throw new Error('Missing required field: text');\n}\n\n// Build a rich text document for embedding\nconst parts = [];\n\nif (body.source) parts.push(`Source: ${body.source}`);\nif (body.project_name) parts.push(`Project: ${body.project_name}`);\nif (body.phase_number !== undefined) parts.push(`Phase: ${body.phase_number}`);\nif (body.phase_name) parts.push(`Phase Name: ${body.phase_name}`);\n\nparts.push('');\nparts.push(body.text);\n\n// Generate a deterministic point ID from content\nconst hashCode = (str) => {\n  let hash = 0;\n  for (let i = 0; i < str.length; i++) {\n    const char = str.charCodeAt(i);\n    hash = ((hash << 5) - hash) + char;\n    hash |= 0;\n  }\n  return Math.abs(hash);\n};\n\nconst pointId = hashCode(body.project_name + '-' + body.phase_number + '-' + body.source + '-' + Date.now());\n\nreturn [{\n  json: {\n    embedding_text: parts.join('\\n'),\n    point_id: pointId,\n    payload: {\n      source: body.source || 'unknown',\n      project_name: body.project_name || 'unknown',\n      phase_number: body.phase_number || null,\n      phase_name: body.phase_name || null,\n      text: body.text,\n      metadata: body.metadata || {},\n      indexed_at: new Date().toISOString()\n    }\n  }\n}];"
+      }
+    },
+    {
+      "id": "litellm-embed",
+      "name": "LiteLLM Embed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://javisi_litellm:4000/embeddings",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.LITELLM_MASTER_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'embedding', input: $json.embedding_text }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "prepare-qdrant-upsert",
+      "name": "Prepare Qdrant Upsert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 300],
+      "parameters": {
+        "jsCode": "const embedResponse = $input.first().json;\nconst prevData = $('Prepare Embedding Text').first().json;\n\n// Extract the embedding vector from LiteLLM response\nconst vector = embedResponse.data?.[0]?.embedding;\nif (!vector || !Array.isArray(vector)) {\n  throw new Error('Failed to get embedding vector from LiteLLM response');\n}\n\nreturn [{\n  json: {\n    points: [\n      {\n        id: prevData.point_id,\n        vector: vector,\n        payload: prevData.payload\n      }\n    ]\n  }\n}];"
+      }
+    },
+    {
+      "id": "qdrant-upsert",
+      "name": "Qdrant Upsert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1350, 300],
+      "parameters": {
+        "method": "PUT",
+        "url": "http://javisi_qdrant:6333/collections/app-factory-rex/points",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "api-key",
+              "value": "={{ $env.QDRANT_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ points: $json.points }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      }
+    },
+    {
+      "id": "respond-ok",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1570, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, indexed: true, collection: 'app-factory-rex', point_id: $('Prepare Embedding Text').first().json.point_id }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [250, 600],
+      "parameters": {}
+    },
+    {
+      "id": "error-nocodb-log",
+      "name": "NocoDB Log Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 600],
+      "parameters": {
+        "method": "POST",
+        "url": "http://javisi_nocodb:8080/api/v2/tables/m4dnzmgvhmwymy3/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workflow: 'af-rex-indexer', error_message: $json.execution?.error?.message || 'Unknown error', error_node: $json.execution?.lastNodeExecuted || 'unknown', timestamp: new Date().toISOString(), execution_id: $json.execution?.id || null }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "error-telegram",
+      "name": "Telegram Alert Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 600],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: '\\u26a0\\ufe0f AF-REX-INDEXER ERROR\\n\\nNode: ' + ($json.execution?.lastNodeExecuted || 'unknown') + '\\nError: ' + ($json.execution?.error?.message || 'Unknown error') + '\\nTime: ' + new Date().toISOString(), parse_mode: 'HTML' }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook REX Indexer": {
+      "main": [
+        [
+          {
+            "node": "Validate AF Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate AF Secret": {
+      "main": [
+        [
+          {
+            "node": "Prepare Embedding Text",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 403",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Embedding Text": {
+      "main": [
+        [
+          {
+            "node": "LiteLLM Embed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LiteLLM Embed": {
+      "main": [
+        [
+          {
+            "node": "Prepare Qdrant Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Qdrant Upsert": {
+      "main": [
+        [
+          {
+            "node": "Qdrant Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Qdrant Upsert": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Log Error": {
+      "main": [
+        [
+          {
+            "node": "Telegram Alert Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": true
+}

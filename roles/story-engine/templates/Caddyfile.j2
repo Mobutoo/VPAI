@@ -1,14 +1,23 @@
 # {{ ansible_managed }}
 # StoryEngine — Caddy reverse proxy
 
+{
+	servers {
+		protocols h1 h2
+	}
+}
+
 {{ story_engine_domain }} {
 	# API — forward /api/* to FastAPI (routes already include /api/v1 prefix)
 	handle /api/* {
 		reverse_proxy api:8000
 	}
 
-	# Collab WebSocket — proxy to Hocuspocus
-	handle /collab/* {
+	# Collab WebSocket — proxy to Hocuspocus (handle_path strips /collab prefix)
+	handle_path /collab/* {
+		reverse_proxy collab:1234
+	}
+	handle /collab {
 		reverse_proxy collab:1234
 	}
 

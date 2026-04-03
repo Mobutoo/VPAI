@@ -1,0 +1,107 @@
+---
+# story-engine — tasks
+# Deploys StoryEngine stack on dedicated Hetzner server.
+# Clones repo, builds Docker images, runs docker compose.
+
+- name: Create base directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  loop:
+    - "{{ story_engine_base_dir }}"
+    - "{{ story_engine_config_dir }}"
+    - "{{ story_engine_data_dir }}"
+    - "{{ story_engine_data_dir }}/postgres"
+    - "{{ story_engine_data_dir }}/redis"
+    - "{{ story_engine_data_dir }}/qdrant"
+    - "{{ story_engine_data_dir }}/caddy_data"
+    - "{{ story_engine_data_dir }}/caddy_config"
+  tags: [story-engine]
+
+- name: Clone StoryEngine repository
+  ansible.builtin.git:
+    repo: "{{ story_engine_repo_url }}"
+    dest: "{{ story_engine_src_dir }}"
+    version: "{{ story_engine_repo_branch }}"
+    force: true
+  become: true
+  register: _story_engine_git
+  tags: [story-engine]
+
+- name: Deploy API environment file
+  ansible.builtin.template:
+    src: story-engine-api.env.j2
+    dest: "{{ story_engine_config_dir }}/api.env"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  notify: Recreate story-engine stack
+  tags: [story-engine]
+
+- name: Deploy collab environment file
+  ansible.builtin.template:
+    src: story-engine-collab.env.j2
+    dest: "{{ story_engine_config_dir }}/collab.env"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  notify: Recreate story-engine stack
+  tags: [story-engine]
+
+- name: Deploy web environment file
+  ansible.builtin.template:
+    src: story-engine-web.env.j2
+    dest: "{{ story_engine_config_dir }}/web.env"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  notify: Recreate story-engine stack
+  tags: [story-engine]
+
+- name: Deploy Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ story_engine_config_dir }}/Caddyfile"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Recreate story-engine stack
+  tags: [story-engine]
+
+- name: Deploy docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ story_engine_base_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Recreate story-engine stack
+  tags: [story-engine]
+
+- name: Build and start StoryEngine stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ story_engine_base_dir }}"
+    build: always
+    state: present
+    pull: always
+  become: true
+  register: _story_engine_compose
+  tags: [story-engine]
+
+- name: Run database migrations
+  community.docker.docker_container_exec:
+    container: story-engine-api
+    command: alembic upgrade head
+  become: true
+  when: _story_engine_git.changed or _story_engine_compose.changed
+  changed_when: true
+  tags: [story-engine]

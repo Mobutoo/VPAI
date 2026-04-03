@@ -1,0 +1,166 @@
+# {{ ansible_managed }}
+# StoryEngine — Full stack docker-compose
+# Dedicated Hetzner deployment
+
+services:
+  postgres:
+    image: {{ story_engine_pg_image }}
+    container_name: story-engine-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: {{ story_engine_db_name }}
+      POSTGRES_USER: {{ story_engine_db_user }}
+      POSTGRES_PASSWORD: {{ story_engine_db_password }}
+    volumes:
+      - {{ story_engine_data_dir }}/postgres:/var/lib/postgresql/data
+    networks:
+      - backend
+    mem_limit: {{ story_engine_pg_mem_limit }}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ story_engine_db_user }} -d {{ story_engine_db_name }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: {{ story_engine_redis_image }}
+    container_name: story-engine-redis
+    restart: unless-stopped
+    volumes:
+      - {{ story_engine_data_dir }}/redis:/data
+    networks:
+      - backend
+    mem_limit: {{ story_engine_redis_mem_limit }}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  qdrant:
+    image: {{ story_engine_qdrant_image }}
+    container_name: story-engine-qdrant
+    restart: unless-stopped
+    volumes:
+      - {{ story_engine_data_dir }}/qdrant:/qdrant/storage
+    networks:
+      - backend
+    mem_limit: {{ story_engine_qdrant_mem_limit }}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: {{ story_engine_src_dir }}/apps/api
+      dockerfile: Dockerfile
+    container_name: story-engine-api
+    restart: unless-stopped
+    env_file:
+      - {{ story_engine_config_dir }}/api.env
+    networks:
+      - backend
+    mem_limit: {{ story_engine_api_mem_limit }}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/api/health\")'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  worker:
+    build:
+      context: {{ story_engine_src_dir }}/apps/api
+      dockerfile: Dockerfile.worker
+    container_name: story-engine-worker
+    restart: unless-stopped
+    env_file:
+      - {{ story_engine_config_dir }}/api.env
+    networks:
+      - backend
+    mem_limit: {{ story_engine_worker_mem_limit }}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  collab:
+    build:
+      context: {{ story_engine_src_dir }}/apps/collab
+      dockerfile: Dockerfile
+    container_name: story-engine-collab
+    restart: unless-stopped
+    env_file:
+      - {{ story_engine_config_dir }}/collab.env
+    networks:
+      - backend
+    mem_limit: {{ story_engine_collab_mem_limit }}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e 'fetch(\"http://localhost:1234/\").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  web:
+    build:
+      context: {{ story_engine_src_dir }}
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://{{ story_engine_domain }}
+        NEXT_PUBLIC_COLLAB_URL: wss://{{ story_engine_domain }}/collab
+    container_name: story-engine-web
+    restart: unless-stopped
+    env_file:
+      - {{ story_engine_config_dir }}/web.env
+    networks:
+      - backend
+    mem_limit: {{ story_engine_web_mem_limit }}
+    depends_on:
+      api:
+        condition: service_healthy
+
+  caddy:
+    image: {{ story_engine_caddy_image }}
+    container_name: story-engine-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - {{ story_engine_config_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro
+      - {{ story_engine_data_dir }}/caddy_data:/data
+      - {{ story_engine_data_dir }}/caddy_config:/config
+    networks:
+      - backend
+    mem_limit: {{ story_engine_caddy_mem_limit }}
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 443"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+networks:
+  backend:
+    driver: bridge

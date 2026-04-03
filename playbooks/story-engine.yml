@@ -1,0 +1,18 @@
+---
+# playbooks/story-engine.yml — Deploy StoryEngine on dedicated Hetzner server
+#
+# Usage:
+#   ansible-playbook playbooks/story-engine.yml
+#   ansible-playbook playbooks/story-engine.yml --tags story-engine  # Role only (skip common/docker)
+
+- name: Deploy StoryEngine
+  hosts: story_engine
+  become: true
+
+  roles:
+    - role: common
+      tags: [common]
+    - role: docker
+      tags: [docker]
+    - role: story-engine
+      tags: [story-engine]

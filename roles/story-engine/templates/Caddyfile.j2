@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+# StoryEngine — Caddy reverse proxy
+
+{{ story_engine_domain }} {
+	# API — forward /api/* to FastAPI (routes already include /api/v1 prefix)
+	handle /api/* {
+		reverse_proxy api:8000
+	}
+
+	# Collab WebSocket — proxy to Hocuspocus
+	handle /collab/* {
+		reverse_proxy collab:1234
+	}
+
+	# Health check
+	handle /health {
+		respond 200
+	}
+
+	# Web frontend — catch-all to Next.js
+	handle {
+		reverse_proxy web:3000
+	}
+}

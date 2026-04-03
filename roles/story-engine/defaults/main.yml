@@ -1,0 +1,52 @@
+---
+# story-engine — defaults
+# Dedicated Hetzner deployment for StoryEngine (narrative IDE).
+# Full stack: PG+pgvector, Redis, Qdrant, API, Worker, Collab, Web, Caddy.
+
+story_engine_base_dir: "/opt/story-engine"
+story_engine_config_dir: "{{ story_engine_base_dir }}/configs"
+story_engine_data_dir: "{{ story_engine_base_dir }}/data"
+
+# Git source — clone on server, build images locally
+story_engine_repo_url: "https://{{ story_engine_ghcr_user }}:{{ story_engine_ghcr_token }}@github.com/Mobutoo/story-engine.git"
+story_engine_repo_branch: "main"
+story_engine_src_dir: "{{ story_engine_base_dir }}/src"
+
+# GHCR auth for private repo clone (reuses app-scaffold token)
+story_engine_ghcr_user: "Mobutoo"
+story_engine_ghcr_token: "{{ ghcr_pull_token | default('') }}"
+
+# Domain
+story_engine_domain: "story.{{ domain_name }}"
+
+# PostgreSQL
+story_engine_db_name: "story_engine"
+story_engine_db_user: "story_engine"
+story_engine_db_password: "{{ vault_story_engine_db_password | default('change-me') }}"
+story_engine_pg_image: "pgvector/pgvector:pg16"
+
+# Redis
+story_engine_redis_image: "redis:7-alpine"
+
+# Qdrant
+story_engine_qdrant_image: "qdrant/qdrant:v1.16.3"
+
+# API
+story_engine_jwt_secret: "{{ vault_story_engine_jwt_secret | default('change-me-in-production') }}"
+story_engine_litellm_url: "https://llm.{{ domain_name }}/v1"
+story_engine_litellm_api_key: "{{ vault_litellm_master_key | default('') }}"
+story_engine_embedding_model: "text-embedding-3-small"
+story_engine_token_budget_daily: 50000
+
+# Caddy
+story_engine_caddy_image: "caddy:2.10-alpine"
+
+# Resource limits
+story_engine_api_mem_limit: "512m"
+story_engine_worker_mem_limit: "512m"
+story_engine_web_mem_limit: "256m"
+story_engine_collab_mem_limit: "256m"
+story_engine_pg_mem_limit: "1g"
+story_engine_redis_mem_limit: "256m"
+story_engine_qdrant_mem_limit: "512m"
+story_engine_caddy_mem_limit: "128m"

@@ -251,9 +251,9 @@ ovh_vps_service: "{{ vault_ovh_vps_service | default('vps-fda058f7.vps.ovh.net')
 n8n_deploy_webhook: "webhook-deploy-palais-v2"
 n8n_provision_webhook: "webhook-provision"
 
-# Firefly III + Zimboo (personal finance)
-firefly_subdomain: "lola"
-zimboo_subdomain: "zimboo"
+# REMOVED — Firefly/Zimboo decommissioned 2026-03-25, replaced by Flash Suite
+firefly_subdomain: ""
+zimboo_subdomain: ""
 
 # === KITSU (animation/VFX production tracker) ===
 kitsu_subdomain: "boss"               # → boss.<domain> (VPN-only)
@@ -261,13 +261,10 @@ kitsu_memory_limit: "1G"
 kitsu_memory_reservation: "512M"
 kitsu_cpu_limit: "1.0"
 
-# === FOOD & STOCK (Koodia) ===
-mealie_subdomain: "miam"
-grocy_subdomain: "garde"
-koodia_subdomain: "koodia"
-mealie_api_token: "{{ vault_mealie_api_token | default('') }}"
-grocy_api_key: "{{ vault_grocy_api_key | default('') }}"
-koodia_session_secret: "{{ vault_koodia_session_secret | default('change-me-in-vault') }}"
+# REMOVED — Mealie/Grocy/Koodia standalone decommissioned 2026-03-25, replaced by Flash Suite
+mealie_subdomain: ""
+grocy_subdomain: ""
+koodia_subdomain: ""
 
 # Auto-Fix Pipeline (GitHub Issues -> Claude Code -> PR)
 autofix_enabled: true
@@ -302,6 +299,9 @@ app_prod_server_type: "cx22"
 app_prod_os_image: "ubuntu-24.04"
 app_prod_ip: "{{ vault_app_prod_ip | default('127.0.0.1') }}"
 
+# --- StoryEngine (Hetzner CX33, dedicated) ---
+story_engine_ip: "{{ vault_story_engine_ip | default('127.0.0.1') }}"
+
 # === OBSIDIAN VAULT ===
 # CouchDB backend pour obsidian-livesync (sync iOS + PC en temps réel)
 # CouchDB exposé publiquement via HTTPS (pas de VPN restriction) pour sync iOS sans Tailscale
@@ -333,12 +333,15 @@ flash_suite_domain: "{{ flash_suite_subdomain }}.{{ domain_name }}"
 flash_suite_auth_secret: "{{ vault_flash_suite_auth_secret }}"
 flash_suite_postgres_password: "{{ vault_flash_suite_postgres_password }}"
 flash_suite_internal_key: "{{ vault_flash_suite_internal_key }}"
-flash_suite_zitadel_issuer: "{{ vault_flash_suite_zitadel_issuer }}"
-flash_suite_zitadel_client_id: "{{ vault_flash_suite_zitadel_client_id }}"
-flash_suite_zitadel_client_secret: "{{ vault_flash_suite_zitadel_client_secret }}"
 
 # === CONTENT FACTORY (Phase 7) ===
 # Plane project/module IDs for editorial calendar sync (cf-calendar-sync workflow)
 plane_workspace_slug: "ewutelo"
 plane_cf_project_id: "e0cb95f0-0ea5-41b8-a3e3-aec45e8cc37e"
 plane_cf_module_id: "c04ac29e-9842-4eec-8ff6-6923e9fe75d7"
+
+# === APP FACTORY ===
+# GHCR pull token (Hetzner → pull private images from ghcr.io/mobutoo/*)
+ghcr_pull_token: "{{ vault_ghcr_pull_token }}"
+# Webhook HMAC secret for n8n App Factory workflows
+af_webhook_secret: "{{ vault_af_webhook_secret }}"

@@ -197,9 +197,16 @@ BOOTSTRAP 200
 
 # === LiteLLM - dedicated subdomain ===
 # REX: LiteLLM UI does NOT support sub-path (SERVER_ROOT_PATH buggy: issues #11451, #11865)
+# REX: App servers (Hetzner) need API access — caddy_trusted_app_ips added alongside VPN CIDRs
 {% if litellm_subdomain | default('') | length > 0 %}
 {{ caddy_litellm_domain }} {
+{% if caddy_trusted_app_ips | default([]) | length > 0 %}
+    # Server-to-server API access (VPN + trusted app servers)
+    @blocked_llm not client_ip {{ caddy_vpn_cidr }} {{ caddy_docker_frontend_cidr }} {{ caddy_trusted_app_ips | join(' ') }}
+    error @blocked_llm 403
+{% else %}
     import vpn_only
+{% endif %}
     import vpn_error_page
 
     reverse_proxy litellm:4000
@@ -231,56 +238,76 @@ BOOTSTRAP 200
     import security_headers
 }
 
-# === Firefly III (personal finance engine) — lola.<domain> ===
-{% if firefly_subdomain | default('') | length > 0 %}
-{{ caddy_firefly_domain }} {
+# === Flash Suite (unified dashboard) — suite.<domain> ===
+# Architecture: Shell (Next.js) = dashboard + auth. Sub-apps served directly at their paths.
+# Ase (Django/Vite) assets are at /assets/ (no /flow/ prefix — Vite base path not set at build time).
+{% if flash_suite_subdomain | default('') | length > 0 %}
+{{ flash_suite_subdomain }}.{{ domain_name }} {
     import vpn_only
     import vpn_error_page
 
-    reverse_proxy firefly-iii:{{ firefly_web_port | default(8080) }}
+    # --- Ase (Flow Engine — Django + Vite SPA) ---
+    # WebSocket for Django Channels
+    @ase_ws {
+        path /flow/ws/*
+        header Connection *Upgrade*
+        header Upgrade websocket
+    }
+    handle @ase_ws {
+        reverse_proxy suite_ase:8000
+    }
 
-    import security_headers
-}
-{% endif %}
+    # Vite assets (build output at /assets/, not /flow/assets/)
+    handle /assets/* {
+        reverse_proxy suite_ase:8000
+    }
+    handle /vite.svg {
+        reverse_proxy suite_ase:8000
+    }
 
-# === Zimboo Dashboard (financial cockpit) — zimboo.<domain> ===
-{% if zimboo_subdomain | default('') | length > 0 %}
-{{ caddy_zimboo_domain }} {
-    import vpn_only
-    import vpn_error_page
+    # Flow pages + API
+    handle /flow* {
+        reverse_proxy suite_ase:8000
+    }
 
-    reverse_proxy zimboo:{{ zimboo_port | default(3000) }}
+    # --- Koodia (Food — API only, Shell renders the UI) ---
+    @koodia_sse {
+        path /food/api/*/stream
+    }
+    handle @koodia_sse {
+        reverse_proxy suite_koodia:3100 {
+            flush_interval -1
+        }
+    }
+    handle /food/api/* {
+        reverse_proxy suite_koodia:3100
+    }
 
-    import security_headers
-}
-{% endif %}
+    # --- Zimboo (Finance — Next.js with basePath=/finance) ---
+    handle /finance* {
+        reverse_proxy suite_zimboo:3000
+    }
 
-# === Mealie (recipe manager) — miam.<domain> ===
-{% if mealie_subdomain | default('') | length > 0 %}
-{{ caddy_mealie_domain }} {
-    import vpn_only
-    import vpn_error_page
-    reverse_proxy mealie:{{ mealie_web_port | default(9000) }}
-    import security_headers
-}
-{% endif %}
+    # Zimboo API workaround — client-side code calls /api/* without /finance prefix
+    # Rewrite to /finance/api/* so Zimboo serves them correctly.
+    # Exclude Shell's own API routes (/api/auth, /api/events, /api/health, /api/suite).
+    @zimboo_api {
+        path /api/*
+        not path /api/suite/*
+        not path /api/auth/*
+        not path /api/events/*
+        not path /api/health/*
+    }
+    handle @zimboo_api {
+        rewrite * /finance{uri}
+        reverse_proxy suite_zimboo:3000
+    }
 
-# === Grocy (inventory management) — garde.<domain> ===
-{% if grocy_subdomain | default('') | length > 0 %}
-{{ caddy_grocy_domain }} {
-    import vpn_only
-    import vpn_error_page
-    reverse_proxy grocy:{{ grocy_web_port | default(80) }}
-    import security_headers
-}
-{% endif %}
+    # --- Shell (dashboard, auth, catch-all) ---
+    handle {
+        reverse_proxy suite_shell:{{ flash_suite_shell_port | default(3500) }}
+    }
 
-# === Koodia (food cockpit) — koodia.<domain> ===
-{% if koodia_subdomain | default('') | length > 0 %}
-{{ caddy_koodia_domain }} {
-    import vpn_only
-    import vpn_error_page
-    reverse_proxy koodia:{{ koodia_port | default(3100) }}
     import security_headers
 }
 {% endif %}

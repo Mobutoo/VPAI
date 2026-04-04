@@ -27,6 +27,9 @@ subdomain_preprod: "preprod"
 # Set to false to make admin UIs publicly accessible (for initial validation)
 # Set to true to enforce VPN-only access (production hardening)
 caddy_vpn_enforce: true
+# Trusted app server IPs — allowed to access LiteLLM API (server-to-server, non-VPN)
+caddy_trusted_app_ips:
+  - "{{ story_engine_ip }}"
 
 # --- SSH Hardening ---
 # false = UFW restricts SSH to VPN network + Seko-VPN (trusted IP) only

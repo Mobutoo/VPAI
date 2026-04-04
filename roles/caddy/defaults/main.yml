@@ -25,6 +25,9 @@ caddy_docker_frontend_cidr: "{{ docker_network_frontend_subnet | default('172.20
 # Set to false to disable VPN restriction (public access to admin UIs)
 # Use for initial validation, then set to true to enforce VPN-only access
 caddy_vpn_enforce: true
+# Trusted app server IPs allowed to access LiteLLM API (server-to-server)
+# REX: App servers (e.g. Hetzner StoryEngine) are not on VPN but need LLM API access
+caddy_trusted_app_ips: []
 caddy_notification_email: "{{ notification_email }}"
 caddy_rate_limit_events: 100
 caddy_rate_limit_window: "1m"

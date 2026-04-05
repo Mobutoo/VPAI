@@ -60,6 +60,8 @@ services:
     restart: unless-stopped
     env_file:
       - {{ story_engine_config_dir }}/api.env
+    volumes:
+      - exports_data:/tmp/story-engine-exports
     networks:
       - backend
     mem_limit: {{ story_engine_api_mem_limit }}
@@ -85,6 +87,8 @@ services:
     restart: unless-stopped
     env_file:
       - {{ story_engine_config_dir }}/api.env
+    volumes:
+      - exports_data:/tmp/story-engine-exports
     networks:
       - backend
     mem_limit: {{ story_engine_worker_mem_limit }}
@@ -165,3 +169,6 @@ services:
 networks:
   backend:
     driver: bridge
+
+volumes:
+  exports_data:

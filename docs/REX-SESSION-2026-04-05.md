@@ -49,13 +49,24 @@ Objectifs derives :
 | Action Unlink ciblee | `fed8955` | Le click sur une mention etend la range a gauche/droite tant que le meme `entityId` est actif (`doc.resolve(p).marks()`), puis `unsetEntityMention()` sur cette range exacte. Supprime le lien **uniquement sur la mention cliquee**, pas sur toutes les occurrences |
 | Module-singleton `editor-ref.ts` | `fed8955` | Panels hors du subtree EditorPanel (Inspector, EntityPopover) ont besoin d'un acces imperatif au TipTap Editor. Zustand inadapte (editor referentiellement stable, pas de re-render voulu). Pattern : module-level singleton `currentEditor` + getter/setter |
 
+### v1.4.5 — Pronom wrap + Cmd+K unblock + search 503 fix + auto-version
+
+| Fix | Commit | Detail |
+|-----|--------|--------|
+| Dedup entite par nom + 409 dialog | `85e8f5a` | Creation `@Baat` alors qu'il existe deja en type different → 409 avec liste des existants. Modal `EntityConflictDialog` propose **Use existing** (link direct) ou **Create anyway** (`?force=true`). Store dedup par id a la reception |
+| Link pronoms sans reecrire | `75524c1` | Wrap mode : on surligne "Il", Cmd+K ouvre l'autocomplete qui prefixe "Link « Il » → …" puis lie la selection a l'entite existante. Le texte n'est pas reecrit, seul le mark `entityMention` est pose sur la range |
+| Cmd+K double-popup | `3d0f03e` | Le handler scene-page et le `SearchModal` global s'abonnaient tous deux au keydown, ouvrant deux popups. Scene-page s'enregistre maintenant sur `document` en **phase capture** + `stopImmediatePropagation` → bat le bubble du SearchModal. N'intercepte que si selection non-vide ; selection vide → SearchModal normal |
+| Version auto via `git describe` | `3d0f03e` | `next.config.ts` execute `git describe --tags --always --dirty` au load → topbar affiche `v1.4.5` sur un tag, `v1.4.5-N-<sha>` entre releases. Env var prod gagne (Docker build arg via Ansible) |
+| Search RRF 503 systematique | `b4b5493` | Tous les `/api/v1/projects/:id/search` renvoyaient 503. Cause : `text(":query_embedding::vector(1536)")` — la regex bind-param de SQLAlchemy `:(\w+)(?!:)` refuse un `:name` suivi de `::` (le cast PG). Le placeholder restait litteral, PG rejetait `syntax error at or near ":"`. Fix : `CAST(:query_embedding AS vector(1536))`. Bonus : `logger.exception()` avant le 503 au lieu de swallow silencieux |
+
 ## Etat actuel
 
 - Type checking OK (`apps/web tsc --noEmit` clean).
-- Deploy v1.4.4 : `ok=12 changed=6 failed=0`.
-- Tous les objectifs utilisateur (types, auto-link, unlink) livres.
-- Autocomplete `@` + right-click wrap + auto-link + unlink ciblee forment une
+- Deploy v1.4.5 : `ok=12 changed=5 failed=0` sur story.ewutelo.cloud.
+- Tous les objectifs utilisateur (types, auto-link, unlink, pronom-link) livres.
+- Autocomplete `@` + right-click wrap + Cmd+K-pronom + auto-link + unlink + search hybride forment la
   boucle complete de gestion des entites dans l'editeur.
+- Version UI auto-derivee de git : plus de divergence entre tag et topbar.
 
 ## Architecture validee
 
@@ -112,17 +123,62 @@ tant que `doc.resolve(p).marks()` contient le meme `entityId`. Evite le
 probleme "toutes les occurrences de Ewutelo sont delinkees" — seule la
 mention cliquee est delinkee.
 
+### Capture-phase event listener pour battre un listener global
+
+**Probleme** : deux composants ecoutent `Cmd+K` sur `document` en phase
+bubble (scene-page handler + SearchModal). L'ordre d'enregistrement
+determine qui gagne → fragile, race de mount.
+
+**Solution** : le handler qui doit gagner s'enregistre en **phase capture**
+(`addEventListener(evt, fn, { capture: true })`) + appelle
+`stopImmediatePropagation()` quand il consomme l'evenement. La phase
+capture se declenche **avant** toute phase bubble, quelle que soit
+l'ordre d'enregistrement. Pattern applicable partout ou un handler
+contextuel doit preempter un handler global (Cmd+S, Cmd+Enter, Escape).
+
+### SQLAlchemy text() + PG cast `::type` → piege
+
+La regex bind-param de SQLAlchemy est
+`(?<![:\w\$\x5c]):(\w+)(?!:)` — le negative lookahead `(?!:)` signifie
+**qu'un `:name` immediatement suivi de `:` n'est PAS un bind param**.
+Donc `:query_embedding::vector(1536)` se retrouve avec `:query_embedding`
+litteral dans le prepared statement → `syntax error at or near ":"`.
+
+**Regle** : ne jamais combiner `:bind` et `::cast` dans `text()`.
+Utiliser `CAST(:bind AS type)` a la place. Vrai pour tous les types
+PG qui ont du sens en cast (`::int`, `::uuid`, `::jsonb`, `::vector`, …).
+
+### Git describe comme source de version UI
+
+`next.config.ts` peut executer `child_process.execSync("git describe …")`
+au load (cote build ou cote dev server). Resultat : la version affichee
+reflete **exactement** l'arbre git au moment de la build/start, sans
+maintenance manuelle d'un `package.json.version`. Format :
+- `v1.4.5` sur un tag exact
+- `v1.4.5-3-3d0f03e` a 3 commits d'un tag (g-prefix strippe pour la lisibilite)
+- `v1.4.5-dirty` sur working tree sale
+
+Env var (`NEXT_PUBLIC_APP_VERSION`) wins pour les builds Docker ou on
+veut forcer la string (ex. Ansible passe `story_engine_version` depuis
+son propre `git describe` pour avoir le SHA de la copie clonee cote VM).
+
 ## Fichiers critiques
 
 | Fichier | Role |
 |---------|------|
 | `apps/web/src/lib/editor-ref.ts` | Singleton du TipTap Editor — cross-component imperatif |
-| `apps/web/src/components/ide/entity-autocomplete.tsx` | Autocomplete `@` + type picker (5 chips) + ←/→ cycle |
+| `apps/web/src/components/ide/entity-autocomplete.tsx` | Autocomplete `@` + type picker (5 chips) + ←/→ cycle + wrap-mode (`selectionLabel`, `allowCreate`) |
+| `apps/web/src/components/ide/entity-conflict-dialog.tsx` | Modal 409 — Use existing / Create anyway / Cancel |
 | `apps/web/src/components/ide/entity-popover.tsx` | Popover hover sur mention + action Unlink via `mentionRange` |
 | `apps/web/src/components/ide/inspector-scene-summary.tsx` | Cast chips (planned/linked/detected) + `autoLinkEntities()` |
-| `apps/web/src/app/(app)/projects/[id]/scenes/[sceneId]/page.tsx` | Register editor via `setCurrentEditor` + range extension pour popover |
+| `apps/web/src/app/(app)/projects/[id]/scenes/[sceneId]/page.tsx` | Register editor + Cmd+K capture-phase + wrap-mode handler |
+| `apps/web/src/components/search-modal.tsx` | Cmd+K global (bubble phase) — preempte par scene-page si selection |
 | `apps/web/src/stores/editor.store.ts` | `draftText` (debounced) pour detection entites dans le draft |
+| `apps/web/src/stores/entity.store.ts` | `createEntity(name, type, force?)` + dedup par id a la reception |
 | `apps/web/src/stores/ai.store.ts` | `ghostEnabled` toggle (localStorage persist) |
+| `apps/web/next.config.ts` | `resolveAppVersion()` via `git describe` + env var override |
+| `apps/api/src/story_engine/services/search.py` | RRF hybrid search — `CAST(:query_embedding AS vector(1536))` |
+| `apps/api/src/story_engine/api/routes/search.py` | `logger.exception()` avant 503 pour diagnosticabilite |
 
 ## Leçons transversales App Factory
 
@@ -136,12 +192,32 @@ mention cliquee est delinkee.
    car non-intuitif pour les devs React habitues a batch via setState.
 4. **Type picker via mouseenter + click** : UX pattern efficace pour les
    choix enumeres avec feedback visuel immediat, sans modal.
+5. **Capture-phase preemption** : quand deux listeners globaux se
+   disputent une touche (Cmd+K, Cmd+S), enregistrer le contextuel en
+   `{ capture: true }` + `stopImmediatePropagation()`. Plus robuste que
+   l'ordre de mount. Pattern a promouvoir pour tout raccourci partage.
+6. **SQLAlchemy `text()` + PG cast `::`** : documenter comme piege
+   recurrent. Chaque fois qu'on utilise pgvector, jsonb, uuid, etc.
+   avec un bind param, utiliser `CAST(:bind AS type)`. Candidat pour
+   une regle lint custom ou un snippet SQL partage.
+7. **Auto-version via git describe** : pattern general pour tout app Web
+   qui veut afficher sa version sans build step separe. Reutilisable
+   tel-quel pour Next.js/Vite/Remix. Ansible peut override via env var
+   pour forcer la string cote VM.
+8. **Swallow-exception 503** : **anti-pattern confirme** — `except
+   Exception: raise HTTPException(503)` sans log a masque un bug 503
+   prod pendant toute la session d'init du search. Regle : TOUJOURS
+   `logger.exception()` avant de degrader en 503/500/503. Candidat
+   pour une regle ruff/bandit custom.
 
 ## Prochaines etapes
 
 1. **Indexer ce REX** dans Qdrant `app-factory-rex` via webhook `af-rex-indexer` (source=`story-engine`, project_name=`StoryEngine`, phase=`inspector-ux-v1.4`).
 2. **Extraire les patterns** reutilisables vers `app-factory-patterns` :
-   `editor-ref-singleton`, `token-unicode-match`, `proseMirror-tx-batch`.
-3. **Tester E2E** (Playwright) : scenarios auto-link + unlink + create-with-type. Le script E2E existe pour V2-04 mais pas encore pour ces fonctions.
+   `editor-ref-singleton`, `token-unicode-match`, `proseMirror-tx-batch`,
+   `capture-phase-preemption`, `sqlalchemy-cast-bind`, `git-describe-version`.
+3. **Tester E2E** (Playwright) : scenarios auto-link + unlink + create-with-type + **Cmd+K pronom wrap + search hybrid**. Le script E2E existe pour V2-04 mais pas encore pour ces fonctions.
 4. **Cote backend** : exposer un endpoint `POST /api/v1/entities/batch` pour creer plusieurs entites en un coup (utile apres auto-link si l'utilisateur veut creer les "Detected (unlinked)" en batch).
-5. **Retour App Factory** : valider avec l'utilisateur que ces 3 patterns meritent d'etre indexes comme patterns reutilisables pour les futures apps.
+5. **Ecrire un test d'integration search** qui frappe l'endpoint HTTP reel avec un embedding mocke — aurait attrape le bug SQL bind avant prod.
+6. **Monitoring** : alerte Grafana si le taux de 503 sur `/api/v1/projects/*/search` depasse 5% sur 5min → aurait detecte le bug RRF des le deploy.
+7. **Retour App Factory** : valider avec l'utilisateur que ces 6 patterns meritent d'etre indexes comme patterns reutilisables pour les futures apps.

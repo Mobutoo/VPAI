@@ -124,6 +124,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: https://{{ story_engine_domain }}
         NEXT_PUBLIC_COLLAB_URL: wss://{{ story_engine_domain }}/collab
+        NEXT_PUBLIC_APP_VERSION: "{{ story_engine_version | default('dev') }}"
     container_name: story-engine-web
     restart: unless-stopped
     env_file:

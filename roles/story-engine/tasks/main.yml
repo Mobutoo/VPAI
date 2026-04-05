@@ -32,6 +32,20 @@
   register: _story_engine_git
   tags: [story-engine]
 
+- name: Resolve StoryEngine version (git describe)
+  ansible.builtin.command:
+    cmd: git describe --tags --always --dirty
+    chdir: "{{ story_engine_src_dir }}"
+  become: true
+  changed_when: false
+  register: _story_engine_describe
+  tags: [story-engine]
+
+- name: Set story_engine_version fact
+  ansible.builtin.set_fact:
+    story_engine_version: "{{ _story_engine_describe.stdout | trim }}"
+  tags: [story-engine]
+
 - name: Deploy API environment file
   ansible.builtin.template:
     src: story-engine-api.env.j2

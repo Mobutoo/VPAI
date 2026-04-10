@@ -24,6 +24,7 @@ memory_worker_benchmark_script: "{{ memory_worker_install_dir }}/benchmark_memor
 memory_worker_inventory_collections_script: "{{ memory_worker_install_dir }}/inventory_collections.py"
 memory_worker_benchmark_queries_file: "{{ memory_worker_config_dir }}/benchmark-queries.yml"
 memory_worker_run_report_script: "{{ memory_worker_install_dir }}/run-and-report.sh"
+memory_worker_wait_calm_script: "{{ memory_worker_install_dir }}/memory-wait-calm.sh"
 memory_worker_audit_report_dir: "{{ memory_worker_data_dir }}/audits"
 
 # n8n webhook that ingests run reports (push-only model, plan section 14.3).

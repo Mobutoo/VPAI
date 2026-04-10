@@ -135,6 +135,16 @@
   become: true
   notify: Restart llamaindex-memory-worker timer
 
+- name: Deploy memory worker loadavg wait script
+  ansible.builtin.template:
+    src: memory-wait-calm.sh.j2
+    dest: "{{ memory_worker_wait_calm_script }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+  notify: Restart llamaindex-memory-worker timer
+
 - name: Deploy memory worker webhook secret file
   ansible.builtin.copy:
     content: "{{ memory_worker_report_webhook_secret }}"

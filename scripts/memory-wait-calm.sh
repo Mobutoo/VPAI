@@ -10,9 +10,10 @@ delay_sec="${MEMORY_WAIT_DELAY_SEC:-10}"
 echo "memory-wait-calm: waiting for loadavg <= ${threshold}"
 
 for _ in $(seq 1 "${max_checks}"); do
-  load="$(cut -d" " -f1 /proc/loadavg)"
-  echo "$(date +%H:%M:%S) load=${load}"
-  if awk -v load="${load}" -v threshold="${threshold}" 'BEGIN { exit(load <= threshold ? 0 : 1) }'; then
+  current_load="$(cut -d" " -f1 /proc/loadavg)"
+  echo "$(date +%H:%M:%S) load=${current_load}"
+  # NB: 'load' is a reserved builtin in gawk — use a different variable name.
+  if awk -v l="${current_load}" -v t="${threshold}" 'BEGIN { exit(l <= t ? 0 : 1) }'; then
     exit 0
   fi
   sleep "${delay_sec}"

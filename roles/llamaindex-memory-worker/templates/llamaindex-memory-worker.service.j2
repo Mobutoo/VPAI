@@ -9,6 +9,10 @@ User={{ memory_worker_user }}
 Group={{ memory_worker_user }}
 WorkingDirectory={{ memory_worker_install_dir }}
 EnvironmentFile={{ memory_worker_env_file }}
+# Block until Waza loadavg is below memory_worker_loadavg_threshold.
+# If it stays hot, ExecStartPre fails and the run is skipped. The
+# memory-healthcheck n8n workflow detects the resulting stale report.
+ExecStartPre={{ memory_worker_wait_calm_script }}
 ExecStart={{ memory_worker_run_report_script }} --mode {{ memory_worker_index_mode }}
 Nice=19
 IOSchedulingClass=idle

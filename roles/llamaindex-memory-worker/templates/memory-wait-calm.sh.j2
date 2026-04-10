@@ -1,0 +1,35 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# memory-wait-calm.sh — block until Waza is calm enough for an embedding run.
+#
+# Used as systemd ExecStartPre on llamaindex-memory-worker.service. If the
+# Pi stays loaded above the threshold for max_checks * delay_sec seconds,
+# this exits non-zero and systemd marks the run as failed-to-start — the
+# healthcheck workflow will eventually notice the absence of fresh reports
+# via its stale-run alert.
+#
+# Tunables via environment (defaults from role vars):
+#   MEMORY_WAIT_LOAD_THRESHOLD  (default: {{ memory_worker_loadavg_threshold }})
+#   MEMORY_WAIT_MAX_CHECKS      (default: 60)
+#   MEMORY_WAIT_DELAY_SEC       (default: 10)
+
+set -euo pipefail
+
+threshold="${MEMORY_WAIT_LOAD_THRESHOLD:-{{ memory_worker_loadavg_threshold }}}"
+max_checks="${MEMORY_WAIT_MAX_CHECKS:-60}"
+delay_sec="${MEMORY_WAIT_DELAY_SEC:-10}"
+
+echo "memory-wait-calm: waiting for loadavg <= ${threshold}"
+
+for _ in $(seq 1 "${max_checks}"); do
+  current_load="$(cut -d" " -f1 /proc/loadavg)"
+  echo "$(date +%H:%M:%S) load=${current_load}"
+  # NB: 'load' is a reserved builtin in gawk — use a different variable name.
+  if awk -v l="${current_load}" -v t="${threshold}" 'BEGIN { exit(l <= t ? 0 : 1) }'; then
+    exit 0
+  fi
+  sleep "${delay_sec}"
+done
+
+echo "memory-wait-calm: timeout waiting for loadavg <= ${threshold}" >&2
+exit 1

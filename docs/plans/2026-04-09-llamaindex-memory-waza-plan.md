@@ -1,7 +1,7 @@
 # Plan — Memoire IA locale Waza -> Qdrant central
 
 Date: 2026-04-09
-Statut: Draft
+Statut: v0.3 validee
 Portee: conception et plan d'implementation d'une memoire unifiee pour agents IA, prioritairement a partir des repos presents sur Waza.
 
 ## 1. Resume
@@ -16,6 +16,27 @@ L'objectif est de construire une memoire semantique exploitable par Codex, Claud
 
 Le lot 1 se concentre sur **Waza**.  
 Les documents de travail presents sur Sese-AI seront traites dans un lot ulterieur.
+
+Etat repo a la date de mise a jour:
+
+- worker `llamaindex-memory-worker` implemente et commit
+- rapport JSON stable + webhook n8n en place
+- workflows `memory-run-report-ingest` et `memory-healthcheck` versionnes
+- runbook d'exploitation `docs/runbooks/AI-MEMORY-OPERATIONS.md` ajoute
+- protocole memoire agent documente dans `CLAUDE.md`
+- deploiement reel effectue sur Waza et Sese-AI
+- `memory_runs` alimente par le pipeline push-only
+- `v0.3` a valide un seed cible sur `VPAI`, `flash-studio` et `story-engine`
+  avant extension a des scans plus larges
+
+Etat de progression:
+
+- `v0.2` est operationnel en production
+- `v0.3` est validee:
+  - `VPAI`: 7/8 hits top-3, `miss_ratio=0.125`
+  - `flash-studio`: 7/8 hits top-3, `miss_ratio=0.125`
+  - `story-engine`: 8/8 hits top-3, `miss_ratio=0.0`
+  - `EmbeddingGemma-300M` reste sous le seuil de bascule `miss_ratio > 0.30`
 
 ## 2. Objectifs du projet
 

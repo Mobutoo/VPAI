@@ -958,10 +958,19 @@ def gc_missing_entries(
     vector_store: QdrantVectorStore | None,
     repo_roots: list[Path],
 ) -> None:
+    if args.path:
+        LOG.info("skipping gc because path filters are active")
+        return
+
     existing_roots = {root.name: root for root in repo_roots}
+    selected_repos = {root.name for root in repo_roots}
+    if args.repo:
+        selected_repos &= set(args.repo)
     to_delete = []
     for key, entry in state.items():
         repo_name, relative_path = key.split(":", 1)
+        if selected_repos and repo_name not in selected_repos:
+            continue
         repo_root = existing_roots.get(repo_name)
         if repo_root is not None and (repo_root / relative_path).exists():
             continue

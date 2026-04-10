@@ -1,83 +1,99 @@
 queries:
-  - repo: claw-code
-    query: "Where is the query engine implemented?"
+  - repo: VPAI
+    query: "Where is the main production deployment playbook defined?"
     accepted_paths:
-      - src/QueryEngine.py
-      - src/query_engine.py
-  - repo: claw-code
-    query: "Where are permissions handled?"
+      - playbooks/site.yml
+  - repo: VPAI
+    query: "Where is the workstation deployment playbook defined?"
     accepted_paths:
-      - src/permissions.py
-  - repo: claw-code
-    query: "Where is the port manifest defined?"
+      - playbooks/workstation.yml
+  - repo: VPAI
+    query: "Where are the inventory hosts for this infrastructure defined?"
     accepted_paths:
-      - src/port_manifest.py
-  - repo: claw-code
-    query: "Where is the parity audit implemented?"
+      - inventory/hosts.yml
+  - repo: VPAI
+    query: "Where is the memory worker role configured?"
     accepted_paths:
-      - src/parity_audit.py
-  - repo: claw-code
-    query: "Where is the tool pool assembled?"
+      - roles/llamaindex-memory-worker/defaults/main.yml
+      - roles/llamaindex-memory-worker/tasks/main.yml
+  - repo: VPAI
+    query: "Where is the n8n workflow that ingests memory run reports?"
     accepted_paths:
-      - src/tool_pool.py
-  - repo: claw-code
-    query: "Where is the execution registry defined?"
+      - scripts/n8n-workflows/memory-run-report-ingest.json
+  - repo: VPAI
+    query: "Where is the n8n memory healthcheck workflow defined?"
     accepted_paths:
-      - src/execution_registry.py
-  - repo: claw-code
-    query: "What is the CLI entrypoint for this Python workspace?"
+      - scripts/n8n-workflows/memory-healthcheck.json
+  - repo: VPAI
+    query: "Where are the memory worker operations documented?"
     accepted_paths:
-      - src/main.py
-  - repo: claw-code
-    query: "Where are the Python-side command metadata defined?"
+      - docs/runbooks/AI-MEMORY-OPERATIONS.md
+  - repo: VPAI
+    query: "Where are deployment shortcuts and developer commands defined?"
     accepted_paths:
-      - src/commands.py
-  - repo: claw-code
-    query: "Where are the Python-side tool metadata defined?"
+      - Makefile
+  - repo: flash-studio
+    query: "Where is the flash-infra architecture documented?"
     accepted_paths:
-      - src/tools.py
-  - repo: claw-code
-    query: "Where is the session store implemented?"
+      - flash-infra/ARCHITECTURE.md
+  - repo: flash-studio
+    query: "Where is the main flash infrastructure deployment playbook?"
     accepted_paths:
-      - src/session_store.py
-  - repo: claw-code
-    query: "Where is the remote runtime implemented?"
+      - flash-infra/ansible/playbooks/site.yml
+  - repo: flash-studio
+    query: "Where is the quick reference for the daemon workflow documented?"
     accepted_paths:
-      - src/remote_runtime.py
-  - repo: claw-code
-    query: "Where is the runtime logic implemented?"
+      - docs/QUICK_REFERENCE.md
+  - repo: flash-studio
+    query: "Where is the initialization guide for Flash Studio documented?"
     accepted_paths:
-      - src/runtime.py
-  - repo: claw-code
-    query: "Where is the workspace setup built?"
+      - docs/GUIDE_INITIALISATION.md
+  - repo: flash-studio
+    query: "Where is the daemon launcher script implemented?"
     accepted_paths:
-      - src/setup.py
-  - repo: claw-code
-    query: "Where is cost tracking implemented?"
+      - flash-infra/scripts/flash-daemon.sh
+  - repo: flash-studio
+    query: "Where is the CLI script to control Flash Studio daemons?"
     accepted_paths:
-      - src/cost_tracker.py
-      - src/costHook.py
-  - repo: claw-code
-    query: "Where are direct connection modes implemented?"
+      - flash-infra/scripts/flash-ctl.sh
+  - repo: flash-studio
+    query: "Where is the playbook to rebuild a work VM after destruction?"
     accepted_paths:
-      - src/direct_modes.py
-  - repo: claw-code
-    query: "Where is the bootstrap graph implemented?"
+      - flash-infra/ansible/playbooks/rebuild-work.yml
+  - repo: flash-studio
+    query: "Where is the zero-trust infrastructure overview documented?"
     accepted_paths:
-      - src/bootstrap_graph.py
-  - repo: claw-code
-    query: "Where is the project onboarding state implemented?"
+      - flash-infra/README.md
+      - flash-infra/ARCHITECTURE.md
+  - repo: story-engine
+    query: "Where is the collaboration websocket server implemented?"
     accepted_paths:
-      - src/projectOnboardingState.py
-  - repo: claw-code
-    query: "Where are the workspace tests located?"
+      - apps/collab/src/server.ts
+  - repo: story-engine
+    query: "Where is the collaboration healthcheck implemented?"
     accepted_paths:
-      - tests/test_porting_workspace.py
-  - repo: claw-code
-    query: "Where is the repository layout and quickstart documented?"
+      - apps/collab/src/health.ts
+  - repo: story-engine
+    query: "Where is the FastAPI entrypoint for StoryEngine implemented?"
     accepted_paths:
-      - README.md
-  - repo: claw-code
-    query: "Where are query primitives implemented?"
+      - apps/api/src/story_engine/main.py
+  - repo: story-engine
+    query: "Where is the monorepo architecture and stack described?"
     accepted_paths:
-      - src/query.py
+      - CLAUDE.md
+  - repo: story-engine
+    query: "Where is the gaps resolution specification documented?"
+    accepted_paths:
+      - docs/specs/2026-04-01-gaps-resolution.md
+  - repo: story-engine
+    query: "Where is the editor extension registry implemented?"
+    accepted_paths:
+      - packages/editor/src/extensions.ts
+  - repo: story-engine
+    query: "Where is the development docker stack for StoryEngine defined?"
+    accepted_paths:
+      - infra/docker-compose.yml
+  - repo: story-engine
+    query: "Where is the collaboration database extension implemented?"
+    accepted_paths:
+      - apps/collab/src/extensions/database.ts

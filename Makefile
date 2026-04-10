@@ -272,6 +272,44 @@ deploy-workstation: ## Deployer la workstation Pi
 	@echo "$(GREEN)>>> Deploying Workstation Pi...$(NC)"
 	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --diff
 
+.PHONY: deploy-memory-worker
+deploy-memory-worker: ## Deployer uniquement le worker memoire sur la workstation Pi
+	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "llamaindex-memory-worker" --diff
+
+.PHONY: memory-benchmark
+memory-benchmark: ## Lancer le benchmark retrieval sur Waza (usage: make memory-benchmark REPO=VPAI)
+	@if [ -z "$(REPO)" ]; then \
+		echo "$(RED)>>> Usage: make memory-benchmark REPO=<VPAI|flash-studio|story-engine>$(NC)"; exit 1; \
+	fi
+	ansible workstation -i inventory/hosts.yml -m shell -a 'bash -lc "set -a; . /opt/workstation/configs/ai-memory-worker/memory-worker.env; set +a; /opt/workstation/ai-memory-worker/.venv/bin/python /opt/workstation/ai-memory-worker/benchmark_memory.py --config /opt/workstation/configs/ai-memory-worker/config.yml --repo $(REPO)"'
+
+.PHONY: memory-benchmark-all
+memory-benchmark-all: ## Lancer le benchmark retrieval sur les 3 repos prioritaires
+	@for repo in VPAI flash-studio story-engine; do \
+		echo "$(GREEN)>>> Benchmark $$repo...$(NC)"; \
+		$(MAKE) memory-benchmark REPO=$$repo || exit $$?; \
+	done
+
+.PHONY: memory-backfill
+memory-backfill: ## Lancer un backfill manuel sur Waza (usage: make memory-backfill REPO=VPAI EXTRA=\"--dry-run --max-files 50\")
+	@if [ -z "$(REPO)" ]; then \
+		echo "$(RED)>>> Usage: make memory-backfill REPO=<VPAI|flash-studio|story-engine> [EXTRA=\"...\"]$(NC)"; exit 1; \
+	fi
+	ansible workstation -i inventory/hosts.yml -m shell -a 'bash -lc "/home/mobuone/VPAI/scripts/memory-backfill.sh --repo $(REPO) $(EXTRA)"'
+
+.PHONY: memory-backfill-seed
+memory-backfill-seed: ## Lancer le seed v0.3 d'un repo prioritaire (usage: make memory-backfill-seed REPO=VPAI)
+	@if [ -z "$(REPO)" ]; then \
+		echo "$(RED)>>> Usage: make memory-backfill-seed REPO=<VPAI|flash-studio|story-engine>$(NC)"; exit 1; \
+	fi
+	@case "$(REPO)" in \
+		VPAI) EXTRA_ARGS='--path /home/mobuone/VPAI/playbooks/site.yml --path /home/mobuone/VPAI/playbooks/workstation.yml --path /home/mobuone/VPAI/inventory/hosts.yml --path /home/mobuone/VPAI/roles/llamaindex-memory-worker/defaults/main.yml --path /home/mobuone/VPAI/roles/llamaindex-memory-worker/tasks/main.yml --path /home/mobuone/VPAI/scripts/n8n-workflows/memory-run-report-ingest.json --path /home/mobuone/VPAI/scripts/n8n-workflows/memory-healthcheck.json --path /home/mobuone/VPAI/docs/runbooks/AI-MEMORY-OPERATIONS.md --path /home/mobuone/VPAI/Makefile' ;; \
+		flash-studio) EXTRA_ARGS='--path /home/mobuone/flash-studio/docs/QUICK_REFERENCE.md --path /home/mobuone/flash-studio/docs/GUIDE_INITIALISATION.md --path /home/mobuone/flash-studio/flash-infra/README.md --path /home/mobuone/flash-studio/flash-infra/ARCHITECTURE.md --path /home/mobuone/flash-studio/flash-infra/ansible/playbooks/site.yml --path /home/mobuone/flash-studio/flash-infra/ansible/playbooks/rebuild-work.yml --path /home/mobuone/flash-studio/flash-infra/scripts/flash-daemon.sh --path /home/mobuone/flash-studio/flash-infra/scripts/flash-ctl.sh' ;; \
+		story-engine) EXTRA_ARGS='--path /home/mobuone/projects/saas/story-engine/CLAUDE.md --path /home/mobuone/projects/saas/story-engine/apps/api/src/story_engine/main.py --path /home/mobuone/projects/saas/story-engine/apps/collab/src/server.ts --path /home/mobuone/projects/saas/story-engine/apps/collab/src/health.ts --path /home/mobuone/projects/saas/story-engine/apps/collab/src/extensions/database.ts --path /home/mobuone/projects/saas/story-engine/packages/editor/src/extensions.ts --path /home/mobuone/projects/saas/story-engine/infra/docker-compose.yml --path /home/mobuone/projects/saas/story-engine/docs/specs/2026-04-01-gaps-resolution.md' ;; \
+		*) echo "$(RED)>>> Repo inconnu: $(REPO)$(NC)"; exit 1 ;; \
+	esac; \
+	ansible workstation -i inventory/hosts.yml -m shell -a "bash -lc '/home/mobuone/VPAI/scripts/memory-backfill.sh --repo $(REPO) $$EXTRA_ARGS'"
+
 .PHONY: deploy-opencode
 deploy-opencode: ## Deployer OpenCode uniquement
 	$(ANSIBLE_PLAYBOOK) playbooks/workstation.yml --tags "opencode" --diff

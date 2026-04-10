@@ -23,6 +23,7 @@
     - path: "{{ memory_worker_spool_dir }}"
     - path: "{{ memory_worker_log_dir }}"
     - path: "{{ memory_worker_hf_home }}"
+    - path: "{{ memory_worker_audit_report_dir }}"
   become: true
 
 - name: Create memory worker virtualenv
@@ -70,6 +71,15 @@
   become: true
   notify: Restart llamaindex-memory-worker timer
 
+- name: Deploy memory worker sources config
+  ansible.builtin.template:
+    src: sources.yml.j2
+    dest: "{{ memory_worker_sources_file }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0644"
+  become: true
+
 - name: Deploy memory worker index script
   ansible.builtin.template:
     src: index.py.j2
@@ -92,6 +102,15 @@
   ansible.builtin.template:
     src: benchmark_memory.py.j2
     dest: "{{ memory_worker_benchmark_script }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy memory worker collection inventory script
+  ansible.builtin.template:
+    src: inventory_collections.py.j2
+    dest: "{{ memory_worker_inventory_collections_script }}"
     owner: "{{ memory_worker_user }}"
     group: "{{ memory_worker_user }}"
     mode: "0755"
@@ -159,6 +178,7 @@
     - "{{ memory_worker_index_script }}"
     - "{{ memory_worker_search_script }}"
     - "{{ memory_worker_benchmark_script }}"
+    - "{{ memory_worker_inventory_collections_script }}"
   changed_when: false
   become: true
 

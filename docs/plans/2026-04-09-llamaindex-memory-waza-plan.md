@@ -1,7 +1,7 @@
 # Plan — Memoire IA locale Waza -> Qdrant central
 
 Date: 2026-04-09
-Statut: v0.3 validee
+Statut: v0.5 mapping migration valide
 Portee: conception et plan d'implementation d'une memoire unifiee pour agents IA, prioritairement a partir des repos presents sur Waza.
 
 ## 1. Resume
@@ -28,6 +28,8 @@ Etat repo a la date de mise a jour:
 - `memory_runs` alimente par le pipeline push-only
 - `v0.3` a valide un seed cible sur `VPAI`, `flash-studio` et `story-engine`
   avant extension a des scans plus larges
+- `v0.4` a valide l'audit read-only des collections Qdrant existantes
+- `v0.5` a produit le mapping initial de migration legacy
 
 Etat de progression:
 
@@ -37,6 +39,24 @@ Etat de progression:
   - `flash-studio`: 7/8 hits top-3, `miss_ratio=0.125`
   - `story-engine`: 8/8 hits top-3, `miss_ratio=0.0`
   - `EmbeddingGemma-300M` reste sous le seuil de bascule `miss_ratio > 0.30`
+- `v0.4` est validee:
+  - rapport: `/opt/workstation/data/ai-memory-worker/audits/qdrant-inventory-20260410T215942Z.md`
+  - 28 collections Qdrant inventoriees
+  - `memory_v1`: active, 1105 points, dimension 768
+  - 23 collections legacy
+  - 4 collections vides
+  - aucune suppression Qdrant executee
+- `v0.5` est validee:
+  - mapping: `docs/audits/qdrant-legacy-migration-map-2026-04-11.md`
+  - chaque collection a une decision initiale
+  - `semantic_cache` est exclue de la migration documentaire
+  - les premiers candidats `v0.6` sont `app-factory-rex`, `flash-rex`, `rex_lessons`
+  - aucune suppression Qdrant executee
+- `v0.6.1` separe la configuration des sources dans `sources.yml`:
+  - fichier par defaut: `/opt/workstation/configs/ai-memory-worker/sources.yml`
+  - option CLI: `index.py --sources <path>`
+  - validation `--sources` ponctuel: `repo_roots=1`, `repos=['ops']`
+  - validation dry-run par defaut `ops`: 1 fichier, 20 chunks, 0 erreur
 
 ## 2. Objectifs du projet
 
@@ -932,7 +952,9 @@ Ils seront ajoutes apres validation du pilote.
 ### `memory-qdrant-audit`
 
 - inventorie les collections
-- exporte un rapport
+- exporte un rapport JSON et Markdown
+- classe les collections en `active`, `legacy`, `empty`
+- reste strictement read-only
 - pre-requis de la phase E (migration legacy)
 
 ### `memory-maintenance`
@@ -1068,10 +1090,46 @@ Jeu minimal attendu:
 
 ## Phase E - Audit et migration legacy
 
-- inventaire complet Qdrant
+- inventaire complet Qdrant read-only
 - mapping legacy -> cible
 - reindexation progressive
 - validation
+
+Etat v0.4:
+
+- inventaire initial realise le 2026-04-10
+- `memory_v1` confirme comme collection cible active
+- collections legacy identifiees avec dimensions 384, 1536 et un cas dimension 1
+- `semantic_cache` est la collection dominante en volume; elle doit rester traitee
+  comme cache applicatif tant qu'une politique specifique n'est pas definie
+- prochaine etape: rediger le mapping migration / conservation / purge par collection
+
+Etat v0.5:
+
+- mapping initial realise dans `docs/audits/qdrant-legacy-migration-map-2026-04-11.md`
+- collections REX faibles volumes retenues comme pilote `v0.6`:
+  - `app-factory-rex`
+  - `flash-rex`
+  - `rex_lessons`
+- collections hors migration documentaire explicites:
+  - `semantic_cache`
+  - `model-registry`
+  - `videoref_styles`
+  - `jarvis-knowledge`
+  - `jarvis-sessions`
+  - `jarvis-tasks`
+- prochaine etape: retrouver les sources REX pilotes et preparer une reindexation
+  controlee vers `memory_v1`
+
+Etat v0.6.1:
+
+- les chemins de sources sont externalises hors code worker
+- `config.yml` reference `paths.sources_file`
+- `sources.yml` peut etre edite pour ajouter/ajuster les racines indexees
+- `--sources` permet de fournir un fichier ponctuel sans changer la config
+  Ansible deployee
+- le worker reste compatible avec l'ancien champ `repos` si aucun fichier
+  `sources.yml` valide n'est trouve
 
 ## Phase F - Extensions futures
 

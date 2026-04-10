@@ -32,6 +32,12 @@ queries:
     query: "Where are deployment shortcuts and developer commands defined?"
     accepted_paths:
       - Makefile
+  - repo: VPAI
+    query: "Which REX documents describe StoryEngine app factory sessions and hardening lessons?"
+    accepted_paths:
+      - docs/REX-SESSION-2026-04-05.md
+      - docs/REX-SESSION-2026-04-06.md
+      - docs/REX-SESSION-2026-04-07.md
   - repo: flash-studio
     query: "Where is the flash-infra architecture documented?"
     accepted_paths:
@@ -65,6 +71,12 @@ queries:
     accepted_paths:
       - flash-infra/README.md
       - flash-infra/ARCHITECTURE.md
+  - repo: flash-studio
+    query: "Where are the Flash REX lessons for LiteLLM SkyPilot and portal security documented?"
+    accepted_paths:
+      - flash-infra/docs/REX-2026-03-22-litellm-skypilot-deploy.md
+      - flash-infra/docs/REX-2026-03-22-portal-security-audit.md
+      - flash-infra/docs/rex/2026-03-22-dns-ovh-migration-auth-fix.md
   - repo: story-engine
     query: "Where is the collaboration websocket server implemented?"
     accepted_paths:
@@ -97,3 +109,7 @@ queries:
     query: "Where is the collaboration database extension implemented?"
     accepted_paths:
       - apps/collab/src/extensions/database.ts
+  - repo: ops
+    query: "Where is the Flash Suite security audit REX lesson documented?"
+    accepted_paths:
+      - rex/2026-03-22-flash-suite-audit-v020.md

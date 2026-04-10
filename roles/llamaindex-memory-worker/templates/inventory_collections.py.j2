@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""Inventory Qdrant collections for legacy migration planning."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import yaml
+from qdrant_client import QdrantClient
+
+
+REPORT_SCHEMA_VERSION = "memory-qdrant-inventory-v1"
+
+
+def load_yaml(path: Path) -> dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Inventory Qdrant collections.")
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--output-json", help="Write JSON report to this path.")
+    parser.add_argument("--output-md", help="Write Markdown report to this path.")
+    parser.add_argument("--sample-limit", type=int, default=3)
+    parser.add_argument("--include-samples", action="store_true", help="Include small payload samples in JSON.")
+    return parser.parse_args()
+
+
+def build_client(config: dict[str, Any]) -> QdrantClient:
+    return QdrantClient(
+        url=os.getenv("QDRANT_URL", config["qdrant_url"]),
+        api_key=os.getenv("QDRANT_API_KEY"),
+        timeout=int(os.getenv("QDRANT_TIMEOUT", config["qdrant_timeout"])),
+        verify=str(os.getenv("QDRANT_VERIFY_TLS", config.get("qdrant_verify_tls", True))).lower() == "true",
+    )
+
+
+def to_plain(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json", exclude_none=True)
+    if isinstance(value, dict):
+        return {str(key): to_plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [to_plain(item) for item in value]
+    return value
+
+
+def vector_dimensions(vectors_config: Any) -> list[int]:
+    plain = to_plain(vectors_config)
+    dims: list[int] = []
+    if isinstance(plain, dict):
+        if isinstance(plain.get("size"), int):
+            dims.append(plain["size"])
+        for value in plain.values():
+            if isinstance(value, dict) and isinstance(value.get("size"), int):
+                dims.append(value["size"])
+    return sorted(set(dims))
+
+
+def payload_type(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, int):
+        return "int"
+    if isinstance(value, float):
+        return "float"
+    if isinstance(value, str):
+        return "str"
+    if isinstance(value, list):
+        if not value:
+            return "list"
+        inner = sorted({payload_type(item) for item in value[:5]})
+        return f"list[{','.join(inner)}]"
+    if isinstance(value, dict):
+        return "dict"
+    return type(value).__name__
+
+
+def infer_content_kind(collection_name: str, payload_keys: set[str]) -> str:
+    lowered = collection_name.lower()
+    if {"repo", "doc_kind", "relative_path"}.issubset(payload_keys):
+        return "memory_v1"
+    if "rex" in lowered:
+        return "rex"
+    if "doc" in lowered:
+        return "docs"
+    if "code" in lowered:
+        return "code"
+    if "workflow" in lowered or "n8n" in lowered:
+        return "workflow"
+    if "official" in lowered:
+        return "official-docs"
+    return "unknown"
+
+
+def infer_status(collection_name: str, target_collection: str, points_count: int) -> str:
+    if collection_name == target_collection:
+        return "active"
+    if points_count <= 0:
+        return "empty"
+    return "legacy"
+
+
+def sample_payloads(client: QdrantClient, collection_name: str, limit: int) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
+    try:
+        points, _ = client.scroll(
+            collection_name=collection_name,
+            limit=limit,
+            with_payload=True,
+            with_vectors=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return [{"_sample_error": f"{exc.__class__.__name__}: {exc}"}]
+    samples = []
+    for point in points:
+        payload = point.payload or {}
+        samples.append(to_plain(payload))
+    return samples
+
+
+def collection_inventory(client: QdrantClient, collection_name: str, config: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    info = client.get_collection(collection_name)
+    info_plain = to_plain(info)
+    vectors_config = info.config.params.vectors
+    dims = vector_dimensions(vectors_config)
+    points_count = int(getattr(info, "points_count", 0) or 0)
+    indexed_vectors_count = int(getattr(info, "indexed_vectors_count", 0) or 0)
+    payload_schema = to_plain(getattr(info, "payload_schema", {}) or {})
+    samples = sample_payloads(client, collection_name, args.sample_limit)
+    key_types: dict[str, Counter[str]] = {}
+    for payload in samples:
+        if "_sample_error" in payload:
+            continue
+        for key, value in payload.items():
+            key_types.setdefault(key, Counter())[payload_type(value)] += 1
+    payload_keys = set(key_types)
+    payload_shape = {
+        key: {
+            "types": dict(counter),
+            "sample_count": sum(counter.values()),
+        }
+        for key, counter in sorted(key_types.items())
+    }
+    result = {
+        "name": collection_name,
+        "status": infer_status(collection_name, config["collection_name"], points_count),
+        "points_count": points_count,
+        "indexed_vectors_count": indexed_vectors_count,
+        "vector_dimensions": dims,
+        "vectors_config": to_plain(vectors_config),
+        "payload_schema": payload_schema,
+        "payload_key_count": len(payload_keys),
+        "payload_keys": sorted(payload_keys),
+        "payload_shape": payload_shape,
+        "content_kind_guess": infer_content_kind(collection_name, payload_keys),
+    }
+    if args.include_samples:
+        result["payload_samples"] = samples
+    elif samples and "_sample_error" in samples[0]:
+        result["sample_error"] = samples[0]["_sample_error"]
+    result["_raw_status"] = info_plain.get("status")
+    return result
+
+
+def render_markdown(report: dict[str, Any]) -> str:
+    rows = []
+    for item in report["collections"]:
+        dims = ",".join(str(dim) for dim in item["vector_dimensions"]) or "?"
+        rows.append(
+            "| {name} | {status} | {points} | {dims} | {kind} | {keys} |".format(
+                name=item["name"],
+                status=item["status"],
+                points=item["points_count"],
+                dims=dims,
+                kind=item["content_kind_guess"],
+                keys=item["payload_key_count"],
+            )
+        )
+    summary = report["summary"]
+    lines = [
+        "# Qdrant Collections Inventory",
+        "",
+        f"Generated at: `{report['generated_at']}`",
+        f"Target collection: `{report['target_collection']}`",
+        "",
+        "## Summary",
+        "",
+        f"- Collections: `{summary['collections_count']}`",
+        f"- Active: `{summary['active_count']}`",
+        f"- Legacy: `{summary['legacy_count']}`",
+        f"- Empty: `{summary['empty_count']}`",
+        f"- Total points: `{summary['total_points']}`",
+        "",
+        "## Collections",
+        "",
+        "| Collection | Status | Points | Dim | Kind guess | Payload keys |",
+        "|---|---:|---:|---:|---|---:|",
+        *rows,
+        "",
+        "## Next Steps",
+        "",
+        "- Review `legacy` collections and decide keep / reindex / archive.",
+        "- Reindex from original sources when embedding dimensions or payloads differ.",
+        "- Do not delete legacy collections before retrieval validation.",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def write_text(path: str | None, content: str) -> None:
+    if not path:
+        return
+    output = Path(path)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(content, encoding="utf-8")
+
+
+def main() -> int:
+    args = parse_args()
+    config = load_yaml(Path(args.config))
+    client = build_client(config)
+    collections_response = client.get_collections()
+    collection_names = sorted(item.name for item in collections_response.collections)
+    inventories = [collection_inventory(client, name, config, args) for name in collection_names]
+    status_counts = Counter(item["status"] for item in inventories)
+    report = {
+        "report_schema_version": REPORT_SCHEMA_VERSION,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "target_collection": config["collection_name"],
+        "qdrant_url": os.getenv("QDRANT_URL", config["qdrant_url"]),
+        "summary": {
+            "collections_count": len(inventories),
+            "active_count": status_counts.get("active", 0),
+            "legacy_count": status_counts.get("legacy", 0),
+            "empty_count": status_counts.get("empty", 0),
+            "total_points": sum(item["points_count"] for item in inventories),
+        },
+        "collections": inventories,
+    }
+    rendered = json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True)
+    write_text(args.output_json, rendered + "\n")
+    write_text(args.output_md, render_markdown(report))
+    print(rendered)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

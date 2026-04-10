@@ -15,6 +15,8 @@ paths:
   log_dir: "{{ memory_worker_log_dir }}"
   hf_home: "{{ memory_worker_hf_home }}"
   benchmark_queries_file: "{{ memory_worker_benchmark_queries_file }}"
+  audit_report_dir: "{{ memory_worker_audit_report_dir }}"
+  sources_file: "{{ memory_worker_sources_file }}"
 
 limits:
   max_file_bytes: {{ memory_worker_max_file_bytes }}

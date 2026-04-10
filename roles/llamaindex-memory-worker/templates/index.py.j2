@@ -88,7 +88,7 @@ def sha256_file(path: Path) -> str:
 
 def load_yaml(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as handle:
-        return yaml.safe_load(handle)
+        return yaml.safe_load(handle) or {}
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -128,8 +128,13 @@ def check_loadavg(threshold: float) -> None:
 
 def classify_doc_kind(path: Path) -> str:
     path_str = path.as_posix()
+    path_lower = path_str.lower()
     suffix = path.suffix.lower()
-    if path_str.startswith("docs/") and "rex" in path_str.lower():
+    if (
+        "rex" in path_lower
+        or path.name.upper() == "LESSONS.MD"
+        or any(part.lower() == "rex" for part in path.parts)
+    ):
         return "rex"
     if path_str.startswith("docs/plans/"):
         return "plan"
@@ -236,6 +241,12 @@ def build_tags(repo: str, doc_kind: str, language: str) -> list[str]:
     tags = [f"repo:{repo}", "host:waza", f"kind:{doc_kind}", f"lang:{language}"]
     if repo == "VPAI":
         tags.append("scope:infra")
+    if repo == "flash-studio":
+        tags.append("scope:flash")
+    if repo == "story-engine":
+        tags.append("scope:story-engine")
+    if repo == "ops":
+        tags.append("scope:ops")
     return sorted(set(tags))
 
 
@@ -529,14 +540,48 @@ def build_vector_store(client: QdrantClient, config: dict[str, Any]) -> QdrantVe
     )
 
 
+def merge_source_roots(config: dict[str, Any], sources_path: str | None) -> list[str]:
+    roots: list[str] = []
+    if sources_path:
+        path = Path(sources_path).expanduser()
+        if path.exists():
+            payload = load_yaml(path)
+            for source in payload.get("sources", []):
+                if isinstance(source, str):
+                    roots.append(source)
+                    continue
+                if isinstance(source, dict) and source.get("root"):
+                    roots.append(str(source["root"]))
+    if not roots:
+        roots = [str(path) for path in config.get("repos", [])]
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for raw in roots:
+        key = str(Path(raw).expanduser())
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(raw)
+    return deduped
+
+
+def apply_sources_config(config: dict[str, Any], args: argparse.Namespace) -> None:
+    configured_path = config.get("paths", {}).get("sources_file")
+    sources_path = args.sources or configured_path
+    config["repos"] = merge_source_roots(config, sources_path)
+    config["sources_file"] = sources_path or ""
+
+
 def list_repo_roots(config: dict[str, Any]) -> list[Path]:
     roots = []
     for raw in config["repos"]:
         path = Path(raw).expanduser()
         if not path.exists():
             continue
+        # Configured roots are intentional scopes. Some are Git repos, others
+        # are curated document trees such as projects/ops/rex.
+        roots.append(path)
         if (path / ".git").exists():
-            roots.append(path)
             continue
         for child in sorted(path.iterdir()):
             if child.is_dir() and (child / ".git").exists():
@@ -611,6 +656,7 @@ def should_process(path: Path, repo_root: Path, state: dict[str, Any], mode: str
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Index local repos into Qdrant memory_v1.")
     parser.add_argument("--config", required=True, help="Path to worker config file.")
+    parser.add_argument("--sources", help="Optional source roots YAML file. Defaults to config paths.sources_file.")
     parser.add_argument("--mode", choices=["full", "incremental"], default="incremental")
     parser.add_argument("--gc", action="store_true", help="Delete state entries whose files disappeared.")
     parser.add_argument("--dry-run", action="store_true", help="Show planned actions without touching Qdrant.")
@@ -677,6 +723,7 @@ def selected_repo_names(args: argparse.Namespace, repo_roots: list[Path]) -> lis
 def main() -> int:
     args = parse_args()
     config = load_yaml(Path(args.config))
+    apply_sources_config(config, args)
     configure_logging(Path(config["paths"]["log_dir"]))
     started_dt = datetime.now(timezone.utc)
     run_id = f"{started_dt.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"

@@ -1,0 +1,18 @@
+---
+# AI memory worker sources.
+#
+# This file is intentionally separate from config.yml so adding or adjusting
+# indexed roots does not require changing the worker code.
+
+sources:
+{% for source in memory_worker_sources %}
+  - name: "{{ source.name }}"
+    kind: "{{ source.kind | default('git_repo') }}"
+    root: "{{ source.root }}"
+{% if source.tags is defined and source.tags %}
+    tags:
+{% for tag in source.tags %}
+      - "{{ tag }}"
+{% endfor %}
+{% endif %}
+{% endfor %}

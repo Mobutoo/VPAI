@@ -1,7 +1,7 @@
 # Runbook — AI Memory Operations
 
 Date: 2026-04-10
-Statut: v0.3 validee
+Statut: v0.5 mapping migration valide
 Portee: exploitation du pipeline memoire Waza -> Qdrant -> n8n
 
 ## 1. Objectif
@@ -19,10 +19,23 @@ Etat reel:
 - `v0.2` est deployee et operable
 - `v0.3` a elargi la couverture retrieval aux 3 repos prioritaires
 - les seeds cibles sont valides avant indexation plus large
+- `v0.4` ajoute et valide l'audit read-only des collections Qdrant avant migration legacy
+- `v0.5` ajoute le mapping initial de migration legacy
 - resultats benchmark:
   - `VPAI`: 7/8 hits top-3, `miss_ratio=0.125`
   - `flash-studio`: 7/8 hits top-3, `miss_ratio=0.125`
   - `story-engine`: 8/8 hits top-3, `miss_ratio=0.0`
+- dernier audit Qdrant v0.4:
+  - rapport: `/opt/workstation/data/ai-memory-worker/audits/qdrant-inventory-20260410T215942Z.md`
+  - collections: 28
+  - active: 1 (`memory_v1`)
+  - legacy: 23
+  - empty: 4
+  - total points: 252073
+- mapping migration v0.5:
+  - fichier: `docs/audits/qdrant-legacy-migration-map-2026-04-11.md`
+  - pilote `v0.6`: `app-factory-rex`, `flash-rex`, `rex_lessons`
+  - exclusions explicites: `semantic_cache`, collections Jarvis, catalogues applicatifs
 
 ## 2. Composants
 
@@ -32,6 +45,7 @@ Etat reel:
 - timer: `llamaindex-memory-worker.timer`
 - wrapper: `/opt/workstation/ai-memory-worker/run-and-report.sh`
 - config: `/opt/workstation/configs/ai-memory-worker/config.yml`
+- sources: `/opt/workstation/configs/ai-memory-worker/sources.yml`
 - env: `/opt/workstation/configs/ai-memory-worker/memory-worker.env`
 - secret webhook: `/opt/workstation/configs/ai-memory-worker/memory-webhook-secret`
 
@@ -136,7 +150,43 @@ Important:
 - sur un backfill cible avec `--path`, le worker **n'applique pas le GC**
   global; cela evite de supprimer des documents hors scope pendant un seed
 
-### 5.3.1 Seed scope recommande pour v0.3
+### 5.3.1 Sources indexees
+
+Les sources indexables sont separees de la configuration technique.
+
+Fichier par defaut:
+
+```bash
+/opt/workstation/configs/ai-memory-worker/sources.yml
+```
+
+Le worker lit ce fichier a chaque run via `config.yml`:
+
+```yaml
+paths:
+  sources_file: /opt/workstation/configs/ai-memory-worker/sources.yml
+```
+
+Ajouter ou ajuster un chemin de source ne demande donc pas de modifier le code
+du worker. On peut aussi tester un fichier ponctuel avec:
+
+```bash
+/opt/workstation/ai-memory-worker/.venv/bin/python \
+  /opt/workstation/ai-memory-worker/index.py \
+  --config /opt/workstation/configs/ai-memory-worker/config.yml \
+  --sources /tmp/memory-sources-test.yml \
+  --preflight-only \
+  --repo ops
+```
+
+Validation effectuee:
+
+- `--sources /tmp/memory-sources-ops.yml --preflight-only --repo ops`:
+  `repo_roots=1`, `repos=['ops']`, `exit_code=0`
+- sources par defaut + dry-run `ops`:
+  `attempted_files=1`, `indexed_chunks=20`, `errors=[]`, `exit_code=0`
+
+### 5.3.2 Seed scope recommande pour v0.3
 
 Pour accelerer la valeur utile sur le Pi avant un backfill large, utiliser en priorite:
 
@@ -208,6 +258,45 @@ Ce seed v0.3 couvre les zones les plus utiles pour:
   --config /opt/workstation/configs/ai-memory-worker/config.yml \
   --repo VPAI
 ```
+
+### 5.6 Audit Qdrant v0.4
+
+L'audit Qdrant est **read-only**. Il inventorie les collections existantes,
+leur dimension vectorielle, leur volume, leur forme de payload et leur statut
+probable (`active`, `legacy`, `empty`).
+
+Depuis le repo d'ops:
+
+```bash
+make memory-qdrant-audit
+```
+
+Depuis Waza:
+
+```bash
+set -a
+. /opt/workstation/configs/ai-memory-worker/memory-worker.env
+set +a
+
+ts=$(date -u +%Y%m%dT%H%M%SZ)
+/opt/workstation/ai-memory-worker/.venv/bin/python \
+  /opt/workstation/ai-memory-worker/inventory_collections.py \
+  --config /opt/workstation/configs/ai-memory-worker/config.yml \
+  --output-json /opt/workstation/data/ai-memory-worker/audits/qdrant-inventory-${ts}.json \
+  --output-md /opt/workstation/data/ai-memory-worker/audits/qdrant-inventory-${ts}.md
+```
+
+Rapports:
+
+- JSON: `/opt/workstation/data/ai-memory-worker/audits/qdrant-inventory-*.json`
+- Markdown: `/opt/workstation/data/ai-memory-worker/audits/qdrant-inventory-*.md`
+
+Regles:
+
+- ne jamais supprimer une collection legacy depuis ce script
+- reindexer depuis les sources originales si la dimension ou le payload differe
+- garder les anciennes collections tant que le benchmark retrieval n'est pas valide
+- documenter le mapping legacy -> `memory_v1` avant toute purge
 
 Critere actuel:
 
@@ -308,3 +397,41 @@ Le lot `v0.3` sera considere valide si:
 - le benchmark retrieval versionne couvre ces 3 repos
 - chaque repo passe un benchmark top-3 acceptable ou produit un ecart actionnable
 - la qualite retrieval n'est plus validee uniquement sur le repo pilote historique
+
+## 11. Definition de Done v0.4
+
+Le lot `v0.4` est considere valide si:
+
+- le script `inventory_collections.py` est deploye sur Waza
+- `make memory-qdrant-audit` produit un rapport JSON et Markdown
+- la collection cible `memory_v1` est identifiee comme `active`
+- les collections non cible sont classees `legacy` ou `empty`
+- aucun delete/drop Qdrant n'est execute pendant l'audit
+- un mapping de migration legacy peut etre redige a partir du rapport
+
+Validation du 2026-04-10:
+
+- rapport: `/opt/workstation/data/ai-memory-worker/audits/qdrant-inventory-20260410T215942Z.md`
+- `memory_v1`: `active`, 1105 points, dimension 768
+- collections legacy: 23
+- collections vides: 4
+- point d'attention: `semantic_cache` contient 245555 points en dimension 1536;
+  a traiter comme une collection applicative/cache a part, pas comme une source a
+  migrer aveuglement vers `memory_v1`
+
+## 12. Definition de Done v0.5
+
+Le lot `v0.5` est considere valide si:
+
+- chaque collection auditee en v0.4 a une decision initiale
+- les collections candidates a migration pilote sont identifiees
+- les collections hors scope sont explicitement exclues de `memory_v1`
+- aucune suppression Qdrant n'est executee
+- le fichier de mapping est versionne dans `docs/audits`
+
+Validation du 2026-04-11:
+
+- mapping: `docs/audits/qdrant-legacy-migration-map-2026-04-11.md`
+- pilote `v0.6`: `app-factory-rex`, `flash-rex`, `rex_lessons`
+- `semantic_cache` reste hors migration documentaire
+- collections vides marquees `drop_candidate_empty`, sans suppression immediate

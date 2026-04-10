@@ -15,13 +15,16 @@ memory_worker_venv_dir: "{{ memory_worker_install_dir }}/.venv"
 memory_worker_hf_home: "{{ memory_worker_data_dir }}/hf-cache"
 
 memory_worker_config_file: "{{ memory_worker_config_dir }}/config.yml"
+memory_worker_sources_file: "{{ memory_worker_config_dir }}/sources.yml"
 memory_worker_env_file: "{{ memory_worker_config_dir }}/memory-worker.env"
 memory_worker_requirements_file: "{{ memory_worker_install_dir }}/requirements.txt"
 memory_worker_index_script: "{{ memory_worker_install_dir }}/index.py"
 memory_worker_search_script: "{{ memory_worker_install_dir }}/search_memory.py"
 memory_worker_benchmark_script: "{{ memory_worker_install_dir }}/benchmark_memory.py"
+memory_worker_inventory_collections_script: "{{ memory_worker_install_dir }}/inventory_collections.py"
 memory_worker_benchmark_queries_file: "{{ memory_worker_config_dir }}/benchmark-queries.yml"
 memory_worker_run_report_script: "{{ memory_worker_install_dir }}/run-and-report.sh"
+memory_worker_audit_report_dir: "{{ memory_worker_data_dir }}/audits"
 
 # n8n webhook that ingests run reports (push-only model, plan section 14.3).
 # Override in inventory if the n8n domain changes.
@@ -59,6 +62,29 @@ memory_worker_repo_roots:
   - "/home/{{ workstation_pi_user | default('pi') }}/VPAI"
   - "/home/{{ workstation_pi_user | default('pi') }}/flash-studio"
   - "{{ workstation_projects_dir }}/saas/story-engine"
+  - "{{ workstation_projects_dir }}/ops"
+
+memory_worker_sources:
+  - name: "VPAI"
+    kind: "git_repo"
+    root: "/home/{{ workstation_pi_user | default('pi') }}/VPAI"
+    tags:
+      - "scope:infra"
+  - name: "flash-studio"
+    kind: "git_repo"
+    root: "/home/{{ workstation_pi_user | default('pi') }}/flash-studio"
+    tags:
+      - "scope:flash"
+  - name: "story-engine"
+    kind: "git_repo"
+    root: "{{ workstation_projects_dir }}/saas/story-engine"
+    tags:
+      - "scope:story-engine"
+  - name: "ops"
+    kind: "doc_tree"
+    root: "{{ workstation_projects_dir }}/ops"
+    tags:
+      - "scope:ops"
 
 memory_worker_include_extensions:
   - .md

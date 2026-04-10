@@ -62,4 +62,46 @@ CREATE TABLE IF NOT EXISTS model_scores (
 );
 "
 
+# === Memory runs table (in n8n database) ===
+# Used by the memory-run-report-ingest and memory-healthcheck workflows
+# to persist worker run reports from Waza llamaindex-memory-worker.
+echo "Provisioning memory_runs table in n8n database..."
+docker exec -e PGPASSWORD="${PGPASSWORD}" "${CONTAINER}" psql -U n8n -d n8n -c "
+CREATE TABLE IF NOT EXISTS memory_runs (
+  id                    BIGSERIAL PRIMARY KEY,
+  run_id                TEXT NOT NULL,
+  received_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  report_schema_version TEXT,
+  worker_version        TEXT,
+  host_origin           TEXT,
+  repo                  JSONB,
+  mode                  TEXT,
+  collection_name       TEXT,
+  embedding_model       TEXT,
+  started_at            TIMESTAMPTZ,
+  duration_sec          NUMERIC,
+  attempted_files       INTEGER,
+  indexed_files         INTEGER,
+  indexed_chunks        INTEGER,
+  indexed_points        INTEGER,
+  skipped_files         INTEGER,
+  errors                JSONB,
+  spool_size            INTEGER,
+  qdrant_reachable      BOOLEAN,
+  exit_code             INTEGER
+);
+DELETE FROM memory_runs a
+USING memory_runs b
+WHERE a.run_id = b.run_id
+  AND a.id < b.id;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_memory_runs_run_id_unique
+  ON memory_runs (run_id);
+CREATE INDEX IF NOT EXISTS idx_memory_runs_received_at
+  ON memory_runs (received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_memory_runs_host_origin
+  ON memory_runs (host_origin);
+CREATE INDEX IF NOT EXISTS idx_memory_runs_exit_code
+  ON memory_runs (exit_code);
+"
+
 echo "PostgreSQL provisioning complete."

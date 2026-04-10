@@ -1,0 +1,109 @@
+---
+# llamaindex-memory-worker — defaults
+
+memory_worker_service_name: "llamaindex-memory-worker"
+memory_worker_timer_name: "llamaindex-memory-worker"
+memory_worker_user: "{{ workstation_pi_user | default('pi') }}"
+
+memory_worker_install_dir: "/opt/workstation/ai-memory-worker"
+memory_worker_config_dir: "/opt/workstation/configs/ai-memory-worker"
+memory_worker_data_dir: "/opt/workstation/data/ai-memory-worker"
+memory_worker_state_dir: "{{ memory_worker_data_dir }}/state"
+memory_worker_spool_dir: "{{ memory_worker_data_dir }}/spool"
+memory_worker_log_dir: "{{ memory_worker_data_dir }}/logs"
+memory_worker_venv_dir: "{{ memory_worker_install_dir }}/.venv"
+memory_worker_hf_home: "{{ memory_worker_data_dir }}/hf-cache"
+
+memory_worker_config_file: "{{ memory_worker_config_dir }}/config.yml"
+memory_worker_env_file: "{{ memory_worker_config_dir }}/memory-worker.env"
+memory_worker_requirements_file: "{{ memory_worker_install_dir }}/requirements.txt"
+memory_worker_index_script: "{{ memory_worker_install_dir }}/index.py"
+memory_worker_search_script: "{{ memory_worker_install_dir }}/search_memory.py"
+memory_worker_benchmark_script: "{{ memory_worker_install_dir }}/benchmark_memory.py"
+memory_worker_benchmark_queries_file: "{{ memory_worker_config_dir }}/benchmark-queries.yml"
+memory_worker_run_report_script: "{{ memory_worker_install_dir }}/run-and-report.sh"
+
+# n8n webhook that ingests run reports (push-only model, plan section 14.3).
+# Override in inventory if the n8n domain changes.
+memory_worker_report_webhook_url: "https://{{ n8n_subdomain | default('mayi') }}.{{ domain_name }}/webhook/memory-run-report"
+# Secret is stored in a 0600 file so it never appears in `ps` output.
+memory_worker_report_webhook_secret_file: "{{ memory_worker_config_dir }}/memory-webhook-secret"
+memory_worker_report_webhook_secret: "{{ memory_webhook_secret | default('') }}"
+
+memory_worker_apt_packages:
+  - python3-venv
+  - python3-dev
+
+memory_worker_python_packages:
+  - "llama-index-core>=0.12,<0.13"
+  - "llama-index-vector-stores-qdrant>=0.6,<0.7"
+  - "qdrant-client>=1.16,<1.17"
+  - "sentence-transformers>=5.1,<5.2"
+  - "pyyaml>=6,<7"
+
+memory_worker_collection_name: "memory_v1"
+memory_worker_qdrant_url: "https://{{ qdrant_subdomain }}.{{ domain_name }}:443"
+memory_worker_qdrant_api_key: "{{ qdrant_api_key }}"
+memory_worker_qdrant_timeout: 30
+memory_worker_qdrant_verify_tls: true
+
+memory_worker_huggingface_token: "{{ huggingface_token | default('') }}"
+
+memory_worker_embedding_model: "google/embeddinggemma-300m"
+memory_worker_embedding_dim: 768
+memory_worker_embedding_normalize: true
+memory_worker_embedding_prompt_query: "Retrieval-query"
+memory_worker_version: "2026-04-10"
+
+memory_worker_repo_roots:
+  - "/home/{{ workstation_pi_user | default('pi') }}/VPAI"
+  - "/home/{{ workstation_pi_user | default('pi') }}/flash-studio"
+  - "{{ workstation_projects_dir }}/saas/story-engine"
+
+memory_worker_include_extensions:
+  - .md
+  - .txt
+  - .rst
+  - .py
+  - .js
+  - .jsx
+  - .ts
+  - .tsx
+  - .go
+  - .sh
+  - .sql
+  - .json
+  - .yml
+  - .yaml
+  - .j2
+  - .env
+  - .toml
+  - .ini
+
+memory_worker_exclude_dirs:
+  - .git
+  - node_modules
+  - dist
+  - build
+  - .next
+  - .turbo
+  - .venv
+  - venv
+  - __pycache__
+  - .mypy_cache
+  - .pytest_cache
+  - .playwright-mcp
+  - coverage
+
+memory_worker_max_file_bytes: 1048576
+memory_worker_chunk_size: 1600
+memory_worker_chunk_overlap: 200
+memory_worker_max_chunks_per_file: 200
+memory_worker_batch_size: 8
+memory_worker_progress_every: 10
+memory_worker_loadavg_threshold: 6.0
+memory_worker_timer_on_boot_sec: "5m"
+memory_worker_timer_on_unit_active_sec: "30m"
+memory_worker_index_mode: "incremental"
+memory_worker_enable_gc: true
+memory_worker_gc_flag: "{{ '--gc' if memory_worker_enable_gc | bool else '' }}"

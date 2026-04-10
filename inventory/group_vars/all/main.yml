@@ -130,6 +130,7 @@ anthropic_api_key: "{{ vault_anthropic_api_key }}"
 openai_api_key: "{{ vault_openai_api_key }}"
 openrouter_api_key: "{{ vault_openrouter_api_key | default('') }}"
 google_gemini_api_key: "{{ vault_google_gemini_api_key | default('') }}"
+huggingface_token: "{{ vault_huggingface_token | default('') }}"
 byteplus_api_key: "{{ vault_byteplus_api_key | default('') }}"
 brave_search_api_key: "{{ vault_brave_search_api_key | default('') }}"
 fal_ai_api_key: "{{ vault_fal_ai_api_key | default('') }}"
@@ -348,3 +349,12 @@ plane_cf_module_id: "c04ac29e-9842-4eec-8ff6-6923e9fe75d7"
 ghcr_pull_token: "{{ vault_ghcr_pull_token }}"
 # Webhook HMAC secret for n8n App Factory workflows
 af_webhook_secret: "{{ vault_af_webhook_secret }}"
+
+# === LLAMAINDEX MEMORY WORKER ===
+# Shared secret for X-Memory-Secret header on memory-run-report webhook.
+# Worker on Waza posts its JSON report with this token; n8n ingest validates it.
+memory_webhook_secret: "{{ vault_memory_webhook_secret | default('') }}"
+# Healthcheck thresholds consumed by memory-healthcheck workflow.
+# Alert fires if last run is older than N hours or spool exceeds M lots.
+memory_healthcheck_max_age_hours: 2
+memory_healthcheck_max_spool: 50

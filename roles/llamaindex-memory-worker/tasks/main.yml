@@ -1,0 +1,172 @@
+---
+# llamaindex-memory-worker — tasks
+
+- name: Install memory worker apt packages
+  ansible.builtin.apt:
+    name: "{{ memory_worker_apt_packages }}"
+    state: present
+    update_cache: true
+  become: true
+
+- name: Create memory worker directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(memory_worker_user) }}"
+    group: "{{ item.group | default(memory_worker_user) }}"
+    mode: "{{ item.mode | default('0755') }}"
+  loop:
+    - path: "{{ memory_worker_install_dir }}"
+    - path: "{{ memory_worker_config_dir }}"
+    - path: "{{ memory_worker_data_dir }}"
+    - path: "{{ memory_worker_state_dir }}"
+    - path: "{{ memory_worker_spool_dir }}"
+    - path: "{{ memory_worker_log_dir }}"
+    - path: "{{ memory_worker_hf_home }}"
+  become: true
+
+- name: Create memory worker virtualenv
+  ansible.builtin.command:
+    cmd: "python3 -m venv {{ memory_worker_venv_dir }}"
+  args:
+    creates: "{{ memory_worker_venv_dir }}/bin/python"
+  become: true
+
+- name: Deploy memory worker requirements
+  ansible.builtin.template:
+    src: requirements.txt.j2
+    dest: "{{ memory_worker_requirements_file }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0644"
+  become: true
+
+- name: Install memory worker Python packages
+  ansible.builtin.pip:
+    requirements: "{{ memory_worker_requirements_file }}"
+    virtualenv: "{{ memory_worker_venv_dir }}"
+    virtualenv_python: python3
+    state: present
+  become: true
+
+- name: Deploy memory worker environment file
+  ansible.builtin.template:
+    src: memory-worker.env.j2
+    dest: "{{ memory_worker_env_file }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0600"
+  become: true
+  no_log: true
+  notify: Restart llamaindex-memory-worker timer
+
+- name: Deploy memory worker config
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: "{{ memory_worker_config_file }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart llamaindex-memory-worker timer
+
+- name: Deploy memory worker index script
+  ansible.builtin.template:
+    src: index.py.j2
+    dest: "{{ memory_worker_index_script }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy memory worker search script
+  ansible.builtin.template:
+    src: search_memory.py.j2
+    dest: "{{ memory_worker_search_script }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy memory worker benchmark script
+  ansible.builtin.template:
+    src: benchmark_memory.py.j2
+    dest: "{{ memory_worker_benchmark_script }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy memory worker benchmark queries
+  ansible.builtin.template:
+    src: benchmark-queries.yml.j2
+    dest: "{{ memory_worker_benchmark_queries_file }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0644"
+  become: true
+
+- name: Deploy memory worker run-and-report wrapper
+  ansible.builtin.template:
+    src: run-and-report.sh.j2
+    dest: "{{ memory_worker_run_report_script }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+  notify: Restart llamaindex-memory-worker timer
+
+- name: Deploy memory worker webhook secret file
+  ansible.builtin.copy:
+    content: "{{ memory_worker_report_webhook_secret }}"
+    dest: "{{ memory_worker_report_webhook_secret_file }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0600"
+  become: true
+  no_log: true
+  when: memory_worker_report_webhook_secret | length > 0
+  notify: Restart llamaindex-memory-worker timer
+
+- name: Deploy memory worker systemd service
+  ansible.builtin.template:
+    src: llamaindex-memory-worker.service.j2
+    dest: "/etc/systemd/system/{{ memory_worker_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart llamaindex-memory-worker timer
+
+- name: Deploy memory worker systemd timer
+  ansible.builtin.template:
+    src: llamaindex-memory-worker.timer.j2
+    dest: "/etc/systemd/system/{{ memory_worker_timer_name }}.timer"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd
+    - Restart llamaindex-memory-worker timer
+
+- name: Verify memory worker script imports
+  ansible.builtin.command:
+    cmd: "{{ memory_worker_venv_dir }}/bin/python -m py_compile {{ item }}"
+  loop:
+    - "{{ memory_worker_index_script }}"
+    - "{{ memory_worker_search_script }}"
+    - "{{ memory_worker_benchmark_script }}"
+  changed_when: false
+  become: true
+
+- name: Enable and start memory worker timer
+  ansible.builtin.systemd:
+    name: "{{ memory_worker_timer_name }}.timer"
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: not ansible_check_mode

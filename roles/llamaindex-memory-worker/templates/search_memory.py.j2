@@ -1,0 +1,84 @@
+#!/usr/bin/env python3
+"""Search helper for memory_v1."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+
+import yaml
+from qdrant_client import QdrantClient
+from qdrant_client.http import models as rest
+from sentence_transformers import SentenceTransformer
+
+
+def load_config(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Search memory_v1.")
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--query", required=True)
+    parser.add_argument("--limit", type=int, default=5)
+    parser.add_argument("--repo")
+    parser.add_argument("--doc-kind")
+    parser.add_argument("--topic")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    config = load_config(Path(args.config))
+    client = QdrantClient(
+        url=os.getenv("QDRANT_URL", config["qdrant_url"]),
+        api_key=os.getenv("QDRANT_API_KEY"),
+        timeout=int(os.getenv("QDRANT_TIMEOUT", config["qdrant_timeout"])),
+        verify=str(os.getenv("QDRANT_VERIFY_TLS", config.get("qdrant_verify_tls", True))).lower() == "true",
+    )
+    model = SentenceTransformer(config["embedding"]["model_name"])
+    vector = model.encode(
+        args.query,
+        prompt_name=config["embedding"]["query_prompt_name"],
+        normalize_embeddings=bool(config["embedding"]["normalize_embeddings"]),
+        show_progress_bar=False,
+    ).tolist()
+
+    conditions = []
+    if args.repo:
+        conditions.append(rest.FieldCondition(key="repo", match=rest.MatchValue(value=args.repo)))
+    if args.doc_kind:
+        conditions.append(rest.FieldCondition(key="doc_kind", match=rest.MatchValue(value=args.doc_kind)))
+    if args.topic:
+        conditions.append(rest.FieldCondition(key="topic", match=rest.MatchValue(value=args.topic)))
+    query_filter = rest.Filter(must=conditions) if conditions else None
+
+    response = client.query_points(
+        collection_name=config["collection_name"],
+        query=vector,
+        query_filter=query_filter,
+        limit=args.limit,
+        with_payload=True,
+        with_vectors=False,
+    )
+
+    for item in response.points:
+        payload = item.payload or {}
+        summary = {
+            "score": item.score,
+            "repo": payload.get("repo"),
+            "doc_kind": payload.get("doc_kind"),
+            "relative_path": payload.get("relative_path"),
+            "title": payload.get("title"),
+            "section": payload.get("section"),
+            "topic": payload.get("topic"),
+        }
+        print(json.dumps(summary, ensure_ascii=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,15 @@
+---
+# llamaindex-memory-worker — handlers
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
+- name: Restart llamaindex-memory-worker timer
+  ansible.builtin.systemd:
+    name: "{{ memory_worker_timer_name }}.timer"
+    state: restarted
+  become: true
+  when: not ansible_check_mode
+  listen: Restart llamaindex-memory-worker timer

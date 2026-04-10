@@ -63,6 +63,9 @@
       vars:
         headscale_hostname: "{{ workstation_pi_hostname }}"
 
+    - role: llamaindex-memory-worker
+      tags: [llamaindex-memory-worker]
+
     - role: opencode
       tags: [opencode]
 

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run LlamaIndex memory worker on schedule
+
+[Timer]
+OnBootSec={{ memory_worker_timer_on_boot_sec }}
+OnUnitActiveSec={{ memory_worker_timer_on_unit_active_sec }}
+Unit={{ memory_worker_service_name }}.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

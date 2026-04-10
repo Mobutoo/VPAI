@@ -1,0 +1,61 @@
+collection_name: "{{ memory_worker_collection_name }}"
+qdrant_url: "{{ memory_worker_qdrant_url }}"
+qdrant_timeout: {{ memory_worker_qdrant_timeout }}
+qdrant_verify_tls: {{ 'true' if memory_worker_qdrant_verify_tls | bool else 'false' }}
+
+embedding:
+  model_name: "{{ memory_worker_embedding_model }}"
+  embedding_dim: {{ memory_worker_embedding_dim }}
+  normalize_embeddings: {{ 'true' if memory_worker_embedding_normalize | bool else 'false' }}
+  query_prompt_name: "{{ memory_worker_embedding_prompt_query }}"
+
+paths:
+  state_dir: "{{ memory_worker_state_dir }}"
+  spool_dir: "{{ memory_worker_spool_dir }}"
+  log_dir: "{{ memory_worker_log_dir }}"
+  hf_home: "{{ memory_worker_hf_home }}"
+  benchmark_queries_file: "{{ memory_worker_benchmark_queries_file }}"
+
+limits:
+  max_file_bytes: {{ memory_worker_max_file_bytes }}
+  chunk_size: {{ memory_worker_chunk_size }}
+  chunk_overlap: {{ memory_worker_chunk_overlap }}
+  max_chunks_per_file: {{ memory_worker_max_chunks_per_file }}
+  batch_size: {{ memory_worker_batch_size }}
+  progress_every: {{ memory_worker_progress_every }}
+  loadavg_threshold: {{ memory_worker_loadavg_threshold }}
+
+repos:
+{% for repo_root in memory_worker_repo_roots %}
+  - "{{ repo_root }}"
+{% endfor %}
+
+filters:
+  include_extensions:
+{% for extension in memory_worker_include_extensions %}
+    - "{{ extension }}"
+{% endfor %}
+  exclude_dirs:
+{% for dirname in memory_worker_exclude_dirs %}
+    - "{{ dirname }}"
+{% endfor %}
+
+payload_indexes:
+  - field_name: "doc_kind"
+    field_schema: "keyword"
+  - field_name: "repo"
+    field_schema: "keyword"
+  - field_name: "host_origin"
+    field_schema: "keyword"
+  - field_name: "source_kind"
+    field_schema: "keyword"
+  - field_name: "severity"
+    field_schema: "keyword"
+  - field_name: "category"
+    field_schema: "keyword"
+  - field_name: "phase"
+    field_schema: "keyword"
+  - field_name: "topic"
+    field_schema: "keyword"
+  - field_name: "tags"
+    field_schema: "keyword"

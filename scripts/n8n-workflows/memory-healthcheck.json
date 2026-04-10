@@ -1,0 +1,140 @@
+{
+  "name": "memory-healthcheck",
+  "nodes": [
+    {
+      "id": "cron-1h",
+      "name": "Cron 1h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        260,
+        300
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "evaluate-health",
+      "name": "Evaluate Memory Health",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Healthcheck for the LlamaIndex memory worker pipeline.\n// Push-only design: n8n never reaches out to Waza.\n// To validate the scheduled timer path without SSH, we require a recent\n// *incremental* run from host_origin=waza. A manual full backfill must not mask\n// a broken timer.\nconst { Client } = require('pg');\nconst http = require('http');\n\nfunction checkQdrant() {\n  return new Promise((resolve) => {\n    const req = http.get(\n      'http://javisi_qdrant:6333/collections/memory_v1',\n      { timeout: 5000 },\n      (res) => {\n        let d = '';\n        res.on('data', (c) => d += c);\n        res.on('end', () => {\n          resolve({\n            reachable: res.statusCode === 200,\n            status: res.statusCode,\n            body: d.slice(0, 200)\n          });\n        });\n      }\n    );\n    req.on('error', (e) => resolve({ reachable: false, error: e.message }));\n    req.on('timeout', () => {\n      req.destroy();\n      resolve({ reachable: false, error: 'timeout' });\n    });\n  });\n}\n\nasync function checkRuns() {\n  const client = new Client({\n    host: 'postgresql',\n    port: 5432,\n    database: 'n8n',\n    user: 'n8n',\n    password: $env.DB_POSTGRESDB_PASSWORD\n  });\n  await client.connect();\n  try {\n    const latestResult = await client.query(`\n      SELECT run_id, received_at, host_origin, mode, spool_size,\n             qdrant_reachable, exit_code,\n             EXTRACT(EPOCH FROM (NOW() - received_at)) / 3600.0 AS age_hours\n      FROM memory_runs\n      ORDER BY received_at DESC\n      LIMIT 1\n    `);\n    const latestIncrementalResult = await client.query(`\n      SELECT run_id, received_at, host_origin, mode, spool_size,\n             qdrant_reachable, exit_code,\n             EXTRACT(EPOCH FROM (NOW() - received_at)) / 3600.0 AS age_hours\n      FROM memory_runs\n      WHERE host_origin = 'waza' AND mode = 'incremental'\n      ORDER BY received_at DESC\n      LIMIT 1\n    `);\n    return {\n      lastRun: latestResult.rows[0] || null,\n      lastIncrementalRun: latestIncrementalResult.rows[0] || null,\n    };\n  } finally {\n    await client.end();\n  }\n}\n\nconst maxAgeHours = Number($env.MEMORY_HEALTHCHECK_MAX_AGE_HOURS || '2');\nconst maxSpool = Number($env.MEMORY_HEALTHCHECK_MAX_SPOOL || '50');\n\nconst qdrant = await checkQdrant();\n\nlet lastRun = null;\nlet lastIncrementalRun = null;\nlet lastRunError = null;\ntry {\n  const runState = await checkRuns();\n  lastRun = runState.lastRun;\n  lastIncrementalRun = runState.lastIncrementalRun;\n} catch (e) {\n  lastRunError = e.message;\n}\n\nconst issues = [];\n\nif (!qdrant.reachable) {\n  issues.push(`qdrant_unreachable:${qdrant.error || qdrant.status}`);\n}\n\nif (lastRunError) {\n  issues.push(`db_error:${lastRunError}`);\n} else if (!lastRun) {\n  issues.push('no_runs_recorded');\n} else {\n  if ((lastRun.spool_size ?? 0) > maxSpool) {\n    issues.push(`spool_high:${lastRun.spool_size}`);\n  }\n  if (lastRun.qdrant_reachable === false) {\n    issues.push('last_run_qdrant_unreachable');\n  }\n  if (lastRun.exit_code !== null && lastRun.exit_code !== 0) {\n    issues.push(`last_run_exit_code:${lastRun.exit_code}`);\n  }\n}\n\nif (!lastIncrementalRun) {\n  issues.push('no_incremental_runs_recorded');\n} else {\n  const ageHours = Number(lastIncrementalRun.age_hours || 0);\n  if (ageHours > maxAgeHours) {\n    issues.push(`stale_incremental:last_run_${ageHours.toFixed(1)}h_ago`);\n  }\n}\n\nconst needsAlert = issues.length > 0;\n\nreturn [{\n  json: {\n    status: needsAlert ? 'unhealthy' : 'healthy',\n    checked_at: new Date().toISOString(),\n    qdrant_reachable: qdrant.reachable,\n    qdrant_detail: qdrant.error || qdrant.status,\n    last_run: lastRun ? {\n      run_id: lastRun.run_id,\n      host_origin: lastRun.host_origin,\n      mode: lastRun.mode,\n      received_at: lastRun.received_at,\n      age_hours: Number(lastRun.age_hours || 0).toFixed(2),\n      spool_size: lastRun.spool_size,\n      exit_code: lastRun.exit_code,\n      worker_qdrant_reachable: lastRun.qdrant_reachable\n    } : null,\n    last_incremental_run: lastIncrementalRun ? {\n      run_id: lastIncrementalRun.run_id,\n      host_origin: lastIncrementalRun.host_origin,\n      mode: lastIncrementalRun.mode,\n      received_at: lastIncrementalRun.received_at,\n      age_hours: Number(lastIncrementalRun.age_hours || 0).toFixed(2),\n      spool_size: lastIncrementalRun.spool_size,\n      exit_code: lastIncrementalRun.exit_code,\n      worker_qdrant_reachable: lastIncrementalRun.qdrant_reachable\n    } : null,\n    thresholds: {\n      max_age_hours: maxAgeHours,\n      max_spool: maxSpool\n    },\n    issues,\n    needs_alert: needsAlert\n  }\n}];"
+      }
+    },
+    {
+      "id": "needs-alert",
+      "name": "Needs Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-needs-alert",
+              "leftValue": "={{ $json.needs_alert }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "send-telegram-alert",
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        920,
+        220
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_MONITORING_CHAT_ID, parse_mode: 'Markdown', text: `*Memory pipeline drift detected*\\n\\n*checked_at:* ${$json.checked_at}\\n*qdrant_reachable:* ${$json.qdrant_reachable}\\n*last_run:* ${$json.last_run ? `${$json.last_run.run_id} (${$json.last_run.age_hours}h ago, spool=${$json.last_run.spool_size})` : 'none'}\\n*issues:*\\n- ${$json.issues.join('\\n- ')}` }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Cron 1h": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Memory Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Memory Health": {
+      "main": [
+        [
+          {
+            "node": "Needs Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Alert?": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

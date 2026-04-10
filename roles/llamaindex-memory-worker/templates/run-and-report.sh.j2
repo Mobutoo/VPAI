@@ -1,0 +1,76 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# run-and-report.sh — run the LlamaIndex memory worker and POST its JSON
+# report to the n8n memory-run-report-ingest webhook.
+#
+# Usage:
+#   run-and-report.sh                    # default: --mode {{ memory_worker_index_mode }}
+#   run-and-report.sh --mode full
+#   run-and-report.sh --mode full --repo VPAI --max-files 500 --dry-run
+#
+# Exit code: the worker's exit code (webhook POST failure does not mask it).
+
+set -euo pipefail
+
+WORKER_BIN="{{ memory_worker_venv_dir }}/bin/python"
+WORKER_SCRIPT="{{ memory_worker_index_script }}"
+WORKER_CONFIG="{{ memory_worker_config_file }}"
+WORKER_ENV_FILE="{{ memory_worker_env_file }}"
+
+WEBHOOK_URL="{{ memory_worker_report_webhook_url }}"
+WEBHOOK_SECRET_FILE="{{ memory_worker_report_webhook_secret_file }}"
+
+REPORT_PATH="$(mktemp --tmpdir memory-run-report-XXXXXX.json)"
+trap 'rm -f "${REPORT_PATH}"' EXIT
+
+# Pass extra args through. If the caller did not set --mode, default to the
+# timer-configured mode (incremental).
+EXTRA_ARGS=("$@")
+HAS_MODE=0
+for a in "${EXTRA_ARGS[@]:-}"; do
+  [[ "${a}" == "--mode" ]] && HAS_MODE=1 && break
+done
+if [[ "${HAS_MODE}" -eq 0 ]]; then
+  EXTRA_ARGS=("--mode" "{{ memory_worker_index_mode }}" "${EXTRA_ARGS[@]:-}")
+fi
+
+# Load env file (QDRANT_URL, HF_HOME, etc.) into this shell so the worker
+# inherits the same environment as the systemd unit.
+set -a
+# shellcheck disable=SC1090
+. "${WORKER_ENV_FILE}"
+set +a
+
+# Build worker command as an array — avoids Jinja2/line-continuation pitfalls.
+WORKER_ARGS=("--config" "${WORKER_CONFIG}" "--report-path" "${REPORT_PATH}")
+{% if memory_worker_enable_gc | bool %}
+WORKER_ARGS+=("--gc")
+{% endif %}
+WORKER_ARGS+=("${EXTRA_ARGS[@]}")
+
+WORKER_EXIT=0
+"${WORKER_BIN}" "${WORKER_SCRIPT}" "${WORKER_ARGS[@]}" || WORKER_EXIT=$?
+
+# Always try to POST whatever report was produced, even on worker failure.
+if [[ -s "${REPORT_PATH}" ]] && [[ -n "${WEBHOOK_URL}" ]] && [[ -r "${WEBHOOK_SECRET_FILE}" ]]; then
+  SECRET="$(cat "${WEBHOOK_SECRET_FILE}")"
+  HTTP_CODE="$(
+    curl --silent --show-error \
+      --output /tmp/memory-run-report.response \
+      --write-out '%{http_code}' \
+      --max-time 15 \
+      --request POST \
+      --header 'Content-Type: application/json' \
+      --header "X-Memory-Secret: ${SECRET}" \
+      --data-binary "@${REPORT_PATH}" \
+      "${WEBHOOK_URL}" \
+    || echo "000"
+  )"
+  if [[ "${HTTP_CODE}" != "200" ]]; then
+    echo "run-and-report: webhook POST returned HTTP ${HTTP_CODE}" >&2
+  fi
+else
+  echo "run-and-report: no report produced or webhook not configured — skipping POST" >&2
+fi
+
+exit "${WORKER_EXIT}"

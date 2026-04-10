@@ -1,0 +1,227 @@
+{
+  "name": "memory-run-report-ingest",
+  "nodes": [
+    {
+      "id": "webhook-memory-run",
+      "name": "Webhook Memory Run Report",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ],
+      "webhookId": "memory-run-report",
+      "parameters": {
+        "path": "memory-run-report",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "validate-memory-secret",
+      "name": "Validate Memory Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-memory-secret",
+              "leftValue": "={{ $json.headers['x-memory-secret'] }}",
+              "rightValue": "={{ $env.MEMORY_WEBHOOK_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-403",
+      "name": "Respond 403",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        480
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'Forbidden', message: 'Invalid X-Memory-Secret header' }) }}",
+        "options": {
+          "responseCode": 403
+        }
+      }
+    },
+    {
+      "id": "persist-run-report",
+      "name": "Persist Run Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Persist worker run report into memory_runs (n8n database).\n// Table schema is provisioned by docker-stack/provision-postgresql.sh.j2.\nconst { Client } = require('pg');\n\nconst data = $input.first().json;\nconst body = data.body || {};\n\nif (!body.run_id) {\n  throw new Error('Missing required field: run_id');\n}\n\nlet repoPayload = null;\nif (Array.isArray(body.repos) && body.repos.length > 0) {\n  repoPayload = body.repos;\n} else if (body.repo !== undefined && body.repo !== null) {\n  repoPayload = body.repo;\n}\nconst repoValue = repoPayload === null ? null : JSON.stringify(repoPayload);\n\nconst errorsArray = Array.isArray(body.errors) ? body.errors : [];\nconst errorsValue = JSON.stringify(errorsArray);\n\nconst exitCode = Number.isInteger(body.exit_code) ? body.exit_code : 0;\nconst hasErrors = errorsArray.length > 0;\nconst badExit = exitCode !== 0;\nconst needsAlert = badExit || hasErrors;\n\nconst client = new Client({\n  host: 'postgresql',\n  port: 5432,\n  database: 'n8n',\n  user: 'n8n',\n  password: $env.DB_POSTGRESDB_PASSWORD\n});\n\ntry {\n  await client.connect();\n  await client.query(`\n    INSERT INTO memory_runs (\n      run_id, report_schema_version, worker_version, host_origin, repo, mode,\n      collection_name, embedding_model, started_at, duration_sec,\n      attempted_files, indexed_files, indexed_chunks, indexed_points,\n      skipped_files, errors, spool_size, qdrant_reachable, exit_code\n    ) VALUES (\n      $1, $2, $3, $4, $5::jsonb, $6,\n      $7, $8, $9, $10,\n      $11, $12, $13, $14,\n      $15, $16::jsonb, $17, $18, $19\n    )\n    ON CONFLICT (run_id) DO UPDATE SET\n      report_schema_version = EXCLUDED.report_schema_version,\n      worker_version = EXCLUDED.worker_version,\n      host_origin = EXCLUDED.host_origin,\n      repo = EXCLUDED.repo,\n      mode = EXCLUDED.mode,\n      collection_name = EXCLUDED.collection_name,\n      embedding_model = EXCLUDED.embedding_model,\n      started_at = EXCLUDED.started_at,\n      duration_sec = EXCLUDED.duration_sec,\n      attempted_files = EXCLUDED.attempted_files,\n      indexed_files = EXCLUDED.indexed_files,\n      indexed_chunks = EXCLUDED.indexed_chunks,\n      indexed_points = EXCLUDED.indexed_points,\n      skipped_files = EXCLUDED.skipped_files,\n      errors = EXCLUDED.errors,\n      spool_size = EXCLUDED.spool_size,\n      qdrant_reachable = EXCLUDED.qdrant_reachable,\n      exit_code = EXCLUDED.exit_code,\n      received_at = NOW()\n  `, [\n    body.run_id,\n    body.report_schema_version || null,\n    body.worker_version || null,\n    body.host_origin || null,\n    repoValue,\n    body.mode || null,\n    body.collection_name || null,\n    body.embedding_model || null,\n    body.started_at || null,\n    body.duration_sec ?? null,\n    body.attempted_files ?? null,\n    body.indexed_files ?? null,\n    body.indexed_chunks ?? null,\n    body.indexed_points ?? null,\n    body.skipped_files ?? null,\n    errorsValue,\n    body.spool_size ?? null,\n    body.qdrant_reachable ?? null,\n    exitCode\n  ]);\n  await client.end();\n} catch (err) {\n  try { await client.end(); } catch(e) {}\n  throw err;\n}\n\nconst alertReason = needsAlert\n  ? (badExit ? `exit_code=${exitCode}` : `errors_count=${errorsArray.length}`)\n  : null;\n\nreturn [{\n  json: {\n    status: 'ingested',\n    run_id: body.run_id,\n    host_origin: body.host_origin || null,\n    repo: body.repo ?? null,\n    repos: Array.isArray(body.repos) ? body.repos : (body.repo ? [body.repo] : []),\n    mode: body.mode || null,\n    exit_code: exitCode,\n    errors_count: errorsArray.length,\n    spool_size: body.spool_size ?? null,\n    needs_alert: needsAlert,\n    alert_reason: alertReason,\n    alert_errors_preview: errorsArray.slice(0, 3)\n  }\n}];"
+      }
+    },
+    {
+      "id": "respond-200",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        920,
+        220
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: $json.status, run_id: $json.run_id, needs_alert: $json.needs_alert }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "needs-alert",
+      "name": "Needs Alert?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        920,
+        380
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-needs-alert",
+              "leftValue": "={{ $json.needs_alert }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "send-telegram-alert",
+      "name": "Send Telegram Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        380
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_MONITORING_CHAT_ID, parse_mode: 'Markdown', text: `*Memory worker anomaly*\\n\\n*host:* ${$json.host_origin || 'unknown'}\\n*mode:* ${$json.mode || 'unknown'}\\n*run_id:* \\`${$json.run_id}\\`\\n*reason:* ${$json.alert_reason}\\n*exit_code:* ${$json.exit_code}\\n*errors:* ${$json.errors_count}\\n*spool:* ${$json.spool_size}` }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Webhook Memory Run Report": {
+      "main": [
+        [
+          {
+            "node": "Validate Memory Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Memory Secret": {
+      "main": [
+        [
+          {
+            "node": "Persist Run Report",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 403",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist Run Report": {
+      "main": [
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Needs Alert?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Needs Alert?": {
+      "main": [
+        [
+          {
+            "node": "Send Telegram Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

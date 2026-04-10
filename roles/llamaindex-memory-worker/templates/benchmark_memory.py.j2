@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Run retrieval benchmark queries against memory_v1."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+from pathlib import Path
+from time import perf_counter
+
+import yaml
+from qdrant_client import QdrantClient
+from qdrant_client.http import models as rest
+from sentence_transformers import SentenceTransformer
+
+
+def load_yaml(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Benchmark retrieval quality for memory_v1.")
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--queries", help="Optional benchmark query file override.")
+    parser.add_argument("--repo", help="Restrict benchmark to one repo.")
+    parser.add_argument("--top-k", type=int, default=3)
+    parser.add_argument("--limit", type=int, default=5)
+    return parser.parse_args()
+
+
+def build_client(config: dict) -> QdrantClient:
+    return QdrantClient(
+        url=os.getenv("QDRANT_URL", config["qdrant_url"]),
+        api_key=os.getenv("QDRANT_API_KEY"),
+        timeout=int(os.getenv("QDRANT_TIMEOUT", config["qdrant_timeout"])),
+        verify=str(os.getenv("QDRANT_VERIFY_TLS", config.get("qdrant_verify_tls", True))).lower() == "true",
+    )
+
+
+def main() -> int:
+    args = parse_args()
+    config = load_yaml(Path(args.config))
+    query_file = Path(args.queries or config["paths"]["benchmark_queries_file"])
+    bench = load_yaml(query_file)
+    benchmark_queries = bench["queries"]
+    if args.repo:
+        benchmark_queries = [entry for entry in benchmark_queries if entry.get("repo") == args.repo]
+
+    client = build_client(config)
+    model = SentenceTransformer(config["embedding"]["model_name"])
+
+    passed = 0
+    total = 0
+    started = perf_counter()
+    for entry in benchmark_queries:
+        repo = entry["repo"]
+        query = entry["query"]
+        accepted = set(entry["accepted_paths"])
+        conditions = [rest.FieldCondition(key="repo", match=rest.MatchValue(value=repo))]
+        if entry.get("doc_kind"):
+            conditions.append(rest.FieldCondition(key="doc_kind", match=rest.MatchValue(value=entry["doc_kind"])))
+        query_filter = rest.Filter(must=conditions)
+
+        vector = model.encode(
+            query,
+            prompt_name=config["embedding"]["query_prompt_name"],
+            normalize_embeddings=bool(config["embedding"]["normalize_embeddings"]),
+            show_progress_bar=False,
+        ).tolist()
+        response = client.query_points(
+            collection_name=config["collection_name"],
+            query=vector,
+            query_filter=query_filter,
+            limit=args.limit,
+            with_payload=True,
+            with_vectors=False,
+        )
+        top_paths = []
+        for point in response.points[: args.top_k]:
+            payload = point.payload or {}
+            top_paths.append(payload.get("relative_path", ""))
+        hit = any(path in accepted for path in top_paths)
+        total += 1
+        if hit:
+            passed += 1
+        print(
+            json.dumps(
+                {
+                    "repo": repo,
+                    "query": query,
+                    "accepted_paths": sorted(accepted),
+                    "top_paths": top_paths,
+                    "hit_top_k": hit,
+                },
+                ensure_ascii=False,
+            )
+        )
+
+    duration_s = perf_counter() - started
+    misses = total - passed
+    miss_ratio = (misses / total) if total else 0.0
+    summary = {
+        "total_queries": total,
+        "passed_top_k": passed,
+        "misses_top_k": misses,
+        "miss_ratio": round(miss_ratio, 4),
+        "threshold_miss_ratio": 0.30,
+        "duration_s": round(duration_s, 2),
+        "avg_s_per_query": round((duration_s / total), 2) if total else 0.0,
+        "model_ok": miss_ratio <= 0.30,
+    }
+    print(json.dumps({"summary": summary}, ensure_ascii=False))
+    return 0 if summary["model_ok"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

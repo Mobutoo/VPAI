@@ -57,7 +57,10 @@ memory_worker_embedding_model: "google/embeddinggemma-300m"
 memory_worker_embedding_dim: 768
 memory_worker_embedding_normalize: true
 memory_worker_embedding_prompt_query: "Retrieval-query"
-memory_worker_version: "2026-04-10"
+memory_worker_version: "2026-04-11"
+# Labels the host producing the index in both Qdrant payloads and run reports.
+# Must stay stable across runs so existing `host_origin` filters still match.
+memory_worker_host_origin: "waza"
 
 memory_worker_repo_roots:
   - "/home/{{ workstation_pi_user | default('pi') }}/VPAI"

@@ -480,7 +480,7 @@ def to_text_nodes(
             "ref_doc_id": ref_id,
             "repo": repo,
             "namespace": repo,
-            "host_origin": "waza",
+            "host_origin": "{{ memory_worker_host_origin }}",
             "source_kind": source_kind,
             "doc_kind": doc_kind,
             "topic": topic,
@@ -918,7 +918,7 @@ def main() -> int:
             "collection_name": config.get("collection_name"),
             "embedding_model": config.get("embedding", {}).get("model_name"),
             "worker_version": "{{ memory_worker_version }}",
-            "host_origin": "waza",
+            "host_origin": "{{ memory_worker_host_origin }}",
             "indexed_points": indexed_chunks,
         }
         emit_run_report(report, args.report_path)

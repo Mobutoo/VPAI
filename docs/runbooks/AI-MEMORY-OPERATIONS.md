@@ -91,11 +91,78 @@ systemctl is-active llamaindex-memory-worker.timer
 systemctl status llamaindex-memory-worker.service --no-pager
 ```
 
+Piege a connaitre sur l'etat du service:
+
+- le service est `Type=oneshot` donc `systemctl is-active llamaindex-memory-worker.service`
+  retourne `inactive` apres une execution **reussie**. C'est le comportement
+  documente par `systemd.service(5)` pour `Type=oneshot`: l'unite retourne a
+  l'etat `inactive` sans jamais transiter par `active`
+- seul le **timer** doit rester `active` en permanence
+- pour detecter une execution en echec utiliser:
+
+```bash
+systemctl is-failed llamaindex-memory-worker.service
+systemctl show llamaindex-memory-worker.service --property=ActiveState,SubState,ExecMainStatus
+```
+
+- pour lire l'etat du dernier run consulte toujours la DB `memory_runs` en priorite, pas `systemctl`
+
 Verifier aussi:
 
 - log worker: `/opt/workstation/data/ai-memory-worker/logs/memory-worker.log`
 - spool local: `/opt/workstation/data/ai-memory-worker/spool/`
 - cache HF: `/opt/workstation/data/ai-memory-worker/hf-cache/`
+
+### 4.1.1 Loadavg gate (`memory-wait-calm.sh`)
+
+Le service appelle `memory-wait-calm.sh` en `ExecStartPre=`. Ce script bloque
+le demarrage tant que `loadavg(1 min)` depasse le seuil configure. C'est une
+protection contre les runs concurrents et contre le vol de CPU pendant que
+ComfyUI ou Remotion travaillent.
+
+Source systemd authoritative: d'apres `systemd.service(5)`, si un `ExecStartPre=`
+sort avec un code non zero et qu'il n'est **pas** prefixe par `-`, les commandes
+suivantes **ne sont pas executees** et l'unite est marquee `failed`. C'est
+exactement le comportement voulu ici: si Waza est chaude, on skip proprement
+plutot que de lancer un run qui va aggraver la charge.
+
+Script deploye: `/opt/workstation/ai-memory-worker/memory-wait-calm.sh`
+
+Tunables via environnement (lus par le script):
+
+- `MEMORY_WAIT_LOAD_THRESHOLD` (defaut: `memory_worker_loadavg_threshold`, soit `6.0`)
+- `MEMORY_WAIT_MAX_CHECKS` (defaut: `60`)
+- `MEMORY_WAIT_DELAY_SEC` (defaut: `10`)
+
+Soit une fenetre d'attente maximale de `60 * 10s = 10 min`. Si le Pi reste
+au-dessus du seuil pendant 10 minutes, le script rend `exit 1`, le service
+est `failed`, et le timer reessaiera au prochain tick.
+
+Test manuel des 3 chemins possibles:
+
+```bash
+# happy path (seuil tres haut, passe immediatement)
+MEMORY_WAIT_LOAD_THRESHOLD=999 MEMORY_WAIT_MAX_CHECKS=1 MEMORY_WAIT_DELAY_SEC=1 \
+  /opt/workstation/ai-memory-worker/memory-wait-calm.sh
+
+# timeout propre (seuil minuscule, fail apres N checks)
+MEMORY_WAIT_LOAD_THRESHOLD=0.1 MEMORY_WAIT_MAX_CHECKS=2 MEMORY_WAIT_DELAY_SEC=1 \
+  /opt/workstation/ai-memory-worker/memory-wait-calm.sh
+
+# seuil production (sera refuse si la Pi est chaude)
+MEMORY_WAIT_MAX_CHECKS=2 MEMORY_WAIT_DELAY_SEC=1 \
+  /opt/workstation/ai-memory-worker/memory-wait-calm.sh
+```
+
+Si le seuil de production devient trop restrictif (le worker ne tourne plus
+jamais) on peut l'ajuster en deploy via `memory_worker_loadavg_threshold` dans
+les overrides d'inventaire, puis `make deploy-memory-worker`.
+
+Signal de derive cote `memory-healthcheck`:
+
+- si `ExecStartPre` fail N fois d'affilee, aucun nouveau `memory_runs` n'est
+  insere, donc le healthcheck remontera `stale:last_run_Xh_ago` apres
+  `MEMORY_HEALTHCHECK_MAX_AGE_HOURS` heures (defaut: 2h)
 
 ### 4.2 n8n
 
@@ -320,6 +387,47 @@ Critere actuel:
 - `exit_code != 0`
 - `memory-healthcheck` envoie une alerte Telegram
 
+### 6.3 Exit codes du worker
+
+Codes produits par `index.py` et propages par `run-and-report.sh`:
+
+| Code | Signification | Cause typique |
+|---|---|---|
+| `0` | Run nominal. Aucune erreur par fichier. | Cas normal. |
+| `1` | Le run a demarre mais au moins un fichier a echoue, ou une erreur fatale a stoppe le scan. | `errors` non vide dans le rapport, ou `RuntimeError` attrape en fin de main. |
+| `1` | Lock file present (un autre run est deja en cours). | Concurrence detectee. Ne se produit normalement pas grace a `ExecStartPre`. |
+| `1` | `loadavg too high` (garde in-code). | Controle residuel si `memory-wait-calm.sh` a ete contourne. |
+| `1` | Repo demande introuvable. | `--repo X` ou `sources.yml` reference un chemin qui n'existe pas. |
+
+Codes additionnels visibles uniquement via systemd (pas dans `memory_runs`
+parce que le worker n'a jamais pu produire un rapport):
+
+| Etat systemd | Signification |
+|---|---|
+| `ExecMainStatus=0` + `SubState=dead` | Oneshot termine normalement. `is-active=inactive`, `is-failed=no`. |
+| `ExecMainStatus!=0` + `SubState=failed` | `ExecStart` a echoue. `is-failed=yes`. Un rapport avec `exit_code != 0` a pu etre POST ou non. |
+| `ExecMainStatus=0` + `Result=exec-condition` | `ExecStartPre=` (donc `memory-wait-calm.sh`) a echoue. Aucun rapport n'a ete genere. |
+
+### 6.4 Diagnostic pas-a-pas
+
+Ordre de lecture recommande quand l'healthcheck alerte:
+
+1. **Derniere ligne de `memory_runs`**: la DB est la source de verite
+   ```sql
+   SELECT id, run_id, host_origin, mode, exit_code, qdrant_reachable,
+          spool_size, errors::text, received_at
+   FROM memory_runs ORDER BY id DESC LIMIT 5;
+   ```
+2. Si la derniere ligne est **stale** (plus vieille que `MEMORY_HEALTHCHECK_MAX_AGE_HOURS`):
+   le worker n'a pas pousse de rapport. Deux sous-cas:
+   - `ExecStartPre` refuse les runs (Pi chaud): voir `journalctl -u llamaindex-memory-worker.service` pour les lignes `memory-wait-calm: timeout`
+   - le worker ne demarre plus du tout: verifier le timer et les logs systemd
+3. Si la derniere ligne est recente mais **`exit_code != 0`**:
+   lire `errors::text` pour comprendre. Regarder aussi le log worker aux timestamps concernes.
+4. Si **`qdrant_reachable=false`**: voir 7.1 (Qdrant inaccessible).
+5. Si **`spool_size > 0`** et remonte: Qdrant a ete KO et le worker a
+   reporte les lots. Ils seront retentes au prochain run.
+
 ## 7. Incidents frequents
 
 ### 7.1 Qdrant inaccessible
@@ -340,12 +448,16 @@ Checks:
 
 Symptome:
 
-- `loadavg too high`
+- `loadavg too high` dans le log worker
+- lignes `memory-wait-calm: timeout waiting for loadavg <= 6.0` dans `journalctl`
+- le service part en `failed` avec `Result=exec-condition`
 
 Action:
 
-- attendre une fenetre plus calme
+- attendre une fenetre plus calme (le prochain tick du timer reessaiera)
 - eviter les runs memoire pendant les grosses charges ComfyUI / render / jobs rails
+- si vraiment bloquant: ajuster `memory_worker_loadavg_threshold` dans l'inventaire et redeployer
+- voir **section 4.1.1 Loadavg gate** pour les tunables `MEMORY_WAIT_*`
 
 ### 7.3 Hugging Face / modele
 

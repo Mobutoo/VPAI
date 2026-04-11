@@ -2,7 +2,7 @@
 # .github/workflows/deploy-waza.yml — Deploy to Waza (Workstation Pi)
 #
 # Waza = Raspberry Pi 5 16GB — Mission Control, Claude Code, OpenCode, ComfyUI
-# Playbook: playbooks/workstation.yml
+# Playbook: playbooks/hosts/workstation.yml
 #
 # Required GitHub secrets:
 #   SSH_PRIVATE_KEY_WAZA     — SSH private key for waza (or same as prod)
@@ -34,7 +34,7 @@ on:
       - 'roles/workstation-monitoring/**'
       - 'roles/obsidian-collector-pi/**'
       - 'roles/n8n-mcp/**'
-      - 'playbooks/workstation.yml'
+      - 'playbooks/hosts/workstation.yml'
       - 'inventory/group_vars/workstation/**'
       - 'inventory/group_vars/all/**'
       - 'ansible.cfg'
@@ -73,7 +73,7 @@ jobs:
             ! -name 'secrets.yml' -print0 | xargs -0 yamllint -c .yamllint.yml
 
       - name: Ansible Lint (workstation playbook)
-        run: ansible-lint playbooks/workstation.yml
+        run: ansible-lint playbooks/hosts/workstation.yml
 
   deploy:
     name: Deploy to Waza
@@ -112,7 +112,7 @@ jobs:
             TAGS_OPTION="--tags ${{ github.event.inputs.tags }}"
           fi
 
-          ansible-playbook playbooks/workstation.yml \
+          ansible-playbook playbooks/hosts/workstation.yml \
             -i "${{ secrets.WAZA_SERVER_IP }}," \
             -e "ansible_user=mobuone" \
             -e "ansible_port=22" \

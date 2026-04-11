@@ -54,7 +54,7 @@ jobs:
             ! -path './.git/*' ! -path './.venv/*' \
             ! -path '*/molecule/*' ! -path '*/collections/*' \
             ! -name 'secrets.yml' -print0 | xargs -0 yamllint -c .yamllint.yml
-      - run: ansible-lint playbooks/site.yml
+      - run: ansible-lint playbooks/stacks/site.yml
 
   deploy:
     name: Deploy to Preprod
@@ -107,7 +107,7 @@ jobs:
 
       - name: Deploy to permanent preprod server
         run: |
-          ansible-playbook playbooks/site.yml \
+          ansible-playbook playbooks/stacks/site.yml \
             -i inventory/preprod_hosts.ini \
             --vault-password-file .vault_password \
             -e "target_env=preprod" \
@@ -153,7 +153,7 @@ jobs:
 
       - name: Seed preprod with prod data
         run: |
-          ansible-playbook playbooks/seed-preprod.yml \
+          ansible-playbook playbooks/stacks/seed-preprod.yml \
             -i inventory/preprod_hosts.ini \
             --vault-password-file .vault_password \
             -e "target_env=preprod" \

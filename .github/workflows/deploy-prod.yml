@@ -51,7 +51,7 @@ jobs:
             ! -path './.git/*' ! -path './.venv/*' \
             ! -path '*/molecule/*' ! -path '*/collections/*' \
             ! -name 'secrets.yml' -print0 | xargs -0 yamllint -c .yamllint.yml
-      - run: ansible-lint playbooks/site.yml
+      - run: ansible-lint playbooks/stacks/site.yml
 
   deploy:
     name: Deploy to Production
@@ -91,7 +91,7 @@ jobs:
             TAGS_OPTION="--tags ${{ github.event.inputs.tags }}"
           fi
 
-          ansible-playbook playbooks/site.yml \
+          ansible-playbook playbooks/stacks/site.yml \
             -e "target_env=prod" \
             ${TAGS_OPTION} \
             --diff

@@ -251,7 +251,7 @@ jobs:
         env:
           PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
         run: |
-          ansible-playbook playbooks/site.yml \
+          ansible-playbook playbooks/stacks/site.yml \
             -i inventory/ci_hosts.ini \
             --vault-password-file .vault_password \
             --skip-tags vpn-dns,palais-mcp,hardening,n8n-provision,plane-provision \
@@ -263,7 +263,7 @@ jobs:
         env:
           PREPROD_DOMAIN: ${{ secrets.PREPROD_DOMAIN }}
         run: |
-          ansible-playbook playbooks/site.yml \
+          ansible-playbook playbooks/stacks/site.yml \
             -i inventory/ci_hosts.ini \
             --vault-password-file .vault_password \
             --skip-tags vpn-dns,palais-mcp,hardening,n8n-provision,plane-provision \

@@ -1,6 +1,61 @@
 #!/usr/bin/env bash
 # {{ ansible_managed }}
-# placeholder — filled by Wave 2
+# mop-render-html — Render MOP JSON → PDF via Gotenberg
+# Usage: mop-render-html [-o output.pdf] [input.json]
+#        cat input.json | mop-render-html -o out.pdf
 set -euo pipefail
-echo "placeholder for {{ project_name }}"
-exit 0
+
+GOTENBERG_URL="${GOTENBERG_URL:-http://localhost:3000}"
+TEMPLATE_HTML="/opt/{{ project_name }}/data/mop/templates/mop.html"
+TEMPLATE_CSS="/opt/{{ project_name }}/data/mop/templates/mop.css"
+MOP_DATA_DIR="${MOP_DATA_DIR:-/opt/{{ project_name }}/data/mop}"
+ALLOC_SCRIPT="/opt/{{ project_name }}/scripts/mop/alloc-and-append.sh"
+
+OUT=""
+INPUT=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -o) OUT="$2"; shift 2 ;;
+    -*) echo "unknown flag: $1" >&2; exit 2 ;;
+    *)  INPUT="$1"; shift ;;
+  esac
+done
+
+if [[ -z "$INPUT" ]]; then
+  JSON=$(cat)
+else
+  JSON=$(cat "$INPUT")
+fi
+
+# Validate
+echo "$JSON" | jq empty
+
+# Allocate ID
+ID=$(MOP_DATA_DIR="$MOP_DATA_DIR" "$ALLOC_SCRIPT" allocate "$JSON")
+JSON_WITH_ID=$(echo "$JSON" | jq --arg id "$ID" '. + {id: $id}')
+
+# Render HTML
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
+echo "$JSON_WITH_ID" > "$TMPDIR/data.json"
+jinja2 "$TEMPLATE_HTML" "$TMPDIR/data.json" > "$TMPDIR/index.html"
+cp "$TEMPLATE_CSS" "$TMPDIR/mop.css"
+
+# POST to Gotenberg
+[[ -z "$OUT" ]] && OUT="$MOP_DATA_DIR/pdf/$ID.pdf"
+HTTP=$(curl -sS -o "$OUT" -w "%{http_code}" \
+  --form "files=@$TMPDIR/index.html" \
+  --form "files=@$TMPDIR/mop.css" \
+  "$GOTENBERG_URL/forms/chromium/convert/html")
+
+if [[ "$HTTP" != "200" ]]; then
+  MOP_DATA_DIR="$MOP_DATA_DIR" "$ALLOC_SCRIPT" rollback "$ID"
+  echo "Gotenberg HTTP $HTTP" >&2
+  exit 1
+fi
+
+# Confirm
+CONFIRM_PAYLOAD=$(echo "$JSON_WITH_ID" | jq --arg fn "$(basename "$OUT")" '. + {filename: $fn, sub_procs: ([.steps[]?.link_sp] | map(select(. != null)) | join(","))}')
+MOP_DATA_DIR="$MOP_DATA_DIR" "$ALLOC_SCRIPT" confirm "$ID" "$CONFIRM_PAYLOAD"
+
+echo "$ID → $OUT"

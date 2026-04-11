@@ -195,6 +195,58 @@ model_list:
 {% endif %}
 
   # ============================================================
+  # MOP INGEST — Best quality for technical NOC documents
+  # Gemini 2.5 Pro multimodal (reads PDF binary directly) with
+  # cascading fallback to free/cheap models.
+  # ============================================================
+{% if google_gemini_api_key | default('') | length > 0 %}
+  - model_name: "mop-ingest"
+    litellm_params:
+      model: "gemini/gemini-2.5-pro"
+      api_key: "os.environ/GOOGLE_GEMINI_API_KEY"
+      max_tokens: 8192
+    model_info:
+      metadata:
+        tier: "premium"
+        tags: ["mop", "ingest", "multimodal"]
+  - model_name: "mop-ingest"
+    litellm_params:
+      model: "gemini/gemini-2.0-flash"
+      api_key: "os.environ/GOOGLE_GEMINI_API_KEY"
+      max_tokens: 8192
+    model_info:
+      metadata:
+        tier: "low"
+        tags: ["mop", "ingest", "multimodal", "fallback"]
+{% endif %}
+{% if openrouter_api_key | default('') | length > 0 %}
+  - model_name: "mop-ingest"
+    litellm_params:
+      model: "openrouter/deepseek/deepseek-chat-v3-0324:free"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 8192
+    model_info:
+      metadata:
+        tier: "free"
+        tags: ["mop", "ingest", "fallback"]
+{% endif %}
+
+  # ============================================================
+  # MOP EMBED — 768-dim embeddings for mop_kb Qdrant collection
+  # text-embedding-004: same dims as embeddinggemma-300m on Waza
+  # ============================================================
+{% if google_gemini_api_key | default('') | length > 0 %}
+  - model_name: "mop-embed"
+    litellm_params:
+      model: "gemini/text-embedding-004"
+      api_key: "os.environ/GOOGLE_GEMINI_API_KEY"
+    model_info:
+      metadata:
+        tier: "embedding"
+        tags: ["embedding", "mop"]
+{% endif %}
+
+  # ============================================================
   # EMBEDDINGS — Used by semantic cache + RAG
   # ============================================================
   - model_name: "embedding"
@@ -254,6 +306,9 @@ litellm_settings:
     - gpt-4o: ["claude-sonnet", "glm-5"]
     - gpt-4o-mini: ["qwen3-coder", "deepseek-v3-free"]
     - gpt-codex: ["claude-sonnet", "glm-5"]
+{% if google_gemini_api_key | default('') | length > 0 %}
+    - mop-ingest: ["deepseek-v3-free", "qwen3-coder"]
+{% endif %}
 
   # Prometheus metrics
   success_callback: ["prometheus"]

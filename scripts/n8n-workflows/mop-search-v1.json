@@ -1,0 +1,61 @@
+{
+  "name": "mop-search-v1",
+  "nodes": [
+    {
+      "id": "1b9a4a0e-0005-4000-8000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [240, 300],
+      "webhookId": "mop-search",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mop-search",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "1b9a4a0e-0005-4000-8000-000000000002",
+      "name": "Search",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Embeds query via mop-embed (text-embedding-004, 768 dims),\n// searches mop_kb Qdrant collection, returns top-K chunks with metadata.\n// Input: POST body { query: string, top_k?: number, filters?: { doc_kind?, category?, language? } }\n\nconst http   = require('http');\nconst LITELLM_HOST = 'litellm';\nconst LITELLM_PORT = 4000;\nconst QDRANT_HOST  = 'qdrant';\nconst QDRANT_PORT  = 6333;\nconst COLLECTION   = 'mop_kb';\nconst LITELLM_KEY  = process.env.LITELLM_API_KEY || '';\nconst QDRANT_KEY   = process.env.QDRANT_API_KEY  || '';\n\nfunction httpReq(host, port, method, path, body, extraHeaders) {\n  return new Promise((resolve, reject) => {\n    const data = body ? JSON.stringify(body) : null;\n    const headers = { 'Content-Type': 'application/json', ...(extraHeaders || {}) };\n    if (data) headers['Content-Length'] = Buffer.byteLength(data);\n    const req = http.request({ hostname: host, port, path, method }, (res) => {\n      const chunks = [];\n      res.on('data', c => chunks.push(c));\n      res.on('end', () => {\n        const text = Buffer.concat(chunks).toString();\n        try { resolve({ status: res.statusCode, data: JSON.parse(text) }); }\n        catch (e) { resolve({ status: res.statusCode, data: text }); }\n      });\n    });\n    req.on('error', reject);\n    if (data) req.write(data);\n    req.end();\n  });\n}\n\nconst input = $input.first().json;\nconst body  = input.body || input;\n\nconst query   = body.query;\nconst topK    = parseInt(body.top_k, 10) || 5;\nconst filters = body.filters || {};\n\nif (!query || typeof query !== 'string' || query.trim().length === 0) {\n  return [{ json: { ok: false, error: 'missing or empty field: query', statusCode: 400 } }];\n}\n\n// 1. Embed query\nconst embResp = await httpReq(\n  LITELLM_HOST, LITELLM_PORT, 'POST', '/v1/embeddings',\n  { model: 'mop-embed', input: [query.trim()] },\n  { Authorization: `Bearer ${LITELLM_KEY}` }\n);\nif (embResp.status !== 200) {\n  return [{ json: { ok: false, error: 'embed failed: ' + JSON.stringify(embResp.data).slice(0, 200), statusCode: 502 } }];\n}\nconst vector = embResp.data.data[0].embedding;\n\n// 2. Build Qdrant filter\nconst must = [];\nfor (const [k, v] of Object.entries(filters)) {\n  if (v && typeof v === 'string') {\n    must.push({ key: k, match: { value: v } });\n  }\n}\n\nconst searchBody = {\n  vector,\n  limit: topK,\n  with_payload: true,\n  score_threshold: 0.4,\n};\nif (must.length > 0) searchBody.filter = { must };\n\n// 3. Search Qdrant\nconst searchResp = await httpReq(\n  QDRANT_HOST, QDRANT_PORT, 'POST',\n  `/collections/${COLLECTION}/points/search`,\n  searchBody,\n  { 'api-key': QDRANT_KEY }\n);\nif (searchResp.status !== 200) {\n  return [{ json: { ok: false, error: 'qdrant search failed: ' + JSON.stringify(searchResp.data).slice(0, 200), statusCode: 502 } }];\n}\n\n// 4. Format results\nconst hits = (searchResp.data.result || []).map(h => ({\n  score:       h.score,\n  text:        h.payload.text        || '',\n  title:       h.payload.title       || '',\n  filename:    h.payload.filename    || '',\n  section:     h.payload.section     || '',\n  doc_kind:    h.payload.doc_kind    || '',\n  category:    h.payload.category    || '',\n  language:    h.payload.language    || '',\n  namespace:   h.payload.namespace   || '',\n  ref_doc_id:  h.payload.ref_doc_id  || '',\n  chunk_index: h.payload.chunk_index,\n  indexed_at:  h.payload.indexed_at  || '',\n}));\n\nreturn [{ json: { ok: true, query, count: hits.length, hits, statusCode: 200 } }];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "1b9a4a0e-0005-4000-8000-000000000003",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [680, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode || 200 }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Search", "type": "main", "index": 0 }]]
+    },
+    "Search": {
+      "main": [
+        [{ "node": "Respond to Webhook", "type": "main", "index": 0 }],
+        [{ "node": "Respond to Webhook", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

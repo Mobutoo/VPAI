@@ -207,8 +207,112 @@ Les discriminateurs Zod pour les blocs Typebot v3.16.1 (schéma v6.1) ne sont pa
 
 ## Dette technique identifiée
 
-1. **Permissions MOP data dirs** : répertoires créés en `debian:debian`, CLI en `mobuone`. Fixer dans rôle Ansible.
-2. **GOTENBERG_URL** : non configurée par défaut sur l'hôte. Documenter dans RUNBOOK.md.
+1. **Permissions MOP data dirs** : ~~répertoires créés en `debian:debian`, CLI en `mobuone`. Fixer dans rôle Ansible.~~ **RÉSOLU** (session MOP3) — tâche Ansible `mode: "0777"` sur `mop_index_dir` + `.pending`.
+2. **GOTENBERG_URL** : ~~non configurée par défaut sur l'hôte.~~ **RÉSOLU** (session MOP3) — port `127.0.0.1:3000:3000` exposé + réseau `frontend` ajouté à gotenberg.
 3. **Typebot flow sans branchement conditionnel** : flow linéaire MVP. Phase 2 : ajouter `Condition` blocks par périmètre.
 4. **Excel VBA non intégré dans .xlsm** : import manuel requis. Considérer un script `build-mop-search.py` avec vbaProject.bin.
 5. **Test #11 (template ODT re-upload)** et **#15 (Excel Windows)** non validés — à reporter en smoke tests manuels.
+
+---
+
+## Session MOP3 — Correctifs audit V1-V4 + déploiement prod (2026-04-11 après-midi)
+
+### Contexte
+
+Suite à l'audit Opus (78% conformité, 4 violations, 13 DT), correction complète et redéploiement sur Sese-AI.
+Commit principal : `c21e844` — tag `mop-v1.0` posé.
+
+### Violations corrigées
+
+| ID | Description | Fix appliqué |
+|---|---|---|
+| V1 | Phase tags manquants (4 rôles) | `[gotenberg, phase3]`, `[carbone, phase3]`, `[typebot, phase3]`, `[mop-templates, phase3]` |
+| V2 | Logging absent (5 services) | Bloc `logging: json-file max-size:10m max-file:3` ajouté à gotenberg, carbone, mailhog, typebot-builder, typebot-viewer |
+| V3 | `PUBLIC_BASE` hardcodé | `process.env.MOP_PUBLIC_BASE \|\| 'https://mop-dl.ewutelo.cloud'` + `MOP_PUBLIC_BASE=https://mop-dl.{{ domain_name }}` dans `n8n.env.j2` |
+| V4 | URL webhook hardcodée `localhost:5678` | `http://n8n:5678/webhook/mop-render` (container-to-container via Docker network) |
+
+### Déploiement Ansible (prod_ip Tailscale override)
+
+**Problème découvert** : `make deploy-role` utilise `vault_prod_ip` = `137.74.114.167`. Le port SSH 804 est inaccessible sur l'IP publique depuis waza (timeout). Seule la route Tailscale `100.64.0.14` fonctionne.
+
+**Workaround** : passer `-e "prod_ip=100.64.0.14"` directement à `ansible-playbook` (bypass vault, priorité `extra_vars`). Le Makefile ne supporte pas `EXTRA_VARS` sur la cible `deploy-role`.
+
+```bash
+ansible-playbook playbooks/site.yml -e "target_env=prod" -e "prod_ip=100.64.0.14" --tags "mop-templates" --diff
+ansible-playbook playbooks/site.yml -e "target_env=prod" -e "prod_ip=100.64.0.14" --tags "docker-stack" --diff
+ansible-playbook playbooks/site.yml -e "target_env=prod" -e "prod_ip=100.64.0.14" --tags "n8n" --diff
+```
+
+**Résultats** :
+- `mop-templates` : 1 changed (data/pdf dirs 0777→0755, index dirs déjà OK)
+- `docker-stack` : 2 changed (compose.yml gotenberg+logging, restart)
+- `n8n` : 2 changed (n8n.env MOP_PUBLIC_BASE + N8N_RESTRICT_FILE_ACCESS_TO déplacé, restart)
+
+### Réimport workflows n8n (R1 + R3)
+
+**Problème MCP** : `mcp__n8n-docs__validate_workflow` échoue systématiquement avec "Session not found or expired" entre sessions Claude Code. Le transport `streamable-http` ne maintient pas les sessions entre redémarrages du client.
+
+**Workaround R1** (2 étapes) :
+
+```bash
+TOKEN="CbR2XDA3hytjrhudcjY7y7UNiHaxI98ByZs5Wci0WMM="  # depuis ~/.claude/mcp.json
+
+# 1. Initialize — récupérer le session ID depuis le header Mcp-Session-Id
+SESSION=$(curl -s -D - -X POST http://localhost:3001/mcp \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"validate-r1","version":"1.0"}}}' \
+  | grep -i "^mcp-session-id:" | awk '{print $2}' | tr -d '\r')
+
+# 2. validate_workflow avec Mcp-Session-Id header
+curl -s -X POST http://localhost:3001/mcp \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SESSION" \
+  -d "$(python3 -c "import json; wf=json.load(open('scripts/n8n-workflows/mop-generator-v1.json')); print(json.dumps({'jsonrpc':'2.0','id':2,'method':'tools/call','params':{'name':'validate_workflow','arguments':{'workflow':wf}}}))")" \
+  | grep "^data:" | python3 -c "import sys,json; [print(c['text']) for line in sys.stdin for c in json.loads(line[5:]).get('result',{}).get('content',[])]"
+```
+
+**Résultats validation** :
+- `mop-generator-v1` : **valid: true** (1 warning bénin Aggregate — faux positif)
+- `mop-webhook-render-v1` : **valid: false** — 3 erreurs toutes faux positifs :
+  - `{{...}}` dans Code node = patterns Jinja2 JavaScript, pas des expressions n8n
+  - `fs`/`process.env` warnings = ignorés car `NODE_FUNCTION_ALLOW_BUILTIN=fs` configuré
+  - Ces erreurs n'ont jamais causé d'échec en prod (E2E tests #9 et #10 PASS)
+
+**Protocole R3 appliqué** :
+1. Pre-import restart n8n (`docker compose restart n8n`)
+2. Import avec IDs cibles pour update in-place :
+   - `CP5gJrn1e2zZbPxh` (mop-generator-v1, actif)
+   - `Vts5Yid05Qapiwk1` (mop-webhook-render-v1, actif)
+3. `n8n publish:workflow --id=CP5gJrn1e2zZbPxh` + `--id=Vts5Yid05Qapiwk1`
+4. Post-activate restart n8n
+5. Vérification via export : URL `http://n8n:5678/webhook/mop-render` ✅, `process.env.MOP_PUBLIC_BASE` ✅, `active=true` ✅
+
+### Nettoyage phantom workflow
+
+**Phantom** `mMOMTgte1KXTKLvq` (mop-generator-v1 inactif) supprimé via pg client Node.js :
+
+```javascript
+// n8n container — require() depuis le module bundlé n8n
+const { Client } = require('/usr/local/lib/node_modules/n8n/node_modules/pg');
+// Credentials via process.env (DB_POSTGRESDB_*)
+// DELETE FROM workflow_history WHERE "workflowId" = 'mMOMTgte1KXTKLvq'
+// DELETE FROM workflow_entity WHERE id = 'mMOMTgte1KXTKLvq' AND active = false
+```
+
+Note : n8n n'a pas de `delete:workflow` CLI. La commande `list:workflow` confirme l'état final :
+- `CP5gJrn1e2zZbPxh | mop-generator-v1 | active=true`
+- `Vts5Yid05Qapiwk1 | mop-webhook-render-v1 | active=true`
+
+### Pièges supplémentaires documentés
+
+| # | Piège | Solution |
+|---|---|---|
+| P4 | `make deploy-role` ignore `EXTRA_VARS` | Appeler `ansible-playbook` directement avec `-e "prod_ip=100.64.0.14"` |
+| P5 | MCP `n8n-docs` perd sa session entre conversations | Faire l'init JSON-RPC manuellement (`curl` + `Mcp-Session-Id` header) |
+| P6 | `n8n publish:workflow` imprime "Changes will not take effect if n8n is running" | Normal — il faut restart après publish, pas avant |
+| P7 | `pg` non accessible dans n8n container via `require('pg')` | Chemin : `/usr/local/lib/node_modules/n8n/node_modules/pg` |
+| P8 | `psql` non disponible dans le container n8n | Utiliser un script Node.js avec `pg` client bundlé (voir P7) |

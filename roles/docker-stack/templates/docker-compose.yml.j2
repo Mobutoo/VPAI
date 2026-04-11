@@ -25,11 +25,6 @@ services:
       # Read-only access to OpenClaw workspace for RAG content indexing
       - {{ openclaw_workspace_dir }}:/home/node/openclaw-workspace:ro
 {% endif %}
-      # MOP machinery: host filesystem access for alloc-and-append.sh + CSV + dead-letter
-      - /opt/{{ project_name }}/data/mop:/data/mop
-      - /opt/{{ project_name }}/scripts/mop:/scripts/mop:ro
-      # Carbone template ID file (written by carbone-template post-task)
-      - /opt/{{ project_name }}/configs/carbone:/configs/carbone:ro
     networks:
       - backend
       - egress
@@ -154,6 +149,200 @@ services:
       retries: 5
       start_period: 60s
 
+  # === FOOD MANAGEMENT (Koodia) ===
+{% if mealie_subdomain | default('') | length > 0 %}
+  mealie:
+    image: {{ mealie_image }}
+    container_name: {{ project_name }}_mealie
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+      - FOWNER
+    env_file:
+      - /opt/{{ project_name }}/configs/mealie/mealie.env
+    volumes:
+      - /opt/{{ project_name }}/data/mealie:/app/data
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ mealie_memory_limit }}
+          cpus: "{{ mealie_cpu_limit }}"
+        reservations:
+          memory: {{ mealie_memory_reservation }}
+    healthcheck:
+      test: ["CMD", "python", "/app/mealie/scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+{% endif %}
+
+{% if grocy_subdomain | default('') | length > 0 %}
+  grocy:
+    image: {{ grocy_image }}
+    container_name: {{ project_name }}_grocy
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+      - FOWNER
+    env_file:
+      - /opt/{{ project_name }}/configs/grocy/grocy.env
+    volumes:
+      - /opt/{{ project_name }}/data/grocy:/config
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ grocy_memory_limit }}
+          cpus: "{{ grocy_cpu_limit }}"
+        reservations:
+          memory: {{ grocy_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:80/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+{% endif %}
+
+{# DISABLED: koodia image not yet pushed to GHCR — uncomment when ready #}
+{% if false and koodia_subdomain | default('') | length > 0 %}
+  koodia:
+    image: {{ koodia_image }}
+    container_name: {{ project_name }}_koodia
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    env_file:
+      - /opt/{{ project_name }}/configs/koodia/koodia.env
+    volumes:
+      - /opt/{{ project_name }}/data/koodia:/app/data
+    networks:
+      - backend
+      - frontend
+      - egress
+    deploy:
+      resources:
+        limits:
+          memory: {{ koodia_memory_limit }}
+          cpus: "{{ koodia_cpu_limit }}"
+        reservations:
+          memory: {{ koodia_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:{{ koodia_port | default(3100) }}/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+{% endif %}
+
+  # === PERSONAL FINANCE ===
+  firefly-iii:
+    image: {{ firefly_image }}
+    container_name: {{ project_name }}_firefly
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID
+    env_file:
+      - /opt/{{ project_name }}/configs/firefly/firefly.env
+    volumes:
+      - /opt/{{ project_name }}/data/firefly/upload:/var/www/html/storage/upload
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: {{ firefly_memory_limit }}
+          cpus: "{{ firefly_cpu_limit }}"
+        reservations:
+          memory: {{ firefly_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  zimboo:
+    image: {{ zimboo_image }}
+    container_name: {{ project_name }}_zimboo
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    env_file:
+      - /opt/{{ project_name }}/configs/zimboo/zimboo.env
+    networks:
+      - backend
+      - frontend
+      - egress
+    deploy:
+      resources:
+        limits:
+          memory: {{ zimboo_memory_limit }}
+          cpus: "{{ zimboo_cpu_limit }}"
+        reservations:
+          memory: {{ zimboo_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # === PALAIS ===
   palais:
     build:
@@ -235,137 +424,6 @@ services:
       retries: 5
       start_period: 60s
 {% endif %}
-
-  # === MOP MACHINERY — Rendering engines ===
-  gotenberg:
-    image: {{ gotenberg_image }}
-    container_name: {{ project_name }}_gotenberg
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    read_only: true
-    tmpfs:
-      - /tmp:size=256m
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-    networks:
-      - backend
-    deploy:
-      resources:
-        limits:
-          memory: {{ gotenberg_memory_limit }}
-          cpus: "{{ gotenberg_cpu_limit }}"
-        reservations:
-          memory: {{ gotenberg_memory_reservation }}
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    # No custom command — Gotenberg 8.30.1 runs on defaults per spec §3.1.
-    # If queue size or API timeout tuning is needed later, validate flag names
-    # against upstream release notes first (several older flags have been renamed).
-
-  carbone:
-    image: {{ carbone_image }}
-    container_name: {{ project_name }}_carbone
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETUID
-      - SETGID
-      - DAC_OVERRIDE
-      - FOWNER
-    volumes:
-      - /opt/{{ project_name }}/data/carbone/template:/app/template
-      - /opt/{{ project_name }}/data/carbone/render:/app/render
-    networks:
-      - backend
-    deploy:
-      resources:
-        limits:
-          memory: {{ carbone_memory_limit }}
-          cpus: "{{ carbone_cpu_limit }}"
-        reservations:
-          memory: {{ carbone_memory_reservation }}
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:4000/status || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  # === MOP MACHINERY — Authoring frontends ===
-  typebot-builder:
-    image: {{ typebot_builder_image }}
-    container_name: {{ project_name }}_typebot_builder
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-    env_file:
-      - /opt/{{ project_name }}/configs/typebot/typebot.env
-    networks:
-      - backend
-      - frontend
-    deploy:
-      resources:
-        limits:
-          memory: {{ typebot_memory_limit }}
-          cpus: "{{ typebot_cpu_limit }}"
-        reservations:
-          memory: {{ typebot_memory_reservation }}
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
-
-  typebot-viewer:
-    image: {{ typebot_viewer_image }}
-    container_name: {{ project_name }}_typebot_viewer
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - CHOWN
-      - SETGID
-      - SETUID
-    env_file:
-      - /opt/{{ project_name }}/configs/typebot/typebot.env
-    networks:
-      - backend
-      - frontend
-    deploy:
-      resources:
-        limits:
-          memory: {{ typebot_memory_limit }}
-          cpus: "{{ typebot_cpu_limit }}"
-        reservations:
-          memory: {{ typebot_memory_reservation }}
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 90s
 
   # === PROJECT MANAGEMENT ===
   plane-minio:
@@ -570,6 +628,44 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  # === KITSU (CGWire Production Tracker) ===
+  kitsu:
+    image: {{ kitsu_image }}
+    container_name: {{ project_name }}_kitsu
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+      - FOWNER
+    env_file:
+      - /opt/{{ project_name }}/configs/kitsu/kitsu.env
+    volumes:
+      - {{ kitsu_previews_dir | default('/opt/' + project_name + '/data/kitsu/previews') }}:/opt/zou/previews
+      - {{ kitsu_config_dir | default('/opt/' + project_name + '/configs/kitsu') }}/supervisord.conf:/etc/supervisord.conf:ro
+      - {{ kitsu_config_dir | default('/opt/' + project_name + '/configs/kitsu') }}/event_handlers:/opt/zou/event_handlers:ro
+      - {{ kitsu_config_dir | default('/opt/' + project_name + '/configs/kitsu') }}/gunicorn.py:/etc/zou/gunicorn.py:ro
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ kitsu_memory_limit | default('768M') }}
+          cpus: "{{ kitsu_cpu_limit | default('1.0') }}"
+        reservations:
+          memory: {{ kitsu_memory_reservation | default('384M') }}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
 
   # === MONITORING LAYER ===
   cadvisor:
@@ -825,7 +921,7 @@ services:
         reservations:
           memory: {{ kitsu_memory_reservation | default('512M') }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:80/ || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:80/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

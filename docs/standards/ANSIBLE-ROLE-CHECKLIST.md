@@ -13,21 +13,27 @@ Source des violations documentées : `docs/audits/2026-04-11-mop-generator-execu
 
 ## Checklist obligatoire (bloquer si manquant)
 
-### 1. Tags — Phase tag + nom du rôle
+### 1. Tags — 3 tags obligatoires : nom + phase + catégorie
 
-**Règle :** Chaque rôle inclus dans `playbooks/site.yml` doit avoir exactement **2 tags** :
-`[<role_name>, phase<N>]`. Sans ces tags, `--tags phase3` n'applique pas le rôle.
+**Règle :** Chaque rôle doit avoir **3 tags** : `[<role_name>, phase<N>, <catégorie>]`.
+- Le tag phase permet `--tags phase3` (déploie tous les services d'une phase).
+- Le tag catégorie permet `--tags apps` ou `--tags platform` (déploie toute une catégorie).
+- Les rôles `workstation` ont un **4ème tag** de sous-catégorie : `tools`, `creative`, `services`, `infra`, `monitoring`.
 
-**Violation V1** — `--tags phase3` déploie 0 tâche pour ce rôle.
+**Violation V1** — `--tags phase3` déploie 0 tâche pour ce rôle si le tag phase est absent.
 
 ```yaml
-# ✅ Correct — dans playbooks/site.yml
+# ✅ Correct — service applicatif (dans playbooks/stacks/site.yml)
+- role: mon-service
+  tags: [mon-service, phase3, apps]
+
+# ✅ Correct — rôle workstation (dans playbooks/hosts/workstation.yml)
+- role: mon-outil-pi
+  tags: [mon-outil-pi, workstation, tools]
+
+# ❌ Incorrect — tag catégorie manquant
 - role: mon-service
   tags: [mon-service, phase3]
-
-# ❌ Incorrect — tag phase manquant
-- role: mon-service
-  tags: [mon-service]
 
 # ❌ Incorrect — aucun tag
 - role: mon-service
@@ -460,11 +466,11 @@ roles/mon-service/
     └── main.yml          # galaxy_info (optionnel mais recommandé)
 ```
 
-Et dans `playbooks/site.yml` :
+Et dans `playbooks/stacks/site.yml` :
 
 ```yaml
 - role: mon-service
-  tags: [mon-service, phase3]   # 2 tags obligatoires
+  tags: [mon-service, phase3, apps]   # 3 tags obligatoires
 ```
 
 Et dans `inventory/group_vars/all/versions.yml` :
@@ -472,3 +478,43 @@ Et dans `inventory/group_vars/all/versions.yml` :
 ```yaml
 mon_service_image: "ghcr.io/org/mon-service:1.2.3"   # version pinnée
 ```
+
+---
+
+### 12. Taxonomie — Enregistrer le rôle dans `platform.yaml`
+
+**Règle :** Tout nouveau rôle doit être ajouté dans `platform.yaml` (source de vérité de la
+taxonomie) et sa description ajoutée dans `scripts/generate-structure.py`. Sans cela,
+`docs/STRUCTURE.md` est désynchronisé et le rôle est invisible dans la documentation.
+
+```bash
+# 1. Ajouter le rôle dans la bonne catégorie de platform.yaml
+#    Exemple — ajouter "mon-service" dans apps:
+vim platform.yaml
+
+# 2. Ajouter sa description dans ROLE_DESCRIPTIONS (scripts/generate-structure.py)
+vim scripts/generate-structure.py
+
+# 3. Régénérer docs/STRUCTURE.md
+source .venv/bin/activate
+python scripts/generate-structure.py
+
+# 4. Vérifier que STRUCTURE.md est à jour
+python scripts/generate-structure.py --check   # doit afficher "OK"
+
+# 5. Committer les 3 fichiers ensemble
+git add platform.yaml scripts/generate-structure.py docs/STRUCTURE.md
+git commit -m "feat(taxonomy): register mon-service role"
+```
+
+**Catégories disponibles** (voir `platform.yaml` pour la liste complète) :
+
+| Catégorie | Rôles typiques | Phase |
+|-----------|---------------|-------|
+| `core` | common, docker, hardening | 1 |
+| `platform` | postgresql, redis, caddy | 2 |
+| `apps` | n8n, litellm, nocodb, tout nouveau service | 3 |
+| `provision` | *-provision | 4.6 |
+| `monitoring` | monitoring, diun, smoke-tests | 4 |
+| `workstation` | outils Pi (tools/creative/services/infra) | waza |
+| `ops` | backup-config, vpn-dns | adhoc |

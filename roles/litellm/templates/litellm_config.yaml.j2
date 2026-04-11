@@ -233,13 +233,16 @@ model_list:
 
   # ============================================================
   # MOP EMBED — 768-dim embeddings for mop_kb Qdrant collection
-  # text-embedding-004: same dims as embeddinggemma-300m on Waza
+  # gemini-embedding-001: 3072 dims native, truncated to 768 via dimensions param.
+  # REX 2026-04-11: text-embedding-004 returns 404 (not available via v1beta with this key).
+  # gemini-embedding-001 confirmed working with dimensions=768 via LiteLLM proxy.
   # ============================================================
 {% if google_gemini_api_key | default('') | length > 0 %}
   - model_name: "mop-embed"
     litellm_params:
-      model: "gemini/text-embedding-004"
+      model: "gemini/gemini-embedding-001"
       api_key: "os.environ/GOOGLE_GEMINI_API_KEY"
+      dimensions: 768
     model_info:
       metadata:
         tier: "embedding"

@@ -11,3 +11,7 @@ typebot_viewer_url: "https://{{ typebot_viewer_subdomain }}.{{ domain_name }}"
 typebot_memory_limit: "512m"
 typebot_memory_reservation: "128m"
 typebot_cpu_limit: "1.0"
+# Builder hits V8 heap OOM at 512m (Next.js 16 + 82 Prisma migrations). Needs ~1G + explicit heap size.
+typebot_builder_memory_limit: "1024m"
+typebot_builder_memory_reservation: "256m"
+typebot_builder_node_max_old_space_mb: 768

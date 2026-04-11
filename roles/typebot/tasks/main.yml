@@ -25,22 +25,6 @@
   notify: Restart typebot stack
   tags: [typebot]
 
-- name: "Typebot | Deploy PG provisioning script"
-  ansible.builtin.template:
-    src: provision-typebot-db.sh.j2
-    dest: "{{ typebot_config_dir }}/provision-typebot-db.sh"
-    owner: "{{ prod_user }}"
-    group: "{{ prod_user }}"
-    mode: "0750"
-  become: true
-  register: typebot_db_script
-  tags: [typebot]
-
-- name: "Typebot | Run PG provisioning script"
-  ansible.builtin.command:
-    cmd: "{{ typebot_config_dir }}/provision-typebot-db.sh"
-  become: true
-  register: typebot_db_result
-  changed_when: "'provisioned' in typebot_db_result.stdout"
-  when: typebot_db_script.changed  # noqa no-handler
-  tags: [typebot, typebot-db]
+# Note: Typebot database (typebot/typebot) is provisioned by docker-stack's
+# provision-postgresql.sh via postgresql_databases list (single source of truth).
+# No separate provisioning task needed here.

@@ -7,5 +7,7 @@ carbone_memory_limit: "1.5g"
 carbone_memory_reservation: "512m"
 carbone_cpu_limit: "1.5"
 carbone_container_url: "http://carbone:4000"
+# URL used from the Ansible host (needs loopback bind since Docker-internal DNS is unreachable from host)
+carbone_host_url: "http://127.0.0.1:4000"
 # Source template file (distributed by mop-templates role)
 carbone_source_template: "/opt/{{ project_name }}/data/mop/templates/mop.odt"

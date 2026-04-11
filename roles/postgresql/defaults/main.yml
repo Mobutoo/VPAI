@@ -37,3 +37,6 @@ postgresql_databases:
   - name: kitsu_production
     user: zou
     extensions: []
+  - name: typebot
+    user: typebot
+    extensions: []

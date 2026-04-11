@@ -900,52 +900,6 @@ services:
       retries: 3
       start_period: 30s
 
-  # === KITSU (animation/VFX production tracker) ===
-  # Image all-in-one cgwire/cgwire : PG + Redis + Nginx + Zou embarqués
-  # NOTE: cap_drop ALL impossible — PG interne a besoin de SYS_CHOWN + setuid pour init
-{% if kitsu_image | default('') | length > 0 %}
-  kitsu:
-    image: {{ kitsu_image }}
-    container_name: {{ project_name }}_kitsu
-    restart: unless-stopped
-    init: true
-    security_opt:
-      - no-new-privileges:true
-    volumes:
-      # Named volumes — bind mounts écrasent le cluster PG14 du container
-      - kitsu_db:/var/lib/postgresql
-      - kitsu_previews:/opt/zou/previews
-    networks:
-      - backend
-      - frontend
-    deploy:
-      resources:
-        limits:
-          memory: {{ kitsu_memory_limit | default('1G') }}
-          cpus: "{{ kitsu_cpu_limit | default('1.0') }}"
-        reservations:
-          memory: {{ kitsu_memory_reservation | default('512M') }}
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:80/ || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-{% endif %}
-
-{% if kitsu_image | default('') | length > 0 %}
-volumes:
-  kitsu_db:
-    name: {{ project_name }}_kitsu_db
-  kitsu_previews:
-    name: {{ project_name }}_kitsu_previews
-{% endif %}
-
   # === MOP MACHINERY — Rendering engines ===
   gotenberg:
     image: {{ gotenberg_image }}
@@ -972,7 +926,8 @@ volumes:
         reservations:
           memory: {{ gotenberg_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      # Gotenberg image ships curl but not wget
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -996,8 +951,14 @@ volumes:
     volumes:
       - /opt/{{ project_name }}/data/carbone/template:/app/template
       - /opt/{{ project_name }}/data/carbone/render:/app/render
+    # Bind on loopback so Ansible can POST templates from the host (Docker-internal DNS
+    # is not reachable from the host). Not exposed publicly — 127.0.0.1 only.
+    # NOTE: port publishing only works on non-internal networks, hence `frontend` attach.
+    ports:
+      - "127.0.0.1:4000:4000"
     networks:
       - backend
+      - frontend
     deploy:
       resources:
         limits:
@@ -1006,7 +967,8 @@ volumes:
         reservations:
           memory: {{ carbone_memory_reservation }}
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:4000/status || exit 1"]
+      # Carbone image has no curl/wget/nc — bash /dev/tcp TCP open check only
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/4000' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -1027,22 +989,28 @@ volumes:
       - SETUID
     env_file:
       - /opt/{{ project_name }}/configs/typebot/typebot.env
+    environment:
+      # Raise V8 old-space so Next.js 16 build doesn't OOM at default (~half of container limit)
+      NODE_OPTIONS: "--max-old-space-size={{ typebot_builder_node_max_old_space_mb | default(768) }}"
+      # Override Docker's default HOSTNAME=<container-id> — entrypoint uses it as bind address
+      HOSTNAME: "0.0.0.0"
     networks:
       - backend
       - frontend
     deploy:
       resources:
         limits:
-          memory: {{ typebot_memory_limit }}
+          memory: {{ typebot_builder_memory_limit | default(typebot_memory_limit) }}
           cpus: "{{ typebot_cpu_limit }}"
         reservations:
-          memory: {{ typebot_memory_reservation }}
+          memory: {{ typebot_builder_memory_reservation | default(typebot_memory_reservation) }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      # Typebot images are distroless-ish (node only, no wget/curl) — use node-http probe
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 120s
 
   typebot-viewer:
     image: {{ typebot_viewer_image }}
@@ -1058,22 +1026,26 @@ volumes:
       - SETUID
     env_file:
       - /opt/{{ project_name }}/configs/typebot/typebot.env
+    environment:
+      # Override Docker's default HOSTNAME=<container-id> — entrypoint uses it as bind address
+      HOSTNAME: "0.0.0.0"
     networks:
       - backend
       - frontend
     deploy:
       resources:
         limits:
-          memory: {{ typebot_memory_limit }}
+          memory: {{ typebot_viewer_memory_limit | default(typebot_memory_limit) }}
           cpus: "{{ typebot_cpu_limit }}"
         reservations:
-          memory: {{ typebot_memory_reservation }}
+          memory: {{ typebot_viewer_memory_reservation | default(typebot_memory_reservation) }}
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      # Typebot images are distroless-ish (node only, no wget/curl) — use node-http probe
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 120s
 
 networks:
   frontend:

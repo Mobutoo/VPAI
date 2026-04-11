@@ -37,7 +37,7 @@
     cmd: >
       curl -sS -o /tmp/carbone-upload.json -w '%{http_code}'
       -F 'template=@{{ carbone_source_template }};type=application/vnd.oasis.opendocument.text'
-      {{ carbone_container_url }}/template
+      {{ carbone_host_url }}/template
   register: carbone_upload_curl
   changed_when: carbone_upload_curl.stdout == '200'
   failed_when:

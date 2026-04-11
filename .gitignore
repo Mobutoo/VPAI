@@ -69,3 +69,10 @@ docs/TASKS-*.md
 
 # --- Worktrees ---
 .worktrees/
+
+# Artefacts Playwright MCP (temporaires)
+.playwright-mcp/
+
+# Artefacts planning GSD (transitoires)
+.planning/COMPACT-CHECKPOINT.md
+.planning/research/

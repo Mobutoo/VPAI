@@ -25,6 +25,11 @@ services:
       # Read-only access to OpenClaw workspace for RAG content indexing
       - {{ openclaw_workspace_dir }}:/home/node/openclaw-workspace:ro
 {% endif %}
+      # MOP machinery — host filesystem access
+      - /opt/{{ project_name }}/data/mop:/data/mop
+      - /opt/{{ project_name }}/scripts/mop:/scripts/mop:ro
+      # Carbone template ID file (read-only, written by carbone-template post-task)
+      - /opt/{{ project_name }}/configs/carbone:/configs/carbone:ro
     networks:
       - backend
       - egress
@@ -940,6 +945,135 @@ volumes:
   kitsu_previews:
     name: {{ project_name }}_kitsu_previews
 {% endif %}
+
+  # === MOP MACHINERY — Rendering engines ===
+  gotenberg:
+    image: {{ gotenberg_image }}
+    container_name: {{ project_name }}_gotenberg
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ gotenberg_memory_limit }}
+          cpus: "{{ gotenberg_cpu_limit }}"
+        reservations:
+          memory: {{ gotenberg_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    # No custom command — Gotenberg 8.30.1 runs on defaults per spec
+
+  carbone:
+    image: {{ carbone_image }}
+    container_name: {{ project_name }}_carbone
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - FOWNER
+    volumes:
+      - /opt/{{ project_name }}/data/carbone/template:/app/template
+      - /opt/{{ project_name }}/data/carbone/render:/app/render
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ carbone_memory_limit }}
+          cpus: "{{ carbone_cpu_limit }}"
+        reservations:
+          memory: {{ carbone_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:4000/status || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # === MOP MACHINERY — Authoring frontends ===
+  typebot-builder:
+    image: {{ typebot_builder_image }}
+    container_name: {{ project_name }}_typebot_builder
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - /opt/{{ project_name }}/configs/typebot/typebot.env
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: {{ typebot_memory_limit }}
+          cpus: "{{ typebot_cpu_limit }}"
+        reservations:
+          memory: {{ typebot_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  typebot-viewer:
+    image: {{ typebot_viewer_image }}
+    container_name: {{ project_name }}_typebot_viewer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - /opt/{{ project_name }}/configs/typebot/typebot.env
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: {{ typebot_memory_limit }}
+          cpus: "{{ typebot_cpu_limit }}"
+        reservations:
+          memory: {{ typebot_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 networks:
   frontend:

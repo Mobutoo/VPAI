@@ -155,6 +155,7 @@ services:
       - /opt/{{ project_name }}/data/caddy/data:/data
       - /opt/{{ project_name }}/data/caddy/config:/config
       - /opt/{{ project_name }}/logs/caddy:/var/log/caddy
+      - /opt/{{ project_name }}/data/mop/pdf:/srv/mop-pdf:ro
     networks:
       - frontend
       - backend

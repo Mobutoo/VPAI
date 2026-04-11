@@ -1,0 +1,116 @@
+---
+- name: "Mop-templates | Install system deps (pyyaml, jq, curl)"
+  ansible.builtin.apt:
+    name:
+      - python3-yaml
+      - jq
+      - curl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  tags: [mop-templates]
+  # jinja2-cli is installed below via pipx (VPAI Python CLI convention);
+  # python3-jinja2 apt package would be redundant and is not needed.
+
+- name: "Mop-templates | Ensure pipx is available (VPAI CLI tool convention)"
+  ansible.builtin.apt:
+    name: pipx
+    state: present
+  become: true
+  tags: [mop-templates]
+
+- name: "Mop-templates | Install jinja2-cli via pipx system-wide"
+  ansible.builtin.command:
+    cmd: "pipx install --global jinja2-cli"
+  register: mop_jinja2cli_install
+  changed_when: "'installed package' in mop_jinja2cli_install.stdout"
+  failed_when:
+    - mop_jinja2cli_install.rc != 0
+    - "'already installed' not in mop_jinja2cli_install.stderr"
+  become: true
+  tags: [mop-templates]
+
+- name: "Mop-templates | Verify jinja2 CLI reachable via PATH"
+  ansible.builtin.command:
+    cmd: jinja2 --version
+  register: mop_jinja2cli_version
+  changed_when: false
+  become: true
+  tags: [mop-templates]
+
+- name: "Mop-templates | Create data dirs (UID 1000)"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0755"
+  loop:
+    - "{{ mop_data_dir }}"
+    - "{{ mop_templates_dir }}"
+    - "{{ mop_pdf_dir }}"
+    - "{{ mop_index_dir }}"
+    - "{{ mop_dead_letter_dir }}"
+  become: true
+  tags: [mop-templates]
+
+- name: "Mop-templates | Create scripts dir"
+  ansible.builtin.file:
+    path: "{{ mop_scripts_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [mop-templates]
+
+- name: "Mop-templates | Copy static template files (binary-safe via copy)"
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ mop_templates_dir }}/{{ item }}"
+    owner: "1000"
+    group: "1000"
+    mode: "0644"
+  loop:
+    - mop.html
+    - mop.css
+    - mop.odt
+    - contacts.yml
+    - alloc-and-append.bats
+  become: true
+  tags: [mop-templates]
+
+- name: "Mop-templates | Deploy alloc-and-append.sh (templated — bakes project_name)"
+  ansible.builtin.template:
+    src: alloc-and-append.sh.j2
+    dest: "{{ mop_scripts_dir }}/alloc-and-append.sh"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [mop-templates]
+
+- name: "Mop-templates | Install CLI wrappers to /usr/local/bin (templated)"
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ mop_cli_bin_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - mop-render-html
+    - mop-render-odt
+  become: true
+  tags: [mop-templates]
+
+- name: "Mop-templates | Initialize CSV index (if absent)"
+  ansible.builtin.copy:
+    content: "\uFEFFid;title;keywords;severity;perimeter;filename;sub_procs;created_at\n"
+    dest: "{{ mop_index_dir }}/mops-index.csv"
+    owner: "1000"
+    group: "1000"
+    mode: "0644"
+    force: false
+  become: true
+  tags: [mop-templates]

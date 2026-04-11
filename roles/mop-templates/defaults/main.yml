@@ -1,0 +1,8 @@
+---
+mop_data_dir: "/opt/{{ project_name }}/data/mop"
+mop_templates_dir: "{{ mop_data_dir }}/templates"
+mop_pdf_dir: "{{ mop_data_dir }}/pdf"
+mop_index_dir: "{{ mop_data_dir }}/index"
+mop_dead_letter_dir: "{{ mop_data_dir }}/dead-letter"
+mop_scripts_dir: "/opt/{{ project_name }}/scripts/mop"
+mop_cli_bin_dir: "/usr/local/bin"

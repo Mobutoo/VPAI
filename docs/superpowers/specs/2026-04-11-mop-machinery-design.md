@@ -287,16 +287,16 @@ Phase 3 (applications), après `nocodb`, dans **cet ordre exact** :
 ### 4.7 Secrets à ajouter à `secrets.yml` (vault)
 
 ```yaml
-vault_typebot_encryption_secret: "<32 char random base64>"   # openssl rand -base64 24
-vault_typebot_smtp_host: "..."
-vault_typebot_smtp_port: 587
-vault_typebot_smtp_user: "..."
-vault_typebot_smtp_password: "..."
-vault_typebot_smtp_from: "..."                               # NEXT_PUBLIC_SMTP_FROM
-vault_typebot_admin_email: "..."                             # ADMIN_EMAIL (plan illimité)
+vault_typebot_encryption_secret: "<32 char random base64>"   # → ENCRYPTION_SECRET, openssl rand -base64 24
+vault_typebot_smtp_host: "..."                               # → SMTP_HOST
+vault_typebot_smtp_port: 587                                 # → SMTP_PORT
+vault_typebot_smtp_user: "..."                               # → SMTP_USERNAME (note: VAULT key uses _user, ENV var uses _USERNAME)
+vault_typebot_smtp_password: "..."                           # → SMTP_PASSWORD
+vault_typebot_smtp_from: "..."                               # → NEXT_PUBLIC_SMTP_FROM
+vault_typebot_admin_email: "..."                             # → ADMIN_EMAIL (plan illimité)
 ```
 
-`ENCRYPTION_SECRET` est la seule clé de session utilisée par Typebot 3.16.1 ; il **doit** être stable entre redémarrages sinon toutes les sessions sont invalidées.
+Mapping explicite vault-key → env-var dans la colonne de droite pour éviter toute confusion quand le plan d'implémentation écrit `typebot.env.j2`. `ENCRYPTION_SECRET` est la seule clé de session utilisée par Typebot 3.16.1 ; il **doit** être stable entre redémarrages sinon toutes les sessions sont invalidées.
 
 (À remplir par le user via `ansible-vault edit`.)
 
@@ -408,7 +408,7 @@ Matrice à valider sur Sese-AI après déploiement :
 | 10 | Carbone OOM | n8n | Render tue LibreOffice → même chemin dead-letter que #9 |
 | 11 | ODT template modifié | Ansible rerun | Re-run du playbook après édition `mop.odt` → hash diffère → re-upload → nouveau `templateId` → `template-id.txt` mis à jour |
 | 12 | ODT template inchangé | Ansible rerun | Re-run du playbook sans modification → hash identique → skip (changed: false) |
-| 13 | Typebot SMTP down | Typebot | Magic link non reçu → fallback documenté (insert direct user en PG) fonctionne, session créée via NEXTAUTH_SECRET |
+| 13 | Typebot SMTP down | Typebot | Magic link non reçu → fallback documenté (insert direct user en PG via Prisma studio, avec `ENCRYPTION_SECRET` déjà stable) fonctionne, login opérationnel |
 | 14 | Disk full `/data/mop/pdf` | CLI | `df` full → error clair, pas de ligne CSV partielle (phase confirm skip sur I/O error) |
 | 15 | Excel macro | — | Recherche "los" → liste MOP pertinents avec chemin PDF |
 | 16 | Caddy ACL | — | Depuis hors-VPN : `curl https://mop-dl.<domain>/pdf/` → 403. Depuis VPN : 200 + PDF téléchargé |
@@ -441,7 +441,7 @@ Matrice à valider sur Sese-AI après déploiement :
 | n8n Form ne sait pas append CSV nativement | Code node + `execSync('/scripts/mop/alloc-and-append.sh')` (VPAI active `NODE_FUNCTION_ALLOW_BUILTIN=fs,child_process`) |
 | Race condition ID allocation (read-increment-write) | Tout passe sous `flock -x` dans `alloc-and-append.sh` — atomique par nature, une seule source de vérité partagée n8n/CLI/Typebot |
 | Ligne CSV orpheline si rendu échoue | Phase allocate (réserve ID en `.pending`) → phase confirm après succès rendu → phase rollback sur erreur ; seule la confirm écrit dans le CSV |
-| Typebot SMTP magic link peu fiable en self-hosted | Tester dès J1 ; fallback = insert user direct en PG avec `NEXTAUTH_SECRET` stable (sinon sessions invalidées à chaque restart) |
+| Typebot SMTP magic link peu fiable en self-hosted | Tester dès J1 avec SMTP externe fiable ; fallback = insert user direct en PG (tables `User` + `Workspace` + `MemberInWorkspace`). `ENCRYPTION_SECRET` **doit** être stable entre restarts sinon sessions invalidées |
 | Typebot PDF delivery (pas de download block) | Webhook n8n → retourne URL `https://mop-dl.<domain>/pdf/{id}.pdf` → Caddy file_server VPN-only |
 | Typebot `file://` URL | **Exclu** : navigateurs bloquent `file://` depuis origin HTTPS. Utiliser HTTPS VPN-only |
 | Caddy VPN ACL oublie 1 des 2 CIDRs sur nouvelles routes | Utiliser le snippet `(vpn_only)` existant, pas de règles inline |

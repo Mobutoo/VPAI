@@ -186,6 +186,12 @@ BOOTSTRAP 200
 # REX: n8n does NOT support sub-path deployment (GitHub issue #19635)
 {% if n8n_subdomain | default('') | length > 0 %}
 {{ caddy_n8n_domain }} {
+    # Public Telegram webhook — secret_token header validated inside n8n workflow.
+    # Must be BEFORE vpn_only to let Telegram servers reach the bot from the internet.
+    handle /webhook/memory-telegram-bot {
+        reverse_proxy n8n:5678
+    }
+
     import vpn_only
     import vpn_error_page
 
@@ -415,3 +421,35 @@ work.{{ domain_name }} {
     }
 }
 {% endif %}
+
+# === MOP Machinery routes ===
+# Typebot builder UI (VPN-only — authoring tool)
+mop-build.{{ domain_name }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy typebot-builder:3000
+
+    import security_headers
+}
+
+# Typebot viewer / chatbot runtime (VPN-only)
+mop.{{ domain_name }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy typebot-viewer:3000
+
+    import security_headers
+}
+
+# MOP PDF download server — serves /srv/mop-pdf volume (VPN-only)
+mop-dl.{{ domain_name }} {
+    import vpn_only
+    import vpn_error_page
+
+    root * /srv/mop-pdf
+    file_server
+
+    import security_headers
+}

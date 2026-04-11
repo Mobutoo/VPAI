@@ -24,11 +24,11 @@
   roles:
     # Phase 1 — Base infrastructure (run once, then skip via tags)
     - role: common
-      tags: [common, phase1]
+      tags: [common, phase1, core]
     - role: docker
-      tags: [docker, phase1]
+      tags: [docker, phase1, core]
     - role: app-scaffold
-      tags: [app-scaffold, phase1]
+      tags: [app-scaffold, phase1, platform]
 
     # Per-app roles are added below as apps are created.
     # Deploy a specific app with: --tags <app-name>

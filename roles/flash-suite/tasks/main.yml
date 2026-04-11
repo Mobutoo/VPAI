@@ -9,13 +9,10 @@
       - flash_suite_auth_secret is defined and flash_suite_auth_secret | length > 0
       - flash_suite_postgres_password is defined and flash_suite_postgres_password | length > 0
       - flash_suite_internal_key is defined and flash_suite_internal_key | length > 0
-      - flash_suite_zitadel_issuer is defined and flash_suite_zitadel_issuer | length > 0
-      - flash_suite_zitadel_client_id is defined and flash_suite_zitadel_client_id | length > 0
-      - flash_suite_zitadel_client_secret is defined and flash_suite_zitadel_client_secret | length > 0
     fail_msg: >-
       Missing required flash-suite secrets. Ensure vault contains:
       flash_suite_domain, flash_suite_auth_secret, flash_suite_postgres_password,
-      flash_suite_internal_key, flash_suite_zitadel_issuer/client_id/client_secret
+      flash_suite_internal_key
 
 - name: Create Flash Suite directories
   ansible.builtin.file:
@@ -37,6 +34,16 @@
     owner: "{{ deploy_user | default(ansible_user) }}"
     group: "{{ deploy_user | default(ansible_user) }}"
     mode: "0600"
+  become: true
+  notify: Restart flash-suite stack
+
+- name: Deploy suite registry override
+  ansible.builtin.template:
+    src: suite-registry.yaml.j2
+    dest: "{{ flash_suite_config_dir }}/suite-registry.yaml"
+    owner: "{{ deploy_user | default(ansible_user) }}"
+    group: "{{ deploy_user | default(ansible_user) }}"
+    mode: "0644"
   become: true
   notify: Restart flash-suite stack
 
@@ -69,13 +76,13 @@
   become: true
   notify: Restart flash-suite stack
 
-- name: Pull latest images
+- name: Pull latest images (registry-only, skip local builds)
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
       set -euo pipefail
       cd {{ flash_suite_base_dir }}
-      docker compose pull 2>&1
+      docker compose pull postgres redis event-cron 2>&1
   become: true
   register: flash_suite_pull
   changed_when: "'Pull complete' in flash_suite_pull.stdout or 'Downloaded' in flash_suite_pull.stdout"

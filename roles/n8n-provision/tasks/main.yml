@@ -683,7 +683,7 @@
   changed_when: false
   failed_when: false
   become: true
-  tags: [n8n-nuke]
+  tags: [n8n-nuke, provision]
   when:
     - not (common_molecule_mode | default(false))
     # docker exec / n8n API / docker container not available in molecule
@@ -731,7 +731,7 @@
   changed_when: "'NUKE_COMPLETE' in n8n_nuke_result.stdout"
   failed_when: n8n_nuke_result.rc != 0
   become: true
-  tags: [n8n-nuke]
+  tags: [n8n-nuke, provision]
   when:
     - not (common_molecule_mode | default(false))
     # docker exec / n8n API / docker container not available in molecule
@@ -741,7 +741,7 @@
 - name: "[nuke] Display results"
   ansible.builtin.debug:
     msg: "{{ n8n_nuke_result.stdout_lines | default(['skipped']) }}"
-  tags: [n8n-nuke]
+  tags: [n8n-nuke, provision]
   when:
     - n8n_nuke_requested | default(false) | bool
     - n8n_nuke_container_check.stdout | default('') | length > 0
@@ -751,7 +751,7 @@
     path: "/opt/{{ project_name }}/configs/n8n/workflow-checksums"
     state: absent
   become: true
-  tags: [n8n-nuke]
+  tags: [n8n-nuke, provision]
   when:
     - not (common_molecule_mode | default(false))
     # docker exec / n8n API / docker container not available in molecule
@@ -764,7 +764,7 @@
     state: directory
     mode: "0755"
   become: true
-  tags: [n8n-nuke]
+  tags: [n8n-nuke, provision]
   when:
     - not (common_molecule_mode | default(false))
     # docker exec / n8n API / docker container not available in molecule

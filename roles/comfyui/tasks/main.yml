@@ -94,7 +94,7 @@
   become: true
   changed_when: false
   failed_when: false
-  tags: [comfyui]
+  tags: [comfyui, workstation, creative]
 
 - name: Deploy creative studio Docker Compose
   ansible.builtin.template:

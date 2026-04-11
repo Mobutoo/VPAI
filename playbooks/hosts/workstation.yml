@@ -56,57 +56,57 @@
 
   roles:
     - role: workstation-common
-      tags: [workstation-common]
+      tags: [workstation-common, workstation, infra]
 
     - role: headscale-node
-      tags: [headscale-node]
+      tags: [headscale-node, workstation, infra]
       vars:
         headscale_hostname: "{{ workstation_pi_hostname }}"
 
     - role: llamaindex-memory-worker
-      tags: [llamaindex-memory-worker]
+      tags: [llamaindex-memory-worker, workstation, services]
 
     - role: opencode
-      tags: [opencode]
+      tags: [opencode, workstation, tools]
 
     - role: n8n-mcp
-      tags: [n8n-mcp]
+      tags: [n8n-mcp, workstation, services]
 
     - role: claude-code
-      tags: [claude-code]
+      tags: [claude-code, workstation, tools]
 
     - role: codex-cli
-      tags: [codex-cli]
+      tags: [codex-cli, workstation, tools]
 
     - role: gemini-cli
-      tags: [gemini-cli]
+      tags: [gemini-cli, workstation, tools]
 
     - role: comfyui
-      tags: [comfyui]
+      tags: [comfyui, workstation, creative]
 
     - role: remotion
-      tags: [remotion]
+      tags: [remotion, workstation, creative]
 
     - role: opencut
-      tags: [opencut]
+      tags: [opencut, workstation, creative]
 
     - role: openpencil
-      tags: [openpencil]
+      tags: [openpencil, workstation, creative]
 
     - role: metube
-      tags: [metube]
+      tags: [metube, workstation, services]
 
     - role: videoref-engine
-      tags: [videoref-engine]
+      tags: [videoref-engine, workstation, creative]
 
     - role: workstation-caddy
-      tags: [workstation-caddy]
+      tags: [workstation-caddy, workstation, infra]
 
     - role: workstation-monitoring
-      tags: [workstation-monitoring]
+      tags: [workstation-monitoring, workstation, infra]
 
     - role: obsidian-collector-pi
-      tags: [obsidian-collector-pi]
+      tags: [obsidian-collector-pi, workstation, monitoring]
 
   post_tasks:
     - name: Deploy Windows Claude Code mcp.json (n8n-docs via Tailscale)
@@ -115,4 +115,4 @@
         dest: "/mnt/c/Users/mmomb/.claude/mcp.json"
         mode: "0600"
       delegate_to: localhost
-      tags: [n8n-mcp, windows-client]
+      tags: [n8n-mcp, workstation, services, windows-client]

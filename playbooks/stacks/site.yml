@@ -51,81 +51,81 @@
   roles:
     # Phase 1 — Fondations
     - role: common
-      tags: [common, phase1]
+      tags: [common, phase1, core]
     - role: docker
-      tags: [docker, phase1]
+      tags: [docker, phase1, core]
     - role: headscale-node
-      tags: [headscale-node, phase1]
+      tags: [headscale-node, phase1, platform]
 
     # Phase 2 — Données & Reverse Proxy
     - role: postgresql
-      tags: [postgresql, phase2]
+      tags: [postgresql, phase2, platform]
     - role: redis
-      tags: [redis, phase2]
+      tags: [redis, phase2, platform]
     - role: qdrant
-      tags: [qdrant, phase2]
+      tags: [qdrant, phase2, platform]
     - role: caddy
-      tags: [caddy, phase2]
+      tags: [caddy, phase2, platform]
 
     # Phase 3 — Applications
     - role: n8n
-      tags: [n8n, phase3]
+      tags: [n8n, phase3, apps]
     - role: litellm
-      tags: [litellm, phase3]
+      tags: [litellm, phase3, apps]
     - role: nocodb
-      tags: [nocodb, phase3]
+      tags: [nocodb, phase3, apps]
     - role: plane
-      tags: [plane, phase3]
+      tags: [plane, phase3, apps]
     - role: openclaw
-      tags: [openclaw, phase3]
+      tags: [openclaw, phase3, apps]
     - role: palais
-      tags: [palais, phase3]
+      tags: [palais, phase3, apps]
     - role: kitsu
-      tags: [kitsu, phase3]
+      tags: [kitsu, phase3, apps]
     - role: flash-suite
-      tags: [flash-suite, phase3]
+      tags: [flash-suite, phase3, apps]
     - role: mop-templates
       tags: [mop-templates, phase3]
     - role: gotenberg
-      tags: [gotenberg, phase3]
+      tags: [gotenberg, phase3, apps]
     - role: carbone
-      tags: [carbone, phase3]
+      tags: [carbone, phase3, apps]
     - role: typebot
-      tags: [typebot, phase3]
+      tags: [typebot, phase3, apps]
 
     # Phase 4 — Observabilité
     - role: monitoring
-      tags: [monitoring, phase4]
+      tags: [monitoring, phase4, monitoring]
     - role: diun
-      tags: [diun, phase4]
+      tags: [diun, phase4, monitoring]
     - role: obsidian-collector
-      tags: [obsidian-collector, phase4]
+      tags: [obsidian-collector, phase4, monitoring]
 
     # Phase 4.5 — Déploiement de la stack Docker
     - role: docker-stack
-      tags: [docker-stack, phase4]
+      tags: [docker-stack, phase4, platform]
 
     # Phase 4.6 — Provisioning post-déploiement
     - role: n8n-provision
-      tags: [n8n-provision, phase4]
+      tags: [n8n-provision, phase4, provision]
     - role: plane-provision
-      tags: [plane-provision, phase4]
+      tags: [plane-provision, phase4, provision]
     - role: kitsu-provision
-      tags: [kitsu-provision, phase4]
+      tags: [kitsu-provision, phase4, provision]
     - role: content-factory-provision
-      tags: [content-factory-provision, phase4]
+      tags: [content-factory-provision, phase4, provision]
     - role: app-factory-provision
-      tags: [app-factory-provision, phase4]
+      tags: [app-factory-provision, phase4, provision]
 
     # Phase 5 — Résilience
     - role: backup-config
-      tags: [backup-config, phase5]
+      tags: [backup-config, phase5, ops]
     - role: uptime-config
-      tags: [uptime-config, phase5]
+      tags: [uptime-config, phase5, monitoring]
 
     # Phase 6 — Hardening (DERNIER - après validation complète)
     - role: hardening
-      tags: [hardening, phase6]
+      tags: [hardening, phase6, core]
 
   post_tasks:
     - name: "MOP | Upload Carbone template after docker-stack up"
@@ -137,7 +137,7 @@
     - name: Run smoke tests
       ansible.builtin.include_role:
         name: smoke-tests
-      tags: [smoke-tests, always]
+      tags: [smoke-tests, always, monitoring]
 
 # === VPN SERVER — Split DNS for admin domain access ===
 # Deploys extra_records.json on Headscale server so VPN clients
@@ -147,9 +147,9 @@
 - name: Update VPN DNS records
   hosts: vpn
   gather_facts: false
-  tags: [vpn-dns, phase5]
+  tags: [vpn-dns, phase5, ops]
 
   roles:
     - role: vpn-dns
-      tags: [vpn-dns]
+      tags: [vpn-dns, ops]
       when: caddy_vpn_enforce | default(true) | bool

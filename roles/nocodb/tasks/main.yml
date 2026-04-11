@@ -9,7 +9,7 @@
     group: "{{ prod_user }}"
     mode: "0755"
   become: true
-  tags: [nocodb]
+  tags: [nocodb, apps]
 
 - name: Create nocodb data directory
   ansible.builtin.file:
@@ -19,7 +19,7 @@
     group: "1000"
     mode: "0755"
   become: true
-  tags: [nocodb]
+  tags: [nocodb, apps]
 
 - name: Deploy nocodb environment file
   ansible.builtin.template:
@@ -29,4 +29,4 @@
     group: "{{ prod_user }}"
     mode: "0600"
   notify: Restart nocodb stack
-  tags: [nocodb]
+  tags: [nocodb, apps]

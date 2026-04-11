@@ -9,4 +9,4 @@
     group: "{{ prod_user }}"
     mode: "0755"
   become: true
-  tags: [gotenberg, phase3]
+  tags: [gotenberg, phase3, apps]

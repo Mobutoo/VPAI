@@ -12,7 +12,7 @@
     - "{{ typebot_config_dir }}"
     - "{{ typebot_data_dir }}"
   become: true
-  tags: [typebot, phase3]
+  tags: [typebot, phase3, apps]
 
 - name: "Typebot | Deploy env file"
   ansible.builtin.template:
@@ -23,7 +23,7 @@
     mode: "0600"
   become: true
   notify: Restart typebot stack
-  tags: [typebot, phase3]
+  tags: [typebot, phase3, apps]
 
 # Note: Typebot database (typebot/typebot) is provisioned by docker-stack's
 # provision-postgresql.sh via postgresql_databases list (single source of truth).

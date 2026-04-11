@@ -11,7 +11,7 @@
     fail_msg: >
       vault_n8n_mcp_auth_token is undefined or empty.
       Add it to inventory/group_vars/all/secrets.yml (Ansible Vault).
-  tags: [n8n-mcp]
+  tags: [n8n-mcp, workstation, services]
 
 - name: Pull n8n-mcp Docker image
   community.docker.docker_image:
@@ -20,7 +20,7 @@
     source: pull
     force_source: false
   become: true
-  tags: [n8n-mcp]
+  tags: [n8n-mcp, workstation, services]
 
 - name: Run n8n-mcp container
   community.docker.docker_container:
@@ -45,7 +45,7 @@
       max-size: "10m"
       max-file: "3"
   become: true
-  tags: [n8n-mcp]
+  tags: [n8n-mcp, workstation, services]
 
 - name: Wait for n8n-mcp health endpoint
   ansible.builtin.uri:
@@ -58,7 +58,7 @@
   delay: 3
   until: n8n_mcp_health.status == 200
   changed_when: false
-  tags: [n8n-mcp]
+  tags: [n8n-mcp, workstation, services]
 
 - name: Display n8n-mcp access URLs
   ansible.builtin.debug:
@@ -66,4 +66,4 @@
       n8n-mcp OK —
       Pi: http://localhost:{{ n8n_mcp_port }}/mcp |
       Windows: http://{{ workstation_pi_tailscale_ip | default('100.64.0.1') }}:{{ n8n_mcp_port }}/mcp
-  tags: [n8n-mcp]
+  tags: [n8n-mcp, workstation, services]

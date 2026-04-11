@@ -83,7 +83,7 @@
   failed_when: false
   register: _penpot_s3_check
   become: true
-  tags: [restore]
+  tags: [restore, apps]
 
 - name: Restore assets from S3
   ansible.builtin.command:
@@ -96,7 +96,7 @@
   become: true
   when: _penpot_s3_check.rc == 0 and _penpot_s3_check.stdout | length > 0
   changed_when: true
-  tags: [restore]
+  tags: [restore, apps]
 
 # --- Deploy Docker Compose ---
 - name: Deploy Penpot Docker Compose
@@ -144,7 +144,7 @@
   register: _penpot_latest_dump
   become: true
   when: _penpot_s3_check.rc == 0 and _penpot_s3_check.stdout | length > 0
-  tags: [restore]
+  tags: [restore, apps]
 
 - name: Download latest PostgreSQL dump
   ansible.builtin.command:
@@ -159,7 +159,7 @@
     - _penpot_latest_dump.stdout is defined
     - _penpot_latest_dump.stdout | trim | length > 0
   changed_when: true
-  tags: [restore]
+  tags: [restore, apps]
 
 - name: Restore PostgreSQL dump
   ansible.builtin.shell:
@@ -177,14 +177,14 @@
     - _penpot_latest_dump.stdout | trim | length > 0
   changed_when: true
   failed_when: false  # pg_restore may warn on clean of non-existing objects
-  tags: [restore]
+  tags: [restore, apps]
 
 - name: Remove temporary dump file
   ansible.builtin.file:
     path: /tmp/penpot-restore.dump
     state: absent
   become: true
-  tags: [restore]
+  tags: [restore, apps]
 
 # --- Install Caddy for TLS ---
 - name: Install Caddy
@@ -226,7 +226,7 @@
     minute: "*/30"
     user: root
   become: true
-  tags: [backup]
+  tags: [backup, apps]
 
 # --- Healthcheck ---
 - name: Wait for Penpot frontend to respond

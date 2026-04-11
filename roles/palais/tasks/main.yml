@@ -9,7 +9,7 @@
     group: "{{ prod_user }}"
     mode: "0750"
   become: true
-  tags: [palais]
+  tags: [palais, apps]
 
 - name: Create palais data directories
   ansible.builtin.file:
@@ -23,7 +23,7 @@
     - "{{ palais_data_dir }}"
     - "{{ palais_data_dir }}/deliverables"
     - "{{ palais_data_dir }}/avatars"
-  tags: [palais]
+  tags: [palais, apps]
 
 - name: Deploy palais environment file
   ansible.builtin.template:
@@ -34,7 +34,7 @@
     mode: "0640"
   become: true
   notify: Restart palais
-  tags: [palais]
+  tags: [palais, apps]
 
 - name: Ensure palais app directory is writable by deploy user
   ansible.builtin.file:
@@ -44,7 +44,7 @@
     group: "{{ prod_user }}"
     mode: "0755"
   become: true
-  tags: [palais]
+  tags: [palais, apps]
 
 # ── Module 13: Claude Code MCP config on Pi ─────────────────────────────────
 
@@ -59,7 +59,7 @@
   when:
     - not (common_molecule_mode | default(false))
     - workstation_pi_tailscale_ip | default('') != ''
-  tags: [palais, palais-mcp]
+  tags: [palais, palais-mcp, apps]
 
 - name: Deploy Palais MCP server config to Pi
   ansible.builtin.template:
@@ -72,7 +72,7 @@
   when:
     - not (common_molecule_mode | default(false))
     - workstation_pi_tailscale_ip | default('') != ''
-  tags: [palais, palais-mcp]
+  tags: [palais, palais-mcp, apps]
 
 # ── DB Migration: add columns + extend node_status enum ─────────────────────
 # Idempotent (IF NOT EXISTS) — ALTER TYPE ADD VALUE must run outside a transaction
@@ -86,7 +86,7 @@
   failed_when: false
   become: true
   when: not (common_molecule_mode | default(false))
-  tags: [palais]
+  tags: [palais, apps]
 
 - name: Palais DB migration — add bio/local_ip/description columns
   ansible.builtin.command:
@@ -104,7 +104,7 @@
     - not (common_molecule_mode | default(false))
     - _pg_container_check is defined
     - _pg_container_check.rc | default(1) == 0
-  tags: [palais]
+  tags: [palais, apps]
 
 - name: Palais DB migration — extend node_status enum with busy/degraded
   ansible.builtin.command:
@@ -121,7 +121,7 @@
     - not (common_molecule_mode | default(false))
     - _pg_container_check is defined
     - _pg_container_check.rc | default(1) == 0
-  tags: [palais]
+  tags: [palais, apps]
 
 - name: Copy Palais v2 migration SQL into postgresql container
   ansible.builtin.command:
@@ -134,7 +134,7 @@
     - not (common_molecule_mode | default(false))
     - _pg_container_check is defined
     - _pg_container_check.rc | default(1) == 0
-  tags: [palais, palais-migrate]
+  tags: [palais, palais-migrate, apps]
 
 - name: Palais DB v2 migration — run 0003_palais_v2_new_schema.sql
   ansible.builtin.command:
@@ -151,7 +151,7 @@
     - not (common_molecule_mode | default(false))
     - _pg_container_check is defined
     - _pg_container_check.rc | default(1) == 0
-  tags: [palais, palais-migrate]
+  tags: [palais, palais-migrate, apps]
 
 - name: Copy Palais 0004 migration SQL into postgresql container
   ansible.builtin.command:
@@ -164,7 +164,7 @@
     - not (common_molecule_mode | default(false))
     - _pg_container_check is defined
     - _pg_container_check.rc | default(1) == 0
-  tags: [palais, palais-migrate]
+  tags: [palais, palais-migrate, apps]
 
 - name: Palais DB migration 0004 — waza url + tmux fix
   ansible.builtin.command:
@@ -181,7 +181,7 @@
     - not (common_molecule_mode | default(false))
     - _pg_container_check is defined
     - _pg_container_check.rc | default(1) == 0
-  tags: [palais, palais-migrate]
+  tags: [palais, palais-migrate, apps]
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -203,4 +203,4 @@
   # Without this, rsync tries to preserve CI runner ownership (runner:runner) on the VPS,
   # causing a permanent ownership mismatch → always CHANGED → fires Restart palais handler.
   when: not (common_molecule_mode | default(false))
-  tags: [palais]
+  tags: [palais, apps]

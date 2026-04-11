@@ -10,7 +10,7 @@
     group: root
     mode: "0700"
   become: true
-  tags: [app-scaffold]
+  tags: [app-scaffold, platform]
 
 - name: Deploy GHCR pull credentials
   ansible.builtin.template:
@@ -20,7 +20,7 @@
     group: root
     mode: "0600"
   become: true
-  tags: [app-scaffold]
+  tags: [app-scaffold, platform]
 
 - name: Create apps base directory
   ansible.builtin.file:
@@ -30,7 +30,7 @@
     group: root
     mode: "0755"
   become: true
-  tags: [app-scaffold]
+  tags: [app-scaffold, platform]
 
 - name: Create app frontend Docker network
   community.docker.docker_network:
@@ -39,7 +39,7 @@
     ipam_config:
       - subnet: "{{ app_scaffold_frontend_subnet }}"
   become: true
-  tags: [app-scaffold]
+  tags: [app-scaffold, platform]
 
 - name: Create app backend Docker network
   community.docker.docker_network:
@@ -49,4 +49,4 @@
     ipam_config:
       - subnet: "{{ app_scaffold_backend_subnet }}"
   become: true
-  tags: [app-scaffold]
+  tags: [app-scaffold, platform]

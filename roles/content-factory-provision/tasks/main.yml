@@ -9,7 +9,7 @@
     group: "{{ prod_user }}"
     mode: "0755"
   become: true
-  tags: [content-factory-provision]
+  tags: [content-factory-provision, provision]
 
 - name: Deploy NocoDB table provisioning script
   ansible.builtin.template:
@@ -19,7 +19,7 @@
     group: "{{ prod_user }}"
     mode: "0750"
   become: true
-  tags: [content-factory-provision]
+  tags: [content-factory-provision, provision]
 
 - name: Execute NocoDB table provisioning
   ansible.builtin.shell:
@@ -31,13 +31,13 @@
   changed_when: nocodb_provision_result.rc == 0
   failed_when: nocodb_provision_result.rc != 0
   when: not (common_molecule_mode | default(false))
-  tags: [content-factory-provision]
+  tags: [content-factory-provision, provision]
 
 - name: Display NocoDB provision summary
   ansible.builtin.debug:
     msg: "{{ nocodb_provision_result.stdout_lines }}"
   when: nocodb_provision_result.stdout_lines is defined
-  tags: [content-factory-provision]
+  tags: [content-factory-provision, provision]
 
 - name: Deploy Qdrant provisioning script
   ansible.builtin.template:
@@ -47,7 +47,7 @@
     group: "{{ prod_user }}"
     mode: "0750"
   become: true
-  tags: [content-factory-provision]
+  tags: [content-factory-provision, provision]
 
 - name: Execute Qdrant provisioning
   ansible.builtin.shell:
@@ -59,10 +59,10 @@
   changed_when: qdrant_provision_result.rc == 0
   failed_when: qdrant_provision_result.rc != 0
   when: not (common_molecule_mode | default(false))
-  tags: [content-factory-provision]
+  tags: [content-factory-provision, provision]
 
 - name: Display Qdrant provision summary
   ansible.builtin.debug:
     msg: "{{ qdrant_provision_result.stdout_lines }}"
   when: qdrant_provision_result.stdout_lines is defined
-  tags: [content-factory-provision]
+  tags: [content-factory-provision, provision]

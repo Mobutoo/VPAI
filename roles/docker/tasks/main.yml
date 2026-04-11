@@ -34,7 +34,7 @@
     executable: /bin/bash
     cmd: |
       set -o pipefail
-      curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
+      curl -fsSL https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}/gpg | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
       chmod a+r /etc/apt/keyrings/docker.gpg
   args:
     creates: /etc/apt/keyrings/docker.gpg
@@ -47,7 +47,7 @@
     repo: >-
       deb [arch={{ ansible_facts['architecture'] | replace('x86_64', 'amd64') }}
       signed-by=/etc/apt/keyrings/docker.gpg]
-      https://download.docker.com/linux/debian
+      https://download.docker.com/linux/{{ ansible_facts['distribution'] | lower }}
       {{ ansible_facts['distribution_release'] }} stable
     state: present
     filename: docker

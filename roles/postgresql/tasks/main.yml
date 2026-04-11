@@ -145,4 +145,4 @@
     - "'No such container' not in (postgresql_plane_db_result.stderr | default(''))"
   when: not (common_molecule_mode | default(false))
   # docker not available in molecule container (no daemon/socket mounted)
-  tags: [postgresql, plane]
+  tags: [postgresql, plane, platform]

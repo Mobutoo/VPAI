@@ -1,0 +1,55 @@
+# platform.yaml — Contrat machine-readable de la taxonomie VPAI
+# Généré lors de la refactorisation 2026-04-11
+# Usage: CI matrix dynamique, documentation, tooling
+
+version: "1.0"
+project: vpai
+
+categories:
+  core:
+    description: "Fondations obligatoires — déployées en premier"
+    phase: 1
+    roles: [common, docker, hardening]
+
+  platform:
+    description: "Infrastructure et middleware — données, proxy, VPN"
+    phase: 2
+    roles: [postgresql, redis, qdrant, caddy, headscale-node, docker-stack, app-scaffold]
+
+  apps:
+    description: "Applications métier — services déployés sur Sese-AI"
+    phase: 3
+    roles: [n8n, litellm, openclaw, nocodb, plane, kitsu, firefly, zimboo, mealie, grocy, koodia, palais, flash-suite, story-engine, typebot, penpot, metube, carbone, gotenberg, webhook-relay, llamaindex-memory, obsidian]
+
+  provision:
+    description: "Provisioning post-deploy — setup initial des applications"
+    phase: "4.6"
+    roles: [n8n-provision, plane-provision, kitsu-provision, app-factory-provision, content-factory-provision]
+
+  monitoring:
+    description: "Observabilité — métriques, logs, alertes, smoke tests"
+    phase: 4
+    roles: [monitoring, diun, uptime-config, obsidian-collector, smoke-tests]
+
+  workstation:
+    description: "Waza (Raspberry Pi 5) — outils locaux Mission Control"
+    phase: "waza"
+    subcategories:
+      infra: [workstation-common, workstation-caddy, workstation-monitoring]
+      tools: [claude-code, codex-cli, gemini-cli, opencode]
+      creative: [comfyui, remotion, opencut, openpencil, videoref-engine]
+      services: [metube, n8n-mcp, llamaindex-memory-worker]
+      monitoring: [obsidian-collector-pi]
+
+  ops:
+    description: "Opérations ponctuelles — backup, secrets, DNS"
+    phase: "adhoc"
+    roles: [backup-config, vpn-dns]
+
+# Exemples d'utilisation des tags Ansible:
+# --tags apps              → toutes les applications
+# --tags platform          → toute l'infrastructure
+# --tags workstation       → tout le Pi
+# --tags workstation,tools → seulement les CLI tools du Pi
+# --tags n8n               → seulement n8n
+# --tags phase3,apps       → apps de phase 3

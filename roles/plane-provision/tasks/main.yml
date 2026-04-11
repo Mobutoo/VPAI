@@ -14,7 +14,7 @@
   become: true
   when: not (common_molecule_mode | default(false))
   # docker inspect / MinIO container not available in molecule
-  tags: [plane-provision]
+  tags: [plane-provision, provision]
 
 - name: Deploy MinIO bucket provisioning script
   ansible.builtin.template:
@@ -24,7 +24,7 @@
     group: "{{ prod_user }}"
     mode: "0750"
   become: true
-  tags: [plane-provision]
+  tags: [plane-provision, provision]
 
 - name: Create MinIO bucket for Plane
   ansible.builtin.shell:
@@ -37,7 +37,7 @@
   failed_when: minio_provision_result.rc != 0
   when: not (common_molecule_mode | default(false))
   # MinIO container not available in molecule
-  tags: [plane-provision]
+  tags: [plane-provision, provision]
 
 - name: Wait for Plane API container to be healthy
   ansible.builtin.command:
@@ -52,7 +52,7 @@
   become: true
   when: not (common_molecule_mode | default(false))
   # docker inspect / Plane API container not available in molecule
-  tags: [plane-provision]
+  tags: [plane-provision, provision]
 
 - name: Check if workspace ewutelo exists
   ansible.builtin.uri:
@@ -67,7 +67,7 @@
   no_log: true
   when: not (common_molecule_mode | default(false))
   # Plane API not available in molecule
-  tags: [plane-provision]
+  tags: [plane-provision, provision]
 
 - name: Create workspace ewutelo if not exists
   ansible.builtin.uri:
@@ -89,7 +89,7 @@
     - plane_workspace_check.status == 200
     - plane_workspace_check.json is defined
     - (plane_workspace_check.json | selectattr('slug', 'equalto', plane_workspace_slug) | list | length) == 0
-  tags: [plane-provision]
+  tags: [plane-provision, provision]
 
 - name: Get default work item type ID for Issue
   ansible.builtin.uri:
@@ -104,7 +104,7 @@
   no_log: true
   when: not (common_molecule_mode | default(false))
   # Plane API not available in molecule
-  tags: [plane-provision]
+  tags: [plane-provision, provision]
 
 - name: Deploy provision script template
   ansible.builtin.template:
@@ -114,7 +114,7 @@
     group: "{{ prod_user }}"
     mode: "0750"
   become: true
-  tags: [plane-provision]
+  tags: [plane-provision, provision]
 
 - name: Execute provision script
   ansible.builtin.shell:
@@ -127,10 +127,10 @@
   failed_when: plane_provision_result.rc != 0
   when: not (common_molecule_mode | default(false))
   # Plane API / containers not available in molecule
-  tags: [plane-provision]
+  tags: [plane-provision, provision]
 
 - name: Display provision summary
   ansible.builtin.debug:
     msg: "{{ plane_provision_result.stdout_lines }}"
   when: plane_provision_result.stdout_lines is defined
-  tags: [plane-provision]
+  tags: [plane-provision, provision]

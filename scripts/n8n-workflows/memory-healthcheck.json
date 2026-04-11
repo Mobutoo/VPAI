@@ -90,7 +90,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_MONITORING_CHAT_ID, parse_mode: 'Markdown', text: `*Memory pipeline drift detected*\\n\\n*checked_at:* ${$json.checked_at}\\n*qdrant_reachable:* ${$json.qdrant_reachable}\\n*last_run:* ${$json.last_run ? `${$json.last_run.run_id} (${$json.last_run.age_hours}h ago, spool=${$json.last_run.spool_size})` : 'none'}\\n*issues:*\\n- ${$json.issues.join('\\n- ')}` }) }}",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_MONITORING_CHAT_ID, text: `[memory pipeline drift detected]\\n\\nchecked_at: ${$json.checked_at}\\nqdrant_reachable: ${$json.qdrant_reachable}\\nlast_run: ${$json.last_run ? `${$json.last_run.run_id} (${$json.last_run.age_hours}h ago, spool=${$json.last_run.spool_size})` : 'none'}\\nissues:\\n- ${$json.issues.join('\\n- ')}` }) }}",
         "options": {
           "timeout": 10000
         }

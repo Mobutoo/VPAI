@@ -154,7 +154,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_MONITORING_CHAT_ID, parse_mode: 'Markdown', text: `*Memory worker anomaly*\\n\\n*host:* ${$json.host_origin || 'unknown'}\\n*mode:* ${$json.mode || 'unknown'}\\n*run_id:* \\`${$json.run_id}\\`\\n*reason:* ${$json.alert_reason}\\n*exit_code:* ${$json.exit_code}\\n*errors:* ${$json.errors_count}\\n*spool:* ${$json.spool_size}` }) }}",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_MONITORING_CHAT_ID, text: `[memory worker anomaly]\\n\\nhost: ${$json.host_origin || 'unknown'}\\nmode: ${$json.mode || 'unknown'}\\nrun_id: ${$json.run_id}\\nreason: ${$json.alert_reason}\\nexit_code: ${$json.exit_code}\\nerrors: ${$json.errors_count}\\nspool: ${$json.spool_size}` }) }}",
         "options": {
           "timeout": 10000
         }

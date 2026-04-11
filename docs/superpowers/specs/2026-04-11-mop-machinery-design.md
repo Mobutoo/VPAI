@@ -120,8 +120,8 @@ Les trois nouveaux conteneurs sont attachés aux réseaux existants (`backend` i
   - `baptistearno/typebot-viewer:3.16.1`
 - **Subdomaines :** `mop-build.<domain>` (builder) et `mop.<domain>` (viewer), **les deux VPN-only** via Caddy avec le snippet `(vpn_only)` existant, qui injecte automatiquement les 2 CIDRs (`caddy_vpn_cidr` + `caddy_docker_frontend_cidr`). **Ne jamais** écrire une règle `not client_ip` inline — piège VPAI documenté.
 - **DB :** nouvelle database `typebot` sur le cluster PG existant, provisionnée via le pattern VPAI standard (rôle rend un script `provision-typebot-db.sh.j2` depuis `templates/`, puis `ansible.builtin.command` l'exécute avec `changed_when` basé sur un marqueur idempotent). Mot de passe user `typebot` = `{{ postgresql_password }}` (convention VPAI partagée).
-- **Auth :** SMTP magic link uniquement. **Piège connu** : plusieurs issues GitHub sur la fiabilité SMTP en self-hosted. Mitigation : tester dès le premier déploiement ; fallback = insérer l'utilisateur directement en base PG (table `user`, session via NEXTAUTH_SECRET) si SMTP ko.
-- **Flux** : chaque étape de l'arbre décisionnel = un bloc Typebot (Set Variable, Condition, Text Input, HTTP Request). Le bloc final = HTTP Request POST vers le webhook n8n `POST /webhook/mop/render` (pas directement Gotenberg/Carbone — simplifie la logique et factorise le rendu côté n8n).
+- **Auth :** SMTP magic link uniquement (`ENCRYPTION_SECRET` est la clé de session Typebot ; pas de `NEXTAUTH_SECRET` — cette variable n'existe pas dans Typebot 3.16.1). **Piège connu** : plusieurs issues GitHub (#1279, #942) sur la fiabilité SMTP en self-hosted. Mitigation : tester dès le premier déploiement avec un SMTP externe fiable (Sendgrid, SMTP Mailjet ou Postmark) ; fallback si SMTP KO = insertion directe en base PG (tables `User` + `Workspace` + `MemberInWorkspace` via Prisma studio ou SQL manuel). **Aucun fallback "session signée manuellement" — cette idée est retirée, elle reposait sur une variable inexistante.**
+- **Flux** : chaque étape de l'arbre décisionnel = un bloc Typebot (Set Variable, Condition, Text Input, HTTP Request). Le bloc final = HTTP Request POST vers le webhook n8n **en interne Docker** : `POST http://n8n:5678/webhook/mop/render` (pas directement Gotenberg/Carbone — simplifie la logique et factorise le rendu côté n8n ; pas de hairpin HTTPS inutile via Caddy).
 - **Sortie** : Typebot n'a **pas** de file-download block natif. Stratégie :
   1. Typebot appelle `POST https://<n8n_host>/webhook/mop/render` avec le JSON consolidé.
   2. Le webhook n8n appelle Gotenberg/Carbone, écrit le PDF dans `/opt/vpai/data/mop/pdf/MOP-YYYY-NNNN.pdf`, allocue l'ID via `alloc-and-append.sh`, et retourne **une URL HTTPS VPN-only** du type `https://mop-dl.<domain>/pdf/MOP-YYYY-NNNN.pdf`.
@@ -234,11 +234,15 @@ Convention VPAI : chaque nouveau service = 1 rôle minimal (dirs + env + handler
 ### 4.3 `roles/typebot/`
 
 - `defaults/main.yml` — `typebot_config_dir`, `typebot_db_name: "typebot"`, subdomaines, limites.
-- `tasks/main.yml` — crée dirs, dépose `typebot.env.j2` (ENCRYPTION_SECRET, **NEXTAUTH_SECRET**, NEXTAUTH_URL, SMTP_HOST, SMTP_USER, SMTP_PASSWORD, DATABASE_URL), s'assure de la DB PG via `provision-postgresql.sh.j2`.
+- `tasks/main.yml` — crée dirs, dépose `typebot.env.j2` avec **toutes** les variables requises par Typebot 3.16.1 : `DATABASE_URL`, `ENCRYPTION_SECRET`, `NEXTAUTH_URL` (= `https://mop-build.<domain>`), **`NEXT_PUBLIC_VIEWER_URL`** (= `https://mop.<domain>`, obligatoire pour que le builder génère des liens viewer corrects), `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, **`NEXT_PUBLIC_SMTP_FROM`** (obligatoire pour l'envoi magic link), `ADMIN_EMAIL`, `DISABLE_SIGNUP=true` (après premier login admin). S'assure de la DB PG via `provision-postgresql.sh.j2`.
 - `templates/typebot.env.j2` — tous les secrets via `{{ typebot_xxx }}` lus depuis `secrets.yml` (vault).
 - `handlers/main.yml` — `Restart typebot stack` (recreate: always pour env_file).
 - **Blocs compose** : `typebot-builder` et `typebot-viewer`, chacun sur `backend` + `frontend` (Caddy accède via frontend).
-- **Bloc Caddy** : 3 nouvelles routes — `mop-build.<domain>` (builder), `mop.<domain>` (viewer), **et `mop-dl.<domain>`** (file_server statique vers `/opt/vpai/data/mop/pdf/`, `browse off`), **les trois** avec le snippet `(vpn_only)` VPAI (2 CIDRs : `caddy_vpn_cidr` + `caddy_docker_frontend_cidr`). La route `mop-dl.<domain>` est servie par Caddy directement (pas de conteneur), montage `/opt/vpai/data/mop/pdf` en RO dans le conteneur Caddy.
+- **Bloc Caddy** : 3 nouvelles routes — `mop-build.<domain>` (builder), `mop.<domain>` (viewer), **et `mop-dl.<domain>`** (file_server statique vers `/opt/vpai/data/mop/pdf/`, `browse off`), **les trois** avec le snippet `(vpn_only)` VPAI (2 CIDRs : `caddy_vpn_cidr` + `caddy_docker_frontend_cidr`).
+- **Fichiers exacts à modifier** :
+  - `roles/caddy/templates/Caddyfile.j2` : ajouter les 3 blocs de route.
+  - `roles/docker-stack/templates/docker-compose-infra.yml.j2` (**pas** `docker-compose.yml.j2` — Caddy est en Phase A infra) : ajouter le volume mount Caddy `- /opt/{{ project_name }}/data/mop/pdf:/srv/mop-pdf:ro`. La route Caddy `mop-dl.<domain>` pointe sur `root * /srv/mop-pdf`.
+  - `roles/docker-stack/templates/docker-compose.yml.j2` (**Phase B apps**) : ajouter les 2 services Typebot (`typebot-builder`, `typebot-viewer`) et les services Gotenberg + Carbone.
 
 ### 4.4 `roles/mop-templates/`
 
@@ -265,33 +269,34 @@ typebot_viewer_image: "baptistearno/typebot-viewer:3.16.1"
 
 ### 4.6 Ajouts à `playbooks/site.yml`
 
-Phase 3 (applications), après `nocodb` :
+Phase 3 (applications), après `nocodb`, dans **cet ordre exact** :
 
 ```yaml
+- role: mop-templates        # DOIT être avant les autres : crée /opt/vpai/data/mop/{pdf,index,dead-letter}
+  tags: [mop-templates, phase3]
 - role: gotenberg
   tags: [gotenberg, phase3]
 - role: carbone
   tags: [carbone, phase3]
 - role: typebot
   tags: [typebot, phase3]
-- role: mop-templates
-  tags: [mop-templates, phase3]
 ```
+
+`mop-templates` **doit s'exécuter avant** `gotenberg`/`carbone`/`typebot` parce qu'il crée les répertoires de données (`/opt/vpai/data/mop/{pdf,index,dead-letter}`) que les rôles suivants référencent dans leurs blocs compose. De plus, il doit s'exécuter **avant la Phase 4.5 `docker-stack`** qui fait `docker compose up` — cette ordonnancement est garanti par la structure du playbook (Phase 3 précède Phase 4.5). Les volumes référencés par les blocs compose n8n/Caddy/Typebot doivent exister au moment où `docker-stack` les monte, sinon Docker les crée avec UID root et casse les écritures.
 
 ### 4.7 Secrets à ajouter à `secrets.yml` (vault)
 
 ```yaml
-vault_typebot_encryption_secret: "<32 char random base64>"
-vault_typebot_nextauth_secret: "<32 char random base64>"
+vault_typebot_encryption_secret: "<32 char random base64>"   # openssl rand -base64 24
 vault_typebot_smtp_host: "..."
 vault_typebot_smtp_port: 587
 vault_typebot_smtp_user: "..."
 vault_typebot_smtp_password: "..."
-vault_typebot_smtp_from: "..."
-vault_typebot_admin_email: "..."
+vault_typebot_smtp_from: "..."                               # NEXT_PUBLIC_SMTP_FROM
+vault_typebot_admin_email: "..."                             # ADMIN_EMAIL (plan illimité)
 ```
 
-`vault_typebot_nextauth_secret` est **indispensable** : sans lui, Typebot génère une clé random à chaque redémarrage et invalide toutes les sessions existantes. Il sert aussi à signer manuellement un cookie de session si SMTP tombe (fallback documenté §3.4).
+`ENCRYPTION_SECRET` est la seule clé de session utilisée par Typebot 3.16.1 ; il **doit** être stable entre redémarrages sinon toutes les sessions sont invalidées.
 
 (À remplir par le user via `ansible-vault edit`.)
 

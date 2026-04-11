@@ -61,6 +61,7 @@ ROLE_DESCRIPTIONS = {
     "webhook-relay":       "Relay webhooks (n8n ↔ services)",
     "llamaindex-memory":   "LlamaIndex memory worker (Sese-AI)",
     "obsidian":            "Obsidian sync server",
+    "mop-templates":       "Templates de production MOP (Modèle Opérationnel de Production)",
     # provision
     "n8n-provision":              "Création compte owner n8n via API",
     "plane-provision":            "Bucket MinIO Plane",

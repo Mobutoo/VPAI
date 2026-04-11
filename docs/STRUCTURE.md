@@ -95,6 +95,7 @@ Tags: `apps`, `phase3`
 | `webhook-relay` | Relay webhooks (n8n ↔ services) |
 | `llamaindex-memory` | LlamaIndex memory worker (Sese-AI) |
 | `obsidian` | Obsidian sync server |
+| `mop-templates` | Templates de production MOP (Modèle Opérationnel de Production) |
 
 ---
 

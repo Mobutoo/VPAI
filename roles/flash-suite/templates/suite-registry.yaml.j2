@@ -1,0 +1,80 @@
+# {{ ansible_managed }}
+# Flash Suite — App Registry (mounted override)
+# Fixes health check paths and internal URLs for containerized deployment.
+
+version: "1.0"
+apps:
+  - id: ase
+    name: Flow
+    description: "Productivite, calendrier, taches"
+    icon: calendar-check
+    color: "#f59e0b"
+    baseUrl: http://ase:8000
+    pathPrefix: /flow
+    healthCheck: /api/v1/health/
+    standalone: true
+    search: /api/suite/search
+    events:
+      subscribes:
+        - meal.planned
+    scopes:
+      - calendar
+      - tasks
+
+  - id: zimboo
+    name: Finance
+    description: "Budget, depenses, projections"
+    icon: wallet
+    color: "#10b981"
+    baseUrl: http://zimboo:3000
+    pathPrefix: /finance
+    healthCheck: /finance/api/health
+    standalone: true
+    search: /api/suite/search
+    events:
+      publishes:
+        - receipt.processed
+      subscribes:
+        - grocery.purchased
+    scopes:
+      - budget
+      - transactions
+
+  - id: koodia
+    name: Food
+    description: "Repas, courses, nutrition"
+    icon: chef-hat
+    color: "#ec9213"
+    baseUrl: http://koodia:3100
+    pathPrefix: /food
+    healthCheck: /food/api/health
+    standalone: true
+    search: /api/suite/search
+    events:
+      publishes:
+        - meal.planned
+        - grocery.purchased
+      subscribes:
+        - receipt.processed
+    scopes:
+      - meals
+      - shopping
+
+  - id: gamification
+    name: Gamification Engine
+    description: "Moteur de gamification interne"
+    icon: trophy
+    color: "#8b5cf6"
+    baseUrl: http://localhost:{{ flash_suite_shell_port }}
+    pathPrefix: /gamification
+    healthCheck: /api/suite/gamification/progress
+    standalone: false
+    internal: true
+    events:
+      subscribes:
+        - meal.planned
+        - grocery.purchased
+        - receipt.processed
+        - task.completed
+        - workflow.triggered
+        - login

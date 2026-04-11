@@ -1,0 +1,543 @@
+{
+  "name": "af-ci-hook",
+  "nodes": [
+    {
+      "id": "webhook-ci",
+      "name": "Webhook CI Hook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "af-ci-hook",
+      "parameters": {
+        "path": "af-ci-hook",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate-secret",
+      "name": "Validate AF Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [470, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-secret",
+              "leftValue": "={{ $json.headers['x-af-secret'] }}",
+              "rightValue": "={{ $env.AF_WEBHOOK_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-403",
+      "name": "Respond 403",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [690, 480],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'Forbidden', message: 'Invalid AF secret' }) }}",
+        "options": {
+          "responseCode": 403
+        }
+      }
+    },
+    {
+      "id": "parse-ci-event",
+      "name": "Parse CI Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300],
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\nconst required = ['repo', 'event'];\nconst missing = required.filter(f => !body[f]);\nif (missing.length > 0) {\n  throw new Error(`Missing required fields: ${missing.join(', ')}`);\n}\n\n// Extract PLANE-xxx references from image_tag or commit message\nconst planeRefMatch = (body.image_tag || '').match(/PLANE-(\\w+-\\d+)/i);\nconst planeRef = planeRefMatch ? planeRefMatch[1] : null;\n\nreturn [{\n  json: {\n    repo: body.repo,\n    event: body.event,\n    image_tag: body.image_tag || null,\n    smoke_result: body.smoke_result || null,\n    plane_project_id: body.plane_project_id || null,\n    plane_ref: planeRef,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "switch-event",
+      "name": "Route by Event",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [910, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-event",
+              "leftValue": "={{ $json.event }}",
+              "rightValue": "image_pushed",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "nocodb-insert-commit",
+      "name": "NocoDB Insert Commit",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1130, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "http://javisi_nocodb:8080/api/v2/tables/m4oihuj18ixp3x4/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ repo: $json.repo, image_tag: $json.image_tag, event: $json.event, plane_ref: $json.plane_ref, timestamp: $json.timestamp }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "nocodb-insert-deployment",
+      "name": "NocoDB Insert Deployment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1130, 400],
+      "parameters": {
+        "method": "POST",
+        "url": "http://javisi_nocodb:8080/api/v2/tables/my1wbasx5kmcy8o/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ repo: $json.repo, image_tag: $json.image_tag, smoke_result: $json.smoke_result || 'unknown', event: $json.event, timestamp: $json.timestamp }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "check-plane-ref",
+      "name": "Has Plane Ref?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1350, 200],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-plane",
+              "leftValue": "={{ $('Parse CI Event').first().json.plane_ref }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "isNotEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "plane-update-status",
+      "name": "Plane Update Work Item",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1570, 120],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://javisi_plane_api:8000/api/v1/workspaces/{{ $('Parse CI Event').first().json.plane_project_id }}/issues/{{ $('Parse CI Event').first().json.plane_ref }}/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "={{ $env.PLANE_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ state_detail: { name: 'In Review' } }) }}",
+        "options": {
+          "allowUnauthorizedCerts": false
+        }
+      }
+    },
+    {
+      "id": "check-smoke-fail",
+      "name": "Smoke Failed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1350, 400],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-smoke",
+              "leftValue": "={{ $('Parse CI Event').first().json.smoke_result }}",
+              "rightValue": "fail",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "telegram-smoke-fail",
+      "name": "Telegram Smoke Fail Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1570, 350],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: '\\u274c AF-CI-HOOK: Smoke test FAILED\\n\\nRepo: ' + $('Parse CI Event').first().json.repo + '\\nImage: ' + ($('Parse CI Event').first().json.image_tag || 'n/a') + '\\nTime: ' + $('Parse CI Event').first().json.timestamp, parse_mode: 'HTML' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-ok-commit",
+      "name": "Respond OK Commit",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1570, 220],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, event: 'image_pushed', plane_updated: !!$('Parse CI Event').first().json.plane_ref }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "respond-ok-deploy",
+      "name": "Respond OK Deploy",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1570, 480],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, event: 'deploy_complete', smoke_result: $('Parse CI Event').first().json.smoke_result }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "no-op-plane-skip",
+      "name": "No Plane Ref",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1570, 180],
+      "parameters": {}
+    },
+    {
+      "id": "no-op-smoke-pass",
+      "name": "Smoke Passed",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1570, 440],
+      "parameters": {}
+    },
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [250, 650],
+      "parameters": {}
+    },
+    {
+      "id": "error-nocodb-log",
+      "name": "NocoDB Log Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 650],
+      "parameters": {
+        "method": "POST",
+        "url": "http://javisi_nocodb:8080/api/v2/tables/m4dnzmgvhmwymy3/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workflow: 'af-ci-hook', error_message: $json.execution?.error?.message || 'Unknown error', error_node: $json.execution?.lastNodeExecuted || 'unknown', timestamp: new Date().toISOString(), execution_id: $json.execution?.id || null }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "error-telegram",
+      "name": "Telegram Alert Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 650],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: '\\u26a0\\ufe0f AF-CI-HOOK ERROR\\n\\nNode: ' + ($json.execution?.lastNodeExecuted || 'unknown') + '\\nError: ' + ($json.execution?.error?.message || 'Unknown error') + '\\nTime: ' + new Date().toISOString(), parse_mode: 'HTML' }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook CI Hook": {
+      "main": [
+        [
+          {
+            "node": "Validate AF Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate AF Secret": {
+      "main": [
+        [
+          {
+            "node": "Parse CI Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 403",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse CI Event": {
+      "main": [
+        [
+          {
+            "node": "Route by Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Event": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Insert Commit",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "NocoDB Insert Deployment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Insert Commit": {
+      "main": [
+        [
+          {
+            "node": "Has Plane Ref?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Plane Ref?": {
+      "main": [
+        [
+          {
+            "node": "Plane Update Work Item",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Plane Ref",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plane Update Work Item": {
+      "main": [
+        [
+          {
+            "node": "Respond OK Commit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Plane Ref": {
+      "main": [
+        [
+          {
+            "node": "Respond OK Commit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Insert Deployment": {
+      "main": [
+        [
+          {
+            "node": "Smoke Failed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Smoke Failed?": {
+      "main": [
+        [
+          {
+            "node": "Telegram Smoke Fail Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Smoke Passed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Smoke Fail Alert": {
+      "main": [
+        [
+          {
+            "node": "Respond OK Deploy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Smoke Passed": {
+      "main": [
+        [
+          {
+            "node": "Respond OK Deploy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Log Error": {
+      "main": [
+        [
+          {
+            "node": "Telegram Alert Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

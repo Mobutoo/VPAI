@@ -1,0 +1,370 @@
+{
+  "name": "af-deploy",
+  "nodes": [
+    {
+      "id": "webhook-deploy",
+      "name": "Webhook Deploy",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "af-deploy",
+      "parameters": {
+        "path": "af-deploy",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate-secret",
+      "name": "Validate AF Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [470, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-secret",
+              "leftValue": "={{ $json.headers['x-af-secret'] }}",
+              "rightValue": "={{ $env.AF_WEBHOOK_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-403",
+      "name": "Respond 403",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [690, 480],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'Forbidden', message: 'Invalid AF secret' }) }}",
+        "options": {
+          "responseCode": 403
+        }
+      }
+    },
+    {
+      "id": "extract-data",
+      "name": "Extract Deploy Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300],
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\nconst required = ['repo', 'image_tag', 'event', 'smoke_result'];\nconst missing = required.filter(f => !body[f]);\nif (missing.length > 0) {\n  throw new Error(`Missing required fields: ${missing.join(', ')}`);\n}\n\nif (body.event !== 'deploy_complete') {\n  throw new Error(`Expected event=deploy_complete, got: ${body.event}`);\n}\n\nreturn [{\n  json: {\n    repo: body.repo,\n    image_tag: body.image_tag,\n    event: body.event,\n    smoke_result: body.smoke_result,\n    plane_project_id: body.plane_project_id || null,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "nocodb-insert-deployment",
+      "name": "NocoDB Insert Deployment",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://javisi_nocodb:8080/api/v2/tables/my1wbasx5kmcy8o/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ repo: $json.repo, image_tag: $json.image_tag, smoke_result: $json.smoke_result, event: $json.event, timestamp: $json.timestamp }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "check-smoke",
+      "name": "Smoke Passed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1130, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-smoke",
+              "leftValue": "={{ $('Extract Deploy Data').first().json.smoke_result }}",
+              "rightValue": "pass",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "nocodb-update-project-status",
+      "name": "NocoDB Update Project Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1350, 200],
+      "parameters": {
+        "method": "PATCH",
+        "url": "=http://javisi_nocodb:8080/api/v2/tables/mvhxrbdyetpoyjb/records?where=(repo,eq,{{ encodeURIComponent($('Extract Deploy Data').first().json.repo) }})",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'deployed', last_deploy_at: new Date().toISOString(), last_image_tag: $('Extract Deploy Data').first().json.image_tag }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-ok",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1570, 200],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, smoke_result: 'pass', status_updated: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "telegram-deploy-fail",
+      "name": "Telegram Deploy Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1350, 420],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: '\\u274c AF-DEPLOY: Deploy FAILED\\n\\nRepo: ' + $('Extract Deploy Data').first().json.repo + '\\nImage: ' + $('Extract Deploy Data').first().json.image_tag + '\\nSmoke: ' + $('Extract Deploy Data').first().json.smoke_result + '\\nTime: ' + $('Extract Deploy Data').first().json.timestamp, parse_mode: 'HTML' }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-fail",
+      "name": "Respond Fail",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1570, 420],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, smoke_result: 'fail', alert_sent: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [250, 600],
+      "parameters": {}
+    },
+    {
+      "id": "error-nocodb-log",
+      "name": "NocoDB Log Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 600],
+      "parameters": {
+        "method": "POST",
+        "url": "http://javisi_nocodb:8080/api/v2/tables/m4dnzmgvhmwymy3/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workflow: 'af-deploy', error_message: $json.execution?.error?.message || 'Unknown error', error_node: $json.execution?.lastNodeExecuted || 'unknown', timestamp: new Date().toISOString(), execution_id: $json.execution?.id || null }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "error-telegram",
+      "name": "Telegram Alert Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 600],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: '\\u26a0\\ufe0f AF-DEPLOY ERROR\\n\\nNode: ' + ($json.execution?.lastNodeExecuted || 'unknown') + '\\nError: ' + ($json.execution?.error?.message || 'Unknown error') + '\\nTime: ' + new Date().toISOString(), parse_mode: 'HTML' }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Deploy": {
+      "main": [
+        [
+          {
+            "node": "Validate AF Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate AF Secret": {
+      "main": [
+        [
+          {
+            "node": "Extract Deploy Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 403",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Deploy Data": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Insert Deployment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Insert Deployment": {
+      "main": [
+        [
+          {
+            "node": "Smoke Passed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Smoke Passed?": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Update Project Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram Deploy Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Update Project Status": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Deploy Failed": {
+      "main": [
+        [
+          {
+            "node": "Respond Fail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Log Error": {
+      "main": [
+        [
+          {
+            "node": "Telegram Alert Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

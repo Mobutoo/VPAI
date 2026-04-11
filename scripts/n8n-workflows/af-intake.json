@@ -1,0 +1,309 @@
+{
+  "name": "af-intake",
+  "nodes": [
+    {
+      "id": "webhook-intake",
+      "name": "Webhook Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "af-intake",
+      "parameters": {
+        "path": "af-intake",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate-secret",
+      "name": "Validate AF Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [470, 300],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-secret",
+              "leftValue": "={{ $json.headers['x-af-secret'] }}",
+              "rightValue": "={{ $env.AF_WEBHOOK_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-403",
+      "name": "Respond 403",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [690, 480],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'Forbidden', message: 'Invalid AF secret' }) }}",
+        "options": {
+          "responseCode": 403
+        }
+      }
+    },
+    {
+      "id": "parse-input",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [690, 300],
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\n\nconst required = ['project_name', 'repo_name', 'stack', 'prd_summary'];\nconst missing = required.filter(f => !body[f]);\nif (missing.length > 0) {\n  throw new Error(`Missing required fields: ${missing.join(', ')}`);\n}\n\nreturn [{\n  json: {\n    project_name: body.project_name,\n    repo_name: body.repo_name,\n    stack: body.stack,\n    prd_summary: body.prd_summary,\n    started_at: new Date().toISOString()\n  }\n}];"
+      }
+    },
+    {
+      "id": "github-create-repo",
+      "name": "GitHub Create Repo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [910, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.github.com/user/repos",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.GITHUB_TOKEN }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github+json"
+            },
+            {
+              "name": "X-GitHub-Api-Version",
+              "value": "2022-11-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.repo_name, private: true, description: $json.prd_summary.substring(0, 350), auto_init: true }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "prepare-nocodb-row",
+      "name": "Prepare NocoDB Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1130, 300],
+      "parameters": {
+        "jsCode": "const prev = $('Parse Input').first().json;\nconst ghRepo = $input.first().json;\n\nreturn [{\n  json: {\n    project_name: prev.project_name,\n    repo_name: prev.repo_name,\n    repo_url: ghRepo.html_url || ghRepo.clone_url || `https://github.com/Mobutoo/${prev.repo_name}`,\n    stack: prev.stack,\n    prd_summary: prev.prd_summary,\n    status: 'intake',\n    started_at: prev.started_at\n  }\n}];"
+      }
+    },
+    {
+      "id": "nocodb-insert-project",
+      "name": "NocoDB Insert Project",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1350, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://javisi_nocodb:8080/api/v2/tables/mvhxrbdyetpoyjb/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.project_name, repo: $json.repo_url, stack: $json.stack, status: $json.status, started_at: $json.started_at, prd_summary: $json.prd_summary }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-ok",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1570, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, repo_url: $('Prepare NocoDB Row').first().json.repo_url, nocodb_project_id: $json.Id || $json.id || null }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "error-trigger",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [250, 600],
+      "parameters": {}
+    },
+    {
+      "id": "error-nocodb-log",
+      "name": "NocoDB Log Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [470, 600],
+      "parameters": {
+        "method": "POST",
+        "url": "http://javisi_nocodb:8080/api/v2/tables/m4dnzmgvhmwymy3/records",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ workflow: 'af-intake', error_message: $json.execution?.error?.message || 'Unknown error', error_node: $json.execution?.lastNodeExecuted || 'unknown', timestamp: new Date().toISOString(), execution_id: $json.execution?.id || null }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "error-telegram",
+      "name": "Telegram Alert Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [690, 600],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $env.TELEGRAM_CHAT_ID, text: '\\u26a0\\ufe0f AF-INTAKE ERROR\\n\\nNode: ' + ($json.execution?.lastNodeExecuted || 'unknown') + '\\nError: ' + ($json.execution?.error?.message || 'Unknown error') + '\\nTime: ' + new Date().toISOString(), parse_mode: 'HTML' }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Intake": {
+      "main": [
+        [
+          {
+            "node": "Validate AF Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate AF Secret": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 403",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "GitHub Create Repo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub Create Repo": {
+      "main": [
+        [
+          {
+            "node": "Prepare NocoDB Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare NocoDB Row": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Insert Project",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Insert Project": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "NocoDB Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NocoDB Log Error": {
+      "main": [
+        [
+          {
+            "node": "Telegram Alert Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
+}

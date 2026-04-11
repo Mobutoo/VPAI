@@ -1,0 +1,8 @@
+---
+# roles/gotenberg/defaults/main.yml — Configuration Gotenberg (HTML→PDF)
+gotenberg_config_dir: "/opt/{{ project_name }}/configs/gotenberg"
+gotenberg_memory_limit: "1g"
+gotenberg_memory_reservation: "256m"
+gotenberg_cpu_limit: "1.0"
+# Chromium recycles after N conversions (documented in runbook)
+gotenberg_chromium_max_conversions: 100

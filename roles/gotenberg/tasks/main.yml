@@ -1,0 +1,12 @@
+---
+# roles/gotenberg/tasks/main.yml — Gotenberg provisioning (dirs only, no env file)
+
+- name: "Gotenberg | Create config dir"
+  ansible.builtin.file:
+    path: "{{ gotenberg_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [gotenberg]

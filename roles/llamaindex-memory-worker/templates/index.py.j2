@@ -897,6 +897,10 @@ def main() -> int:
     finally:
         release_lock(lock_path)
         duration_s = (datetime.now(timezone.utc) - started_dt).total_seconds()
+        try:
+            loadavg_1min = os.getloadavg()[0]
+        except (OSError, AttributeError):
+            loadavg_1min = None
         report = {
             "report_schema_version": REPORT_SCHEMA_VERSION,
             "run_id": run_id,
@@ -920,6 +924,7 @@ def main() -> int:
             "worker_version": "{{ memory_worker_version }}",
             "host_origin": "{{ memory_worker_host_origin }}",
             "indexed_points": indexed_chunks,
+            "loadavg_1min": round(loadavg_1min, 2) if loadavg_1min is not None else None,
         }
         emit_run_report(report, args.report_path)
 

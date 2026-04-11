@@ -41,6 +41,44 @@ set -a
 . "${WORKER_ENV_FILE}"
 set +a
 
+# Resolve the current --mode value (either from caller args or default).
+RUN_MODE="{{ memory_worker_index_mode }}"
+for i in "${!EXTRA_ARGS[@]}"; do
+  if [[ "${EXTRA_ARGS[$i]}" == "--mode" ]]; then
+    RUN_MODE="${EXTRA_ARGS[$((i+1))]:-${RUN_MODE}}"
+    break
+  fi
+done
+
+# Build JSON array from MEMORY_WORKER_REPOS (comma-separated). Done with
+# parameter expansion + printf so we don't pull in jq.
+REPOS_JSON="[]"
+if [[ -n "${MEMORY_WORKER_REPOS:-}" ]]; then
+  IFS=',' read -r -a REPO_ARR <<< "${MEMORY_WORKER_REPOS}"
+  REPOS_JSON="["
+  for r in "${REPO_ARR[@]}"; do
+    REPOS_JSON="${REPOS_JSON}\"${r}\","
+  done
+  REPOS_JSON="${REPOS_JSON%,}]"
+fi
+
+STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# Fire-and-forget "start" event so the bot can show live worker state.
+# We do NOT let a start-POST failure block the run — worst case the bot
+# shows "idle" while the worker is actually running.
+if [[ -n "${WEBHOOK_URL}" ]] && [[ -r "${WEBHOOK_SECRET_FILE}" ]]; then
+  SECRET="$(cat "${WEBHOOK_SECRET_FILE}")"
+  START_PAYLOAD=$(printf '{"event":"start","host_origin":"%s","mode":"%s","started_at":"%s","repos_target":%s}' \
+    "${MEMORY_WORKER_HOST_ORIGIN:-unknown}" "${RUN_MODE}" "${STARTED_AT}" "${REPOS_JSON}")
+  curl --silent --show-error --max-time 10 \
+    --request POST \
+    --header 'Content-Type: application/json' \
+    --header "X-Memory-Secret: ${SECRET}" \
+    --data "${START_PAYLOAD}" \
+    "${WEBHOOK_URL}" >/dev/null 2>&1 || true
+fi
+
 # Build worker command as an array — avoids Jinja2/line-continuation pitfalls.
 WORKER_ARGS=("--config" "${WORKER_CONFIG}" "--report-path" "${REPORT_PATH}")
 {% if memory_worker_enable_gc | bool %}

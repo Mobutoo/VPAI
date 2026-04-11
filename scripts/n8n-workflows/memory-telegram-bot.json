@@ -1,0 +1,233 @@
+{
+  "name": "memory-telegram-bot",
+  "nodes": [
+    {
+      "id": "webhook-telegram",
+      "name": "Telegram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ],
+      "webhookId": "memory-telegram-bot",
+      "parameters": {
+        "path": "memory-telegram-bot",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "validate-secret",
+      "name": "Validate Telegram Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-tg-secret",
+              "leftValue": "={{ $json.headers['x-telegram-bot-api-secret-token'] }}",
+              "rightValue": "={{ $env.MEMORY_TELEGRAM_WEBHOOK_SECRET }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-403",
+      "name": "Respond 403",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        480
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: 'forbidden' }) }}",
+        "options": {
+          "responseCode": 403
+        }
+      }
+    },
+    {
+      "id": "handle-command",
+      "name": "Handle Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Memory Telegram bot handler.\n// Routes /memory_* commands, queries memory_runs and Qdrant, builds a plaintext\n// reply. Plaintext is deliberate: no Markdown/HTML parsing to avoid the escaping\n// traps that bit us on the alert workflows.\nconst { Client } = require('pg');\nconst http = require('http');\n\nconst data = $input.first().json;\nconst body = data.body || {};\nconst message = body.message || {};\nconst chat = message.chat || {};\nconst chatId = chat.id;\nconst text = (message.text || '').trim();\n\nconst allowedChatId = $env.TELEGRAM_MONITORING_CHAT_ID;\n\n// Silent drop: unknown chat, don't even reply — keeps the bot quiet for\n// anyone who found the URL without the secret (defence in depth on top of\n// the setWebhook secret_token check).\nif (!chatId || String(chatId) !== String(allowedChatId)) {\n  return [{ json: { skip: true, reason: 'unauthorized_chat', chat_id: chatId } }];\n}\n\n// Normalize the command (strip @BotName suffix if present, lowercase).\nlet cmd = text.split(/\\s+/)[0] || '';\ncmd = cmd.split('@')[0].toLowerCase();\n\nfunction fmtAge(hours) {\n  if (hours == null) return 'n/a';\n  const h = Number(hours);\n  if (h < 1) return `${Math.round(h * 60)}min`;\n  if (h < 48) return `${h.toFixed(1)}h`;\n  return `${Math.round(h / 24)}d`;\n}\n\nfunction checkQdrant() {\n  return new Promise((resolve) => {\n    const req = http.request(\n      {\n        hostname: 'javisi_qdrant',\n        port: 6333,\n        path: '/collections/memory_v1',\n        method: 'GET',\n        timeout: 4000,\n        headers: { 'api-key': $env.QDRANT_API_KEY || '' }\n      },\n      (res) => {\n        let d = '';\n        res.on('data', (c) => d += c);\n        res.on('end', () => {\n          if (res.statusCode === 401 || res.statusCode === 403) {\n            resolve({ reachable: false, error: `auth_${res.statusCode}` });\n            return;\n          }\n          try {\n            const parsed = JSON.parse(d);\n            const r = parsed.result || {};\n            resolve({\n              reachable: res.statusCode === 200,\n              status: r.status || null,\n              points: r.points_count ?? null,\n              vectors: r.vectors_count ?? null\n            });\n          } catch (e) {\n            resolve({ reachable: false, error: 'parse_error' });\n          }\n        });\n      }\n    );\n    req.on('error', (e) => resolve({ reachable: false, error: e.message }));\n    req.on('timeout', () => {\n      req.destroy();\n      resolve({ reachable: false, error: 'timeout' });\n    });\n    req.end();\n  });\n}\n\nasync function queryLastRun() {\n  const client = new Client({\n    host: 'postgresql',\n    port: 5432,\n    database: 'n8n',\n    user: 'n8n',\n    password: $env.DB_POSTGRESDB_PASSWORD\n  });\n  await client.connect();\n  try {\n    const r = await client.query(`\n      SELECT run_id, host_origin, mode, exit_code, attempted_files,\n             indexed_files, indexed_chunks, spool_size, qdrant_reachable,\n             loadavg_1min, duration_sec, received_at,\n             EXTRACT(EPOCH FROM (NOW() - received_at)) / 3600.0 AS age_hours,\n             errors::text AS errors_text\n      FROM memory_runs\n      ORDER BY received_at DESC\n      LIMIT 1\n    `);\n    return r.rows[0] || null;\n  } finally {\n    await client.end();\n  }\n}\n\nasync function queryLastRuns(limit) {\n  const client = new Client({\n    host: 'postgresql',\n    port: 5432,\n    database: 'n8n',\n    user: 'n8n',\n    password: $env.DB_POSTGRESDB_PASSWORD\n  });\n  await client.connect();\n  try {\n    const r = await client.query(`\n      SELECT run_id, mode, exit_code, indexed_files, indexed_chunks,\n             spool_size, loadavg_1min, received_at,\n             EXTRACT(EPOCH FROM (NOW() - received_at)) / 3600.0 AS age_hours\n      FROM memory_runs\n      ORDER BY received_at DESC\n      LIMIT $1\n    `, [limit]);\n    return r.rows;\n  } finally {\n    await client.end();\n  }\n}\n\n// Read the single-row-per-host live state table. One row per worker host;\n// today we only have Waza but the query is host-agnostic so adding more\n// workers later just works. Fresh start events overwrite the row via UPSERT.\nasync function queryWorkerStates() {\n  const client = new Client({\n    host: 'postgresql',\n    port: 5432,\n    database: 'n8n',\n    user: 'n8n',\n    password: $env.DB_POSTGRESDB_PASSWORD\n  });\n  await client.connect();\n  try {\n    const r = await client.query(`\n      SELECT host_origin, state, started_at, mode, repos_target,\n             last_run_id, last_exit_code, last_completed_at, updated_at,\n             EXTRACT(EPOCH FROM (NOW() - started_at)) / 60.0 AS running_minutes\n      FROM memory_worker_state\n      ORDER BY host_origin\n    `);\n    return r.rows;\n  } catch (e) {\n    // Table may not exist on first deploy — fall back to empty state so\n    // /memory_status still works instead of crashing the bot.\n    if (e.code === '42P01') return [];\n    throw e;\n  } finally {\n    await client.end();\n  }\n}\n\nfunction workerStateLines(states) {\n  if (!states || states.length === 0) {\n    return ['Worker live state: unknown (no state row yet — waiting for first start event)'];\n  }\n  const lines = [];\n  for (const s of states) {\n    const host = s.host_origin || '?';\n    if (s.state === 'running') {\n      const mins = s.running_minutes != null ? `${Math.round(Number(s.running_minutes))}min` : '?';\n      const repos = Array.isArray(s.repos_target) ? s.repos_target.join(', ') : (s.repos_target || 'all');\n      lines.push(`Worker (${host}): RUNNING — started ${mins} ago, mode=${s.mode || '?'}`);\n      lines.push(`  targets: ${repos}`);\n    } else {\n      lines.push(`Worker (${host}): idle`);\n    }\n  }\n  return lines;\n}\n\n// Helper: render a clear Qdrant line distinguishing service state from\n// the bot's ability to reach it. \"DOWN\" is never printed for an auth error\n// because auth errors mean Qdrant is answering, we just don't have a key.\nfunction qdrantLine(q) {\n  if (q.reachable) {\n    const pts = q.points != null ? `${q.points} points indexed` : 'points: n/a';\n    return `Qdrant vector DB: UP (${pts})`;\n  }\n  if (q.error && q.error.startsWith('auth_')) {\n    return `Qdrant vector DB: reachable but bot has no API key (${q.error})`;\n  }\n  return `Qdrant vector DB: UNREACHABLE from bot (${q.error || q.status || 'unknown'})`;\n}\n\nlet reply;\n\ntry {\n  if (cmd === '/memory_status') {\n    const [qdrant, lastRun, workerStates] = await Promise.all([\n      checkQdrant(),\n      queryLastRun(),\n      queryWorkerStates()\n    ]);\n    const lines = ['Memory pipeline — status', ''];\n    lines.push(qdrantLine(qdrant));\n    lines.push('');\n    for (const l of workerStateLines(workerStates)) lines.push(l);\n    lines.push('');\n    if (!lastRun) {\n      lines.push('Last worker run: NONE recorded yet.');\n      lines.push('(Waza has never posted a run report to n8n.)');\n    } else {\n      const okMark = lastRun.exit_code === 0 ? 'success' : `FAILED (exit ${lastRun.exit_code})`;\n      lines.push(`Last worker run: ${fmtAge(lastRun.age_hours)} ago — ${okMark}`);\n      lines.push(`  host: ${lastRun.host_origin || '?'}   mode: ${lastRun.mode || '?'}`);\n      lines.push(`  indexed: ${lastRun.indexed_files ?? 0}/${lastRun.attempted_files ?? 0} files, ${lastRun.indexed_chunks ?? 0} chunks`);\n      const spoolNote = (lastRun.spool_size ?? 0) === 0 ? '0 (empty)' : `${lastRun.spool_size} (pending)`;\n      lines.push(`  spool backlog: ${spoolNote}   load avg: ${lastRun.loadavg_1min ?? '?'}`);\n      if (lastRun.duration_sec != null) {\n        lines.push(`  run duration: ${Number(lastRun.duration_sec).toFixed(0)}s`);\n      }\n      if (lastRun.qdrant_reachable === false) {\n        lines.push('  NOTE: Qdrant was unreachable DURING that run (worker side)');\n      }\n      if (lastRun.errors_text && lastRun.errors_text !== '[]') {\n        lines.push(`  errors: ${lastRun.errors_text.slice(0, 180)}`);\n      }\n      lines.push(`  run_id: ${lastRun.run_id}`);\n    }\n    lines.push('');\n    lines.push('Pipeline is push-only: this shows the last report Waza sent.');\n    lines.push('Use /memory_health for a pass/fail verdict against thresholds.');\n    reply = lines.join('\\n');\n  } else if (cmd === '/memory_last') {\n    const rows = await queryLastRuns(5);\n    if (rows.length === 0) {\n      reply = 'Memory pipeline — last runs\\n\\nNo run reports recorded yet.';\n    } else {\n      const lines = ['Memory pipeline — last 5 worker runs', ''];\n      lines.push('(newest first; each line = one run report from Waza)');\n      lines.push('');\n      for (const r of rows) {\n        const mark = r.exit_code === 0 ? 'OK ' : 'ERR';\n        lines.push(`${mark}  ${fmtAge(r.age_hours).padEnd(6)}  ${r.mode || '?'}  files=${r.indexed_files ?? 0}  chunks=${r.indexed_chunks ?? 0}  spool=${r.spool_size ?? '?'}  load=${r.loadavg_1min ?? '?'}`);\n      }\n      reply = lines.join('\\n');\n    }\n  } else if (cmd === '/memory_health') {\n    const maxAge = Number($env.MEMORY_HEALTHCHECK_MAX_AGE_HOURS || '2');\n    const maxSpool = Number($env.MEMORY_HEALTHCHECK_MAX_SPOOL || '50');\n    const [qdrant, lastRun] = await Promise.all([checkQdrant(), queryLastRun()]);\n    const issues = [];\n    // Only count Qdrant as unhealthy if it truly can't be reached, not\n    // if we just lack an API key (that's a bot-config issue, not a prod outage).\n    if (!qdrant.reachable && !(qdrant.error && qdrant.error.startsWith('auth_'))) {\n      issues.push(`qdrant_unreachable:${qdrant.error || qdrant.status}`);\n    }\n    if (!lastRun) {\n      issues.push('no_runs_recorded');\n    } else {\n      const h = Number(lastRun.age_hours || 0);\n      if (h > maxAge) issues.push(`stale_last_run:${h.toFixed(1)}h_ago`);\n      if ((lastRun.spool_size ?? 0) > maxSpool) issues.push(`spool_high:${lastRun.spool_size}`);\n      if (lastRun.qdrant_reachable === false) issues.push('worker_saw_qdrant_unreachable');\n      if (lastRun.exit_code !== 0) issues.push(`last_run_exit_code:${lastRun.exit_code}`);\n    }\n    const lines = ['Memory pipeline — on-demand healthcheck', ''];\n    if (issues.length === 0) {\n      lines.push('Verdict: HEALTHY');\n      lines.push('');\n      lines.push(qdrantLine(qdrant));\n      if (lastRun) lines.push(`Last run: ${fmtAge(lastRun.age_hours)} ago, exit=${lastRun.exit_code}`);\n    } else {\n      lines.push('Verdict: UNHEALTHY');\n      lines.push('');\n      lines.push('Issues detected:');\n      for (const i of issues) lines.push(`  - ${i}`);\n      lines.push('');\n      lines.push(qdrantLine(qdrant));\n    }\n    lines.push('');\n    lines.push(`Thresholds: max_age=${maxAge}h, max_spool=${maxSpool} files`);\n    reply = lines.join('\\n');\n  } else if (cmd === '/memory_help' || cmd === '/help' || cmd === '/start') {\n    reply = [\n      'Memory pipeline bot',\n      '',\n      'Available commands:',\n      '',\n      '/memory_status  — last worker run + live Qdrant state',\n      '/memory_last    — last 5 worker runs (compact list)',\n      '/memory_health  — pass/fail verdict vs thresholds',\n      '/memory_help    — this help message',\n      '',\n      'The pipeline is push-only: the worker on Waza posts a JSON report',\n      'to n8n after every run. This bot only reads the memory_runs table',\n      'and Qdrant directly — it never SSHes into Waza.'\n    ].join('\\n');\n  } else {\n    // Unknown command or non-command message — silent to avoid chatter.\n    return [{ json: { skip: true, reason: 'unknown_command', text } }];\n  }\n} catch (err) {\n  reply = `Memory bot error\\n\\n${err.message || 'unknown error'}`;\n}\n\nreturn [{\n  json: {\n    skip: false,\n    chat_id: chatId,\n    reply_text: reply\n  }\n}];"
+      }
+    },
+    {
+      "id": "needs-reply",
+      "name": "Should Reply?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        920,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-should-reply",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "send-reply",
+      "name": "Send Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        220
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $json.chat_id, text: $json.reply_text, disable_web_page_preview: true }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "respond-200",
+      "name": "Respond 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1360,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Telegram Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Telegram Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Telegram Secret": {
+      "main": [
+        [
+          {
+            "node": "Handle Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 403",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Command": {
+      "main": [
+        [
+          {
+            "node": "Should Reply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Reply?": {
+      "main": [
+        [
+          {
+            "node": "Send Reply",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

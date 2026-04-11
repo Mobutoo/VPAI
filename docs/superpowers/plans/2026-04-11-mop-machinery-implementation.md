@@ -541,10 +541,9 @@ mop_cli_bin_dir: "/usr/local/bin"
 `roles/mop-templates/tasks/main.yml`:
 ```yaml
 ---
-- name: "mop-templates | Install jinja2-cli and pyyaml (system-wide)"
+- name: "mop-templates | Install system deps (pyyaml, jq, curl)"
   ansible.builtin.apt:
     name:
-      - python3-jinja2
       - python3-yaml
       - jq
       - curl
@@ -553,6 +552,8 @@ mop_cli_bin_dir: "/usr/local/bin"
     cache_valid_time: 3600
   become: true
   tags: [mop-templates]
+  # jinja2-cli is installed below via pipx (VPAI Python CLI convention);
+  # python3-jinja2 apt package would be redundant and is not needed.
 
 - name: "mop-templates | Ensure pipx is available (VPAI CLI tool convention)"
   ansible.builtin.apt:
@@ -966,18 +967,18 @@ After the Phase 4.6 provisioning block, add a new Phase 4.7:
         ansible_role_name: carbone-template-only
 ```
 
-Alternatively, use `include_role` with specific tags. Simpler: add a `post_tasks` block that runs `ansible.builtin.include_role` with `tasks_from: main.yml` and `apply: { tags: [carbone-template] }`. **Chosen approach:** add a `post_tasks` entry:
+The carbone role has two task files: `tasks/main.yml` (creates config dirs, runs during Phase 3 role ordering — safe anytime) and `tasks/template.yml` (uploads the ODT template via curl — must run AFTER docker-stack starts the Carbone container). **Chosen approach:** add a `post_tasks` entry that explicitly includes `tasks_from: template`:
 
 ```yaml
   post_tasks:
     - name: "mop | Upload Carbone template after docker-stack up"
       ansible.builtin.include_role:
         name: carbone
-        tasks_from: main
-        apply:
-          tags: [carbone-template]
-      tags: [carbone-template, phase4, always]
+        tasks_from: template
+      tags: [carbone-template, phase4]
 ```
+
+Note: `tasks_from: template` loads `roles/carbone/tasks/template.yml` (Ansible auto-appends `.yml`). This is the file created in Task 1.3 Step 2b containing the curl-based binary upload logic. Do NOT use `tasks_from: main` — that file only creates directories and would silently skip the upload.
 
 - [ ] **Step 3: yamllint + ansible-lint**
 
@@ -1821,8 +1822,15 @@ Nodes:
    - Code node: render HTML from Jinja-like template literal (or via `execSync` calling `jinja2-cli`)
    - HTTP Request: POST multipart to `http://gotenberg:3000/forms/chromium/convert/html`
 5. **Branch B: Carbone**
-   - HTTP Request POST: `http://carbone:4000/render/{{$env.CARBONE_TEMPLATE_ID}}`
+   - **Code node (Read Template ID)** — reads `/configs/carbone/template-id.txt` from the mounted volume (Task 1.6 Step 1 mounts `/opt/{{ project_name }}/configs/carbone:/configs/carbone:ro` into n8n). Logic:
+     ```javascript
+     const fs = require('fs');
+     const templateId = fs.readFileSync('/configs/carbone/template-id.txt', 'utf8').trim();
+     return [{ json: { ...$json, templateId } }];
+     ```
+   - HTTP Request POST: `http://carbone:4000/render/{{$node["Read Template ID"].json.templateId}}` — body is the consolidated JSON payload
    - HTTP Request GET: `http://carbone:4000/render/{{$json.data.renderId}}`
+   - **Do NOT use `$env.CARBONE_TEMPLATE_ID`** — the template ID lives in a mounted file, not an environment variable. This avoids cross-role deploy ordering fragility (n8n does not need to be restarted when the Carbone template is re-uploaded).
 6. **Merge** branches
 7. **Write Binary File** → `/data/mop/pdf/{{id}}.pdf`
 8. **Code node** (confirm) — `execSync('/scripts/mop/alloc-and-append.sh', ['confirm', id, JSON.stringify(payload)])`
@@ -2113,7 +2121,7 @@ If any wave breaks production:
 
 1. `git revert <commit-range>`
 2. `make deploy-role ROLE=docker-stack ENV=prod` (reapplies previous template)
-3. For emergencies: `ssh ... 'cd /opt/vpai && docker compose stop gotenberg carbone typebot-builder typebot-viewer'`
+3. For emergencies: `ssh ... "cd /opt/${PROJECT_NAME:-javisi} && docker compose stop gotenberg carbone typebot-builder typebot-viewer"` (substitute the real `project_name` value from `inventory/group_vars/all/main.yml` — default is `javisi`)
 4. Caddy routes auto-removed when the template re-renders.
 
 ## Appendix C — Post-deployment Housekeeping

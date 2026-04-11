@@ -957,17 +957,7 @@ Locate the `# Phase 3 — Applications` section. After the existing apps (after 
 
 - [ ] **Step 2: Add post-docker-stack carbone template upload**
 
-After the Phase 4.6 provisioning block, add a new Phase 4.7:
-
-```yaml
-    # Phase 4.7 — MOP template upload (runs AFTER docker-stack started Carbone)
-    - role: carbone
-      tags: [carbone-template, phase4]
-      vars:
-        ansible_role_name: carbone-template-only
-```
-
-The carbone role has two task files: `tasks/main.yml` (creates config dirs, runs during Phase 3 role ordering — safe anytime) and `tasks/template.yml` (uploads the ODT template via curl — must run AFTER docker-stack starts the Carbone container). **Chosen approach:** add a `post_tasks` entry that explicitly includes `tasks_from: template`:
+The carbone role has two task files: `tasks/main.yml` (creates config dirs, runs during Phase 3 role ordering — safe anytime) and `tasks/template.yml` (uploads the ODT template via curl — must run AFTER docker-stack starts the Carbone container). Add a `post_tasks` entry at the bottom of `playbooks/site.yml` that explicitly includes `tasks_from: template`:
 
 ```yaml
   post_tasks:

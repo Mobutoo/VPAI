@@ -285,30 +285,48 @@ memory-benchmark: ## Lancer le benchmark retrieval sur Waza (usage: make memory-
 
 .PHONY: memory-benchmark-all
 memory-benchmark-all: ## Lancer le benchmark retrieval sur les 3 repos prioritaires
-	@for repo in VPAI flash-studio story-engine; do \
+	@for repo in VPAI flash-studio story-engine ops; do \
 		echo "$(GREEN)>>> Benchmark $$repo...$(NC)"; \
 		$(MAKE) memory-benchmark REPO=$$repo || exit $$?; \
 	done
 
+.PHONY: memory-qdrant-audit
+memory-qdrant-audit: ## Inventorier les collections Qdrant depuis Waza (read-only)
+	ansible workstation -i inventory/hosts.yml -m shell -a 'bash -lc "set -a; . /opt/workstation/configs/ai-memory-worker/memory-worker.env; set +a; ts=\$$(date -u +%Y%m%dT%H%M%SZ); /opt/workstation/ai-memory-worker/.venv/bin/python /opt/workstation/ai-memory-worker/inventory_collections.py --config /opt/workstation/configs/ai-memory-worker/config.yml --output-json /opt/workstation/data/ai-memory-worker/audits/qdrant-inventory-\$$ts.json --output-md /opt/workstation/data/ai-memory-worker/audits/qdrant-inventory-\$$ts.md"'
+
 .PHONY: memory-backfill
 memory-backfill: ## Lancer un backfill manuel sur Waza (usage: make memory-backfill REPO=VPAI EXTRA=\"--dry-run --max-files 50\")
 	@if [ -z "$(REPO)" ]; then \
-		echo "$(RED)>>> Usage: make memory-backfill REPO=<VPAI|flash-studio|story-engine> [EXTRA=\"...\"]$(NC)"; exit 1; \
+		echo "$(RED)>>> Usage: make memory-backfill REPO=<VPAI|flash-studio|story-engine|ops> [EXTRA=\"...\"]$(NC)"; exit 1; \
 	fi
 	ansible workstation -i inventory/hosts.yml -m shell -a 'bash -lc "/home/mobuone/VPAI/scripts/memory-backfill.sh --repo $(REPO) $(EXTRA)"'
 
 .PHONY: memory-backfill-seed
 memory-backfill-seed: ## Lancer le seed v0.3 d'un repo prioritaire (usage: make memory-backfill-seed REPO=VPAI)
 	@if [ -z "$(REPO)" ]; then \
-		echo "$(RED)>>> Usage: make memory-backfill-seed REPO=<VPAI|flash-studio|story-engine>$(NC)"; exit 1; \
+		echo "$(RED)>>> Usage: make memory-backfill-seed REPO=<VPAI|flash-studio|story-engine|ops>$(NC)"; exit 1; \
 	fi
 	@case "$(REPO)" in \
 		VPAI) EXTRA_ARGS='--path /home/mobuone/VPAI/playbooks/site.yml --path /home/mobuone/VPAI/playbooks/workstation.yml --path /home/mobuone/VPAI/inventory/hosts.yml --path /home/mobuone/VPAI/roles/llamaindex-memory-worker/defaults/main.yml --path /home/mobuone/VPAI/roles/llamaindex-memory-worker/tasks/main.yml --path /home/mobuone/VPAI/scripts/n8n-workflows/memory-run-report-ingest.json --path /home/mobuone/VPAI/scripts/n8n-workflows/memory-healthcheck.json --path /home/mobuone/VPAI/docs/runbooks/AI-MEMORY-OPERATIONS.md --path /home/mobuone/VPAI/Makefile' ;; \
 		flash-studio) EXTRA_ARGS='--path /home/mobuone/flash-studio/docs/QUICK_REFERENCE.md --path /home/mobuone/flash-studio/docs/GUIDE_INITIALISATION.md --path /home/mobuone/flash-studio/flash-infra/README.md --path /home/mobuone/flash-studio/flash-infra/ARCHITECTURE.md --path /home/mobuone/flash-studio/flash-infra/ansible/playbooks/site.yml --path /home/mobuone/flash-studio/flash-infra/ansible/playbooks/rebuild-work.yml --path /home/mobuone/flash-studio/flash-infra/scripts/flash-daemon.sh --path /home/mobuone/flash-studio/flash-infra/scripts/flash-ctl.sh' ;; \
 		story-engine) EXTRA_ARGS='--path /home/mobuone/projects/saas/story-engine/CLAUDE.md --path /home/mobuone/projects/saas/story-engine/apps/api/src/story_engine/main.py --path /home/mobuone/projects/saas/story-engine/apps/collab/src/server.ts --path /home/mobuone/projects/saas/story-engine/apps/collab/src/health.ts --path /home/mobuone/projects/saas/story-engine/apps/collab/src/extensions/database.ts --path /home/mobuone/projects/saas/story-engine/packages/editor/src/extensions.ts --path /home/mobuone/projects/saas/story-engine/infra/docker-compose.yml --path /home/mobuone/projects/saas/story-engine/docs/specs/2026-04-01-gaps-resolution.md' ;; \
+		ops) EXTRA_ARGS='--path /home/mobuone/projects/ops/rex/2026-03-22-flash-suite-audit-v020.md' ;; \
 		*) echo "$(RED)>>> Repo inconnu: $(REPO)$(NC)"; exit 1 ;; \
 	esac; \
 	ansible workstation -i inventory/hosts.yml -m shell -a "bash -lc '/home/mobuone/VPAI/scripts/memory-backfill.sh --repo $(REPO) $$EXTRA_ARGS'"
+
+.PHONY: memory-backfill-rex-pilot
+memory-backfill-rex-pilot: ## Lancer le seed REX v0.6 (app-factory-rex, flash-rex, rex_lessons)
+	$(MAKE) memory-wait-calm
+	ansible workstation -i inventory/hosts.yml -m shell -a "bash -lc '/home/mobuone/VPAI/scripts/memory-backfill.sh --repo VPAI --path /home/mobuone/VPAI/docs/rex/REX-SESSION-2026-04-05.md --path /home/mobuone/VPAI/docs/rex/REX-SESSION-2026-04-06.md --path /home/mobuone/VPAI/docs/rex/REX-SESSION-2026-04-07.md'"
+	$(MAKE) memory-wait-calm
+	ansible workstation -i inventory/hosts.yml -m shell -a "bash -lc '/home/mobuone/VPAI/scripts/memory-backfill.sh --repo flash-studio --path /home/mobuone/flash-studio/docs/REX-2026-03-18-sso-oidc-fix.md --path /home/mobuone/flash-studio/flash-infra/docs/REX-2026-03-22-litellm-skypilot-deploy.md --path /home/mobuone/flash-studio/flash-infra/docs/REX-2026-03-22-portal-security-audit.md --path /home/mobuone/flash-studio/flash-infra/docs/rex/2026-03-22-dns-ovh-migration-auth-fix.md'"
+	$(MAKE) memory-wait-calm
+	ansible workstation -i inventory/hosts.yml -m shell -a "bash -lc '/home/mobuone/VPAI/scripts/memory-backfill.sh --repo ops --path /home/mobuone/projects/ops/rex/2026-03-22-flash-suite-audit-v020.md'"
+
+.PHONY: memory-wait-calm
+memory-wait-calm: ## Attendre que Waza repasse sous le seuil CPU du worker
+	ansible workstation -i inventory/hosts.yml -m shell -a 'bash -lc "/home/mobuone/VPAI/scripts/memory-wait-calm.sh"'
 
 .PHONY: deploy-opencode
 deploy-opencode: ## Deployer OpenCode uniquement

@@ -84,6 +84,14 @@
       tags: [kitsu, phase3]
     - role: flash-suite
       tags: [flash-suite, phase3]
+    - role: mop-templates
+      tags: [mop-templates, phase3]
+    - role: gotenberg
+      tags: [gotenberg, phase3]
+    - role: carbone
+      tags: [carbone, phase3]
+    - role: typebot
+      tags: [typebot, phase3]
 
     # Phase 4 — Observabilité
     - role: monitoring
@@ -120,6 +128,12 @@
       tags: [hardening, phase6]
 
   post_tasks:
+    - name: "MOP | Upload Carbone template after docker-stack up"
+      ansible.builtin.include_role:
+        name: carbone
+        tasks_from: template
+      tags: [carbone-template, phase4]
+
     - name: Run smoke tests
       ansible.builtin.include_role:
         name: smoke-tests

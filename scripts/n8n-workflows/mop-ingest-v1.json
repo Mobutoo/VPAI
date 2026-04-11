@@ -17,7 +17,7 @@
           "values": [
             {
               "fieldLabel": "documents",
-              "fieldType": "files",
+              "fieldType": "file",
               "acceptFileTypes": ".pdf,.pptx,.docx",
               "multipleFiles": true,
               "requiredField": true

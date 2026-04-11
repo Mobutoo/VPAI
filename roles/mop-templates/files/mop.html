@@ -1,1 +1,75 @@
-# placeholder — filled by Wave 2
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>{{ id }} — {{ title }}</title>
+  <link rel="stylesheet" href="mop.css">
+</head>
+<body>
+  <header class="mop-header">
+    <h1>{{ title }}</h1>
+    <div class="mop-meta">
+      <span class="mop-id">{{ id }}</span>
+      <span class="mop-severity severity-{{ severity }}">{{ severity | upper }}</span>
+      <span class="mop-perimeter">{{ perimeter }}</span>
+    </div>
+  </header>
+
+  <section class="incident">
+    <h2>Incident</h2>
+    <dl>
+      <dt>Ticket</dt><dd>{{ incident.ticket }}</dd>
+      <dt>Date</dt><dd>{{ incident.date }}</dd>
+      <dt>Équipement</dt><dd>{{ incident.equipment }}</dd>
+      <dt>Site</dt><dd>{{ incident.site }}</dd>
+    </dl>
+    <details>
+      <summary>Mail source</summary>
+      <p><strong>{{ incident.raw_email_subject }}</strong></p>
+      <pre>{{ incident.raw_email_body }}</pre>
+    </details>
+  </section>
+
+  <section class="steps">
+    <h2>Procédure</h2>
+    <ol>
+    {% for step in steps %}
+      <li>
+        <strong>{{ step.title }}</strong>
+        <p>{{ step.desc }}</p>
+        {% if step.link_sp %}<a href="#{{ step.link_sp }}" class="sp-link">→ {{ step.link_sp }}</a>{% endif %}
+      </li>
+    {% endfor %}
+    </ol>
+  </section>
+
+  <section class="rex">
+    <h2>REX — Retour d'expérience ({{ rex.similar_cases_count }} cas similaires)</h2>
+    <div class="rex-grid">
+      <div class="rex-col">
+        <h3>Causes fréquentes</h3>
+        <ul>
+        {% for c in rex.root_causes %}<li>{{ c }}</li>{% endfor %}
+        </ul>
+      </div>
+      <div class="rex-col">
+        <h3>Pièges</h3>
+        <ul>
+        {% for p in rex.pitfalls %}<li>{{ p }}</li>{% endfor %}
+        </ul>
+      </div>
+      <div class="rex-col">
+        <h3>Temps moyen</h3>
+        <p class="mean-time">{{ rex.mean_resolution_time }}</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="escalation">
+    <h2>Escalade</h2>
+    <p><strong>Contact primaire :</strong> {{ escalation.primary_contact }}</p>
+    <p><strong>Fallback :</strong> {{ escalation.fallback }}</p>
+    <p><strong>Coordinateur site distant :</strong> {{ escalation.coordinator_site_distant }}</p>
+  </footer>
+</body>
+</html>

@@ -3,6 +3,9 @@ Attribute VB_Name = "Module1"
 ' Import into Excel: Alt+F11 → Insert → Module (or File → Import File)
 ' Requires: 'index' sheet populated from mops-index.csv (Power Query or manual paste)
 ' Usage: Enter keyword in recherche!B2, run SearchMOP (button or Alt+F8)
+'
+' OFFLINE MODE: PDFs must be in the same folder as this .xlsm file.
+' The hyperlinks are built from ThisWorkbook.Path + "\" + filename (col F of index).
 
 Sub SearchMOP()
     Dim keyword As String
@@ -38,11 +41,13 @@ Sub SearchMOP()
             resSheet.Cells(resRow, 3).Value = idxSheet.Cells(i, 3).Value  ' keywords
             resSheet.Cells(resRow, 4).Value = idxSheet.Cells(i, 4).Value  ' severity
             resSheet.Cells(resRow, 5).Value = idxSheet.Cells(i, 6).Value  ' filename
-            ' Clickable hyperlink to open PDF
-            Dim fileUrl As String
-            fileUrl = idxSheet.Cells(i, 6).Value
-            If fileUrl <> "" Then
-                resSheet.Cells(resRow, 6).Formula = "=HYPERLINK(""" & fileUrl & """,""Ouvrir"")"
+            ' Clickable hyperlink to open PDF (local — same folder as this workbook)
+            Dim fileName As String
+            fileName = idxSheet.Cells(i, 6).Value
+            If fileName <> "" Then
+                Dim localPath As String
+                localPath = ThisWorkbook.Path & "\" & fileName
+                resSheet.Cells(resRow, 6).Formula = "=HYPERLINK(""" & localPath & """,""Ouvrir"")"
             End If
             resRow = resRow + 1
         End If

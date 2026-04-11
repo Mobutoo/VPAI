@@ -907,9 +907,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    read_only: true
+    # NOTE: Chromium needs a writable user-data-dir for crashpad (minidump DB).
+    # read_only:true blocks /home/gotenberg → Chrome fails with
+    # "chrome_crashpad_handler: --database is required". Keep FS writable but
+    # tmpfs /tmp and drop caps for defense-in-depth.
     tmpfs:
       - /tmp:size=256m
+    # Chrome wants >64MB /dev/shm (docker default) for large pages.
+    shm_size: 1gb
     cap_drop:
       - ALL
     cap_add:

@@ -1,0 +1,224 @@
+{
+  "name": "mop-webhook-render-v1",
+  "nodes": [
+    {
+      "id": "1b9a4a0e-0001-4000-8000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "mop-render",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mop-render",
+        "responseMode": "responseNode",
+        "options": {
+          "responseData": "allEntries"
+        }
+      }
+    },
+    {
+      "id": "1b9a4a0e-0001-4000-8000-000000000002",
+      "name": "Prepare & Allocate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Validates payload, allocates MOP ID (fs mutex), renders HTML, emits\n// binary {html, css} for the HTTP Request node.\n\nconst fs = require('fs');\n\nconst MOP_DIR       = '/data/mop';\nconst INDEX_DIR     = MOP_DIR + '/index';\nconst PDF_DIR       = MOP_DIR + '/pdf';\nconst PENDING_DIR   = INDEX_DIR + '/.pending';\nconst CSV_PATH      = INDEX_DIR + '/mops-index.csv';\nconst TEMPLATE_HTML = MOP_DIR + '/templates/mop.html';\nconst TEMPLATE_CSS  = MOP_DIR + '/templates/mop.css';\n\nfunction ensureDirs() {\n  fs.mkdirSync(INDEX_DIR,   { recursive: true });\n  fs.mkdirSync(PDF_DIR,     { recursive: true });\n  fs.mkdirSync(PENDING_DIR, { recursive: true });\n  if (!fs.existsSync(CSV_PATH)) {\n    fs.writeFileSync(CSV_PATH, '\\uFEFFid;title;keywords;severity;perimeter;filename;sub_procs;created_at\\n');\n  }\n}\n\nfunction allocateId(payloadStr) {\n  const year = new Date().getUTCFullYear();\n  ensureDirs();\n  const re = new RegExp('^MOP-' + year + '-(\\\\d+)');\n  let max = 0;\n  const csv = fs.readFileSync(CSV_PATH, 'utf8');\n  for (const line of csv.split('\\n').slice(1)) {\n    const m = line.match(re);\n    if (m) max = Math.max(max, parseInt(m[1], 10));\n  }\n  for (const f of fs.readdirSync(PENDING_DIR)) {\n    const m = f.match(new RegExp('^MOP-' + year + '-(\\\\d+)$'));\n    if (m) max = Math.max(max, parseInt(m[1], 10));\n  }\n  let next = max + 1;\n  while (next < max + 1000) {\n    const id = 'MOP-' + year + '-' + String(next).padStart(4, '0');\n    try {\n      fs.writeFileSync(PENDING_DIR + '/' + id, payloadStr, { flag: 'wx' });\n      return id;\n    } catch (e) {\n      if (e.code !== 'EEXIST') throw e;\n      next++;\n    }\n  }\n  throw new Error('allocate: exhausted retries');\n}\n\n// Mini Jinja-subset renderer ({{var}}, {{var|upper}}, {% for %}, {% if %})\nfunction getPath(obj, p) {\n  return p.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);\n}\nfunction escHtml(s) {\n  return String(s == null ? '' : s)\n    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n}\nfunction renderTpl(tpl, ctx) {\n  tpl = tpl.replace(\n    /\\{%\\s*for\\s+(\\w+)\\s+in\\s+([\\w.]+)\\s*%\\}([\\s\\S]*?)\\{%\\s*endfor\\s*%\\}/g,\n    (_, varName, arrPath, body) => {\n      const arr = getPath(ctx, arrPath);\n      if (!Array.isArray(arr)) return '';\n      return arr.map(item => renderTpl(body, { ...ctx, [varName]: item })).join('');\n    }\n  );\n  tpl = tpl.replace(\n    /\\{%\\s*if\\s+([\\w.]+)\\s*%\\}([\\s\\S]*?)\\{%\\s*endif\\s*%\\}/g,\n    (_, expr, body) => {\n      const v = getPath(ctx, expr);\n      return (v && (!Array.isArray(v) || v.length > 0)) ? body : '';\n    }\n  );\n  tpl = tpl.replace(\n    /\\{\\{\\s*([\\w.]+)(?:\\s*\\|\\s*(\\w+))?\\s*\\}\\}/g,\n    (_, p, filter) => {\n      let v = getPath(ctx, p);\n      if (v == null) return '';\n      if (filter === 'upper') v = String(v).toUpperCase();\n      return escHtml(v);\n    }\n  );\n  return tpl;\n}\n\n// \u2500\u2500\u2500 main \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst input = $input.first().json;\nconst payload = input.body || input;\n\nconst required = ['title', 'severity', 'perimeter', 'incident', 'steps'];\nfor (const k of required) {\n  if (payload[k] == null) {\n    // Validation error \u2014 short-circuit with statusCode 400\n    return [{ json: { ok: false, error: 'missing field: ' + k, statusCode: 400, _shortCircuit: true } }];\n  }\n}\n\nensureDirs();\nconst id = allocateId(JSON.stringify(payload));\nconst ctx = { ...payload, id };\n\nconst tpl  = fs.readFileSync(TEMPLATE_HTML, 'utf8');\nconst html = renderTpl(tpl, ctx);\nconst css  = fs.readFileSync(TEMPLATE_CSS, 'utf8');\n\n// Emit binary fields for HTTP Request node (multipart file upload)\nreturn [{\n  json: {\n    id,\n    payload,\n    filename: id + '.pdf',\n    sub_procs: (payload.steps || [])\n      .map(s => s.link_sp)\n      .filter(Boolean)\n      .join(','),\n  },\n  binary: {\n    html: {\n      data: Buffer.from(html, 'utf8').toString('base64'),\n      mimeType: 'text/html',\n      fileName: 'index.html',\n      fileExtension: 'html',\n    },\n    css: {\n      data: Buffer.from(css, 'utf8').toString('base64'),\n      mimeType: 'text/css',\n      fileName: 'mop.css',\n      fileExtension: 'css',\n    },\n  },\n}];"
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "1b9a4a0e-0001-4000-8000-000000000003",
+      "name": "Gotenberg",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        240
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://gotenberg:3000/forms/chromium/convert/html",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "html"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "css"
+            },
+            {
+              "name": "paperWidth",
+              "value": "8.27"
+            },
+            {
+              "name": "paperHeight",
+              "value": "11.7"
+            },
+            {
+              "name": "marginTop",
+              "value": "0.5"
+            },
+            {
+              "name": "marginBottom",
+              "value": "0.5"
+            },
+            {
+              "name": "marginLeft",
+              "value": "0.5"
+            },
+            {
+              "name": "marginRight",
+              "value": "0.5"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "pdf"
+            }
+          }
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "1b9a4a0e-0001-4000-8000-000000000004",
+      "name": "Persist",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        240
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Writes binary PDF to /data/mop/pdf/<id>.pdf, appends CSV row,\n// removes pending marker. Returns success JSON for Respond node.\n\nconst fs = require('fs');\n\nconst MOP_DIR     = '/data/mop';\nconst INDEX_DIR   = MOP_DIR + '/index';\nconst PDF_DIR     = MOP_DIR + '/pdf';\nconst PENDING_DIR = INDEX_DIR + '/.pending';\nconst CSV_PATH    = INDEX_DIR + '/mops-index.csv';\nconst PUBLIC_BASE = 'https://mop-dl.ewutelo.cloud';\n\nconst item = $input.first();\nconst j = item.json;\nconst id = j.id;\nconst filename = j.filename;\nconst payload = j.payload || {};\n\n// Read binary PDF via n8n helper API. Binary data may live in memory OR on\n// disk (filesystem-v2 mode) \u2014 helpers.getBinaryDataBuffer abstracts both.\n// Ref: https://docs.n8n.io/code/builtin/data/#binary-helpers\nconst pdfBuf = await this.helpers.getBinaryDataBuffer(0, 'pdf');\nif (!Buffer.isBuffer(pdfBuf) || pdfBuf.length === 0) {\n  throw new Error('persist: empty binary.pdf from HTTP Request node');\n}\n\nconst pdfPath = PDF_DIR + '/' + filename;\nfs.writeFileSync(pdfPath, pdfBuf);\n\n// Append CSV row\nconst csvLine = [\n  id,\n  '\"' + String(payload.title || '').replace(/\"/g, '\"\"') + '\"',\n  '\"' + (Array.isArray(payload.keywords) ? payload.keywords.join(',') : (payload.keywords || '')) + '\"',\n  payload.severity || 'minor',\n  payload.perimeter || '',\n  filename,\n  j.sub_procs || '',\n  new Date().toISOString(),\n].join(';') + '\\n';\nfs.appendFileSync(CSV_PATH, csvLine);\n\n// Remove pending marker\ntry { fs.unlinkSync(PENDING_DIR + '/' + id); } catch (_) {}\n\nreturn [{\n  json: {\n    ok: true,\n    id,\n    url: PUBLIC_BASE + '/' + filename,\n    bytes: pdfBuf.length,\n    statusCode: 200,\n  },\n}];"
+      }
+    },
+    {
+      "id": "1b9a4a0e-0001-4000-8000-000000000005",
+      "name": "Rollback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        420
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Runs when HTTP Request to Gotenberg fails. Removes pending marker and\n// returns error JSON for Respond node.\n\nconst fs = require('fs');\n\nconst MOP_DIR     = '/data/mop';\nconst PENDING_DIR = MOP_DIR + '/index/.pending';\n\nconst item = $input.first();\nconst j = item.json || {};\n\n// Short-circuit path from Prepare (validation error) \u2014 just pass through\nif (j._shortCircuit) {\n  return [{ json: { ok: false, id: null, error: j.error, statusCode: j.statusCode || 400 } }];\n}\n\nconst id = j.id || 'unknown';\ntry { fs.unlinkSync(PENDING_DIR + '/' + id); } catch (_) {}\n\n// Gotenberg/HTTP error \u2014 item.json.error populated by onError:continueErrorOutput\nconst errMsg = (j.error && (j.error.message || j.error)) || 'gotenberg request failed';\n\nreturn [{\n  json: {\n    ok: false,\n    id,\n    error: String(errMsg).slice(0, 500),\n    statusCode: 500,\n  },\n}];"
+      }
+    },
+    {
+      "id": "1b9a4a0e-0001-4000-8000-000000000006",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1140,
+        320
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": "={{ $json.statusCode || 200 }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare & Allocate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare & Allocate": {
+      "main": [
+        [
+          {
+            "node": "Gotenberg",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rollback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gotenberg": {
+      "main": [
+        [
+          {
+            "node": "Persist",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Rollback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Persist": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rollback": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

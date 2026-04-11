@@ -1,6 +1,122 @@
 #!/usr/bin/env bash
 # {{ ansible_managed }}
-# placeholder — filled by Wave 2
+# alloc-and-append.sh — Atomic MOP ID allocator and CSV index writer
+# Usage:
+#   alloc-and-append.sh allocate '<json_payload>'
+#     → prints new ID MOP-YYYY-NNNN on stdout, creates .pending/<id>
+#   alloc-and-append.sh confirm <id> '<json_payload_with_filename>'
+#     → appends CSV line, removes .pending/<id>
+#   alloc-and-append.sh rollback <id>
+#     → removes .pending/<id>, no CSV write
+#
+# Environment:
+#   MOP_DATA_DIR — base path (default: /data/mop inside containers, /opt/{{ project_name }}/data/mop on host)
+#
+# All operations run under flock -x on MOP_DATA_DIR/index/.lock
+
 set -euo pipefail
-echo "placeholder for {{ project_name }}"
-exit 0
+
+MOP_DATA_DIR="${MOP_DATA_DIR:-/data/mop}"
+INDEX_DIR="$MOP_DATA_DIR/index"
+CSV="$INDEX_DIR/mops-index.csv"
+LOCK="$INDEX_DIR/.lock"
+PENDING_DIR="$INDEX_DIR/.pending"
+
+CMD="${1:-}"
+shift || true
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+ensure_dirs() {
+  mkdir -p "$INDEX_DIR" "$PENDING_DIR"
+  [[ -f "$CSV" ]] || printf '\xef\xbb\xbfid;title;keywords;severity;perimeter;filename;sub_procs;created_at\n' > "$CSV"
+  [[ -f "$LOCK" ]] || touch "$LOCK"
+}
+
+validate_json() {
+  local j="$1"
+  echo "$j" | jq empty 2>/dev/null || die "invalid JSON"
+}
+
+alloc() {
+  local payload="${1:-}"
+  [[ -n "$payload" ]] || die "allocate requires JSON payload"
+  validate_json "$payload"
+  ensure_dirs
+
+  local year last_id last_num next_num new_id
+  year=$(date +%Y)
+
+  # Scan CSV for current year's max seq, plus pending files.
+  # IMPORTANT: force base-10 parsing with `10#...` — bash arithmetic treats
+  # leading-zero strings like "0010" as octal (→ 8), and "0009" fails entirely.
+  # Using `10#${BASH_REMATCH[1]}` strips leading zeros as a base-10 integer.
+  last_num=0
+  while IFS= read -r line; do
+    [[ "$line" =~ ^MOP-${year}-([0-9]+) ]] || continue
+    local n=$((10#${BASH_REMATCH[1]}))
+    (( n > last_num )) && last_num=$n
+  done < <(awk -F';' 'NR>1 {print $1}' "$CSV")
+
+  # Also check pending
+  if [[ -d "$PENDING_DIR" ]]; then
+    for f in "$PENDING_DIR"/MOP-"$year"-*; do
+      [[ -e "$f" ]] || continue
+      local bn=$(basename "$f")
+      [[ "$bn" =~ ^MOP-${year}-([0-9]+)$ ]] || continue
+      local n=$((10#${BASH_REMATCH[1]}))
+      (( n > last_num )) && last_num=$n
+    done
+  fi
+
+  next_num=$((last_num + 1))
+  new_id=$(printf "MOP-%s-%04d" "$year" "$next_num")
+
+  # Record pending
+  echo "$payload" > "$PENDING_DIR/$new_id"
+  echo "$new_id"
+}
+
+confirm() {
+  local id="${1:-}"
+  local payload="${2:-}"
+  [[ -n "$id" && -n "$payload" ]] || die "confirm requires <id> <json>"
+  validate_json "$payload"
+  [[ -f "$PENDING_DIR/$id" ]] || die "no pending entry for $id"
+
+  local title keywords severity perimeter filename sub_procs created_at
+  title=$(echo "$payload" | jq -r '.title // ""')
+  keywords=$(echo "$payload" | jq -r '.keywords // [] | join(",")')
+  severity=$(echo "$payload" | jq -r '.severity // "minor"')
+  perimeter=$(echo "$payload" | jq -r '.perimeter // ""')
+  filename=$(echo "$payload" | jq -r '.filename // ""')
+  sub_procs=$(echo "$payload" | jq -r '.sub_procs // ""')
+  created_at=$(date -Iseconds)
+
+  # Escape double-quotes in title
+  title_esc=${title//\"/\"\"}
+
+  printf '%s;"%s";"%s";%s;%s;%s;%s;%s\n' \
+    "$id" "$title_esc" "$keywords" "$severity" "$perimeter" "$filename" "$sub_procs" "$created_at" >> "$CSV"
+
+  rm -f "$PENDING_DIR/$id"
+}
+
+rollback() {
+  local id="${1:-}"
+  [[ -n "$id" ]] || die "rollback requires <id>"
+  rm -f "$PENDING_DIR/$id"
+}
+
+ensure_dirs
+
+# All commands run under flock
+exec 9> "$LOCK"
+flock -x 9
+
+case "$CMD" in
+  allocate) alloc "$@" ;;
+  confirm)  confirm "$@" ;;
+  rollback) rollback "$@" ;;
+  *) die "unknown command: $CMD (allocate|confirm|rollback)" ;;
+esac

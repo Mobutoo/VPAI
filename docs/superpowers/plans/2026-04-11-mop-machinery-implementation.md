@@ -35,9 +35,10 @@
 | `roles/mop-templates/files/mop.css` | Print CSS |
 | `roles/mop-templates/files/mop.odt` | ODT template (binary, via LibreOffice) |
 | `roles/mop-templates/files/contacts.yml` | Placeholder contacts |
-| `roles/mop-templates/files/alloc-and-append.sh` | flock-atomic ID allocator (allocate/confirm/rollback) |
-| `roles/mop-templates/files/mop-render-html` | CLI wrapper for Gotenberg |
-| `roles/mop-templates/files/mop-render-odt` | CLI wrapper for Carbone |
+| `roles/mop-templates/templates/alloc-and-append.sh.j2` | flock-atomic ID allocator (allocate/confirm/rollback) — templated for project_name |
+| `roles/mop-templates/templates/mop-render-html.j2` | CLI wrapper for Gotenberg — templated for project_name |
+| `roles/mop-templates/templates/mop-render-odt.j2` | CLI wrapper for Carbone — templated for project_name |
+| `roles/mop-templates/files/alloc-and-append.bats` | bats test suite (static, run on Sese-AI) |
 | `scripts/n8n-workflows/mop-generator-v1.json` | n8n Multi-step Form workflow |
 | `scripts/n8n-workflows/mop-webhook-render-v1.json` | n8n webhook for Typebot |
 | `scripts/typebot/mop-generator-v1.json` | Typebot flow export |
@@ -123,8 +124,8 @@ gotenberg_chromium_max_conversions: 100
   ansible.builtin.file:
     path: "{{ gotenberg_config_dir }}"
     state: directory
-    owner: "{{ deploy_user }}"
-    group: "{{ deploy_user }}"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
     mode: "0755"
   become: true
   tags: [gotenberg]
@@ -206,7 +207,7 @@ carbone_container_url: "http://carbone:4000"
 carbone_source_template: "/opt/{{ project_name }}/data/mop/templates/mop.odt"
 ```
 
-- [ ] **Step 2: Write tasks (dirs + idempotent upload gated on SHA256)**
+- [ ] **Step 2a: Write tasks/main.yml (dirs ONLY — safe to run before Carbone is up)**
 
 `roles/carbone/tasks/main.yml`:
 ```yaml
@@ -215,8 +216,8 @@ carbone_source_template: "/opt/{{ project_name }}/data/mop/templates/mop.odt"
   ansible.builtin.file:
     path: "{{ carbone_config_dir }}"
     state: directory
-    owner: "{{ deploy_user }}"
-    group: "{{ deploy_user }}"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
     mode: "0755"
   become: true
   tags: [carbone]
@@ -233,13 +234,20 @@ carbone_source_template: "/opt/{{ project_name }}/data/mop/templates/mop.odt"
     - "{{ carbone_render_dir }}"
   become: true
   tags: [carbone]
+```
 
-# Post-task: upload mop.odt to Carbone and persist templateId, idempotent via SHA256
+- [ ] **Step 2b: Write tasks/template.yml (upload to running Carbone, gated `never` + explicit tag)**
+
+`roles/carbone/tasks/template.yml`:
+```yaml
+---
+# Included ONLY from playbooks/site.yml post_tasks with --tags carbone-template.
+# Requires Carbone container to be running on {{ carbone_container_url }}.
 - name: "carbone | Check source template exists"
   ansible.builtin.stat:
     path: "{{ carbone_source_template }}"
   register: carbone_tpl_stat
-  tags: [carbone, carbone-template]
+  tags: [carbone-template]
 
 - name: "carbone | Compute SHA256 of source template"
   ansible.builtin.stat:
@@ -247,7 +255,7 @@ carbone_source_template: "/opt/{{ project_name }}/data/mop/templates/mop.odt"
     checksum_algorithm: sha256
   register: carbone_tpl_hash
   when: carbone_tpl_stat.stat.exists
-  tags: [carbone, carbone-template]
+  tags: [carbone-template]
 
 - name: "carbone | Read previous hash (if any)"
   ansible.builtin.slurp:
@@ -256,58 +264,75 @@ carbone_source_template: "/opt/{{ project_name }}/data/mop/templates/mop.odt"
   failed_when: false
   changed_when: false
   when: carbone_tpl_stat.stat.exists
-  tags: [carbone, carbone-template]
+  tags: [carbone-template]
 
-- name: "carbone | Set hash comparison fact"
+- name: "carbone | Set hash comparison facts"
   ansible.builtin.set_fact:
     carbone_prev_hash: "{{ (carbone_prev_hash_raw.content | default('') | b64decode | trim) if (carbone_prev_hash_raw.content is defined) else '' }}"
     carbone_new_hash: "{{ carbone_tpl_hash.stat.checksum }}"
   when: carbone_tpl_stat.stat.exists
-  tags: [carbone, carbone-template]
+  tags: [carbone-template]
 
-- name: "carbone | Upload template to Carbone API (only on hash change)"
-  ansible.builtin.uri:
-    url: "{{ carbone_container_url }}/template"
-    method: POST
-    body_format: form-multipart
-    body:
-      template:
-        filename: "mop.odt"
-        content: "{{ lookup('ansible.builtin.file', carbone_source_template) }}"
-        mime_type: "application/vnd.oasis.opendocument.text"
-    status_code: 200
-  register: carbone_upload_response
+# Binary multipart upload via curl (ansible.builtin.uri file lookup corrupts ODT binaries)
+- name: "carbone | Upload template via curl (binary-safe, only on hash change)"
+  ansible.builtin.command:
+    cmd: >
+      curl -sS -o /tmp/carbone-upload.json -w '%{http_code}'
+      -F 'template=@{{ carbone_source_template }};type=application/vnd.oasis.opendocument.text'
+      {{ carbone_container_url }}/template
+  register: carbone_upload_curl
+  changed_when: carbone_upload_curl.stdout == '200'
+  failed_when:
+    - carbone_upload_curl.rc != 0 or carbone_upload_curl.stdout != '200'
   when:
     - carbone_tpl_stat.stat.exists
-    - carbone_prev_hash != carbone_new_hash
-  tags: [carbone, carbone-template]
+    - carbone_prev_hash | default('') != carbone_new_hash
+  become: true
+  tags: [carbone-template]
+
+- name: "carbone | Parse templateId from upload response"
+  ansible.builtin.slurp:
+    src: /tmp/carbone-upload.json
+  register: carbone_upload_blob
+  when: carbone_upload_curl is changed
+  tags: [carbone-template]
 
 - name: "carbone | Persist new templateId"
   ansible.builtin.copy:
-    content: "{{ carbone_upload_response.json.data.templateId }}"
+    content: "{{ (carbone_upload_blob.content | b64decode | from_json).data.templateId }}"
     dest: "{{ carbone_config_dir }}/template-id.txt"
-    owner: "{{ deploy_user }}"
-    group: "{{ deploy_user }}"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
     mode: "0644"
-  when:
-    - carbone_upload_response is defined
-    - carbone_upload_response is not skipped
-  tags: [carbone, carbone-template]
+  when: carbone_upload_curl is changed
+  become: true
+  tags: [carbone-template]
 
 - name: "carbone | Persist new hash"
   ansible.builtin.copy:
     content: "{{ carbone_new_hash }}"
     dest: "{{ carbone_config_dir }}/template-hash.txt"
-    owner: "{{ deploy_user }}"
-    group: "{{ deploy_user }}"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
     mode: "0644"
-  when:
-    - carbone_upload_response is defined
-    - carbone_upload_response is not skipped
-  tags: [carbone, carbone-template]
+  when: carbone_upload_curl is changed
+  become: true
+  tags: [carbone-template]
+
+- name: "carbone | Clean up upload response blob"
+  ansible.builtin.file:
+    path: /tmp/carbone-upload.json
+    state: absent
+  become: true
+  tags: [carbone-template]
 ```
 
-Note: the template upload tasks run only after `docker-stack` has started Carbone. The upload task must be gated by a service-up probe — document in Task 1.7 that these are post-task hooks, or split the role into a pre-task role (dirs only) and a post-task role (template upload). **Decision:** keep in one role but split across two task blocks in `playbooks/site.yml`: first invocation (Phase 3) creates dirs, second invocation (Phase 4.7 post-docker-stack) runs `--tags carbone-template`.
+**Why split the role:**
+- `tasks/main.yml` (dirs only) is safe during Phase 3 `docker-stack` run — no network calls, no container dependency
+- `tasks/template.yml` is included ONLY from `playbooks/site.yml` `post_tasks` via `ansible.builtin.include_tasks`, AFTER `docker-stack` starts Carbone
+- Running `make deploy-role ROLE=carbone` during Wave 1 smoke (Task 1.10) executes only `main.yml` (dirs) and will NOT fail with "connection refused" — the Carbone container isn't up yet and the upload lives in a separately-tagged include
+- Binary-safe upload: `curl -F 'template=@path'` preserves the ODT zip byte-for-byte; `ansible.builtin.uri` + `lookup('file')` would corrupt it through YAML string coercion
+- SHA256 hash gate prevents re-uploading on every deploy — template-hash.txt is the idempotence key
 
 - [ ] **Step 3: Write handlers**
 
@@ -432,8 +457,8 @@ DISABLE_SIGNUP=true
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
-    owner: "{{ deploy_user }}"
-    group: "{{ deploy_user }}"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
     mode: "0755"
   loop:
     - "{{ typebot_config_dir }}"
@@ -445,8 +470,8 @@ DISABLE_SIGNUP=true
   ansible.builtin.template:
     src: typebot.env.j2
     dest: "{{ typebot_config_dir }}/typebot.env"
-    owner: "{{ deploy_user }}"
-    group: "{{ deploy_user }}"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
     mode: "0600"
   become: true
   notify: Restart typebot stack
@@ -456,8 +481,8 @@ DISABLE_SIGNUP=true
   ansible.builtin.template:
     src: provision-typebot-db.sh.j2
     dest: "{{ typebot_config_dir }}/provision-typebot-db.sh"
-    owner: "{{ deploy_user }}"
-    group: "{{ deploy_user }}"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
     mode: "0750"
   become: true
   register: typebot_db_script
@@ -529,14 +554,30 @@ mop_cli_bin_dir: "/usr/local/bin"
   become: true
   tags: [mop-templates]
 
-- name: "mop-templates | Install jinja2-cli via pip (user-level for deploy_user)"
-  ansible.builtin.pip:
-    name: jinja2-cli
+- name: "mop-templates | Ensure pipx is available (VPAI CLI tool convention)"
+  ansible.builtin.apt:
+    name: pipx
     state: present
-    executable: pip3
-    extra_args: "--user --break-system-packages"
   become: true
-  become_user: "{{ deploy_user }}"
+  tags: [mop-templates]
+
+- name: "mop-templates | Install jinja2-cli via pipx system-wide"
+  ansible.builtin.command:
+    cmd: "pipx install --global jinja2-cli"
+  register: mop_jinja2cli_install
+  changed_when: "'installed package' in mop_jinja2cli_install.stdout"
+  failed_when:
+    - mop_jinja2cli_install.rc != 0
+    - "'already installed' not in mop_jinja2cli_install.stderr"
+  become: true
+  tags: [mop-templates]
+
+- name: "mop-templates | Verify jinja2 CLI reachable via PATH"
+  ansible.builtin.command:
+    cmd: jinja2 --version
+  register: mop_jinja2cli_version
+  changed_when: false
+  become: true
   tags: [mop-templates]
 
 - name: "mop-templates | Create data dirs (UID 1000)"
@@ -559,13 +600,13 @@ mop_cli_bin_dir: "/usr/local/bin"
   ansible.builtin.file:
     path: "{{ mop_scripts_dir }}"
     state: directory
-    owner: "{{ deploy_user }}"
-    group: "{{ deploy_user }}"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
     mode: "0755"
   become: true
   tags: [mop-templates]
 
-- name: "mop-templates | Copy mop.html, mop.css, mop.odt, contacts.yml"
+- name: "mop-templates | Copy static template files (binary-safe via copy)"
   ansible.builtin.copy:
     src: "{{ item }}"
     dest: "{{ mop_templates_dir }}/{{ item }}"
@@ -577,22 +618,23 @@ mop_cli_bin_dir: "/usr/local/bin"
     - mop.css
     - mop.odt
     - contacts.yml
+    - alloc-and-append.bats
   become: true
   tags: [mop-templates]
 
-- name: "mop-templates | Copy alloc-and-append.sh"
-  ansible.builtin.copy:
-    src: alloc-and-append.sh
+- name: "mop-templates | Deploy alloc-and-append.sh (templated — bakes project_name)"
+  ansible.builtin.template:
+    src: alloc-and-append.sh.j2
     dest: "{{ mop_scripts_dir }}/alloc-and-append.sh"
-    owner: "{{ deploy_user }}"
-    group: "{{ deploy_user }}"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
     mode: "0755"
   become: true
   tags: [mop-templates]
 
-- name: "mop-templates | Install CLI wrappers to /usr/local/bin"
-  ansible.builtin.copy:
-    src: "{{ item }}"
+- name: "mop-templates | Install CLI wrappers to /usr/local/bin (templated)"
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
     dest: "{{ mop_cli_bin_dir }}/{{ item }}"
     owner: root
     group: root
@@ -615,22 +657,28 @@ mop_cli_bin_dir: "/usr/local/bin"
   tags: [mop-templates]
 ```
 
-Note: `alloc-and-append.sh` and the CLI wrappers are placeholder-copied in Wave 1; Wave 2 provides the real file contents. To make Wave 1 self-contained, place empty placeholder files under `roles/mop-templates/files/` now (see next step).
+**Note on file layout:**
+- `roles/mop-templates/files/` — static files copied byte-for-byte (mop.html, mop.css, mop.odt binary, contacts.yml, alloc-and-append.bats test suite)
+- `roles/mop-templates/templates/` — Jinja2-templated scripts (alloc-and-append.sh.j2, mop-render-html.j2, mop-render-odt.j2)
+
+The scripts become templates because they hardcode `/opt/{{ project_name }}/` paths that must render to `/opt/javisi/` at install time. Without templating, bash doesn't interpolate Jinja and the paths would be literal `/opt/{{ project_name }}/`.
 
 - [ ] **Step 3: Create placeholder files**
 
-Create empty placeholder files so Wave 1 lints cleanly (Wave 2 overwrites them):
+Create empty/minimal placeholder files under both dirs so Wave 1 lints cleanly (Wave 2 overwrites the real content):
 
 ```bash
-mkdir -p roles/mop-templates/files
+mkdir -p roles/mop-templates/files roles/mop-templates/templates
+# Static files (copied byte-for-byte)
 touch roles/mop-templates/files/mop.html
 touch roles/mop-templates/files/mop.css
 touch roles/mop-templates/files/mop.odt
 touch roles/mop-templates/files/contacts.yml
-printf '#!/bin/bash\nset -euo pipefail\necho "placeholder"\n' > roles/mop-templates/files/alloc-and-append.sh
-printf '#!/bin/bash\nset -euo pipefail\necho "placeholder"\n' > roles/mop-templates/files/mop-render-html
-printf '#!/bin/bash\nset -euo pipefail\necho "placeholder"\n' > roles/mop-templates/files/mop-render-odt
-chmod +x roles/mop-templates/files/alloc-and-append.sh roles/mop-templates/files/mop-render-html roles/mop-templates/files/mop-render-odt
+touch roles/mop-templates/files/alloc-and-append.bats
+# Templated scripts (.j2 suffix)
+printf '#!/bin/bash\n# {{ ansible_managed }}\nset -euo pipefail\necho "placeholder for {{ project_name }}"\n' > roles/mop-templates/templates/alloc-and-append.sh.j2
+printf '#!/bin/bash\n# {{ ansible_managed }}\nset -euo pipefail\necho "placeholder"\n' > roles/mop-templates/templates/mop-render-html.j2
+printf '#!/bin/bash\n# {{ ansible_managed }}\nset -euo pipefail\necho "placeholder"\n' > roles/mop-templates/templates/mop-render-odt.j2
 ```
 
 - [ ] **Step 4: meta**
@@ -663,7 +711,11 @@ Locate the existing n8n service block. In the `volumes:` section, add before `ne
       # MOP machinery: host filesystem access for alloc-and-append.sh + CSV + dead-letter
       - /opt/{{ project_name }}/data/mop:/data/mop
       - /opt/{{ project_name }}/scripts/mop:/scripts/mop:ro
+      # Carbone template ID file (written by carbone-template post-task)
+      - /opt/{{ project_name }}/configs/carbone:/configs/carbone:ro
 ```
+
+The n8n workflow reads the templateId at webhook time from `/configs/carbone/template-id.txt` via a Code node — no env var gymnastics, no cross-role ordering fragility. If Carbone hasn't been provisioned yet the file is absent and the workflow fails fast with a clear error.
 
 - [ ] **Step 2: Add gotenberg service block**
 
@@ -701,10 +753,9 @@ After the nocodb block (or at the end of the APPLICATION LAYER section), add:
       timeout: 10s
       retries: 5
       start_period: 30s
-    command:
-      - gotenberg
-      - --chromium-max-queue-size=10
-      - --api-timeout=90s
+    # No custom command — Gotenberg 8.30.1 runs on defaults per spec §3.1.
+    # If queue size or API timeout tuning is needed later, validate flag names
+    # against upstream release notes first (several older flags have been renamed).
 ```
 
 - [ ] **Step 3: Add carbone service block**
@@ -998,7 +1049,7 @@ Expected: 4 roles applied, idempotent on re-run, changed=0 on second run.
 
 Run over SSH (Tailscale):
 ```bash
-ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@137.74.114.167 'ls -la /opt/vpai/data/mop/ /opt/vpai/configs/typebot/ /opt/vpai/configs/carbone/'
+ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@137.74.114.167 'ls -la /opt/{{ project_name }}/data/mop/ /opt/{{ project_name }}/configs/typebot/ /opt/{{ project_name }}/configs/carbone/'
 ```
 Expected: directories exist, typebot.env present and mode 0600.
 
@@ -1009,12 +1060,12 @@ Expected: directories exist, typebot.env present and mode 0600.
 ### Task 2.1: Write alloc-and-append.sh (source of truth)
 
 **Files:**
-- Modify: `roles/mop-templates/files/alloc-and-append.sh`
-- Create: `roles/mop-templates/files/alloc-and-append.bats` (bats test)
+- Modify: `roles/mop-templates/templates/alloc-and-append.sh.j2` (templated script — host path bakes `project_name`)
+- Create: `roles/mop-templates/files/alloc-and-append.bats` (static bats test — runs on Sese-AI)
 
-- [ ] **Step 1: Write the bats test (TDD)**
+- [ ] **Step 1: Write the bats test (TDD — Sese-AI only)**
 
-Install `bats-core` if not present: `apt-get install -y bats` or via apt on Sese-AI only.
+`bats` is not installed on Waza. The bats suite is distributed by the `mop-templates` role as a static file next to the deployed script, then executed on Sese-AI during Wave 1 smoke (Task 1.10) and Wave 2 acceptance (Task 2.6). Waza devs: `shellcheck` is sufficient locally.
 
 `roles/mop-templates/files/alloc-and-append.bats`:
 
@@ -1082,12 +1133,13 @@ teardown() {
 }
 ```
 
-- [ ] **Step 2: Write the script**
+- [ ] **Step 2: Write the script (as Jinja2 template)**
 
-`roles/mop-templates/files/alloc-and-append.sh`:
+`roles/mop-templates/templates/alloc-and-append.sh.j2`:
 
 ```bash
 #!/usr/bin/env bash
+# {{ ansible_managed }}
 # alloc-and-append.sh — Atomic MOP ID allocator and CSV index writer
 # Usage:
 #   alloc-and-append.sh allocate '<json_payload>'
@@ -1098,7 +1150,7 @@ teardown() {
 #     → removes .pending/<id>, no CSV write
 #
 # Environment:
-#   MOP_DATA_DIR — base path (default: /data/mop inside containers, /opt/vpai/data/mop on host)
+#   MOP_DATA_DIR — base path (default: /data/mop inside containers, /opt/{{ project_name }}/data/mop on host)
 #
 # All operations run under flock -x on MOP_DATA_DIR/index/.lock
 
@@ -1135,12 +1187,14 @@ alloc() {
   local year last_id last_num next_num new_id
   year=$(date +%Y)
 
-  # Scan CSV for current year's max seq, plus pending files
+  # Scan CSV for current year's max seq, plus pending files.
+  # IMPORTANT: force base-10 parsing with `10#...` — bash arithmetic treats
+  # leading-zero strings like "0010" as octal (→ 8), and "0009" fails entirely.
+  # Using `10#${BASH_REMATCH[1]}` strips leading zeros as a base-10 integer.
   last_num=0
   while IFS= read -r line; do
     [[ "$line" =~ ^MOP-${year}-([0-9]+) ]] || continue
-    local n=${BASH_REMATCH[1]#0*}
-    [[ -z "$n" ]] && n=0
+    local n=$((10#${BASH_REMATCH[1]}))
     (( n > last_num )) && last_num=$n
   done < <(awk -F';' 'NR>1 {print $1}' "$CSV")
 
@@ -1150,8 +1204,7 @@ alloc() {
       [[ -e "$f" ]] || continue
       local bn=$(basename "$f")
       [[ "$bn" =~ ^MOP-${year}-([0-9]+)$ ]] || continue
-      local n=${BASH_REMATCH[1]#0*}
-      [[ -z "$n" ]] && n=0
+      local n=$((10#${BASH_REMATCH[1]}))
       (( n > last_num )) && last_num=$n
     done
   fi
@@ -1209,18 +1262,28 @@ case "$CMD" in
 esac
 ```
 
-- [ ] **Step 3: Run the bats tests locally**
+- [ ] **Step 3: Run the bats tests (Sese-AI only — bats not required on Waza)**
 
-Run (on WSL/local): `cd roles/mop-templates/files && bats alloc-and-append.bats`
-Expected: 6 tests pass.
+The bats test suite is the acceptance gate for `alloc-and-append.sh`. Because Waza (Raspberry Pi workstation) doesn't ship with `bats`, the test run happens on Sese-AI after Wave 1 deploys the script file. Skip local execution on Waza.
 
-If bats isn't installed: `apt-get install -y bats` (Debian) or skip local and test on Sese-AI in Task 4.2.
+```bash
+# On Sese-AI via Tailscale:
+ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@137.74.114.167 '
+  sudo apt-get install -y bats &&
+  cd /opt/javisi/scripts/mop &&
+  sudo cp /opt/javisi/data/mop/templates/alloc-and-append.bats . 2>/dev/null || true &&
+  MOP_DATA_DIR=/tmp/mop-bats-$$ bats alloc-and-append.bats
+'
+```
+Expected: all 6 bats tests pass. (Waza developers: run `shellcheck` locally instead — `shellcheck roles/mop-templates/files/alloc-and-append.sh.j2` catches most regressions.)
+
+The `mop-templates` role distributes `alloc-and-append.bats` alongside the script so the test suite stays reproducible on the target host. Task 1.5 `mop-templates/tasks/main.yml` must add the `.bats` file to the copy loop.
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add roles/mop-templates/files/alloc-and-append.sh roles/mop-templates/files/alloc-and-append.bats
-git commit -m "feat(mop): atomic alloc-and-append.sh with bats test suite"
+git add roles/mop-templates/templates/alloc-and-append.sh.j2 roles/mop-templates/files/alloc-and-append.bats
+git commit -m "feat(mop): atomic alloc-and-append.sh.j2 with bats test suite"
 ```
 
 ---
@@ -1465,23 +1528,26 @@ git commit -m "feat(mop): bootstrap mop.odt ODT template with Carbone syntax"
 ### Task 2.4: Write CLI wrappers
 
 **Files:**
-- Modify: `roles/mop-templates/files/mop-render-html`
-- Modify: `roles/mop-templates/files/mop-render-odt`
+- Modify: `roles/mop-templates/templates/mop-render-html.j2`
+- Modify: `roles/mop-templates/templates/mop-render-odt.j2`
 
-- [ ] **Step 1: mop-render-html**
+Both are Jinja2 templates — Ansible renders `{{ project_name }}` to `javisi` at deploy time, producing static bash scripts at `/usr/local/bin/mop-render-html` and `/usr/local/bin/mop-render-odt` on the target host. Keep the `{{ project_name }}` literal in the `.j2` source; never hardcode `javisi`.
+
+- [ ] **Step 1: mop-render-html.j2**
 
 ```bash
 #!/usr/bin/env bash
+# {{ ansible_managed }}
 # mop-render-html — Render MOP JSON → PDF via Gotenberg
 # Usage: mop-render-html [-o output.pdf] [input.json]
 #        cat input.json | mop-render-html -o out.pdf
 set -euo pipefail
 
 GOTENBERG_URL="${GOTENBERG_URL:-http://localhost:3000}"
-TEMPLATE_HTML="/opt/vpai/data/mop/templates/mop.html"
-TEMPLATE_CSS="/opt/vpai/data/mop/templates/mop.css"
-MOP_DATA_DIR="${MOP_DATA_DIR:-/opt/vpai/data/mop}"
-ALLOC_SCRIPT="/opt/vpai/scripts/mop/alloc-and-append.sh"
+TEMPLATE_HTML="/opt/{{ project_name }}/data/mop/templates/mop.html"
+TEMPLATE_CSS="/opt/{{ project_name }}/data/mop/templates/mop.css"
+MOP_DATA_DIR="${MOP_DATA_DIR:-/opt/{{ project_name }}/data/mop}"
+ALLOC_SCRIPT="/opt/{{ project_name }}/scripts/mop/alloc-and-append.sh"
 
 OUT=""
 INPUT=""
@@ -1533,18 +1599,19 @@ MOP_DATA_DIR="$MOP_DATA_DIR" "$ALLOC_SCRIPT" confirm "$ID" "$CONFIRM_PAYLOAD"
 echo "$ID → $OUT"
 ```
 
-- [ ] **Step 2: mop-render-odt**
+- [ ] **Step 2: mop-render-odt.j2**
 
 ```bash
 #!/usr/bin/env bash
+# {{ ansible_managed }}
 # mop-render-odt — Render MOP JSON → PDF via Carbone
 # Usage: mop-render-odt [-o out.pdf] input.json
 set -euo pipefail
 
 CARBONE_URL="${CARBONE_URL:-http://localhost:4000}"
-TEMPLATE_ID_FILE="/opt/vpai/configs/carbone/template-id.txt"
-MOP_DATA_DIR="${MOP_DATA_DIR:-/opt/vpai/data/mop}"
-ALLOC_SCRIPT="/opt/vpai/scripts/mop/alloc-and-append.sh"
+TEMPLATE_ID_FILE="/opt/{{ project_name }}/configs/carbone/template-id.txt"
+MOP_DATA_DIR="${MOP_DATA_DIR:-/opt/{{ project_name }}/data/mop}"
+ALLOC_SCRIPT="/opt/{{ project_name }}/scripts/mop/alloc-and-append.sh"
 
 OUT=""
 INPUT=""
@@ -1591,16 +1658,25 @@ MOP_DATA_DIR="$MOP_DATA_DIR" "$ALLOC_SCRIPT" confirm "$ID" "$CONFIRM_PAYLOAD"
 echo "$ID → $OUT"
 ```
 
-- [ ] **Step 3: Shellcheck**
+- [ ] **Step 3: Shellcheck via a rendered copy**
 
-Run: `shellcheck roles/mop-templates/files/mop-render-html roles/mop-templates/files/mop-render-odt roles/mop-templates/files/alloc-and-append.sh`
+`shellcheck` cannot parse `.j2` templates directly (the `{{ ... }}` breaks bash syntax). Render a test copy with a dummy project_name substitution:
+
+```bash
+for f in roles/mop-templates/templates/alloc-and-append.sh.j2 \
+         roles/mop-templates/templates/mop-render-html.j2 \
+         roles/mop-templates/templates/mop-render-odt.j2; do
+  sed 's|{{ project_name }}|javisi|g; s|{{ ansible_managed }}|MANAGED|g' "$f" \
+    | shellcheck -s bash -
+done
+```
 Expected: 0 errors (warnings OK).
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add roles/mop-templates/files/mop-render-html roles/mop-templates/files/mop-render-odt
-git commit -m "feat(mop): CLI wrappers mop-render-html + mop-render-odt"
+git add roles/mop-templates/templates/mop-render-html.j2 roles/mop-templates/templates/mop-render-odt.j2
+git commit -m "feat(mop): CLI wrapper templates mop-render-html.j2 + mop-render-odt.j2"
 ```
 
 ---
@@ -1657,7 +1733,7 @@ Expected: files copied, scripts have mode 0755.
 
 ```bash
 ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@137.74.114.167 \
-  'ls -la /opt/vpai/scripts/mop/ /usr/local/bin/mop-render-* && head -1 /opt/vpai/data/mop/index/mops-index.csv'
+  'ls -la /opt/{{ project_name }}/scripts/mop/ /usr/local/bin/mop-render-* && head -1 /opt/{{ project_name }}/data/mop/index/mops-index.csv'
 ```
 
 - [ ] **Step 3: Commit tag**
@@ -1688,7 +1764,7 @@ Expected: 4 containers running with `Up` and `(healthy)` after start_period.
 - [ ] **Step 3: Run Carbone template upload post-task**
 
 Run: `source .venv/bin/activate && ansible-playbook playbooks/site.yml --tags carbone-template -e target_env=prod`
-Expected: `template-id.txt` and `template-hash.txt` written in `/opt/vpai/configs/carbone/`.
+Expected: `template-id.txt` and `template-hash.txt` written in `/opt/{{ project_name }}/configs/carbone/`.
 
 - [ ] **Step 4: Probe Gotenberg and Carbone from inside backend**
 
@@ -1946,7 +2022,7 @@ Run same with `mop-render-odt`. Expected: PDF.
 
 ```bash
 ssh ... 'for i in $(seq 1 10); do (cat /tmp/t.json | jq ".incident.ticket=\"TST-$i\"" | mop-render-html -o /tmp/out-$i.pdf) & done; wait'
-ssh ... 'awk -F\; "NR>1 {print \$1}" /opt/vpai/data/mop/index/mops-index.csv | sort -u | wc -l'
+ssh ... 'awk -F\; "NR>1 {print \$1}" /opt/{{ project_name }}/data/mop/index/mops-index.csv | sort -u | wc -l'
 ```
 Expected: 10+ unique IDs (possibly more if prior runs seeded data), all distinct.
 
@@ -1965,7 +2041,7 @@ From VPN host: `curl -I https://mop-dl.<domain>/MOP-2026-0001.pdf` → 200
 - [ ] **Step 6: ODT template re-upload test (#11)**
 
 ```bash
-ssh ... 'cat /opt/vpai/configs/carbone/template-hash.txt'
+ssh ... 'cat /opt/{{ project_name }}/configs/carbone/template-hash.txt'
 # Edit mop.odt locally, push via git, redeploy mop-templates role
 # Run ansible with --tags carbone-template
 # Verify hash changed
@@ -2044,5 +2120,5 @@ If any wave breaks production:
 
 - Add MOP runbook to `docs/RUNBOOK.md` with daily operation guidance
 - Wire a `diun` watcher for gotenberg/carbone/typebot image updates
-- Schedule weekly `rsync` of `/opt/vpai/data/mop/pdf/` + CSV to user workstation (Waza) via Tailscale
+- Schedule weekly `rsync` of `/opt/{{ project_name }}/data/mop/pdf/` + CSV to user workstation (Waza) via Tailscale
 - Document Phase 2 spec skeleton at `docs/superpowers/specs/2026-XX-XX-mop-email-ingest-design.md`

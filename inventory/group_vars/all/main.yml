@@ -296,6 +296,13 @@ openpencil_subdomain: "pencil"
 metube_subdomain: "tube"
 videoref_subdomain: "cine"
 
+# MOP machinery — Typebot authoring + MailHog fake SMTP (all VPN-only)
+# Declared here (not just in role defaults) so vpn-dns can build Headscale
+# extra_records from vpn-server without visibility into role defaults.
+typebot_builder_subdomain: "mop-build"
+typebot_viewer_subdomain: "mop"
+mailhog_subdomain: "mop-mail"
+
 # --- Prod Apps (Hetzner CX22) ---
 app_prod_hostname: "app-prod-01"
 app_prod_location: "fsn1"

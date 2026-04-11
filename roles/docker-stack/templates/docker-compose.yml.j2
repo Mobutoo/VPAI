@@ -974,6 +974,28 @@ services:
       retries: 5
       start_period: 60s
 
+  # === MOP MACHINERY — Fake SMTP for Typebot magic-link login ===
+  mailhog:
+    image: {{ mailhog_image }}
+    container_name: {{ project_name }}_mailhog
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+          cpus: "0.25"
+        reservations:
+          memory: 16m
+    # No healthcheck — MailHog image is scratch (Go binary, zero shell tools).
+    # Service is trivial/stateless, Docker auto-restart handles any crash.
+
   # === MOP MACHINERY — Authoring frontends ===
   typebot-builder:
     image: {{ typebot_builder_image }}

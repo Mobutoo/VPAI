@@ -124,3 +124,5 @@ gotenberg_image: "gotenberg/gotenberg:8.30.1"
 carbone_image: "carbone/carbone-ee:full-4.26.3"
 typebot_builder_image: "baptistearno/typebot-builder:3.16.1"
 typebot_viewer_image: "baptistearno/typebot-viewer:3.16.1"
+# Fake SMTP sidecar for Typebot magic-link login (no real email, local MailHog UI)
+mailhog_image: "mailhog/mailhog:v1.0.1"

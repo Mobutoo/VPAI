@@ -453,3 +453,13 @@ mop-dl.{{ domain_name }} {
 
     import security_headers
 }
+
+# MailHog UI — fake SMTP inbox for Typebot magic-link login (VPN-only)
+mop-mail.{{ domain_name }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy mailhog:8025
+
+    import security_headers
+}

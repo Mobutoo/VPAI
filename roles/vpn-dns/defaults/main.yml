@@ -169,4 +169,22 @@ _vpn_dns_records_default: >-
        "value": _vpn_dns_vps_ts_ip}]
      if (kitsu_subdomain | default('')) | length > 0
      else [])
+    +
+    ([{"name": typebot_builder_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (typebot_builder_subdomain | default('')) | length > 0
+     else [])
+    +
+    ([{"name": typebot_viewer_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (typebot_viewer_subdomain | default('')) | length > 0
+     else [])
+    +
+    ([{"name": mailhog_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (mailhog_subdomain | default('')) | length > 0
+     else [])
+    +
+    ([{"name": "mop-dl." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}])
   }}

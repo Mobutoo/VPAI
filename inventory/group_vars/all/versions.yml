@@ -17,7 +17,6 @@ n8n_image: "ghcr.io/mobutoo/n8n-enterprise:2.7.3"
 n8n_upstream_version: "2.7.3"  # version officielle n8nio/n8n sous-jacente
 litellm_image: "ghcr.io/berriai/litellm:v1.81.3-stable"
 nocodb_image: "nocodb/nocodb:0.301.3"  # SQL injection DATEADD + stored XSS + SSRF (fix 0.301.3, 2026-02-27)
-kitsu_image: "cgwire/cgwire:1.0.19"  # dedup — source de verite ligne 47
 plane_web_image: "makeplane/plane-frontend:v1.2.2"
 plane_admin_image: "makeplane/plane-admin:v1.2.2"
 plane_api_image: "makeplane/plane-backend:v1.2.2"
@@ -119,3 +118,9 @@ flash_suite_postgres_image: "postgres:16-alpine"
 flash_suite_ase_image: "ghcr.io/mobutoo/ase:suite-v1.0.0"
 flash_suite_zimboo_image: "ghcr.io/mobutoo/zimboo:suite-v1.0.0"
 flash_suite_koodia_image: "ghcr.io/mobutoo/koodia:suite-v1.0.0"
+
+# --- MOP Machinery (NOC procedure generation) ---
+gotenberg_image: "gotenberg/gotenberg:8.30.1"
+carbone_image: "carbone/carbone-ee:full-4.26.3"
+typebot_builder_image: "baptistearno/typebot-builder:3.16.1"
+typebot_viewer_image: "baptistearno/typebot-viewer:3.16.1"

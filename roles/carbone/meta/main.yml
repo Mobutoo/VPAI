@@ -1,0 +1,13 @@
+---
+galaxy_info:
+  role_name: carbone
+  author: vpai
+  description: "Carbone ODT→PDF/DOCX template engine for MOP machinery"
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+dependencies: []

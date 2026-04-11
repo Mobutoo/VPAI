@@ -1,0 +1,11 @@
+---
+- name: "Restart carbone stack"
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - carbone
+    state: present
+    recreate: always
+  become: true

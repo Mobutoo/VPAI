@@ -1,0 +1,85 @@
+---
+# Included ONLY from playbooks/site.yml post_tasks with --tags carbone-template.
+# Requires Carbone container to be running on {{ carbone_container_url }}.
+- name: "Carbone | Check source template exists"
+  ansible.builtin.stat:
+    path: "{{ carbone_source_template }}"
+  register: carbone_tpl_stat
+  tags: [carbone-template]
+
+- name: "Carbone | Compute SHA256 of source template"
+  ansible.builtin.stat:
+    path: "{{ carbone_source_template }}"
+    checksum_algorithm: sha256
+  register: carbone_tpl_hash
+  when: carbone_tpl_stat.stat.exists
+  tags: [carbone-template]
+
+- name: "Carbone | Read previous hash (if any)"
+  ansible.builtin.slurp:
+    src: "{{ carbone_config_dir }}/template-hash.txt"
+  register: carbone_prev_hash_raw
+  failed_when: false
+  changed_when: false
+  when: carbone_tpl_stat.stat.exists
+  tags: [carbone-template]
+
+- name: "Carbone | Set hash comparison facts"
+  ansible.builtin.set_fact:
+    carbone_prev_hash: "{{ (carbone_prev_hash_raw.content | default('') | b64decode | trim) if (carbone_prev_hash_raw.content is defined) else '' }}"
+    carbone_new_hash: "{{ carbone_tpl_hash.stat.checksum }}"
+  when: carbone_tpl_stat.stat.exists
+  tags: [carbone-template]
+
+# Binary multipart upload via curl (ansible.builtin.uri file lookup corrupts ODT binaries)
+- name: "Carbone | Upload template via curl (binary-safe, only on hash change)"  # noqa: command-instead-of-module
+  ansible.builtin.command:
+    cmd: >
+      curl -sS -o /tmp/carbone-upload.json -w '%{http_code}'
+      -F 'template=@{{ carbone_source_template }};type=application/vnd.oasis.opendocument.text'
+      {{ carbone_container_url }}/template
+  register: carbone_upload_curl
+  changed_when: carbone_upload_curl.stdout == '200'
+  failed_when:
+    - carbone_upload_curl.rc != 0 or carbone_upload_curl.stdout != '200'
+  when:
+    - carbone_tpl_stat.stat.exists
+    - carbone_prev_hash | default('') != carbone_new_hash
+  become: true
+  tags: [carbone-template]
+
+- name: "Carbone | Parse templateId from upload response"  # noqa: no-handler
+  ansible.builtin.slurp:
+    src: /tmp/carbone-upload.json
+  register: carbone_upload_blob
+  when: carbone_upload_curl is changed
+  tags: [carbone-template]
+
+- name: "Carbone | Persist new templateId"  # noqa: no-handler
+  ansible.builtin.copy:
+    content: "{{ (carbone_upload_blob.content | b64decode | from_json).data.templateId }}"
+    dest: "{{ carbone_config_dir }}/template-id.txt"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  when: carbone_upload_curl is changed
+  become: true
+  tags: [carbone-template]
+
+- name: "Carbone | Persist new hash"  # noqa: no-handler
+  ansible.builtin.copy:
+    content: "{{ carbone_new_hash }}"
+    dest: "{{ carbone_config_dir }}/template-hash.txt"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  when: carbone_upload_curl is changed
+  become: true
+  tags: [carbone-template]
+
+- name: "Carbone | Clean up upload response blob"
+  ansible.builtin.file:
+    path: /tmp/carbone-upload.json
+    state: absent
+  become: true
+  tags: [carbone-template]

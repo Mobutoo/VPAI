@@ -1,0 +1,11 @@
+---
+carbone_config_dir: "/opt/{{ project_name }}/configs/carbone"
+carbone_data_dir: "/opt/{{ project_name }}/data/carbone"
+carbone_template_dir: "{{ carbone_data_dir }}/template"
+carbone_render_dir: "{{ carbone_data_dir }}/render"
+carbone_memory_limit: "1.5g"
+carbone_memory_reservation: "512m"
+carbone_cpu_limit: "1.5"
+carbone_container_url: "http://carbone:4000"
+# Source template file (distributed by mop-templates role)
+carbone_source_template: "/opt/{{ project_name }}/data/mop/templates/mop.odt"

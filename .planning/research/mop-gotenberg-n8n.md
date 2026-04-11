@@ -156,3 +156,67 @@ Sources:
 | Input aggregation across pages | Yes, via node references or Merge node |
 | PDF file download to user | Yes (`returnBinary` completion option) |
 | CSV append | No native node; use Execute Command or NocoDB API |
+| `N8N_RESTRICT_FILE_ACCESS_TO` separator | `;` (semicolon) — NOT `:` (colon) |
+| `import:workflow` updates | DRAFT only (`workflow_entity.nodes`) — NOT `workflow_history` |
+| How to make import take effect at runtime | `publish:workflow --id=<id>` after import |
+| env_file reload after change | `docker compose up -d --force-recreate <svc>` — NOT `docker restart` |
+
+---
+
+## Addendum — Session MOP2 (2026-04-11)
+
+### P11 — `import:workflow` updates DRAFT only, NOT `workflow_history`
+
+**n8n 2.7.3 dual-table architecture:**
+- `workflow_entity.nodes` = DRAFT (what `import:workflow` writes)
+- `workflow_history[activeVersionId].nodes` = ACTIVE VERSION (what n8n executes at runtime)
+
+`import:workflow` alone does NOT update `workflow_history`. If `activeVersionId` still points
+to an old history entry, that old version runs regardless of how many restarts you do.
+
+**Root cause discovery (exec 11740/11752):** `export:workflow` returned the correct 8-node draft;
+but execution_data showed node names from the old 6-node definition. DB query confirmed:
+`workflow_history` at `activeVersionId=e9e442d3` had the original definition from 11:01:03;
+the draft was updated at 13:xx:xx and never published.
+
+**Fix:** `n8n publish:workflow --id=<WF_ID>` — snapshots current draft into a new `workflow_history`
+entry and sets `workflow_entity.activeVersionId` to it. This is what n8n actually loads at runtime.
+The deploy script (`scripts/mop/deploy-mop-generator.sh`) includes `publish:workflow` as step 6.
+
+### P12 — `update:workflow --active=true` deprecated; use `publish:workflow`
+
+`n8n update:workflow --id=<id> --active=true` activates the workflow but does NOT snapshot a new
+`workflow_history` entry. Use `publish:workflow` which both publishes (draft → history) and activates.
+
+### P13 — `N8N_RESTRICT_FILE_ACCESS_TO` uses SEMICOLON separator (not colon)
+
+Source (`file-system-helper-functions.js`, `getAllowedPaths()`):
+```js
+return (process.env.N8N_RESTRICT_FILE_ACCESS_TO || '').split(';').map(p => p.trim()).filter(Boolean);
+```
+
+Using `:` makes `"/home/node/.n8n-files:/data/mop"` one invalid path instead of two. The error
+message lists the raw env value so it looks correct, but access still fails.
+
+**Correct value:**
+```
+N8N_RESTRICT_FILE_ACCESS_TO=/home/node/.n8n-files;/data/mop
+```
+
+Updated in `roles/n8n/templates/n8n.env.j2`.
+
+### P14 — `env_file` changes require `--force-recreate`, not `docker restart`
+
+`docker restart` does NOT reload the docker compose `env_file`. Use:
+```bash
+docker compose up -d --force-recreate n8n
+```
+
+### P15 — n8n healthz returns too early; poll the form URL instead
+
+`/healthz` returns `{"status":"ok"}` within ~1-3s of start, but FormTrigger webhook registration
+is async. Poll `http://127.0.0.1:5678/form/mop-generator` until HTML contains `"Generate MOP"`.
+
+**E2E results (2026-04-11):**
+- Exec 11759: happy path PASS — `MOP-2026-0016.pdf` (32 KB), `status=success`, `lastNode=Done (PDF)`
+- Exec 11761: error branch PASS (Gotenberg stopped) — `EAI_AGAIN gotenberg`, `lastNode=Done (Error)`

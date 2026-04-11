@@ -1847,36 +1847,16 @@ git commit -m "feat(mop): n8n webhook workflow for Typebot PDF render"
 
 ---
 
-### Task 3.4: Write n8n Multi-step Form workflow
+### Task 3.4: Build `mop-generator-v1` multi-step form workflow
 
-**Files:**
-- Create: `scripts/n8n-workflows/mop-generator-v1.json`
+**Superseded by:** `docs/superpowers/plans/2026-04-11-mop-workflow-n8n-multistep.md`
+— focused plan with canonical JSON, clean-import protocol (publish:workflow), E2E harness.
 
-- [ ] **Step 1: Build in n8n UI**
-
-Nodes per spec §5:
-1. Form Trigger "MOP Generator" — page 1: ticket_id, subject, raw_email, engine (dropdown), severity
-2. Form page 2: perimeter (dropdown)
-3. Switch on perimeter → N branches
-4. Form pages 3..N (per perimeter) — voie, site, carte, steps
-5. Merge / Set → consolidated JSON
-6. Code node: allocate via `execSync`
-7. Switch: gotenberg vs carbone (same as 3.3 branch A/B)
-8. IF statusCode 200 → Write Binary File → Code (confirm) → Form completion `returnBinary`
-9. ELSE → Write Binary File (dead-letter) → Telegram alert → Code (rollback) → Form completion with error message
-
-- [ ] **Step 2: Export**
-
-```bash
-curl ... > scripts/n8n-workflows/mop-generator-v1.json
-```
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add scripts/n8n-workflows/mop-generator-v1.json
-git commit -m "feat(mop): n8n Multi-step Form workflow for MOP generation"
-```
+**Status: COMPLETE** (2026-04-11)
+- Workflow `CP5gJrn1e2zZbPxh` active on Sese-AI, 8 nodes, `workflow_history` published.
+- Happy path (exec 11759): `MOP-2026-0016.pdf` 32 KB, `status=success`, `lastNode=Done (PDF)`.
+- Error branch (exec 11761, Gotenberg stopped): `EAI_AGAIN gotenberg`, `lastNode=Done (Error)`.
+- Key findings documented in `.planning/research/mop-gotenberg-n8n.md` (Addendum MOP2, P11-P15).
 
 ---
 

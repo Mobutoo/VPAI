@@ -1,0 +1,46 @@
+---
+# roles/typebot/tasks/main.yml — Typebot provisioning (dirs, env_file, PG)
+
+- name: "Typebot | Create dirs"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  loop:
+    - "{{ typebot_config_dir }}"
+    - "{{ typebot_data_dir }}"
+  become: true
+  tags: [typebot]
+
+- name: "Typebot | Deploy env file"
+  ansible.builtin.template:
+    src: typebot.env.j2
+    dest: "{{ typebot_config_dir }}/typebot.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart typebot stack
+  tags: [typebot]
+
+- name: "Typebot | Deploy PG provisioning script"
+  ansible.builtin.template:
+    src: provision-typebot-db.sh.j2
+    dest: "{{ typebot_config_dir }}/provision-typebot-db.sh"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  become: true
+  register: typebot_db_script
+  tags: [typebot]
+
+- name: "Typebot | Run PG provisioning script"
+  ansible.builtin.command:
+    cmd: "{{ typebot_config_dir }}/provision-typebot-db.sh"
+  become: true
+  register: typebot_db_result
+  changed_when: "'provisioned' in typebot_db_result.stdout"
+  when: typebot_db_script.changed  # noqa no-handler
+  tags: [typebot, typebot-db]

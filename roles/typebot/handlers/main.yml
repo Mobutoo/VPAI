@@ -1,0 +1,18 @@
+---
+# roles/typebot/handlers/main.yml
+
+- name: "Restart typebot stack"
+  community.docker.docker_compose_v2:
+    project_src: "/opt/{{ project_name }}"
+    files:
+      - docker-compose.yml
+    services:
+      - typebot-builder
+      - typebot-viewer
+    state: present
+    # REX: recreate: always requis — state: restarted ne relit pas l'env_file.
+    # Voir TROUBLESHOOTING.md section 11.18 + roles/n8n/handlers/main.yml.
+    recreate: always
+  become: true
+  failed_when: false  # Ne pas échouer si docker-compose.yml n'existe pas encore
+  when: not (common_molecule_mode | default(false))

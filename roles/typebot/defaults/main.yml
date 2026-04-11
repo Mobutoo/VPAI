@@ -1,0 +1,13 @@
+---
+# roles/typebot/defaults/main.yml — Configuration Typebot (chatbot authoring platform)
+typebot_config_dir: "/opt/{{ project_name }}/configs/typebot"
+typebot_data_dir: "/opt/{{ project_name }}/data/typebot"
+typebot_db_name: "typebot"
+typebot_db_user: "typebot"
+typebot_builder_subdomain: "mop-build"
+typebot_viewer_subdomain: "mop"
+typebot_builder_url: "https://{{ typebot_builder_subdomain }}.{{ domain_name }}"
+typebot_viewer_url: "https://{{ typebot_viewer_subdomain }}.{{ domain_name }}"
+typebot_memory_limit: "512m"
+typebot_memory_reservation: "128m"
+typebot_cpu_limit: "1.0"

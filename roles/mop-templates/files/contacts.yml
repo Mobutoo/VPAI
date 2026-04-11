@@ -1,1 +1,22 @@
-# placeholder — filled by Wave 2
+# contacts.yml — NOC escalation directory (placeholder — user fills)
+sites:
+  TH3: { address: "{{ À REMPLIR }}", coordinator: "{{ À REMPLIR }}" }
+  TH2: { address: "{{ À REMPLIR }}", coordinator: "{{ À REMPLIR }}" }
+  LF:  { address: "{{ À REMPLIR }}", coordinator: "{{ À REMPLIR }}" }
+
+maintainers:
+  ribbon_voice: { name: "{{ À REMPLIR }}", phone: "{{ À REMPLIR }}", email: "{{ À REMPLIR }}" }
+  it_supervision: { name: "{{ À REMPLIR }}", phone: "{{ À REMPLIR }}", email: "{{ À REMPLIR }}" }
+
+operators:
+  voie_TH_A: "{{ À REMPLIR }}"
+  voie_LF_A: "{{ À REMPLIR }}"
+  oob_supervision: "{{ À REMPLIR }}"
+
+email_templates:
+  acknowledge: |
+    Bonjour,
+    Nous accusons réception de votre incident {{ incident.ticket }}...
+  closure: |
+    Bonjour,
+    L'incident {{ incident.ticket }} est clos...

@@ -98,7 +98,7 @@
     - { src: "remotion/Montage/effects.tsx", dest: "remotion/Montage/effects.tsx" }
   register: remotion_composition_files
 
-- name: Remove stale package-lock.json when package.json changes
+- name: Remove stale package-lock.json when package.json changes  # noqa: no-handler
   ansible.builtin.file:
     path: "{{ remotion_install_dir }}/package-lock.json"
     state: absent

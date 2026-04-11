@@ -234,12 +234,13 @@
   become: true
 
 - name: Initialize git repo in workflows directory
-  ansible.builtin.command:
+  ansible.builtin.command:  # noqa: command-instead-of-module
     cmd: git init
     chdir: "{{ comfyui_workflows_dir }}"
     creates: "{{ comfyui_workflows_dir }}/.git"
   become: true
   become_user: "{{ workstation_pi_user }}"
+  changed_when: false
 
 - name: Create .gitignore in workflows repo
   ansible.builtin.copy:
@@ -256,7 +257,7 @@
   become: true
 
 - name: Add Gitea remote to workflows repo
-  ansible.builtin.command:
+  ansible.builtin.command:  # noqa: command-instead-of-module
     cmd: git remote add origin {{ comfyui_git_remote }}
     chdir: "{{ comfyui_workflows_dir }}"
   become: true

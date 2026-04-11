@@ -19,7 +19,30 @@ categories:
   apps:
     description: "Applications métier — services déployés sur Sese-AI"
     phase: 3
-    roles: [n8n, litellm, openclaw, nocodb, plane, kitsu, firefly, zimboo, mealie, grocy, koodia, palais, flash-suite, story-engine, typebot, penpot, metube, carbone, gotenberg, webhook-relay, llamaindex-memory, obsidian, mop-templates]
+    roles:
+      - n8n
+      - litellm
+      - openclaw
+      - nocodb
+      - plane
+      - kitsu
+      - firefly
+      - zimboo
+      - mealie
+      - grocy
+      - koodia
+      - palais
+      - flash-suite
+      - story-engine
+      - typebot
+      - penpot
+      - metube
+      - carbone
+      - gotenberg
+      - webhook-relay
+      - llamaindex-memory
+      - obsidian
+      - mop-templates
 
   provision:
     description: "Provisioning post-deploy — setup initial des applications"

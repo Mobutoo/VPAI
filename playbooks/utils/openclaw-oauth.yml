@@ -37,7 +37,10 @@
           # REX: scope model.request = invalid_scope (piège 1). Le provider natif openai-codex
           # gère le routing vers chatgpt.com/backend-api (pas api.openai.com) — pas besoin du scope.
           SCOPE=$(python3 -c "import urllib.parse; print(urllib.parse.quote('openid profile email offline_access'))")
-          echo "{{ oauth_auth_url }}?client_id={{ oauth_client_id }}&redirect_uri=${RU}&response_type=code&scope=${SCOPE}&state=${ST}&code_challenge=${CC}&code_challenge_method=S256&id_token_add_organizations=true&codex_cli_simplified_flow=true"
+          PARAMS="client_id={{ oauth_client_id }}&redirect_uri=${RU}&response_type=code"
+          PARAMS="${PARAMS}&scope=${SCOPE}&state=${ST}&code_challenge=${CC}"
+          PARAMS="${PARAMS}&code_challenge_method=S256&id_token_add_organizations=true&codex_cli_simplified_flow=true"
+          echo "{{ oauth_auth_url }}?${PARAMS}"
         executable: /bin/bash
       register: oauth_url_result
       changed_when: false
@@ -131,7 +134,7 @@
 
     - name: "Restart OpenClaw to pick up new credentials"
       when: oauth_step == "complete"
-      ansible.builtin.shell:
+      ansible.builtin.command:
         cmd: "docker restart {{ project_name }}_openclaw"
       changed_when: true
 

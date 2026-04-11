@@ -285,7 +285,6 @@ oc_subdomain: "oc"
 # ComfyUI + Remotion + OpenCut (workstation Pi)
 # Doit etre declare ici (pas seulement dans role defaults) pour que vpn-dns
 # puisse construire les extra_records Headscale depuis vpn-server.
-kitsu_subdomain: "boss"
 comfyui_subdomain: "studio"
 remotion_subdomain: "re"
 remotion_port: 3200
@@ -365,3 +364,6 @@ memory_webhook_secret: "{{ vault_memory_webhook_secret | default('') }}"
 # Alert fires if last run is older than N hours or spool exceeds M lots.
 memory_healthcheck_max_age_hours: 2
 memory_healthcheck_max_spool: 50
+# Secret validated on Telegram -> n8n webhook (setWebhook secret_token).
+# Telegram sends this back in X-Telegram-Bot-Api-Secret-Token on every update.
+memory_telegram_webhook_secret: "{{ vault_memory_telegram_webhook_secret | default('') }}"

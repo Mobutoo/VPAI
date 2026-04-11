@@ -33,7 +33,7 @@
   tags: [story-engine, apps]
 
 - name: Resolve StoryEngine version (git describe)
-  ansible.builtin.command:
+  ansible.builtin.command:  # noqa: command-instead-of-module
     cmd: git describe --tags --always --dirty
     chdir: "{{ story_engine_src_dir }}"
   become: true

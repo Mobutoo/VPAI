@@ -44,7 +44,7 @@
 
     - name: Re-deploy docker-compose from current templates
       ansible.builtin.template:
-        src: "../templates/docker-compose.yml.j2"
+        src: "templates/docker-compose.yml.j2"
         dest: "/opt/{{ project_name }}/docker-compose.yml"
         owner: "{{ prod_user }}"
         group: "{{ prod_user }}"

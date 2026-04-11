@@ -2,7 +2,7 @@
 sites:
   TH3: { address: "{{ À REMPLIR }}", coordinator: "{{ À REMPLIR }}" }
   TH2: { address: "{{ À REMPLIR }}", coordinator: "{{ À REMPLIR }}" }
-  LF:  { address: "{{ À REMPLIR }}", coordinator: "{{ À REMPLIR }}" }
+  LF: { address: "{{ À REMPLIR }}", coordinator: "{{ À REMPLIR }}" }
 
 maintainers:
   ribbon_voice: { name: "{{ À REMPLIR }}", phone: "{{ À REMPLIR }}", email: "{{ À REMPLIR }}" }

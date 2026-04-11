@@ -95,7 +95,7 @@
   failed_when: _git_init.rc != 0
 
 - name: Obsidian | Schedule nightly vault snapshot (git)
-  ansible.posix.cron:
+  ansible.builtin.cron:
     name: "obsidian-vault-snapshot"
     hour: "{{ obsidian_git_cron_hour }}"
     minute: "{{ obsidian_git_cron_minute }}"

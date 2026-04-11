@@ -26,6 +26,8 @@ exclude_paths:
   - .venv/
   - collections/
   - molecule/
+  - FS/
+  - scripts/
 
 # Offline mode (pas de téléchargement Galaxy pendant le lint)
 offline: true

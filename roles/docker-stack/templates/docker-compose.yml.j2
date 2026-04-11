@@ -923,6 +923,12 @@ services:
       - SETUID
     networks:
       - backend
+      - frontend
+    ports:
+      # Expose on loopback: CLI wrappers on the host need a stable endpoint.
+      # Docker-internal IPs change on container restart — 127.0.0.1:3000 is stable.
+      # frontend network attach is required for port publishing (backend is internal).
+      - "127.0.0.1:3000:3000"
     deploy:
       resources:
         limits:
@@ -937,6 +943,11 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # No custom command — Gotenberg 8.30.1 runs on defaults per spec
 
   carbone:
@@ -978,6 +989,11 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # === MOP MACHINERY — Fake SMTP for Typebot magic-link login ===
   mailhog:
@@ -1000,6 +1016,11 @@ services:
           memory: 16m
     # No healthcheck — MailHog image is scratch (Go binary, zero shell tools).
     # Service is trivial/stateless, Docker auto-restart handles any crash.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # === MOP MACHINERY — Authoring frontends ===
   typebot-builder:
@@ -1038,6 +1059,11 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   typebot-viewer:
     image: {{ typebot_viewer_image }}
@@ -1073,6 +1099,11 @@ services:
       timeout: 10s
       retries: 5
       start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   frontend:

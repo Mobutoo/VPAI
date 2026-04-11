@@ -7,7 +7,7 @@
     group: "{{ prod_user }}"
     mode: "0755"
   become: true
-  tags: [carbone]
+  tags: [carbone, phase3]
 
 - name: "Carbone | Create data dirs (UID 1000)"
   ansible.builtin.file:
@@ -20,4 +20,4 @@
     - "{{ carbone_template_dir }}"
     - "{{ carbone_render_dir }}"
   become: true
-  tags: [carbone]
+  tags: [carbone, phase3]

@@ -179,7 +179,7 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "http://localhost:5678/webhook/mop-render",
+        "url": "http://n8n:5678/webhook/mop-render",
         "sendBody": true,
         "contentType": "json",
         "specifyBody": "json",

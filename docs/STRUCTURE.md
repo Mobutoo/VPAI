@@ -3,6 +3,9 @@
 Index humain-readable de l'organisation du repo, des playbooks et des rôles.
 Pour le contrat machine-readable, voir [`platform.yaml`](../platform.yaml).
 
+> **Fichier généré automatiquement** par `scripts/generate-structure.py`.
+> Ne pas modifier manuellement — toute modification sera écrasée.
+
 ---
 
 ## Structure `playbooks/`
@@ -39,8 +42,7 @@ playbooks/
 
 ## Structure `roles/` — Taxonomie logique
 
-### core — Fondations (Phase 1)
-Rôles déployés en premiers, obligatoires sur tous les serveurs.
+### core — Fondations obligatoires — déployées en premier (Phase 1)
 Tags: `core`, `phase1`
 
 | Rôle | Description |
@@ -51,8 +53,7 @@ Tags: `core`, `phase1`
 
 ---
 
-### platform — Infrastructure & Middleware (Phase 2)
-Données, proxy, VPN — déployés après `core`.
+### platform — Infrastructure et middleware — données, proxy, VPN (Phase 2)
 Tags: `platform`, `phase2`
 
 | Rôle | Description |
@@ -67,8 +68,7 @@ Tags: `platform`, `phase2`
 
 ---
 
-### apps — Applications métier (Phase 3)
-Services applicatifs déployés sur Sese-AI.
+### apps — Applications métier — services déployés sur Sese-AI (Phase 3)
 Tags: `apps`, `phase3`
 
 | Rôle | Description |
@@ -84,7 +84,7 @@ Tags: `apps`, `phase3`
 | `mealie` | Mealie v3.12.0 — gestion recettes |
 | `grocy` | Grocy 4.6.0 — gestion stocks |
 | `koodia` | Koodia v0.1.0 |
-| `palais` | Palais — dashboard mission control + MCP |
+| `palais` | Dashboard mission control + MCP |
 | `flash-suite` | Flash Suite — stack créative auto-contenue |
 | `story-engine` | StoryEngine — pipeline narration IA |
 | `typebot` | Typebot 3.16+ — chatbots |
@@ -98,9 +98,8 @@ Tags: `apps`, `phase3`
 
 ---
 
-### provision — Provisioning post-déploiement (Phase 4.6)
-Setup initial des applications après démarrage des containers.
-Tags: `provision`, `phase4`
+### provision — Provisioning post-deploy — setup initial des applications (Phase 4.6)
+Tags: `provision`, `phase4.6`
 
 | Rôle | Description |
 |------|-------------|
@@ -112,8 +111,7 @@ Tags: `provision`, `phase4`
 
 ---
 
-### monitoring — Observabilité (Phase 4)
-Métriques, logs, alertes, smoke tests.
+### monitoring — Observabilité — métriques, logs, alertes, smoke tests (Phase 4)
 Tags: `monitoring`, `phase4`
 
 | Rôle | Description |
@@ -126,8 +124,7 @@ Tags: `monitoring`, `phase4`
 
 ---
 
-### workstation — Waza Raspberry Pi 5 (Phase waza)
-Outils locaux Mission Control sur le Pi.
+### workstation — Waza (Raspberry Pi 5) — outils locaux Mission Control (Phase waza)
 Tags: `workstation` + sous-catégorie
 
 #### infra — Infrastructure Pi
@@ -178,8 +175,8 @@ Tags: `workstation`, `monitoring`
 
 ---
 
-### ops — Opérations ponctuelles (adhoc)
-Tags: `ops`
+### ops — Opérations ponctuelles — backup, secrets, DNS (Phase adhoc)
+Tags: `ops`, `phaseadhoc`
 
 | Rôle | Description |
 |------|-------------|
@@ -192,7 +189,7 @@ Tags: `ops`
 
 ### Par catégorie
 ```bash
-# Toute l'infrastructure (platform)
+# Toute l'infrastructure
 ansible-playbook playbooks/stacks/site.yml --tags platform
 
 # Toutes les applications
@@ -203,47 +200,29 @@ ansible-playbook playbooks/stacks/site.yml --tags monitoring
 
 # Tout le provisioning
 ansible-playbook playbooks/stacks/site.yml --tags provision
-
-# Opérations
-ansible-playbook playbooks/stacks/site.yml --tags ops
 ```
 
 ### Par phase
 ```bash
-# Phase 1 : fondations
-ansible-playbook playbooks/stacks/site.yml --tags phase1
-
-# Phase 2 : données & proxy
-ansible-playbook playbooks/stacks/site.yml --tags phase2
-
-# Phase 3 : toutes les apps
-ansible-playbook playbooks/stacks/site.yml --tags phase3
+ansible-playbook playbooks/stacks/site.yml --tags phase1   # fondations
+ansible-playbook playbooks/stacks/site.yml --tags phase2   # données & proxy
+ansible-playbook playbooks/stacks/site.yml --tags phase3   # toutes les apps
 ```
 
 ### Par rôle spécifique
 ```bash
-# Un seul rôle
 ansible-playbook playbooks/stacks/site.yml --tags n8n
 ansible-playbook playbooks/stacks/site.yml --tags litellm,nocodb
-
-# Combinaison catégorie + phase
 ansible-playbook playbooks/stacks/site.yml --tags "apps,phase3"
 ```
 
 ### Workstation Pi
 ```bash
-# Tout le Pi
-ansible-playbook playbooks/hosts/workstation.yml --tags workstation
-
-# Seulement les outils CLI
-ansible-playbook playbooks/hosts/workstation.yml --tags tools
-
-# Seulement le créatif
-ansible-playbook playbooks/hosts/workstation.yml --tags creative
-
-# Un outil spécifique
-ansible-playbook playbooks/hosts/workstation.yml --tags claude-code
-ansible-playbook playbooks/hosts/workstation.yml --tags comfyui
+ansible-playbook playbooks/hosts/workstation.yml --tags workstation   # tout le Pi
+ansible-playbook playbooks/hosts/workstation.yml --tags tools         # CLI tools
+ansible-playbook playbooks/hosts/workstation.yml --tags creative      # stack créative
+ansible-playbook playbooks/hosts/workstation.yml --tags services      # services locaux
+ansible-playbook playbooks/hosts/workstation.yml --tags claude-code   # un outil précis
 ```
 
 ---
@@ -254,11 +233,13 @@ Pour l'outillage CI/CD, la génération de matrices dynamiques et la documentati
 
 ```yaml
 # platform.yaml — source canonique de la taxonomie
-version: "1.0"
 # Voir /platform.yaml à la racine du repo
 ```
 
 Utilisé par :
 - `.github/workflows/ci.yml` — matrix lint/test par catégorie
 - `Makefile` — cibles `deploy-*` par tag
-- Tooling futur — génération README, graphe de dépendances
+- `scripts/generate-structure.py` — régénération de ce fichier
+
+> **Ne pas modifier ce fichier manuellement.**
+> Mettre à jour `platform.yaml` puis relancer `python scripts/generate-structure.py`.

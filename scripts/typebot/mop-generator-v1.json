@@ -1,0 +1,428 @@
+{
+  "version": "6.1",
+  "id": "cmnue3spm00051drwymwqg57l",
+  "name": "MOP Generator v1",
+  "events": [
+    {
+      "id": "evt_start",
+      "outgoingEdgeId": "edge_start_g1",
+      "graphCoordinates": {
+        "x": 0,
+        "y": 0
+      },
+      "type": "start"
+    }
+  ],
+  "groups": [
+    {
+      "id": "g1",
+      "title": "Introduction",
+      "graphCoordinates": {
+        "x": 300,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b1_intro",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Bienvenue dans le générateur de MOP. Je vais vous guider pour créer votre procédure de maintenance."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b1_ticket",
+          "outgoingEdgeId": "edge_g1_g2",
+          "type": "text input",
+          "options": {
+            "labels": {
+              "placeholder": "Ex: INC-2026-0042",
+              "button": "Suivant"
+            },
+            "variableId": "var_ticket_id"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g2",
+      "title": "Email brut",
+      "graphCoordinates": {
+        "x": 650,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b2_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Collez le contenu brut de l'email de demande :"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b2_email",
+          "outgoingEdgeId": "edge_g2_g3",
+          "type": "text input",
+          "options": {
+            "labels": {
+              "placeholder": "Collez l'email ici...",
+              "button": "Suivant"
+            },
+            "variableId": "var_raw_email",
+            "isLong": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "g3",
+      "title": "Sévérité",
+      "graphCoordinates": {
+        "x": 1000,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b3_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Quelle est la sévérité de l'intervention ?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b3_severity",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "sev_minor",
+              "outgoingEdgeId": "edge_g3_g4",
+              "content": "minor"
+            },
+            {
+              "id": "sev_major",
+              "outgoingEdgeId": "edge_g3_g4",
+              "content": "major"
+            },
+            {
+              "id": "sev_critical",
+              "outgoingEdgeId": "edge_g3_g4",
+              "content": "critical"
+            }
+          ],
+          "options": {
+            "variableId": "var_severity"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g4",
+      "title": "Moteur de rendu",
+      "graphCoordinates": {
+        "x": 1350,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b4_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Quel moteur de rendu utiliser ?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b4_engine",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "eng_gotenberg",
+              "outgoingEdgeId": "edge_g4_g5",
+              "content": "gotenberg"
+            },
+            {
+              "id": "eng_carbone",
+              "outgoingEdgeId": "edge_g4_g5",
+              "content": "carbone"
+            }
+          ],
+          "options": {
+            "variableId": "var_engine"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g5",
+      "title": "Périmètre",
+      "graphCoordinates": {
+        "x": 1700,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b5_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Quel est le périmètre de l'intervention ?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b5_perimeter",
+          "outgoingEdgeId": "edge_g5_g6",
+          "type": "text input",
+          "options": {
+            "labels": {
+              "placeholder": "Ex: production, preprod, web...",
+              "button": "Générer le MOP"
+            },
+            "variableId": "var_perimeter"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g6",
+      "title": "Génération",
+      "graphCoordinates": {
+        "x": 2050,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b6_generating",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Génération de votre MOP en cours..."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b6_webhook",
+          "outgoingEdgeId": "edge_g6_g7",
+          "type": "Webhook",
+          "options": {
+            "responseVariableMapping": [
+              {
+                "id": "rvm_url",
+                "variableId": "var_mop_url",
+                "bodyPath": "url"
+              },
+              {
+                "id": "rvm_status",
+                "variableId": "var_response_status",
+                "bodyPath": "status"
+              }
+            ],
+            "isCustomBody": true,
+            "webhook": {
+              "headers": [
+                {
+                  "id": "hdr1",
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "method": "POST",
+              "url": "http://n8n:5678/webhook/mop/render",
+              "body": "{\"ticket_id\":\"{{ticket_id}}\",\"raw_email\":\"{{raw_email}}\",\"severity\":\"{{severity}}\",\"engine\":\"{{engine}}\",\"perimeter\":\"{{perimeter}}\"}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "g7",
+      "title": "Résultat",
+      "graphCoordinates": {
+        "x": 2400,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b7_result",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Votre MOP est prête : {{mop_url}}"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_start_g1",
+      "from": {
+        "eventId": "evt_start"
+      },
+      "to": {
+        "groupId": "g1"
+      }
+    },
+    {
+      "id": "edge_g1_g2",
+      "from": {
+        "blockId": "b1_ticket"
+      },
+      "to": {
+        "groupId": "g2"
+      }
+    },
+    {
+      "id": "edge_g2_g3",
+      "from": {
+        "blockId": "b2_email"
+      },
+      "to": {
+        "groupId": "g3"
+      }
+    },
+    {
+      "id": "edge_g3_g4",
+      "from": {
+        "blockId": "b3_severity"
+      },
+      "to": {
+        "groupId": "g4"
+      }
+    },
+    {
+      "id": "edge_g4_g5",
+      "from": {
+        "blockId": "b4_engine"
+      },
+      "to": {
+        "groupId": "g5"
+      }
+    },
+    {
+      "id": "edge_g5_g6",
+      "from": {
+        "blockId": "b5_perimeter"
+      },
+      "to": {
+        "groupId": "g6"
+      }
+    },
+    {
+      "id": "edge_g6_g7",
+      "from": {
+        "blockId": "b6_webhook"
+      },
+      "to": {
+        "groupId": "g7"
+      }
+    }
+  ],
+  "variables": [
+    {
+      "id": "var_ticket_id",
+      "name": "ticket_id",
+      "isSessionVariable": false
+    },
+    {
+      "id": "var_raw_email",
+      "name": "raw_email",
+      "isSessionVariable": false
+    },
+    {
+      "id": "var_severity",
+      "name": "severity",
+      "isSessionVariable": false
+    },
+    {
+      "id": "var_engine",
+      "name": "engine",
+      "isSessionVariable": false
+    },
+    {
+      "id": "var_perimeter",
+      "name": "perimeter",
+      "isSessionVariable": false
+    },
+    {
+      "id": "var_mop_url",
+      "name": "mop_url"
+    },
+    {
+      "id": "var_response_status",
+      "name": "response_status"
+    }
+  ],
+  "theme": {},
+  "selectedThemeTemplateId": null,
+  "settings": {},
+  "createdAt": "2026-04-11T13:48:00.922Z",
+  "updatedAt": "2026-04-11T13:48:00.922Z",
+  "icon": null,
+  "folderId": null,
+  "publicId": null,
+  "customDomain": null,
+  "workspaceId": "cmnu1vlk500001drwxvxfhlf7",
+  "resultsTablePreferences": null,
+  "isArchived": false,
+  "isClosed": false,
+  "whatsAppCredentialsId": null,
+  "riskLevel": null,
+  "spaceId": null
+}

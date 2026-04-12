@@ -241,16 +241,25 @@ def extract_structural_meta(path: Path, text: str) -> dict[str, list[str]]:
     if suffix == ".py":
         try:
             tree = _ast.parse(text)
-            functions = [
-                n.name for n in _ast.walk(tree)
-                if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef))
-            ]
-            classes = [n.name for n in _ast.walk(tree) if isinstance(n, _ast.ClassDef)]
-            imports = list({
+            # IN-02: top-level only — exclude class methods from functions list
+            for node in tree.body:
+                if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                    functions.append(node.name)
+                elif isinstance(node, _ast.ClassDef):
+                    classes.append(node.name)
+            # WR-02: capture both `from X import Y` and plain `import X`
+            _from_imports = [
                 node.module
                 for node in _ast.walk(tree)
                 if isinstance(node, _ast.ImportFrom) and node.module
-            })
+            ]
+            _plain_imports = [
+                alias.name.split(".")[0]
+                for node in _ast.walk(tree)
+                if isinstance(node, _ast.Import)
+                for alias in node.names
+            ]
+            imports = list(dict.fromkeys(_from_imports + _plain_imports))
         except SyntaxError:
             pass
 

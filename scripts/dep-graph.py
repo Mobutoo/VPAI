@@ -99,6 +99,12 @@ def _resolve_ts_import(raw: str, source_file: Path, repo_root: Path) -> str | No
     if not raw.startswith("."):
         return None  # external or path-alias — skip
     base = source_file.parent / raw
+    # IN-03: explicit extension (e.g. './foo.js') — check as-is before substituting
+    if base.is_file():
+        try:
+            return base.relative_to(repo_root).as_posix()
+        except ValueError:
+            pass
     for ext in (".ts", ".tsx", ".js", ".jsx"):
         candidate = base.with_suffix(ext)
         if candidate.is_file():
@@ -119,10 +125,10 @@ def _resolve_ts_import(raw: str, source_file: Path, repo_root: Path) -> str | No
 
 def extract_ts_deps(path: Path, repo_root: Path) -> list[str]:
     text = path.read_text(encoding="utf-8", errors="ignore")
-    raw_imports = re.findall(r"""(?:from|require)\s*\(\s*['"]([^'"]+)['"]\s*\)|from\s+['"]([^'"]+)['"]""", text)
+    # IN-01: `from '...'` only — `require(...)` arm removed (causes false positives with RxJS `from()`)
+    raw_imports = re.findall(r"""from\s+['"]([^'"]+)['"]""", text)
     deps: list[str] = []
-    for m1, m2 in raw_imports:
-        raw = m1 or m2
+    for raw in raw_imports:
         resolved = _resolve_ts_import(raw, path, repo_root)
         if resolved:
             deps.append(resolved)
@@ -277,40 +283,27 @@ def cmd_query(args: argparse.Namespace) -> None:
     query_file = args.query
     depth = int(args.depth)
 
+    # WR-01: keep forward/reverse as separate dicts — merging overwrites bidirectional files
     # Forward blast-radius (what does query_file depend on transitively)
-    forward = blast_radius(graph, query_file, depth)
+    fwd_results = {f: d for f, d in blast_radius(graph, query_file, depth).items() if f != query_file}
     # Reverse blast-radius (who depends on query_file transitively)
-    backward = blast_radius(rev, query_file, depth)
-
-    # Merge excluding the entry file itself
-    combined: dict[str, int] = {}
-    for f, d in forward.items():
-        if f != query_file:
-            combined[f] = d
-    for f, d in backward.items():
-        if f != query_file:
-            # Prefix reverse depth with "r" visually — store as negative to sort separately
-            combined[f] = -d  # negative = reverse direction
+    rev_results = {f: d for f, d in blast_radius(rev, query_file, depth).items() if f != query_file}
 
     print(f"\nBlast-radius for: {query_file}  (depth={depth})")
     print(f"Repo: {data['repo']}  ({data['repo_root']})")
     print(f"Generated: {data['generated_at']}\n")
 
-    # Separate forward and reverse results
-    fwd_items = [(f, d) for f, d in combined.items() if d > 0]
-    rev_items = [(f, -d) for f, d in combined.items() if d < 0]
-
-    if fwd_items:
+    if fwd_results:
         print(f"  DEPENDS ON (transitive, depth≤{depth}):")
-        for f, d in sorted(fwd_items, key=lambda x: (x[1], x[0])):
+        for f, d in sorted(fwd_results.items(), key=lambda x: (x[1], x[0])):
             print(f"    [d={d}] {f}")
 
-    if rev_items:
+    if rev_results:
         print(f"\n  IMPORTED BY (transitive, depth≤{depth}):")
-        for f, d in sorted(rev_items, key=lambda x: (x[1], x[0])):
+        for f, d in sorted(rev_results.items(), key=lambda x: (x[1], x[0])):
             print(f"    [d={d}] {f}")
 
-    total = len(fwd_items) + len(rev_items)
+    total = len(fwd_results) + len(rev_results)
     print(f"\n  Total impacted files: {total}")
 
 

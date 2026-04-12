@@ -20,7 +20,7 @@
 
 Pendant ces 11h, `mcp__n8n-docs__validate_workflow` (annoté *"Essential before deploy"*) était **actif à `http://localhost:3001/mcp`** et n'a jamais été appelé. La session précédente (`26aed3d9`, qui a réussi) avait fait **17 appels MCP**. Conclusion : la non-utilisation des MCP disponibles est la cause racine unique et mesurable de l'échec.
 
-## Les 9 règles absolues
+## Les 12 règles absolues
 
 ### R0 — Memory search first (Qdrant `memory_v1`)
 
@@ -74,6 +74,31 @@ mcp__n8n-docs__validate_workflow avec le contenu du JSON complet
 
 **Si le validateur remonte un champ inconnu** : `mcp__n8n-docs__get_node` + `mcp__n8n-docs__validate_node` pour chaque nœud suspect.
 
+**R1-bis — MCP session TTL : réinitialiser si `Session not found or expired`**
+
+Le serveur n8n-docs maintient une session HTTP en `/tmp/n8n-mcp-session`. Elle expire après quelques minutes d'inactivité (erreur `-32000: Session not found or expired` sur ~80% des appels en session longue).
+
+**Procédure de réinitialisation :**
+```bash
+TOK=$(grep -A5 '"n8n-docs"' ~/.claude/mcp.json | grep -oP '"N8N_BEARER_TOKEN"\s*:\s*"\K[^"]+' | head -1)
+curl -sD /tmp/hdr.txt -X POST http://localhost:3001/mcp \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOK" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"claude-cli","version":"1.0"}}}'
+SID=$(grep -i mcp-session-id /tmp/hdr.txt | awk '{print $2}' | tr -d '\r')
+echo "New session: $SID"
+```
+
+**Fallback Python3** (validation structurelle uniquement — ne remplace **pas** R1) :
+```python
+import json
+d = json.load(open('scripts/n8n-workflows/<workflow>.json'))
+nodes = {n['name'] for n in d['nodes']}
+conns = set(d['connections'].keys())
+missing = conns - nodes  # doit être vide
+```
+
+**Cause mesurée :** REX 2026-04-11 P6 + REX 2026-04-12 P5 (~80% d'échec en session longue).
+
 ### R2 — Playwright MCP pour tout E2E web
 
 **Déclencheurs :**
@@ -101,14 +126,34 @@ mcp__playwright__browser_navigate → browser_fill_form → browser_click (page 
 1. Éditer le JSON canonique dans scripts/n8n-workflows/
 2. mcp__n8n-docs__validate_workflow
 3. git commit
-4. deploy via CLI : n8n import:workflow --input=/tmp/<file>.json
+4. Deploy via REST API (R11 — méthode primaire) OU CLI fallback :
+   CLI: n8n import:workflow --input=/tmp/<file>.json
+        n8n publish:workflow --id=<id>   ← met à jour workflow_history (R10)
 5. Double restart n8n (pré-import + post-activate) pour flusher le cache runtime
-6. Vérifier workflow_entity.nodes en DB correspond au JSON
+6. Vérifier workflow_entity.nodes ET workflow_history.nodes en DB correspondent au JSON
 ```
 
 **Interdit :**
 - Ouvrir l'éditeur visuel n8n → cliquer → sauver (cause P3 "nœud fantôme Render & Load")
 - `n8n update:workflow` sans restart derrière (cache non flushé, warning CLI explicite)
+- `n8n update:workflow --active=true` : déprécié depuis n8n 1.x — utiliser `publish:workflow`
+
+**R3-bis — `n8n import:workflow` strip les champs non-standard**
+
+La CLI `n8n import:workflow` supprime silencieusement les champs non-standard des nodes JSON : `webhookId`, `onError`, etc. Pour ces champs critiques, utiliser SQL direct sur **deux tables simultanément** :
+
+```bash
+# Extraire nodes depuis le JSON source
+python3 -c "import json; nodes=json.load(open('scripts/n8n-workflows/<wf>.json'))['nodes']; json.dump(nodes, open('/tmp/nodes.json','w'))"
+
+# Appliquer aux deux tables (workflow_entity = draft, workflow_history = version active)
+docker exec -i -e PGPASSWORD=<vault> javisi_postgresql psql -U n8n -d n8n <<SQL
+UPDATE workflow_entity SET nodes = \$wfnodes\$$(cat /tmp/nodes.json)\$wfnodes\$::json WHERE id = '<workflow_id>';
+UPDATE workflow_history SET nodes = \$wfnodes\$$(cat /tmp/nodes.json)\$wfnodes\$::json WHERE "versionId" = '<activeVersionId>';
+SQL
+```
+
+**Cause mesurée :** REX 2026-04-12b section F — `webhookId` supprimé → path corrompu `workflowId/webhook/path`.
 
 ### R4 — Sibling test first
 
@@ -173,6 +218,109 @@ ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'hostname'  # doit rép
 **Citation utilisateur mesurée (09:34:24 le 2026-04-11) :**
 > *"tu tournes en rond, utllise les skill n8n et planifie avant de coder. Ce que j'aurais dû faire dès le départ (et que tu m'as demandé) : Lire Form.node.js / FormTrigger.node.js / Code.node.js dans le conteneur AVANT d'écrire le JSON."*
 
+### R9 — IF node v2 : utiliser typeVersion 1 (bug n8n 2.7.3)
+
+**Déclencheur :** écriture ou révision d'un workflow n8n contenant des nœuds `n8n-nodes-base.if`.
+
+**Bug systémique n8n 2.7.3 :** `filter-parameter.js` ligne 198 — `const ignoreCase = !filterOptions.caseSensitive` crashe quand `filterOptions` est `undefined`. Affecte **toutes** les conditions (boolean ET string) dans les IF nodes `typeVersion: 2`.
+
+**Règle :** utiliser `typeVersion: 1` avec le schéma `fixedCollection` jusqu'à montée en version n8n.
+
+**Schémas IF v1 corrects :**
+```json
+{
+  "type": "n8n-nodes-base.if",
+  "typeVersion": 1,
+  "parameters": {
+    "conditions": {
+      "boolean": [{ "value1": "={{ $json.ok }}", "operation": "equal", "value2": true }],
+      "string":  [{ "value1": "={{ $json.status }}", "operation": "isNotEmpty" }]
+    }
+  }
+}
+```
+
+**Détection rapide dans un workflow existant :**
+```bash
+python3 -c "
+import json, sys
+d = json.load(open('scripts/n8n-workflows/<wf>.json'))
+bad = [n['name'] for n in d['nodes'] if n.get('type')=='n8n-nodes-base.if' and n.get('typeVersion',1)>=2]
+print('IF v2 nodes:', bad if bad else 'aucun')
+"
+```
+
+**Cause mesurée :** REX 2026-04-12b — 4 nodes corrigés `typeVersion 2→1`, commit `527f0e4`.
+
+---
+
+### R10 — `workflow_history` est la source de vérité d'exécution n8n
+
+**Architecture interne n8n :**
+
+| Table | Rôle | Mis à jour par |
+|---|---|---|
+| `workflow_entity` | Draft (UI + CLI) | `import:workflow`, sauvegarde UI |
+| `workflow_history[activeVersionId]` | **Version exécutée** | `publish:workflow`, REST API PUT |
+
+n8n exécute depuis `workflow_history[activeVersionId].nodes`. Si `workflow_history` n'est pas mis à jour, les anciens nodes s'exécutent même si `workflow_entity` est correct.
+
+**Règle :** tout déploiement doit garantir la cohérence des deux tables. Après `import:workflow` CLI, toujours enchaîner avec `n8n publish:workflow --id=<id>` (dépréciation de `update:workflow --active=true`).
+
+**Vérification en DB :**
+```bash
+docker exec -i -e PGPASSWORD=<vault> javisi_postgresql psql -U n8n -d n8n -c \
+  "SELECT we.id, we.name, wh.\"versionId\", wh.\"createdAt\"
+   FROM workflow_entity we
+   LEFT JOIN workflow_history wh ON wh.\"workflowId\"::text = we.id::text
+   WHERE we.id = '<workflow_id>'
+   ORDER BY wh.\"createdAt\" DESC LIMIT 3;"
+```
+
+**Cause mesurée :** REX 2026-04-11 P11 + REX 2026-04-12b section 3.
+
+---
+
+### R11 — REST API PUT comme méthode primaire de déploiement
+
+**Prérequis bloquant :** Caddy doit router `/api/v1/*` → `javisi_n8n:5678`. Sans cette règle Caddyfile, tous les appels `PUT /api/v1/workflows/:id` retournent HTTP 404.
+
+**Directive Caddyfile à ajouter si absente :**
+```caddy
+handle /api/v1/* {
+    reverse_proxy javisi_n8n:5678
+}
+```
+
+**Vérification préflight :**
+```bash
+curl -sf -H "X-N8N-API-KEY: $N8N_API_KEY" \
+  https://mayi.ewutelo.cloud/api/v1/workflows \
+  | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'OK — {len(d[\"data\"])} workflows')"
+# HTTP 404 = Caddy ne route pas /api/v1/ → déployer le patch Caddy avant toute chose
+```
+
+**Déploiement workflow via REST API (méthode primaire R3 step 4) :**
+```bash
+WF_ID=$(python3 -c "import json; print(json.load(open('scripts/n8n-workflows/$WF_FILE'))['id'])")
+# PUT — met à jour nodes, connections, settings (entity + history simultanément)
+curl -sS -X PUT "https://mayi.ewutelo.cloud/api/v1/workflows/$WF_ID" \
+  -H "X-N8N-API-KEY: $N8N_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d @scripts/n8n-workflows/$WF_FILE
+# Activer
+curl -sS -X POST "https://mayi.ewutelo.cloud/api/v1/workflows/$WF_ID/activate" \
+  -H "X-N8N-API-KEY: $N8N_API_KEY"
+```
+
+**Avantage vs CLI :** `PUT /api/v1/workflows/:id` met à jour TOUS les stores internes (entity + history) et préserve les champs non-standard (`webhookId`, `onError`) — contrairement à `import:workflow` (voir R3-bis).
+
+**Fallback si 404 (Caddy non patché) :** utiliser `scripts/deploy-workflow.sh` (détecte le 404 + affiche directive Caddy), ou procédure CLI R10.
+
+**Cause mesurée :** REX 2026-04-12b section C — HTTP 404 depuis waza, depuis serveur, depuis container.
+
+---
+
 ## Priorité par rapport aux skills Superpowers
 
 Les skills Superpowers (brainstorming, writing-plans, TDD, etc.) restent les workflows par défaut. Cette LOI **les complète** en imposant :
@@ -199,7 +347,10 @@ Les skills Superpowers (brainstorming, writing-plans, TDD, etc.) restent les wor
 
 ## Références
 
-- `docs/audits/2026-04-11-mop-generator-execution-audit.md` — audit source
-- `docs/REX-SESSION-2026-04-11.md` — 10 problèmes P1→P10 détaillés
+- `docs/audits/2026-04-11-mop-generator-execution-audit.md` — audit source (806 Bash, 0 MCP)
+- `docs/rex/REX-SESSION-2026-04-11.md` — 10 problèmes P1→P10 (MCP rate-limit, session TTL, ghost workflow, publish:workflow)
+- `docs/rex/REX-SESSION-2026-04-12.md` — P1→P9 (binary filesystem-v2, Gotenberg, LiteLLM clés isolées)
+- `docs/rex/REX-SESSION-2026-04-12b.md` — IF v2 bug root cause, workflow_history source of vérité, REST API 404 Caddy
 - `docs/superpowers/plans/2026-04-11-mop-workflow-n8n-multistep.md` — plan focalisé qui applique déjà R1-R8
-- `~/.claude/hooks/loi-op-enforcer.js` — hook qui injecte des rappels automatiques
+- `~/.claude/hooks/loi-op-enforcer.js` — hook qui injecte des rappels automatiques (R0-R11)
+- `scripts/deploy-workflow.sh` — script de déploiement REST API (R11)

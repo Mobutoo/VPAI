@@ -591,6 +591,7 @@ AI scoring         →  model_scores (PostgreSQL) → Grafana
 
 - **Import** : `n8n import:workflow` SKIP si le workflow existe deja (par nom)
 - **Pour mettre a jour** : supprimer via UI/API puis reimporter + `n8n publish:workflow --id=<ID>` + restart
+- **`n8n import:workflow` ne met PAS a jour `workflow_entity.nodes`** : Le CLI cree une nouvelle entree dans `workflow_history` mais n'ecrase PAS `workflow_entity.nodes` si le workflow existe deja. n8n execute depuis `workflow_entity.nodes` → le code reste l'ancien meme apres double restart. Fix : mettre a jour directement via PostgreSQL `UPDATE workflow_entity SET nodes = '<json>'::json WHERE id = '<id>'` + double restart. Verifie avec `n8n export:workflow` apres restart. `REX 2026-04-12`
 - **Suppression v2.7+** : Deactivate → Archive → Delete (sans archive, DELETE retourne 400)
 - **Login API v2.7+** : Le champ est `emailOrLdapLoginId` (pas `email`)
 - **Pas de curl** dans le container n8n : Uniquement BusyBox wget (sans --method)

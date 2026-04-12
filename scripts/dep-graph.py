@@ -248,6 +248,27 @@ def reverse_graph(graph: dict[str, list[str]]) -> dict[str, list[str]]:
 # CLI
 # ---------------------------------------------------------------------------
 
+DEFAULT_SOURCES = "/opt/workstation/configs/ai-memory-worker/sources.yml"
+
+
+def parse_sources(path: str) -> list[dict]:
+    """Parse sources.yml without PyYAML — extract name + root fields only."""
+    entries: list[dict] = []
+    current: dict = {}
+    with open(path) as f:
+        for line in f:
+            stripped = line.rstrip()
+            if stripped.lstrip().startswith("- name:"):
+                if current.get("root"):
+                    entries.append(current)
+                current = {"name": stripped.split(":", 1)[1].strip().strip('"')}
+            elif stripped.lstrip().startswith("root:"):
+                current["root"] = stripped.split(":", 1)[1].strip().strip('"')
+    if current.get("root"):
+        entries.append(current)
+    return entries
+
+
 def cmd_build(args: argparse.Namespace) -> None:
     repo_root = Path(args.root).resolve()
     if not repo_root.is_dir():
@@ -307,24 +328,66 @@ def cmd_query(args: argparse.Namespace) -> None:
     print(f"\n  Total impacted files: {total}")
 
 
+def cmd_build_all(args: argparse.Namespace) -> None:
+    sources_path = args.sources
+    try:
+        sources = parse_sources(sources_path)
+    except FileNotFoundError:
+        print(f"ERROR: sources file not found: {sources_path}", file=sys.stderr)
+        sys.exit(1)
+
+    if not sources:
+        print("No repos found in sources file.", file=sys.stderr)
+        sys.exit(1)
+
+    for src in sources:
+        repo_name = src["name"]
+        repo_root = Path(src["root"]).resolve()
+        if not repo_root.is_dir():
+            print(f"  SKIP {repo_name}: root {repo_root} does not exist")
+            continue
+        print(f"Building dependency graph for {repo_name} at {repo_root} …")
+        graph = build_graph(repo_root)
+        edge_count = sum(len(v) for v in graph.values())
+        print(f"  {len(graph)} source files with dependencies, {edge_count} edges total")
+        output = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "repo": repo_name,
+            "repo_root": str(repo_root),
+            "graph": graph,
+        }
+        out_path = graph_path(repo_name)
+        out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False))
+        print(f"  Written to {out_path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Dependency graph builder for local repos")
-    parser.add_argument("--repo", required=True, help="Repo name (used for output filename)")
+    parser.add_argument("--repo", help="Repo name (used for output filename)")
     parser.add_argument("--root", help="Repo root path (required for --build)")
     parser.add_argument("--build", action="store_true", help="Build and persist the dependency graph")
+    parser.add_argument("--build-all", action="store_true", help="Build graphs for all repos in sources file")
+    parser.add_argument("--sources", default=DEFAULT_SOURCES, help=f"Path to sources.yml (default: {DEFAULT_SOURCES})")
     parser.add_argument("--query", metavar="FILE", help="Query blast-radius for a repo-relative file path")
     parser.add_argument("--depth", default=3, type=int, help="BFS depth (default 3)")
     args = parser.parse_args()
 
+    if args.build_all:
+        cmd_build_all(args)
+
     if args.build:
+        if not args.repo:
+            parser.error("--repo is required with --build")
         if not args.root:
             parser.error("--root is required with --build")
         cmd_build(args)
 
     if args.query:
+        if not args.repo:
+            parser.error("--repo is required with --query")
         cmd_query(args)
 
-    if not args.build and not args.query:
+    if not args.build_all and not args.build and not args.query:
         parser.print_help()
         sys.exit(1)
 

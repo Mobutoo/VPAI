@@ -84,6 +84,8 @@
       tags: [kitsu, phase3, apps]
     - role: flash-suite
       tags: [flash-suite, phase3, apps]
+    - role: msg2md
+      tags: [msg2md, phase3, apps]
     - role: mop-templates
       tags: [mop-templates, phase3]
     - role: gotenberg

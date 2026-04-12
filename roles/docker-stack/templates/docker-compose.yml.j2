@@ -969,7 +969,7 @@ services:
     environment:
       - MSG2MD_PORT={{ msg2md_port }}
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:{{ msg2md_port }}/health || exit 1"]
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:{{ msg2md_port }}/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

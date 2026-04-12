@@ -135,7 +135,7 @@
       "parameters": {
         "operation": "completion",
         "respondWith": "showText",
-        "responseText": "={{ '<h2>Indexation terminée</h2><p>' + $json.total_chunks + ' chunks indexés dans mop_kb pour ' + $json.files.length + ' fichier(s).</p>' }}",
+        "responseText": "={{ '<h2>Indexation terminée</h2><p>' + $json.total_chunks + ' chunks indexés dans mop_kb pour ' + $json.files.length + ' fichier(s).</p><p style=\"margin-top:1.5em\"><a href=\"/form/mop-ingest\" style=\"display:inline-block;padding:0.6em 1.4em;background:#4f46e5;color:#fff;border-radius:6px;text-decoration:none;font-weight:600\">&#8592; Indexer un autre fichier</a></p>' }}",
         "options": {}
       }
     },
@@ -151,7 +151,7 @@
       "parameters": {
         "operation": "completion",
         "respondWith": "showText",
-        "responseText": "={{ '<h2>Erreur d\\'indexation</h2><pre>' + ($json.error && $json.error.message ? $json.error.message : ($json.error || 'erreur inconnue')) + '</pre>' }}",
+        "responseText": "={{ '<h2>Erreur d\\'indexation</h2><pre>' + ($json.error && $json.error.message ? $json.error.message : ($json.error || 'erreur inconnue')) + '</pre><p style=\"margin-top:1.5em\"><a href=\"/form/mop-ingest\" style=\"display:inline-block;padding:0.6em 1.4em;background:#4f46e5;color:#fff;border-radius:6px;text-decoration:none;font-weight:600\">&#8592; Indexer un autre fichier</a></p>' }}",
         "options": {}
       }
     }

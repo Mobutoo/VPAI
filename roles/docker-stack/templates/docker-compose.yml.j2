@@ -950,6 +950,41 @@ services:
         max-file: "3"
     # No custom command — Gotenberg 8.30.1 runs on defaults per spec
 
+  msg2md:
+    build:
+      context: /opt/{{ project_name }}/msg2md
+      dockerfile: Dockerfile
+    container_name: "{{ project_name }}_msg2md"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    networks:
+      - backend
+    environment:
+      - MSG2MD_PORT={{ msg2md_port }}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:{{ msg2md_port }}/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: {{ msg2md_memory_limit }}
+          cpus: "{{ msg2md_cpu_limit }}"
+
   carbone:
     image: {{ carbone_image }}
     container_name: {{ project_name }}_carbone

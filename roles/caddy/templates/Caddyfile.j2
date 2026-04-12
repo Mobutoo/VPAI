@@ -195,6 +195,11 @@ BOOTSTRAP 200
     import vpn_only
     import vpn_error_page
 
+    # R11: explicit route for n8n public REST API (PUT /api/v1/workflows/:id)
+    handle /api/v1/* {
+        reverse_proxy n8n:5678
+    }
+
     reverse_proxy n8n:5678
 
     import security_headers

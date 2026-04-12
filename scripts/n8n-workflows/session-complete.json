@@ -54,17 +54,16 @@
       "id": "check-alert",
       "name": "Check Alert",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [1120, 300],
       "parameters": {
         "conditions": {
-          "conditions": [
+          "boolean": [
             {
-              "leftValue": "={{ $json.needs_alert }}",
-              "operator": { "type": "boolean", "operation": "true" }
+              "value1": "={{ $json.needs_alert }}",
+              "operation": "true"
             }
-          ],
-          "combinator": "and"
+          ]
         }
       }
     },

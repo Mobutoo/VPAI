@@ -1,0 +1,132 @@
+{
+  "name": "session-complete",
+  "nodes": [
+    {
+      "id": "webhook-session",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "path": "session-complete",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "respond-202",
+      "name": "Respond 202",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"accepted\", \"message\": \"Session data processing started\" }",
+        "options": {
+          "responseCode": 202
+        }
+      }
+    },
+    {
+      "id": "extract-metrics",
+      "name": "Extract Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const body = $('Webhook').first().json.body;\n\nconst nb_tools = parseInt(body.nb_tools) || 0;\nconst nb_bash = parseInt(body.nb_bash) || 0;\nconst nb_errors = parseInt(body.nb_errors) || 0;\nconst nb_compacts = parseInt(body.nb_compacts) || 0;\nconst topics = Array.isArray(body.topics) ? body.topics : (body.topics ? [body.topics] : []);\nconst duration_min = parseFloat(body.duration_min) || 0;\nconst session_file = body.session_file || null;\nconst project = body.project || 'VPAI';\n\nconst needs_alert = (nb_errors > 10 || nb_compacts > 3);\n\nreturn [{ json: { nb_tools, nb_bash, nb_errors, nb_compacts, topics, duration_min, session_file, project, needs_alert } }];"
+      }
+    },
+    {
+      "id": "push-memory",
+      "name": "Push to Memory",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { spawnSync } = require('child_process');\nconst data = $input.first().json;\n\nconst WAZA_HOST = $env.WORKSTATION_PI_IP || '100.64.0.1';\nconst WAZA_USER = $env.WORKSTATION_PI_USER || 'mobuone';\nconst SSH_KEY = $env.WORKSTATION_SSH_KEY_PATH || '/home/node/.ssh/id_ed25519';\nconst SPOOL_DIR = '/opt/workstation/data/ai-memory-worker/spool';\n\nconst timestamp = new Date().toISOString().replace(/[:.]/g, '-');\nconst filename = 'session-complete-' + timestamp + '.json';\n\nconst payload = JSON.stringify({\n  type: 'session_summary',\n  project: data.project,\n  nb_tools: data.nb_tools,\n  nb_bash: data.nb_bash,\n  nb_errors: data.nb_errors,\n  nb_compacts: data.nb_compacts,\n  topics: data.topics,\n  duration_min: data.duration_min,\n  session_file: data.session_file,\n  timestamp: new Date().toISOString()\n}, null, 2);\n\nconst result = spawnSync('ssh', [\n  '-i', SSH_KEY,\n  '-o', 'StrictHostKeyChecking=no',\n  '-o', 'BatchMode=yes',\n  WAZA_USER + '@' + WAZA_HOST,\n  'mkdir -p ' + SPOOL_DIR + ' && cat > ' + SPOOL_DIR + '/' + filename\n], {\n  input: payload,\n  timeout: 15000,\n  encoding: 'utf8'\n});\n\nconst memoryPushed = result.status === 0;\nreturn [{ json: { ...data, memoryPushed, spoolFile: filename } }];"
+      }
+    },
+    {
+      "id": "check-alert",
+      "name": "Check Alert",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.needs_alert }}",
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "create-nocodb-incident",
+      "name": "Create NocoDB Incident",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 160],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.first().json;\nconst NOCODB_TOKEN = $env.NOCODB_API_TOKEN;\nconst TABLE_ID = 'mu29gisnsp222km';\n\nconst reasons = [];\nif (data.nb_errors > 10) reasons.push(data.nb_errors + ' errors');\nif (data.nb_compacts > 3) reasons.push(data.nb_compacts + ' auto-compacts');\n\nconst title = 'Session Alert: ' + data.project + ' — ' + reasons.join(', ');\nconst description = 'Topics: ' + (data.topics || []).join(', ') + '\\n' +\n  'Duration: ' + data.duration_min + ' min\\n' +\n  'Tools: ' + data.nb_tools + ' | Bash: ' + data.nb_bash + '\\n' +\n  (data.session_file ? 'File: ' + data.session_file : '');\n\nconst response = await fetch('http://javisi_nocodb:8080/api/v2/tables/' + TABLE_ID + '/records', {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json',\n    'xc-token': NOCODB_TOKEN\n  },\n  body: JSON.stringify({\n    Title: title,\n    Description: description,\n    Status: 'open',\n    Project: data.project\n  })\n});\n\nconst result = await response.json();\nreturn [{ json: { ...data, incidentId: result.Id || result.id } }];"
+      }
+    },
+    {
+      "id": "telegram-alert",
+      "name": "Telegram Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 160],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.first().json;\nconst token = $env.TELEGRAM_MONITORING_BOT_TOKEN;\nconst chatId = $env.TELEGRAM_MONITORING_CHAT_ID;\n\nconst parts = [];\nif (data.nb_errors > 10) parts.push(data.nb_errors + ' erreurs');\nif (data.nb_compacts > 3) parts.push(data.nb_compacts + ' auto-compacts');\n\nconst text = '<b>Session Alert — ' + data.project + '</b>\\n' +\n  'Problemes: ' + parts.join(', ') + '\\n' +\n  'Topics: ' + (data.topics || []).join(', ') + '\\n' +\n  'Duree: ' + data.duration_min + ' min | Tools: ' + data.nb_tools + ' | Bash: ' + data.nb_bash + '\\n' +\n  (data.incidentId ? 'Incident NocoDB #' + data.incidentId : '');\n\nawait fetch('https://api.telegram.org/bot' + token + '/sendMessage', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })\n});\n\nreturn [{ json: data }];"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Respond 202", "type": "main", "index": 0 }]
+      ]
+    },
+    "Respond 202": {
+      "main": [
+        [{ "node": "Extract Metrics", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Metrics": {
+      "main": [
+        [{ "node": "Push to Memory", "type": "main", "index": 0 }]
+      ]
+    },
+    "Push to Memory": {
+      "main": [
+        [{ "node": "Check Alert", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Alert": {
+      "main": [
+        [{ "node": "Create NocoDB Incident", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Create NocoDB Incident": {
+      "main": [
+        [{ "node": "Telegram Alert", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

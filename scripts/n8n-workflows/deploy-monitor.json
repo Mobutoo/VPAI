@@ -1,0 +1,246 @@
+{
+  "name": "deploy-monitor",
+  "nodes": [
+    {
+      "id": "webhook-deploy-start",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "path": "deploy-start",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate-secret",
+      "name": "Validate Secret",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.headers['x-af-secret'] }}",
+              "rightValue": "={{ $env.AF_WEBHOOK_SECRET }}",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "respond-403",
+      "name": "Respond 403",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [680, 440],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"error\": \"Unauthorized\" }",
+        "options": {
+          "responseCode": 403
+        }
+      }
+    },
+    {
+      "id": "respond-202",
+      "name": "Respond 202",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [680, 160],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"monitoring\", \"message\": \"Deploy monitor started\" }",
+        "options": {
+          "responseCode": 202
+        }
+      }
+    },
+    {
+      "id": "ssh-poll-loop",
+      "name": "SSH Poll Loop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 160],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { spawnSync } = require('child_process');\n\nconst webhookData = $('Webhook').first().json;\nconst role = webhookData.body.role;\nconst env = webhookData.body.env;\nconst project = webhookData.body.project;\nconst callbackUrl = webhookData.body.callback_url || '';\n\nconst SSH_HOST = '100.64.0.14';\nconst SSH_PORT = '804';\nconst SSH_USER = 'mobuone';\nconst SSH_KEY = '/home/node/.ssh/id_ed25519';\nconst MAX_ITER = 30;\nconst POLL_MS = 10000;\n\nlet found = false;\nlet iterations = 0;\n\nwhile (iterations < MAX_ITER && !found) {\n  const result = spawnSync('ssh', [\n    '-i', SSH_KEY,\n    '-o', 'StrictHostKeyChecking=no',\n    '-o', 'BatchMode=yes',\n    '-p', SSH_PORT,\n    SSH_USER + '@' + SSH_HOST,\n    'docker ps --filter name=' + role + ' --filter status=running --format \"{{.Names}}\"'\n  ], { timeout: 15000, encoding: 'utf8' });\n\n  const stdout = (result.stdout || '').trim();\n\n  if (stdout.includes(role)) {\n    found = true;\n  } else {\n    iterations++;\n    if (iterations < MAX_ITER) {\n      await new Promise(r => setTimeout(r, POLL_MS));\n    }\n  }\n}\n\nreturn [{ json: { success: found, role, env, project, callbackUrl, iterations } }];"
+      }
+    },
+    {
+      "id": "check-success",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 160],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.success }}",
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "telegram-success",
+      "name": "Telegram Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 20],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.first().json;\nconst token = $env.TELEGRAM_MONITORING_BOT_TOKEN;\nconst chatId = $env.TELEGRAM_MONITORING_CHAT_ID;\n\nconst text = '<b>✅ Deploy Success</b>\\n' +\n  'Role: <code>' + data.role + '</code>\\n' +\n  'Env: ' + data.env + '\\n' +\n  'Project: ' + data.project + '\\n' +\n  'Détecté après ' + data.iterations + ' polls (' + Math.round(data.iterations * 10 / 60 * 10) / 10 + ' min)';\n\nconst resp = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })\n});\n\nreturn [{ json: data }];"
+      }
+    },
+    {
+      "id": "check-callback-success",
+      "name": "Check Callback Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 20],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.callbackUrl }}",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "http-callback-success",
+      "name": "HTTP Callback Success",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 20],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.first().json;\n\nawait fetch(data.callbackUrl, {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({\n    status: 'success',\n    role: data.role,\n    env: data.env,\n    project: data.project,\n    iterations: data.iterations\n  })\n});\n\nreturn [{ json: data }];"
+      }
+    },
+    {
+      "id": "get-docker-logs",
+      "name": "Get Docker Logs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const { spawnSync } = require('child_process');\n\nconst data = $input.first().json;\nconst role = data.role;\n\nconst SSH_HOST = '100.64.0.14';\nconst SSH_PORT = '804';\nconst SSH_USER = 'mobuone';\nconst SSH_KEY = '/home/node/.ssh/id_ed25519';\n\nconst result = spawnSync('ssh', [\n  '-i', SSH_KEY,\n  '-o', 'StrictHostKeyChecking=no',\n  '-o', 'BatchMode=yes',\n  '-p', SSH_PORT,\n  SSH_USER + '@' + SSH_HOST,\n  'docker logs ' + role + ' --tail 30 2>&1 || echo \"Container not found or no logs\"'\n], { timeout: 15000, encoding: 'utf8' });\n\nconst logs = ((result.stdout || '') + (result.stderr || '')).trim().substring(0, 2000);\n\nreturn [{ json: { ...data, logs } }];"
+      }
+    },
+    {
+      "id": "telegram-failure",
+      "name": "Telegram Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.first().json;\nconst token = $env.TELEGRAM_MONITORING_BOT_TOKEN;\nconst chatId = $env.TELEGRAM_MONITORING_CHAT_ID;\n\nconst logSnippet = (data.logs || 'Pas de logs disponibles').substring(0, 1500);\n\nconst text = '<b>❌ Deploy Failed</b>\\n' +\n  'Role: <code>' + data.role + '</code>\\n' +\n  'Env: ' + data.env + '\\n' +\n  'Project: ' + data.project + '\\n' +\n  'Timeout après ' + data.iterations + ' polls (5 min)\\n' +\n  '<pre>' + logSnippet + '</pre>';\n\nconst resp = await fetch('https://api.telegram.org/bot' + token + '/sendMessage', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })\n});\n\nreturn [{ json: data }];"
+      }
+    },
+    {
+      "id": "check-callback-failure",
+      "name": "Check Callback Failure",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 300],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.callbackUrl }}",
+              "operator": { "type": "string", "operation": "isNotEmpty" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "http-callback-failure",
+      "name": "HTTP Callback Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $input.first().json;\n\nawait fetch(data.callbackUrl, {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({\n    status: 'failed',\n    role: data.role,\n    env: data.env,\n    project: data.project,\n    error: 'Timeout after ' + data.iterations + ' polls',\n    logs: (data.logs || '').substring(0, 1000)\n  })\n});\n\nreturn [{ json: data }];"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Validate Secret", "type": "main", "index": 0 }]
+      ]
+    },
+    "Validate Secret": {
+      "main": [
+        [{ "node": "Respond 202", "type": "main", "index": 0 }],
+        [{ "node": "Respond 403", "type": "main", "index": 0 }]
+      ]
+    },
+    "Respond 202": {
+      "main": [
+        [{ "node": "SSH Poll Loop", "type": "main", "index": 0 }]
+      ]
+    },
+    "SSH Poll Loop": {
+      "main": [
+        [{ "node": "Check Success", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [{ "node": "Telegram Success", "type": "main", "index": 0 }],
+        [{ "node": "Get Docker Logs", "type": "main", "index": 0 }]
+      ]
+    },
+    "Telegram Success": {
+      "main": [
+        [{ "node": "Check Callback Success", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Callback Success": {
+      "main": [
+        [{ "node": "HTTP Callback Success", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Get Docker Logs": {
+      "main": [
+        [{ "node": "Telegram Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Telegram Failure": {
+      "main": [
+        [{ "node": "Check Callback Failure", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check Callback Failure": {
+      "main": [
+        [{ "node": "HTTP Callback Failure", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

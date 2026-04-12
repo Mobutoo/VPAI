@@ -1,0 +1,9 @@
+---
+# msg2md — Handlers
+
+- name: Rebuild msg2md
+  ansible.builtin.command:
+    cmd: docker compose -f /opt/{{ project_name }}/docker-compose.yml up -d --build msg2md
+  become: true
+  changed_when: true
+  tags: [msg2md, phase3]

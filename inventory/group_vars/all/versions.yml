@@ -121,6 +121,7 @@ flash_suite_koodia_image: "ghcr.io/mobutoo/koodia:suite-v1.0.0"
 
 # --- MOP Machinery (NOC procedure generation) ---
 gotenberg_image: "gotenberg/gotenberg:8.30.1"
+msg2md_python_base: "python:3.12.10-slim"
 carbone_image: "carbone/carbone-ee:full-4.26.3"
 typebot_builder_image: "baptistearno/typebot-builder:3.16.1"
 typebot_viewer_image: "baptistearno/typebot-viewer:3.16.1"

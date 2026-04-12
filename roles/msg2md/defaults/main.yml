@@ -1,0 +1,5 @@
+---
+msg2md_port: 3100
+msg2md_memory_limit: "256M"
+msg2md_cpu_limit: "0.5"
+# Base image pinned in versions.yml under msg2md_python_base

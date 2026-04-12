@@ -1,0 +1,235 @@
+"""msg2md — Outlook MSG to structured markdown converter.
+FastAPI service listening on port {{ msg2md_port }}.
+"""
+import os
+import re
+import base64
+import io
+import json
+
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
+import extract_msg
+
+PORT = int(os.environ.get("MSG2MD_PORT", {{ msg2md_port }}))
+
+app = FastAPI(title="msg2md", version="1.0.0")
+
+# ── Constants ────────────────────────────────────────────────────────────────
+IMAGE_EXTS = {'jpg', 'jpeg', 'png', 'gif'}
+IMAGE_MIN_BYTES = 5 * 1024  # 5 KB — ignore tracking pixels and small logos
+
+SR_PATTERN = re.compile(r'SR#?\d{6}-\d{6}', re.IGNORECASE)
+
+ALARM_PATTERN = re.compile(
+    r'(MAJOR|MINOR|CRITICAL|WARNING)\s+([\w\-]+(?::[\w\/\.]+)?)\s+(.+)',
+    re.IGNORECASE
+)
+
+THREAD_DELIMITER = re.compile(
+    r'(?:From|De)\s*:[ \t]*.+\n'
+    r'(?:Sent|Envoy[eé])\s*:[ \t]*.+\n'
+    r'(?:To|[AÀ])\s*:[ \t]*.+\n'
+    r'(?:(?:Cc|Subject|Objet)\s*:[ \t]*.+\n)*',
+    re.IGNORECASE | re.MULTILINE
+)
+
+DISCLAIMER_PATTERN = re.compile(
+    r'CAUTION\s*:.*?(?=\n\n|\Z)',
+    re.DOTALL | re.IGNORECASE
+)
+
+SALESFORCE_URL_PATTERN = re.compile(
+    r'https?://[^\s]*salesforce\.com[^\s]*',
+    re.IGNORECASE
+)
+
+SIGNATURE_TRIGGERS = [
+    'thank you', 'thanks,', 'regards,', 'best regards', 'cordialement',
+    'cdlt,', 'sincèrement', 'bien cordialement',
+]
+
+NOC_DOMAIN = 'fr.telehouse.net'
+SALESFORCE_DOMAINS = {'apex.salesforce.com', 'salesforce.com', 'force.com'}
+
+
+def _get_email_addr(raw: str) -> str:
+    m = re.search(r'<([^>]+)>', raw)
+    return m.group(1).strip().lower() if m else raw.strip().lower()
+
+
+def _is_noc(raw: str) -> bool:
+    addr = _get_email_addr(raw)
+    return NOC_DOMAIN in addr
+
+
+def _is_salesforce(raw: str) -> bool:
+    addr = _get_email_addr(raw)
+    return any(d in addr for d in SALESFORCE_DOMAINS)
+
+
+def _sender_role(raw: str) -> str | None:
+    if _is_noc(raw):
+        return 'NOC Telehouse'
+    if _is_salesforce(raw):
+        return None
+    addr = _get_email_addr(raw)
+    domain = addr.split('@')[-1] if '@' in addr else addr
+    parts = domain.split('.')
+    company = parts[-2].capitalize() if len(parts) >= 2 else domain
+    return f'Support {company}'
+
+
+def _clean_body(text: str) -> str:
+    text = DISCLAIMER_PATTERN.sub('', text)
+    text = SALESFORCE_URL_PATTERN.sub('', text)
+    text = re.sub(r'^\*\t.*$', '', text, flags=re.MULTILINE)
+    lower = text.lower()
+    cut_idx = len(text)
+    for trigger in SIGNATURE_TRIGGERS:
+        idx = lower.find(trigger)
+        if 0 < idx < cut_idx:
+            cut_idx = idx
+    text = text[:cut_idx]
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+def _tag_alarms(text: str) -> str:
+    def _replacer(m):
+        return f'`{m.group(0)}`'
+    return ALARM_PATTERN.sub(_replacer, text)
+
+
+def _split_thread(body: str) -> list[dict]:
+    splits = THREAD_DELIMITER.split(body)
+    headers = THREAD_DELIMITER.findall(body)
+    parts = []
+    if splits[0].strip():
+        parts.append({'header': None, 'body': splits[0].strip()})
+    for h, b in zip(headers, splits[1:]):
+        parts.append({'header': h.strip(), 'body': b.strip()})
+    parts.reverse()
+    return parts
+
+
+def _parse_thread_header(header: str) -> tuple[str, str]:
+    date_m = re.search(r'(?:Sent|Envoy[eé])\s*:[ \t]*(.+)', header, re.IGNORECASE)
+    from_m = re.search(r'(?:From|De)\s*:[ \t]*(.+)', header, re.IGNORECASE)
+    date_str = date_m.group(1).strip()[:16] if date_m else ''
+    from_raw = from_m.group(1).strip() if from_m else ''
+    return date_str, from_raw
+
+
+@app.get('/health')
+def health():
+    return {'status': 'ok'}
+
+
+@app.post('/convert')
+async def convert(file: UploadFile = File(...)):
+    content = await file.read()
+
+    try:
+        msg = extract_msg.Message(io.BytesIO(content))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f'Failed to parse .msg: {exc}')
+
+    subject = (msg.subject or '').strip()
+    sender_raw = (msg.sender or '').strip()
+    date_str = str(msg.date)[:10] if msg.date else ''
+    to_raw = (msg.to or '').strip()
+    cc_raw = (msg.cc or '').strip()
+
+    sr_m = SR_PATTERN.search(subject)
+    sr_number = sr_m.group(0) if sr_m else ''
+
+    sev_m = re.search(r'\b(Minor|Major|Critical|Warning)\b', subject, re.IGNORECASE)
+    severity = sev_m.group(1).capitalize() if sev_m else ''
+
+    title = f'{sr_number} — {subject}' if sr_number else subject
+    lines = [f'# {title}', '']
+
+    meta_parts = []
+    if severity:
+        meta_parts.append(f'**Sévérité ticket:** {severity}')
+    if date_str:
+        meta_parts.append(f'**Date:** {date_str}')
+    if meta_parts:
+        lines.extend([' | '.join(meta_parts), ''])
+
+    lines.append('## Parties prenantes')
+    all_addr_raws = [a for a in [sender_raw, to_raw, cc_raw] if a]
+    noc_addrs = [a for a in all_addr_raws if _is_noc(a)]
+    ext_addrs = [a for a in all_addr_raws if not _is_noc(a) and not _is_salesforce(a)]
+
+    if noc_addrs:
+        lines.append(f'- **NOC Telehouse**: {", ".join(noc_addrs)}')
+    if ext_addrs:
+        lines.append(f'- **Support externe**: {", ".join(ext_addrs)}')
+    lines.append('')
+
+    body = (msg.body or '').strip()
+    if not body:
+        html_body = getattr(msg, 'htmlBody', None) or b''
+        if html_body:
+            body = re.sub(r'<[^>]+>', '', html_body.decode('utf-8', errors='replace'))
+
+    thread_parts = _split_thread(body)
+    for part in thread_parts:
+        if part['header']:
+            part_date, from_raw_part = _parse_thread_header(part['header'])
+            role = _sender_role(from_raw_part)
+            if role is None:
+                continue
+            lines.extend([f'## [{part_date}] {role}', ''])
+
+        cleaned = _clean_body(part['body'])
+        tagged = _tag_alarms(cleaned)
+        if tagged.strip():
+            lines.extend([tagged, ''])
+
+    images = []
+    skipped = []
+
+    for att in (msg.attachments or []):
+        att_name = (att.longFilename or att.shortFilename or 'attachment').strip()
+        ext = att_name.rsplit('.', 1)[-1].lower() if '.' in att_name else ''
+
+        if ext == 'msg':
+            skipped.append({'filename': att_name, 'reason': 'nested_msg'})
+            continue
+
+        if ext not in IMAGE_EXTS:
+            skipped.append({'filename': att_name, 'reason': 'non_image'})
+            continue
+
+        data = att.data
+        if not data or len(data) < IMAGE_MIN_BYTES:
+            continue
+
+        mime = 'image/jpeg' if ext == 'jpg' else f'image/{ext}'
+        images.append({
+            'filename': att_name,
+            'mimeType': mime,
+            'base64': base64.b64encode(data).decode('utf-8'),
+        })
+
+    if images:
+        lines.extend(['## Pièces jointes techniques (captures)'])
+        for img in images:
+            size_kb = len(base64.b64decode(img['base64'])) // 1024
+            lines.append(f'- {img["filename"]} ({size_kb} KB)')
+        lines.append('')
+
+    if skipped:
+        print(f'[msg2md] skipped_attachments: {json.dumps([s["filename"] for s in skipped])}',
+              flush=True)
+
+    markdown = '\n'.join(lines)
+    return JSONResponse({'markdown': markdown, 'images': images})
+
+
+if __name__ == '__main__':
+    import uvicorn
+    uvicorn.run(app, host='0.0.0.0', port=PORT)

@@ -1,0 +1,45 @@
+---
+# msg2md — Tasks
+
+- name: Create msg2md build context directory
+  ansible.builtin.file:
+    path: "/opt/{{ project_name }}/msg2md"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [msg2md, phase3]
+
+- name: Copy msg2md Dockerfile
+  ansible.builtin.copy:
+    src: Dockerfile
+    dest: "/opt/{{ project_name }}/msg2md/Dockerfile"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Rebuild msg2md
+  tags: [msg2md, phase3]
+
+- name: Copy msg2md requirements.txt
+  ansible.builtin.copy:
+    src: requirements.txt
+    dest: "/opt/{{ project_name }}/msg2md/requirements.txt"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Rebuild msg2md
+  tags: [msg2md, phase3]
+
+- name: Template msg2md app.py
+  ansible.builtin.template:
+    src: app.py.j2
+    dest: "/opt/{{ project_name }}/msg2md/app.py"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Rebuild msg2md
+  tags: [msg2md, phase3]

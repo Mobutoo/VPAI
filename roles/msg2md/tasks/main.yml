@@ -11,9 +11,9 @@
   become: true
   tags: [msg2md, phase3]
 
-- name: Copy msg2md Dockerfile
-  ansible.builtin.copy:
-    src: Dockerfile
+- name: Template msg2md Dockerfile
+  ansible.builtin.template:
+    src: Dockerfile.j2
     dest: "/opt/{{ project_name }}/msg2md/Dockerfile"
     owner: "{{ prod_user }}"
     group: "{{ prod_user }}"

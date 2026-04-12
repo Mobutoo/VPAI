@@ -130,6 +130,10 @@ def health():
 async def convert(file: UploadFile = File(...)):
     content = await file.read()
 
+    MAX_MSG_BYTES = 20 * 1024 * 1024  # 20 MB — container has 256 MB RAM limit
+    if len(content) > MAX_MSG_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 20 MB)")
+
     try:
         msg = extract_msg.Message(io.BytesIO(content))
     except Exception as exc:

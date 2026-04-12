@@ -1,7 +1,9 @@
 FROM {{ msg2md_python_base }}
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    adduser --disabled-password --no-create-home --shell /sbin/nologin appuser
 COPY app.py .
 EXPOSE {{ msg2md_port }}
+USER appuser
 CMD ["python", "app.py"]

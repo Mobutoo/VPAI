@@ -6,4 +6,6 @@
     cmd: docker compose -f /opt/{{ project_name }}/docker-compose.yml up -d --build msg2md
   become: true
   changed_when: true
+  register: _msg2md_rebuild
+  failed_when: _msg2md_rebuild.rc != 0
   tags: [msg2md, phase3]

@@ -196,13 +196,67 @@ ansible-playbook playbooks/stacks/site.yml \
 
 ---
 
+### P8 — Gemini rejette les mimeTypes docx/pptx en `inline_data`
+
+**Symptôme** : après fix P1–P7, tentative d'indexation d'un `.docx` → LiteLLM retourne 400 :
+`Unable to submit request because it has a mimeType parameter with value application/vnd.openxmlformats-officedocument.wordprocessingml.document`
+
+**Cause** : Gemini (via OpenRouter) n'accepte que `application/pdf` et les formats image en `inline_data`. Les formats Office (docx, pptx, doc, ppt) ne sont pas supportés nativement.
+
+**Fix** : conversion docx/pptx → PDF via **Gotenberg** (`gotenberg:3000/forms/libreoffice/convert`) avant l'appel LLM. Gotenberg est déjà déployé sur le réseau `backend`. La conversion se fait en multipart/form-data natif Node.js (pas de dépendances npm) :
+
+```javascript
+function gotenbergConvert(filename, buf, mimeType) {
+  return new Promise((resolve, reject) => {
+    const boundary = 'GotenbergBoundary' + Date.now();
+    const CRLF = '\r\n';
+    const header = Buffer.from(
+      '--' + boundary + CRLF +
+      'Content-Disposition: form-data; name="files"; filename="' + filename + '"' + CRLF +
+      'Content-Type: ' + mimeType + CRLF + CRLF
+    );
+    const footer = Buffer.from(CRLF + '--' + boundary + '--' + CRLF);
+    const body = Buffer.concat([header, buf, footer]);
+    // ...http.request({ path: '/forms/libreoffice/convert', ... })
+  });
+}
+
+// Dans la boucle de traitement :
+if (['docx', 'doc', 'pptx', 'ppt'].includes(fileExt)) {
+  const convResp = await gotenbergConvert(file.filename, rawBuf, file.mimeType);
+  sendFile = { ...file, mimeType: 'application/pdf', base64: convResp.data.toString('base64') };
+}
+```
+
+**Commit** : `12e7f35`
+
+**Leçon** : Gemini multimodal = PDF + images uniquement. Pour tout format Office, passer par Gotenberg (LibreOffice headless) comme étape intermédiaire. Le pattern multipart/form-data se construit sans npm en Node.js natif.
+
+---
+
+### P9 — Page résultat sans retour formulaire
+
+**Symptôme** : après indexation réussie, la page "Indexation terminée" ne permet pas de revenir au formulaire sans naviguer manuellement.
+
+**Fix** : ajout d'un bouton HTML dans le `responseText` des nœuds `Done` et `Done (Error)` :
+
+```html
+<a href="/form/mop-ingest" style="...">← Indexer un autre fichier</a>
+```
+
+Présent sur les deux pages (succès ET erreur) pour permettre d'enchaîner sans friction.
+
+**Commit** : `bdb3827`
+
+---
+
 ## Résultat final
 
-**E2E validé** : formulaire `/form/mop-ingest` → upload `test-noc.pdf` → extraction Gemini 2.5 Pro (OpenRouter) → 1 chunk → embedding → upsert Qdrant.
+**E2E validé (PDF + DOCX)** : formulaire `/form/mop-ingest` → upload → conversion Gotenberg si nécessaire → extraction Gemini 2.5 Pro (OpenRouter) → chunking → embedding → upsert Qdrant → bouton retour formulaire.
 
 ```
-Page résultat : "Indexation terminée — 1 chunks indexés dans mop_kb pour 1 fichier(s)."
-Qdrant mop_kb : status=green, points_count=1
+PDF  : 1 chunk  → mop_kb points_count: 1
+DOCX : 7 chunks → mop_kb points_count: 8 (total cumulé)
 ```
 
 | Commit | Fix |
@@ -211,6 +265,8 @@ Qdrant mop_kb : status=green, points_count=1
 | `49a880b` | `getBinaryDataBuffer` remplace `v.data` (filesystem-v2 storage reference) |
 | `5c2ca28` | Clé OpenRouter dédiée MOP + gemini-2.5-pro via OpenRouter |
 | `fcc5f13` | Correction nom modèle `gemini-flash-1.5` → `gemini-2.0-flash-001` |
+| `12e7f35` | Conversion docx/pptx → PDF via Gotenberg avant appel Gemini |
+| `bdb3827` | Bouton "← Indexer un autre fichier" sur pages Done et Done (Error) |
 
 ## Règles à ajouter à TROUBLESHOOTING.md
 

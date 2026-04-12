@@ -219,7 +219,26 @@ model_list:
         tier: "low"
         tags: ["mop", "ingest", "multimodal", "fallback"]
 {% endif %}
-{% if openrouter_api_key | default('') | length > 0 %}
+{% if openrouter_mop_api_key | default('') | length > 0 %}
+  - model_name: "mop-ingest"
+    litellm_params:
+      model: "openrouter/google/gemini-2.5-pro"
+      api_key: "os.environ/OPENROUTER_MOP_API_KEY"
+      max_tokens: 8192
+    model_info:
+      metadata:
+        tier: "premium"
+        tags: ["mop", "ingest", "multimodal"]
+  - model_name: "mop-ingest"
+    litellm_params:
+      model: "openrouter/google/gemini-flash-1.5"
+      api_key: "os.environ/OPENROUTER_MOP_API_KEY"
+      max_tokens: 8192
+    model_info:
+      metadata:
+        tier: "low"
+        tags: ["mop", "ingest", "multimodal", "fallback"]
+{% elif openrouter_api_key | default('') | length > 0 %}
   - model_name: "mop-ingest"
     litellm_params:
       model: "openrouter/deepseek/deepseek-chat-v3-0324:free"
@@ -309,7 +328,7 @@ litellm_settings:
     - gpt-4o: ["claude-sonnet", "glm-5"]
     - gpt-4o-mini: ["qwen3-coder", "deepseek-v3-free"]
     - gpt-codex: ["claude-sonnet", "glm-5"]
-{% if google_gemini_api_key | default('') | length > 0 %}
+{% if google_gemini_api_key | default('') | length > 0 or openrouter_mop_api_key | default('') | length > 0 %}
     - mop-ingest: ["deepseek-v3-free", "qwen3-coder"]
 {% endif %}
 

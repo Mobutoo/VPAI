@@ -17,16 +17,26 @@
     {
       "id": "validate-secret",
       "name": "Validate Secret",
-      "type": "n8n-nodes-base.if",
+      "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [460, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const headers = $input.first().json.headers || {};\nconst secret = headers['x-af-secret'] || '';\nconst expected = $env.AF_WEBHOOK_SECRET || '';\nreturn [{ json: { ...$input.first().json, _secretValid: secret === expected } }];"
+      }
+    },
+    {
+      "id": "route-auth",
+      "name": "Route Auth",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300],
       "parameters": {
         "conditions": {
           "conditions": [
             {
-              "leftValue": "={{ $json.headers['x-af-secret'] }}",
-              "rightValue": "={{ $env.AF_WEBHOOK_SECRET }}",
-              "operator": { "type": "string", "operation": "equals" }
+              "leftValue": "={{ $json._secretValid }}",
+              "operator": { "type": "boolean", "operation": "true" }
             }
           ],
           "combinator": "and"
@@ -189,6 +199,11 @@
       ]
     },
     "Validate Secret": {
+      "main": [
+        [{ "node": "Route Auth", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route Auth": {
       "main": [
         [{ "node": "Respond 202", "type": "main", "index": 0 }],
         [{ "node": "Respond 403", "type": "main", "index": 0 }]

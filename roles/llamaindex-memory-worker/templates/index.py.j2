@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast as _ast
 import hashlib
 import json
 import logging
@@ -227,6 +228,48 @@ def detect_language(path: Path) -> str:
         ".txt": "text",
     }
     return mapping.get(path.suffix.lower(), "text")
+
+
+def extract_structural_meta(path: Path, text: str) -> dict[str, list[str]]:
+    suffix = path.suffix.lower()
+    functions: list[str] = []
+    classes: list[str] = []
+    imports: list[str] = []
+    exports: list[str] = []
+    variables: list[str] = []
+
+    if suffix == ".py":
+        try:
+            tree = _ast.parse(text)
+            functions = [
+                n.name for n in _ast.walk(tree)
+                if isinstance(n, (_ast.FunctionDef, _ast.AsyncFunctionDef))
+            ]
+            classes = [n.name for n in _ast.walk(tree) if isinstance(n, _ast.ClassDef)]
+            imports = list({
+                node.module
+                for node in _ast.walk(tree)
+                if isinstance(node, _ast.ImportFrom) and node.module
+            })
+        except SyntaxError:
+            pass
+
+    elif suffix in {".ts", ".tsx", ".js", ".jsx"}:
+        imports = re.findall(r"from\s+['\"]([^'\"]+)['\"]", text)
+        exports = re.findall(
+            r"export\s+(?:default\s+)?(?:function|class|const|type|interface)\s+(\w+)", text
+        )
+
+    elif suffix in {".yml", ".yaml", ".j2"}:
+        variables = list(dict.fromkeys(re.findall(r"\{\{\s*([a-zA-Z_]\w*)", text)))
+
+    return {
+        "functions": functions[:50],
+        "classes": classes[:20],
+        "imports": imports[:40],
+        "exports": exports[:40],
+        "variables": variables[:60],
+    }
 
 
 def source_kind_for(doc_kind: str) -> str:
@@ -461,6 +504,7 @@ def to_text_nodes(
     content_hash: str,
     git_sha: str,
     chunks: list[Chunk],
+    struct_meta: dict[str, list[str]] | None = None,
 ) -> list[TextNode]:
     language = detect_language(path)
     doc_kind = classify_doc_kind(path)
@@ -499,6 +543,11 @@ def to_text_nodes(
             "section": chunk.section or "",
             "title": chunk.title,
             "indexed_at": now,
+            "functions":  (struct_meta or {}).get("functions", []),
+            "classes":    (struct_meta or {}).get("classes", []),
+            "imports":    (struct_meta or {}).get("imports", []),
+            "exports":    (struct_meta or {}).get("exports", []),
+            "variables":  (struct_meta or {}).get("variables", []),
         }
         nodes.append(
             TextNode(
@@ -965,7 +1014,8 @@ def process_file(
     content_hash = sha256_file(path)
     git_sha = git_commit_sha(repo_root, path)
     ref_id = ref_doc_id(repo, relative_path)
-    nodes = to_text_nodes(repo, Path(relative_path), relative_path, topic, content_hash, git_sha, chunks)
+    struct_meta = extract_structural_meta(Path(relative_path), content)
+    nodes = to_text_nodes(repo, Path(relative_path), relative_path, topic, content_hash, git_sha, chunks, struct_meta=struct_meta)
     batch_size = int(config["limits"]["batch_size"])
     prepared_nodes: list[TextNode] = []
     for node_batch in batched(nodes, batch_size):

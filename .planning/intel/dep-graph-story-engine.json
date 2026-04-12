@@ -1,0 +1,415 @@
+{
+  "generated_at": "2026-04-12T12:29:38.409364+00:00",
+  "repo": "story-engine",
+  "repo_root": "/home/mobuone/projects/saas/story-engine",
+  "graph": {
+    "e2e/14-editor-ui.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/07-pdf-export-v2.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/05-import-fountain.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/01-register-write-checkpoint.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/12-auth-flows.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/08-brief-scaffold.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/09-search-reindex.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/02-entity-fact-alert.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/11-v15-hardening.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/10-timeline.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/06-graph-page.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/04-export-download.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/13-notifications.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "e2e/03-accept-suggestion.spec.ts": [
+      "e2e/helpers.ts"
+    ],
+    "packages/editor/src/extensions.ts": [
+      "packages/editor/src/types.ts",
+      "packages/editor/src/extensions/entity-mention.ts",
+      "packages/editor/src/extensions/bd-panel.ts",
+      "packages/editor/src/extensions/bd-dialogue-balloon.ts",
+      "packages/editor/src/extensions/fountain-scene-heading.ts",
+      "packages/editor/src/extensions/fountain-action.ts",
+      "packages/editor/src/extensions/fountain-dialogue.ts",
+      "packages/editor/src/extensions/fountain-parenthetical.ts",
+      "packages/editor/src/extensions/fountain-transition.ts"
+    ],
+    "packages/editor/src/index.ts": [
+      "packages/editor/src/extensions.ts",
+      "packages/editor/src/keyboard.ts",
+      "packages/editor/src/utils.ts",
+      "packages/editor/src/types.ts",
+      "packages/editor/src/extensions/ghost-text.ts",
+      "packages/editor/src/extensions/entity-mention.ts",
+      "packages/editor/src/extensions/entity-highlight.ts",
+      "packages/editor/src/extensions/claim-highlight.ts",
+      "packages/editor/src/extensions/bd-panel.ts",
+      "packages/editor/src/extensions/bd-dialogue-balloon.ts",
+      "packages/editor/src/extensions/fountain-scene-heading.ts",
+      "packages/editor/src/extensions/fountain-action.ts",
+      "packages/editor/src/extensions/fountain-dialogue.ts",
+      "packages/editor/src/extensions/fountain-parenthetical.ts",
+      "packages/editor/src/extensions/fountain-transition.ts"
+    ],
+    "packages/editor/src/extensions/claim-highlight.ts": [
+      "packages/editor/src/extensions/../types.ts"
+    ],
+    "packages/editor/src/extensions/entity-mention.ts": [
+      "packages/editor/src/extensions/../types.ts"
+    ],
+    "packages/editor/src/extensions/entity-highlight.ts": [
+      "packages/editor/src/extensions/../types.ts"
+    ],
+    "packages/shared/src/index.ts": [
+      "packages/shared/src/schemas.ts"
+    ],
+    "apps/collab/tests/auth.test.ts": [
+      "apps/collab/tests/../src/extensions/auth.ts"
+    ],
+    "apps/collab/tests/checkpoint.test.ts": [
+      "apps/collab/tests/../src/extensions/database.ts"
+    ],
+    "apps/collab/tests/persistence.test.ts": [
+      "apps/collab/tests/../src/extensions/database.ts"
+    ],
+    "apps/collab/src/server.ts": [
+      "apps/collab/src/config.ts",
+      "apps/collab/src/db.ts",
+      "apps/collab/src/extensions/auth.ts",
+      "apps/collab/src/extensions/database.ts",
+      "apps/collab/src/health.ts"
+    ],
+    "apps/collab/src/db.ts": [
+      "apps/collab/src/config.ts"
+    ],
+    "apps/collab/src/extensions/auth.ts": [
+      "apps/collab/src/extensions/../db.ts",
+      "apps/collab/src/extensions/../config.ts"
+    ],
+    "apps/collab/src/extensions/database.ts": [
+      "apps/collab/src/extensions/../db.ts"
+    ],
+    "apps/web/src/lib/api.ts": [
+      "apps/web/src/lib/types.ts"
+    ],
+    "apps/web/src/components/ide/dock-shell.tsx": [
+      "apps/web/src/components/ide/dock-timeline.tsx",
+      "apps/web/src/components/ide/dock-graph.tsx",
+      "apps/web/src/components/ide/dock-jobs.tsx"
+    ],
+    "apps/web/src/components/ide/inspector-entity.tsx": [
+      "apps/web/src/components/ide/inspector-fact-row.tsx",
+      "apps/web/src/components/ide/inspector-breadcrumb.tsx"
+    ],
+    "apps/web/src/components/ide/editor-workspace.tsx": [
+      "apps/web/src/components/ide/tab-bar.tsx",
+      "apps/web/src/components/ide/scene-editor.tsx",
+      "apps/web/src/components/ide/split-editor.tsx"
+    ],
+    "apps/web/src/components/ide/graph-toolbar.tsx": [
+      "apps/web/src/components/ide/graph-layouts.ts"
+    ],
+    "apps/web/src/components/ide/inspector-shell.tsx": [
+      "apps/web/src/components/ide/inspector-entity.tsx",
+      "apps/web/src/components/ide/inspector-scene-summary.tsx"
+    ],
+    "apps/web/src/components/ide/graph-canvas.tsx": [
+      "apps/web/src/components/ide/entity-node.tsx"
+    ],
+    "apps/web/src/components/ide/split-editor.tsx": [
+      "apps/web/src/components/ide/scene-editor.tsx"
+    ],
+    "apps/web/src/components/ide/ide-layout.tsx": [
+      "apps/web/src/components/ide/inspector-shell.tsx",
+      "apps/web/src/components/ide/dock-shell.tsx",
+      "apps/web/src/components/ide/activity-bar.tsx",
+      "apps/web/src/components/ide/status-bar.tsx",
+      "apps/web/src/components/ide/editor-workspace.tsx",
+      "apps/web/src/components/ide/scene-tree-panel.tsx",
+      "apps/web/src/components/ide/outline-panel.tsx"
+    ],
+    "apps/web/src/app/(auth)/reset-password/page.tsx": [
+      "apps/web/src/app/(auth)/reset-password/ResetPasswordForm.tsx"
+    ],
+    ".claude/worktrees/agent-a87f6b38/e2e/07-pdf-export-v2.spec.ts": [
+      ".claude/worktrees/agent-a87f6b38/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/e2e/05-import-fountain.spec.ts": [
+      ".claude/worktrees/agent-a87f6b38/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/e2e/01-register-write-checkpoint.spec.ts": [
+      ".claude/worktrees/agent-a87f6b38/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/e2e/02-entity-fact-alert.spec.ts": [
+      ".claude/worktrees/agent-a87f6b38/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/e2e/06-graph-page.spec.ts": [
+      ".claude/worktrees/agent-a87f6b38/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/e2e/04-export-download.spec.ts": [
+      ".claude/worktrees/agent-a87f6b38/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/e2e/03-accept-suggestion.spec.ts": [
+      ".claude/worktrees/agent-a87f6b38/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions.ts": [
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/types.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/entity-mention.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/bd-panel.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/bd-dialogue-balloon.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/fountain-scene-heading.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/fountain-action.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/fountain-dialogue.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/fountain-parenthetical.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/fountain-transition.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/packages/editor/src/index.ts": [
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/keyboard.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/utils.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/types.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/ghost-text.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/entity-mention.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/entity-highlight.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/claim-highlight.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/bd-panel.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/bd-dialogue-balloon.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/fountain-scene-heading.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/fountain-action.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/fountain-dialogue.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/fountain-parenthetical.ts",
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/fountain-transition.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/claim-highlight.ts": [
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/../types.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/entity-mention.ts": [
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/../types.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/entity-highlight.ts": [
+      ".claude/worktrees/agent-a87f6b38/packages/editor/src/extensions/../types.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/packages/shared/src/index.ts": [
+      ".claude/worktrees/agent-a87f6b38/packages/shared/src/schemas.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/collab/tests/auth.test.ts": [
+      ".claude/worktrees/agent-a87f6b38/apps/collab/tests/../src/extensions/auth.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/collab/tests/checkpoint.test.ts": [
+      ".claude/worktrees/agent-a87f6b38/apps/collab/tests/../src/extensions/database.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/collab/tests/persistence.test.ts": [
+      ".claude/worktrees/agent-a87f6b38/apps/collab/tests/../src/extensions/database.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/collab/src/server.ts": [
+      ".claude/worktrees/agent-a87f6b38/apps/collab/src/config.ts",
+      ".claude/worktrees/agent-a87f6b38/apps/collab/src/db.ts",
+      ".claude/worktrees/agent-a87f6b38/apps/collab/src/extensions/auth.ts",
+      ".claude/worktrees/agent-a87f6b38/apps/collab/src/extensions/database.ts",
+      ".claude/worktrees/agent-a87f6b38/apps/collab/src/health.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/collab/src/db.ts": [
+      ".claude/worktrees/agent-a87f6b38/apps/collab/src/config.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/collab/src/extensions/auth.ts": [
+      ".claude/worktrees/agent-a87f6b38/apps/collab/src/extensions/../db.ts",
+      ".claude/worktrees/agent-a87f6b38/apps/collab/src/extensions/../config.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/collab/src/extensions/database.ts": [
+      ".claude/worktrees/agent-a87f6b38/apps/collab/src/extensions/../db.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/web/src/lib/api.ts": [
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/lib/types.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/dock-shell.tsx": [
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/dock-timeline.tsx",
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/dock-graph.tsx",
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/dock-jobs.tsx"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/inspector-entity.tsx": [
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/inspector-fact-row.tsx",
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/inspector-breadcrumb.tsx"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/editor-workspace.tsx": [
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/tab-bar.tsx",
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/scene-editor.tsx",
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/split-editor.tsx"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/graph-toolbar.tsx": [
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/graph-layouts.ts"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/inspector-shell.tsx": [
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/inspector-entity.tsx",
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/inspector-scene-summary.tsx"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/graph-canvas.tsx": [
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/entity-node.tsx"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/split-editor.tsx": [
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/scene-editor.tsx"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/ide-layout.tsx": [
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/inspector-shell.tsx",
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/dock-shell.tsx",
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/activity-bar.tsx",
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/status-bar.tsx",
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/editor-workspace.tsx",
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/scene-tree-panel.tsx",
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/components/ide/outline-panel.tsx"
+    ],
+    ".claude/worktrees/agent-a87f6b38/apps/web/src/app/(auth)/reset-password/page.tsx": [
+      ".claude/worktrees/agent-a87f6b38/apps/web/src/app/(auth)/reset-password/ResetPasswordForm.tsx"
+    ],
+    ".claude/worktrees/agent-ac052622/e2e/07-pdf-export-v2.spec.ts": [
+      ".claude/worktrees/agent-ac052622/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/e2e/05-import-fountain.spec.ts": [
+      ".claude/worktrees/agent-ac052622/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/e2e/01-register-write-checkpoint.spec.ts": [
+      ".claude/worktrees/agent-ac052622/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/e2e/02-entity-fact-alert.spec.ts": [
+      ".claude/worktrees/agent-ac052622/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/e2e/06-graph-page.spec.ts": [
+      ".claude/worktrees/agent-ac052622/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/e2e/04-export-download.spec.ts": [
+      ".claude/worktrees/agent-ac052622/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/e2e/03-accept-suggestion.spec.ts": [
+      ".claude/worktrees/agent-ac052622/e2e/helpers.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/packages/editor/src/extensions.ts": [
+      ".claude/worktrees/agent-ac052622/packages/editor/src/types.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/entity-mention.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/bd-panel.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/bd-dialogue-balloon.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/fountain-scene-heading.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/fountain-action.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/fountain-dialogue.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/fountain-parenthetical.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/fountain-transition.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/packages/editor/src/index.ts": [
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/keyboard.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/utils.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/types.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/ghost-text.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/entity-mention.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/entity-highlight.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/claim-highlight.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/bd-panel.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/bd-dialogue-balloon.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/fountain-scene-heading.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/fountain-action.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/fountain-dialogue.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/fountain-parenthetical.ts",
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/fountain-transition.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/claim-highlight.ts": [
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/../types.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/entity-mention.ts": [
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/../types.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/entity-highlight.ts": [
+      ".claude/worktrees/agent-ac052622/packages/editor/src/extensions/../types.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/packages/shared/src/index.ts": [
+      ".claude/worktrees/agent-ac052622/packages/shared/src/schemas.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/collab/tests/auth.test.ts": [
+      ".claude/worktrees/agent-ac052622/apps/collab/tests/../src/extensions/auth.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/collab/tests/checkpoint.test.ts": [
+      ".claude/worktrees/agent-ac052622/apps/collab/tests/../src/extensions/database.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/collab/tests/persistence.test.ts": [
+      ".claude/worktrees/agent-ac052622/apps/collab/tests/../src/extensions/database.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/collab/src/server.ts": [
+      ".claude/worktrees/agent-ac052622/apps/collab/src/config.ts",
+      ".claude/worktrees/agent-ac052622/apps/collab/src/db.ts",
+      ".claude/worktrees/agent-ac052622/apps/collab/src/extensions/auth.ts",
+      ".claude/worktrees/agent-ac052622/apps/collab/src/extensions/database.ts",
+      ".claude/worktrees/agent-ac052622/apps/collab/src/health.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/collab/src/db.ts": [
+      ".claude/worktrees/agent-ac052622/apps/collab/src/config.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/collab/src/extensions/auth.ts": [
+      ".claude/worktrees/agent-ac052622/apps/collab/src/extensions/../db.ts",
+      ".claude/worktrees/agent-ac052622/apps/collab/src/extensions/../config.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/collab/src/extensions/database.ts": [
+      ".claude/worktrees/agent-ac052622/apps/collab/src/extensions/../db.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/web/src/lib/api.ts": [
+      ".claude/worktrees/agent-ac052622/apps/web/src/lib/types.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/dock-shell.tsx": [
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/dock-timeline.tsx",
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/dock-graph.tsx",
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/dock-jobs.tsx"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/inspector-entity.tsx": [
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/inspector-fact-row.tsx",
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/inspector-breadcrumb.tsx"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/editor-workspace.tsx": [
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/tab-bar.tsx",
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/scene-editor.tsx",
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/split-editor.tsx"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/graph-toolbar.tsx": [
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/graph-layouts.ts"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/inspector-shell.tsx": [
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/inspector-entity.tsx",
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/inspector-scene-summary.tsx"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/graph-canvas.tsx": [
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/entity-node.tsx"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/split-editor.tsx": [
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/scene-editor.tsx"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/ide-layout.tsx": [
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/inspector-shell.tsx",
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/dock-shell.tsx",
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/activity-bar.tsx",
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/status-bar.tsx",
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/editor-workspace.tsx",
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/scene-tree-panel.tsx",
+      ".claude/worktrees/agent-ac052622/apps/web/src/components/ide/outline-panel.tsx"
+    ],
+    ".claude/worktrees/agent-ac052622/apps/web/src/app/(auth)/reset-password/page.tsx": [
+      ".claude/worktrees/agent-ac052622/apps/web/src/app/(auth)/reset-password/ResetPasswordForm.tsx"
+    ]
+  }
+}

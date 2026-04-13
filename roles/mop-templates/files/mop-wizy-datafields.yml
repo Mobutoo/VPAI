@@ -1,0 +1,64 @@
+# MOP Template — Data Fields (source de vérité : wizy.ewutelo.cloud)
+# Mis à jour le 2026-04-14 — phase sub-headings 3.1-3.4, italic retiré
+# Ce fichier définit le contrat d'interface entre n8n et le template GrapeJS
+#
+# Règle : tout champ injecté depuis n8n doit correspondre EXACTEMENT
+# au data-field listé ici. Ne pas inventer de nouveaux champs.
+#
+# FORMAT RÉFÉRENCE : OPSSD-03.03.M0.20-P-V1
+#   OPSSD      = Service Technique (département)
+#   03.03      = code processus
+#   M0         = type document : M0=MOP, S0=SOP
+#   .20        = numéro incrémental (MOP: .20, .21 ... / SOP: .10, .11 ...)
+#   -P-V1      = suffixe commun à tous les documents
+
+metadata:
+  doc_type:            "MOP"                         # MOP / SOP / EOP
+  doc_reference:       "OPSSD-03.03.M0.20-P-V1"     # FORMAT: OPSSD-03.03.[M0|S0].[num]-P-V1
+  doc_confidentiality: "interne"                     # strictement_confidentiel | confidentiel | interne | public
+  doc_title:           ""                             # Titre complet du document
+  doc_resume:          ""                             # Résumé / objectif
+  doc_scope:           ""                             # Champ d'application (départements)
+  doc_associated:      ""                             # Documents associés (vide si aucun)
+  doc_owner:           "Service Technique"            # Propriétaire du document
+  doc_verificateur:    ""                             # Département vérificateur
+  doc_approbateur:     "Service ISO"                  # Département approbateur
+  doc_date_vigueur:    ""                             # Date entrée en vigueur (DD/MM/YYYY)
+  doc_date_revision:   ""                             # Date révision planifiée (DD/MM/YYYY)
+
+revision:
+  rev1_num:            "1.0"
+  rev1_date:           ""                             # DD/MM/YYYY
+  rev1_description:    ""
+  rev1_prepared_by:    ""
+  rev1_verified_by:    ""
+  rev1_approved_by:    "Service ISO"                  # Approbateur standard
+
+content:
+  # Section 1
+  s1_title:            "Objet (quoi / pourquoi)"
+  s1_content:          ""                             # Texte libre — description de l'objet
+  s1_1_title:          ""                             # Sous-section 1.1 (optionnel)
+  s1_1_content:        ""
+  s1_1_1_title:        ""                             # Niveau 3 (optionnel)
+
+  # Section 2
+  s2_title:            "Rôles et responsabilités (qui)"
+  s2_content:          ""                             # Matrice RACI, acteurs
+  s2_1_title:          ""
+  s2_1_content:        ""
+  s2_1_1_title:        ""
+
+  # Section 3 — Procédure d'intervention
+  # CONVENTION PHASES : les titres Phase X sont injectés dans s3_content
+  # en tant que sous-titres numérotés 3.1, 3.2, 3.3, 3.4 (styled paragraphs).
+  # Format injecté : "<p style='...'>3.1 Phase 1 — [titre]</p>\n[étapes]"
+  s3_title:            "Description du processus (comment)"
+  s3_content:          ""                             # Phases 3.1→3.4 + étapes détaillées
+  s3_1_title:          ""                             # Sous-section complémentaire (ex: Points d'attention)
+  s3_1_content:        ""
+  s3_1_1_title:        ""                             # Niveau 3 (ex: Outils requis)
+
+  # Section 4
+  s4_title:            "Glossaires"
+  s4_content:          ""                             # Définitions et acronymes

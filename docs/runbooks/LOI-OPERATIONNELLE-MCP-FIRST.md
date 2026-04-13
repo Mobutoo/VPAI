@@ -205,7 +205,11 @@ ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'hostname'  # doit rép
 **Interdit :**
 - `ssh mobuone@137.74.114.167` (IP publique, violation P8)
 - `curl https://mayi.ewutelo.cloud` sans vérifier que la résolution DNS passe par Tailscale
-- `localhost:5678` pour n8n depuis waza (port bindé `127.0.0.1` dans Docker, inaccessible via Tailscale — cause P7)
+- `localhost:5678` pour n8n **depuis waza** (port bindé `127.0.0.1` dans Docker, inaccessible via Tailscale — cause P7)
+
+**Autorisé (non-violation R7) :**
+- `ssh sese-ai 'curl localhost:5678/...'` — commande exécutée **sur sese-ai**, localhost = sese-ai lui-même
+- `docker exec javisi_n8n curl localhost:5678/...` — intra-container, pas waza→sese-ai
 
 ### R8 — Doc-first, preuve > souvenir
 
@@ -343,7 +347,7 @@ Les skills Superpowers (brainstorming, writing-plans, TDD, etc.) restent les wor
 | `sequential-thinking` | ✓ | `sequentialthinking` (pour hypothèses root cause multi-couches) |
 | `qdrant` | ✓ qd.ewutelo.cloud | `qdrant-find` (interroger `memory_v1`), `qdrant-store` |
 | `docker` | ✓ | `list-containers`, `get-logs`, `deploy-compose` |
-| `context7` | ✓ | `resolve-library-id`, `get-library-docs` (docs npm/frameworks live) |
+| `context7` | ✓ | `resolve-library-id`, `get-library-docs` (docs npm/frameworks live) — **déclencher si** : (a) qdrant score < 0.55 sur un sujet npm/framework, ou (b) R8 exige la doc officielle d'un package tiers |
 
 ## Références
 

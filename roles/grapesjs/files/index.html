@@ -215,6 +215,7 @@
 <script>
   /* ── Blocks MOP (tableaux, titres, listes — usage NOC/procédure) ── */
   const MOP_BLOCKS = [
+    /* ── MOP ── */
     {
       id: 'mop-h1', label: 'Titre H1', category: 'MOP',
       content: '<h1 style="font-size:22px;font-weight:700;margin-bottom:12px">Titre principal</h1>'
@@ -224,34 +225,47 @@
       content: '<h2 style="font-size:17px;font-weight:600;margin-bottom:8px;color:#1a5276">Sous-titre</h2>'
     },
     {
+      id: 'mop-h3', label: 'Titre H3', category: 'MOP',
+      content: '<h3 style="font-size:14px;font-weight:600;margin-bottom:6px;color:#1a5276;border-bottom:1px solid #d5d8dc;padding-bottom:4px">Titre section</h3>'
+    },
+    {
       id: 'mop-p', label: 'Paragraphe', category: 'MOP',
       content: '<p style="margin-bottom:10px;line-height:1.6">Contenu du paragraphe.</p>'
     },
     {
-      id: 'mop-table-2col', label: 'Tableau 2 col', category: 'MOP',
-      content: `<table border="1" cellpadding="6" cellspacing="0"
-        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
-        <thead style="background:#1a5276;color:#fff">
-          <tr><th>Colonne 1</th><th>Colonne 2</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>Valeur A</td><td>Valeur B</td></tr>
-          <tr style="background:#f2f4f4"><td>Valeur C</td><td>Valeur D</td></tr>
-        </tbody>
-      </table>`
+      id: 'mop-page-break', label: 'Saut de page', category: 'MOP',
+      content: '<div class="wizy-page-break" style="page-break-after:always;border-top:2px dashed #bbb;margin:24px 0 16px;padding-bottom:8px;text-align:center"><span style="font-size:10px;color:#aaa;font-style:italic">— Saut de page —</span></div>'
     },
     {
-      id: 'mop-table-3col', label: 'Tableau 3 col', category: 'MOP',
-      content: `<table border="1" cellpadding="6" cellspacing="0"
-        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
-        <thead style="background:#1a5276;color:#fff">
-          <tr><th>Étape</th><th>Action</th><th>Responsable</th></tr>
-        </thead>
-        <tbody>
-          <tr><td>1</td><td>Action 1</td><td>NOC</td></tr>
-          <tr style="background:#f2f4f4"><td>2</td><td>Action 2</td><td>Ops</td></tr>
-        </tbody>
-      </table>`
+      id: 'mop-prereq', label: 'Prérequis', category: 'MOP',
+      content: `<div style="background:#f4f6f7;border:1px solid #d5d8dc;border-radius:4px;padding:12px 16px;margin-bottom:12px">
+        <strong style="font-size:13px;display:block;margin-bottom:8px">📋 Prérequis</strong>
+        <p style="margin:0 0 4px;font-size:13px">☐ Accès VPN actif et connecté</p>
+        <p style="margin:0 0 4px;font-size:13px">☐ Droits administrateur vérifiés</p>
+        <p style="margin:0;font-size:13px">☐ Sauvegarde effectuée</p>
+      </div>`
+    },
+    {
+      id: 'mop-code', label: 'Bloc code/commande', category: 'MOP',
+      content: `<pre style="background:#1e2228;color:#abb2bf;font-family:'SF Mono','Fira Code',monospace;font-size:12px;line-height:1.6;padding:12px 16px;border-radius:4px;overflow-x:auto;margin-bottom:12px"># Commande ici
+sudo systemctl restart service-name</pre>`
+    },
+    {
+      id: 'mop-checklist', label: 'Checklist', category: 'MOP',
+      content: `<div style="margin-bottom:12px">
+        <p style="margin:0 0 6px;font-size:13px"><strong>Checklist de vérification</strong></p>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px"><input type="checkbox"> Élément 1</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:4px"><input type="checkbox"> Élément 2</label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="checkbox"> Élément 3</label>
+      </div>`
+    },
+    {
+      id: 'mop-badge', label: 'Badge statut', category: 'MOP',
+      content: `<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <span style="display:inline-block;background:#f39c12;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:3px;letter-spacing:0.5px">BROUILLON</span>
+        <span style="display:inline-block;background:#27ae60;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:3px;letter-spacing:0.5px">EN VIGUEUR</span>
+        <span style="display:inline-block;background:#7f8c8d;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:3px;letter-spacing:0.5px">OBSOLÈTE</span>
+      </div>`
     },
     {
       id: 'mop-warning', label: 'Avertissement', category: 'MOP',
@@ -285,6 +299,161 @@
     {
       id: 'mop-hr', label: 'Séparateur', category: 'MOP',
       content: '<hr style="border:none;border-top:1px solid #ccc;margin:16px 0">'
+    },
+    /* ── Tableaux ── */
+    {
+      id: 'mop-table-proc', label: 'Procédure 4 col', category: 'Tableaux',
+      content: `<table border="1" cellpadding="6" cellspacing="0"
+        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
+        <thead style="background:#1a5276;color:#fff">
+          <tr>
+            <th style="width:6%">N°</th>
+            <th style="width:52%">Action</th>
+            <th style="width:22%">Responsable</th>
+            <th style="width:20%">Vérification</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td>Description de l'action à réaliser</td><td>NOC</td><td>☐ OK</td></tr>
+          <tr style="background:#f2f4f4"><td>2</td><td>Description de l'action à réaliser</td><td>Ops</td><td>☐ OK</td></tr>
+          <tr><td>3</td><td>Description de l'action à réaliser</td><td>Tech</td><td>☐ OK</td></tr>
+        </tbody>
+      </table>`
+    },
+    {
+      id: 'mop-table-rev', label: 'Tableau révisions', category: 'Tableaux',
+      content: `<table border="1" cellpadding="6" cellspacing="0"
+        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
+        <thead style="background:#2c3e50;color:#fff">
+          <tr>
+            <th style="width:15%">Version</th>
+            <th style="width:20%">Date</th>
+            <th style="width:30%">Auteur</th>
+            <th>Modifications</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>1.0</td><td>2026-01-01</td><td>Prénom Nom</td><td>Création initiale</td></tr>
+          <tr style="background:#f2f4f4"><td>1.1</td><td>2026-04-13</td><td>Prénom Nom</td><td>Mise à jour section X</td></tr>
+        </tbody>
+      </table>`
+    },
+    {
+      id: 'mop-table-contacts', label: 'Contacts / Escalade', category: 'Tableaux',
+      content: `<table border="1" cellpadding="6" cellspacing="0"
+        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
+        <thead style="background:#6c3483;color:#fff">
+          <tr>
+            <th>Niveau</th>
+            <th>Nom / Équipe</th>
+            <th>Téléphone</th>
+            <th>Remarques</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>N1</td><td>NOC on-call</td><td>+33 6 00 00 00 00</td><td>Disponible 24/7</td></tr>
+          <tr style="background:#f2f4f4"><td>N2</td><td>Ops Senior</td><td>+33 6 00 00 00 01</td><td>Escalade après 15 min</td></tr>
+          <tr><td>N3</td><td>Responsable technique</td><td>+33 6 00 00 00 02</td><td>Incidents critiques uniquement</td></tr>
+        </tbody>
+      </table>`
+    },
+    {
+      id: 'mop-table-2col', label: 'Tableau 2 col', category: 'Tableaux',
+      content: `<table border="1" cellpadding="6" cellspacing="0"
+        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
+        <thead style="background:#1a5276;color:#fff">
+          <tr><th>Colonne 1</th><th>Colonne 2</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Valeur A</td><td>Valeur B</td></tr>
+          <tr style="background:#f2f4f4"><td>Valeur C</td><td>Valeur D</td></tr>
+        </tbody>
+      </table>`
+    },
+    {
+      id: 'mop-table-3col', label: 'Tableau 3 col', category: 'Tableaux',
+      content: `<table border="1" cellpadding="6" cellspacing="0"
+        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
+        <thead style="background:#1a5276;color:#fff">
+          <tr><th>Étape</th><th>Action</th><th>Responsable</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td>Action 1</td><td>NOC</td></tr>
+          <tr style="background:#f2f4f4"><td>2</td><td>Action 2</td><td>Ops</td></tr>
+        </tbody>
+      </table>`
+    },
+    /* ── Mise en page ── */
+    {
+      id: 'mop-header', label: 'En-tête MOP', category: 'Mise en page',
+      content: `<table border="1" cellpadding="8" cellspacing="0"
+        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">
+        <tbody>
+          <tr style="background:#1a5276;color:#fff">
+            <td colspan="4" style="text-align:center;font-size:16px;font-weight:700;padding:12px">
+              PROCÉDURE D'EXPLOITATION — MOP
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#d5d8dc;font-weight:600;width:20%">Projet</td>
+            <td style="width:30%">Nom du projet</td>
+            <td style="background:#d5d8dc;font-weight:600;width:20%">Référence</td>
+            <td>MOP-2026-XXX</td>
+          </tr>
+          <tr style="background:#f2f4f4">
+            <td style="background:#d5d8dc;font-weight:600">Version</td>
+            <td>1.0</td>
+            <td style="background:#d5d8dc;font-weight:600">Date</td>
+            <td>2026-04-13</td>
+          </tr>
+          <tr>
+            <td style="background:#d5d8dc;font-weight:600">Auteur</td>
+            <td>Prénom Nom</td>
+            <td style="background:#d5d8dc;font-weight:600">Approbateur</td>
+            <td>Prénom Nom</td>
+          </tr>
+          <tr style="background:#f2f4f4">
+            <td style="background:#d5d8dc;font-weight:600">Statut</td>
+            <td colspan="3">
+              <span style="background:#f39c12;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:3px">BROUILLON</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>`
+    },
+    {
+      id: 'mop-signature', label: 'Validation / Signature', category: 'Mise en page',
+      content: `<table border="1" cellpadding="8" cellspacing="0"
+        style="width:100%;border-collapse:collapse;font-size:13px;margin-top:24px">
+        <thead style="background:#2c3e50;color:#fff">
+          <tr>
+            <th>Rôle</th>
+            <th>Nom</th>
+            <th>Date</th>
+            <th>Signature</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="height:48px">
+            <td style="font-weight:600">Rédacteur</td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+          <tr style="background:#f2f4f4;height:48px">
+            <td style="font-weight:600">Vérificateur</td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+          <tr style="height:48px">
+            <td style="font-weight:600">Approbateur</td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>`
     },
     {
       id: 'mop-section', label: 'Section', category: 'Mise en page',

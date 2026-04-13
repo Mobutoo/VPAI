@@ -13,6 +13,7 @@ const express  = require('express')
 const path     = require('path')
 const multer   = require('multer')
 const mammoth  = require('mammoth')
+const JSZip    = require('jszip')
 
 const app    = express()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
@@ -35,7 +36,6 @@ app.get('/api/events', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection',    'keep-alive')
   res.flushHeaders()
-  // Send current state immediately so late-joiners see existing content
   res.write(`data: ${JSON.stringify({ type: 'init', html: state.html, css: state.css })}\n\n`)
   clients.add(res)
   req.on('close', () => clients.delete(res))
@@ -67,15 +67,35 @@ app.get('/api/html', (_req, res) => {
   res.json(state)
 })
 
+/* ── Pre-process DOCX: replace Word page breaks with marker ── */
+const PAGE_BREAK_MARKER = '__WIZY_PAGE_BREAK__'
+const PAGE_BREAK_XML    = `<w:p><w:pPr/><w:r><w:t xml:space="preserve">${PAGE_BREAK_MARKER}</w:t></w:r></w:p>`
+const PAGE_BREAK_HTML   = '<div class="wizy-page-break" style="page-break-after:always;border-top:2px dashed #bbb;margin:24px 0 16px;padding-bottom:8px;text-align:center"><span style="font-size:10px;color:#aaa;font-style:italic">— Saut de page —</span></div>'
+
+async function preprocessDocx (buffer) {
+  const zip = await JSZip.loadAsync(buffer)
+  const docFile = zip.file('word/document.xml')
+  if (!docFile) return buffer
+  let xml = await docFile.async('string')
+  xml = xml.replace(/<w:br\s+w:type="page"\s*\/>/g, PAGE_BREAK_XML)
+  zip.file('word/document.xml', xml)
+  return zip.generateAsync({ type: 'nodebuffer' })
+}
+
 /* ── Upload .docx → Mammoth → broadcast ────────────────── */
 app.post('/api/docx', upload.single('file'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'file (multipart/form-data) required' })
   }
   try {
-    const result = await mammoth.convertToHtml({ buffer: req.file.buffer })
-    state = { html: result.value, css: '' }
-    broadcast({ type: 'load', html: result.value, css: '' })
+    const processed = await preprocessDocx(req.file.buffer)
+    const result    = await mammoth.convertToHtml({ buffer: processed })
+    const html      = result.value.replace(
+      new RegExp(`<p[^>]*>${PAGE_BREAK_MARKER}<\\/p>`, 'g'),
+      PAGE_BREAK_HTML
+    )
+    state = { html, css: '' }
+    broadcast({ type: 'load', html, css: '' })
     res.json({ ok: true, clients: clients.size, warnings: result.messages.length })
   } catch (err) {
     res.status(500).json({ error: err.message })

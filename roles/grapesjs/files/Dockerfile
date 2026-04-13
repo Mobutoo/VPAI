@@ -7,7 +7,8 @@ RUN npm init -y && \
       grapesjs@0.21.13 \
       express@4.19.2 \
       multer@2.1.1 \
-      mammoth@1.12.0 && \
+      mammoth@1.12.0 \
+      jszip@3.10.1 && \
     npm cache clean --force
 
 # Stage 2: Node runtime (serves static files + API + SSE)

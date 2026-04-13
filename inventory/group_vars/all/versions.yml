@@ -122,7 +122,7 @@ flash_suite_koodia_image: "ghcr.io/mobutoo/koodia:suite-v1.0.0"
 
 # --- GrapeJS (HTML visual editor — wizy.<domain>) ---
 # Build: cd roles/grapesjs/files && docker buildx build --platform linux/amd64 -t ghcr.io/mobutoo/grapesjs-editor:v1.1.0 --push .
-grapesjs_image: "ghcr.io/mobutoo/grapesjs-editor:v1.1.0"  # GrapeJS 0.21.13 + node:22.14-alpine + Express API + SSE + DOCX import
+grapesjs_image: "ghcr.io/mobutoo/grapesjs-editor:v1.2.0"  # GrapeJS 0.21.13 + node:22.14-alpine + Express API + SSE + DOCX import + page breaks + 11 blocs MOP
 
 # --- MOP Machinery (NOC procedure generation) ---
 gotenberg_image: "gotenberg/gotenberg:8.30.1"

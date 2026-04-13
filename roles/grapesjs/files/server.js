@@ -6,12 +6,17 @@
  *   POST /api/html    — Claude/API pushes HTML → broadcasts to all open browsers
  *   PUT  /api/html    — Browser saves current editor state (no broadcast)
  *   GET  /api/html    — Claude/API retrieves current HTML + CSS
+ *   POST /api/docx    — Upload .docx → Mammoth converts → broadcast to browsers
  */
 
-const express = require('express')
-const path    = require('path')
+const express  = require('express')
+const path     = require('path')
+const multer   = require('multer')
+const mammoth  = require('mammoth')
 
-const app = express()
+const app    = express()
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })
+
 app.use(express.json({ limit: '10mb' }))
 app.use(express.static(path.join(__dirname, 'public')))
 
@@ -60,6 +65,21 @@ app.put('/api/html', (req, res) => {
 /* ── Claude/API → retrieve current HTML ────────────────── */
 app.get('/api/html', (_req, res) => {
   res.json(state)
+})
+
+/* ── Upload .docx → Mammoth → broadcast ────────────────── */
+app.post('/api/docx', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'file (multipart/form-data) required' })
+  }
+  try {
+    const result = await mammoth.convertToHtml({ buffer: req.file.buffer })
+    state = { html: result.value, css: '' }
+    broadcast({ type: 'load', html: result.value, css: '' })
+    res.json({ ok: true, clients: clients.size, warnings: result.messages.length })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
 app.listen(80, () => console.log('[wizy] ready on :80'))

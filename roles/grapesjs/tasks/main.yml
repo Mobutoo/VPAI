@@ -2,7 +2,7 @@
 # grapesjs — tasks
 # Deploys: GrapeJS HTML visual editor (edit.<domain>)
 # Image: ghcr.io/mobutoo/grapesjs-editor (built from roles/grapesjs/files/Dockerfile)
-# Build:  cd roles/grapesjs/files && docker buildx build --platform linux/amd64 -t ghcr.io/mobutoo/grapesjs-editor:v1.0.0 --push .
+# Build:  cd roles/grapesjs/files && docker buildx build --platform linux/amd64 -t ghcr.io/mobutoo/grapesjs-editor:v1.1.0 --push .
 # Usage:  https://edit.<domain> — import HTML template, edit visually, export HTML
 
 - name: Create GrapeJS docker directory

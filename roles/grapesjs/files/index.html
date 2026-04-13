@@ -50,6 +50,7 @@
     }
     button:hover { opacity: 0.85; }
     #btn-import { background: #4a7eff; color: #fff; }
+    #btn-docx   { background: #e67e22; color: #fff; }
     #btn-export { background: #27ae60; color: #fff; }
     #btn-copy   { background: #8e44ad; color: #fff; }
     #btn-clear  { background: #c0392b; color: #fff; }
@@ -160,6 +161,8 @@
   <span id="toolbar-title">GrapeJS — Éditeur MOP</span>
   <div class="toolbar-sep"></div>
   <button id="btn-import">⬆ Importer HTML</button>
+  <button id="btn-docx">📄 Importer DOCX</button>
+  <input type="file" id="input-docx" accept=".docx" style="display:none">
   <button id="btn-export">⬇ Exporter HTML</button>
   <button id="btn-copy">📋 Copier</button>
   <div class="toolbar-sep"></div>
@@ -434,6 +437,26 @@ ${html}
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) editor.UndoManager.undo();
     if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) editor.UndoManager.redo();
     if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  });
+
+  /* ── Import DOCX ─────────────────────────────────── */
+  const inputDocx = document.getElementById('input-docx');
+  document.getElementById('btn-docx').onclick = () => inputDocx.click();
+  inputDocx.addEventListener('change', async () => {
+    const file = inputDocx.files[0];
+    if (!file) return;
+    inputDocx.value = '';
+    const fd = new FormData();
+    fd.append('file', file);
+    toast('Conversion DOCX en cours…');
+    try {
+      const res = await fetch('/api/docx', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) { toast(data.error || 'Erreur conversion', true); return; }
+      toast(`DOCX importé ✓${data.warnings ? ' (' + data.warnings + ' avertissements)' : ''}`);
+    } catch (_) {
+      toast('Erreur réseau', true);
+    }
   });
 
   /* ── SSE — connexion API temps réel ─────────────── */

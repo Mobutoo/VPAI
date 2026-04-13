@@ -5,7 +5,9 @@ WORKDIR /app
 RUN npm init -y && \
     npm install \
       grapesjs@0.21.13 \
-      express@4.19.2 && \
+      express@4.19.2 \
+      multer@2.1.1 \
+      mammoth@1.12.0 && \
     npm cache clean --force
 
 # Stage 2: Node runtime (serves static files + API + SSE)

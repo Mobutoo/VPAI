@@ -53,6 +53,10 @@ claude_code_mcp_n8ndocs_enabled: true
 # Playwright MCP — headless browser for visual testing (screenshot + accessibility tree)
 claude_code_mcp_playwright_enabled: true
 
+# Qdrant MCP — semantic search in memory_v1 (REX, plans, docs, runbooks)
+# Uses mcp_search.py wrapper (google/embeddinggemma-300m, 768d) — R0 memory lookup
+claude_code_mcp_qdrant_enabled: true
+
 # Auto-compact threshold (% context used before triggering compaction)
 # Lower = compact earlier = more room for recovery. Default 83%, recommended 70%
 claude_code_autocompact_pct: 70

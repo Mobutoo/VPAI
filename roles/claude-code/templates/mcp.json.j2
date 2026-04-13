@@ -4,6 +4,7 @@
 {%- set _playwright_render = claude_code_mcp_playwright_enabled | default(false) -%}
 {%- set _openpencil_render = claude_code_mcp_openpencil_enabled | default(false) -%}
 {%- set _penpot_render = claude_code_mcp_penpot_enabled | default(false) -%}
+{%- set _qdrant_render = claude_code_mcp_qdrant_enabled | default(false) and qdrant_api_key is defined -%}
 {
   "mcpServers": {
 {% if claude_code_mcp_context7_enabled | default(false) %}
@@ -12,7 +13,7 @@
       "command": "{{ claude_code_npm_prefix }}/bin/context7-mcp",
       "args": [],
       "env": {}
-    }{{ ',' if claude_code_mcp_filesystem_enabled | default(false) or claude_code_mcp_n8n_enabled | default(false) or _firefly_render or _n8ndocs_render or _playwright_render or _openpencil_render or _penpot_render else '' }}
+    }{{ ',' if claude_code_mcp_filesystem_enabled | default(false) or claude_code_mcp_n8n_enabled | default(false) or _firefly_render or _n8ndocs_render or _playwright_render or _openpencil_render or _penpot_render or _qdrant_render else '' }}
 {% endif %}
 {% if claude_code_mcp_filesystem_enabled | default(false) %}
     "filesystem": {
@@ -20,7 +21,7 @@
       "command": "{{ claude_code_npm_prefix }}/bin/mcp-server-filesystem",
       "args": ["{{ claude_code_mcp_filesystem_workspace }}"],
       "env": {}
-    }{{ ',' if claude_code_mcp_n8n_enabled | default(false) or _firefly_render or _n8ndocs_render or _playwright_render or _openpencil_render or _penpot_render else '' }}
+    }{{ ',' if claude_code_mcp_n8n_enabled | default(false) or _firefly_render or _n8ndocs_render or _playwright_render or _openpencil_render or _penpot_render or _qdrant_render else '' }}
 {% endif %}
 {% if claude_code_mcp_n8n_enabled | default(false) %}
     "n8n": {
@@ -29,19 +30,19 @@
       "headers": {
         "Authorization": "Bearer ${N8N_API_KEY}"
       }
-    }{{ ',' if _firefly_render or _n8ndocs_render or _playwright_render or _openpencil_render or _penpot_render else '' }}
+    }{{ ',' if _firefly_render or _n8ndocs_render or _playwright_render or _openpencil_render or _penpot_render or _qdrant_render else '' }}
 {% endif %}
 {% if _firefly_render %}
     "firefly": {
       "type": "stdio",
-      "command": "uvx",
+      "command": "{{ claude_code_uvx_bin | default('/home/' + claude_code_user + '/.local/bin/uvx') }}",
       "args": ["firefly-iii-mcp-server"],
       "env": {
         "FIREFLY_API_URL": "{{ claude_code_mcp_firefly_api_url }}",
         "FIREFLY_PAT": "{{ firefly_pat }}",
         "FIREFLY_VERIFY_SSL": "true"
       }
-    }{{ ',' if _n8ndocs_render or _playwright_render or _openpencil_render or _penpot_render else '' }}
+    }{{ ',' if _n8ndocs_render or _playwright_render or _openpencil_render or _penpot_render or _qdrant_render else '' }}
 {% endif %}
 {% if _n8ndocs_render %}
     "n8n-docs": {
@@ -50,7 +51,7 @@
       "headers": {
         "Authorization": "Bearer {{ n8n_mcp_auth_token }}"
       }
-    }{{ ',' if _playwright_render or _openpencil_render or _penpot_render else '' }}
+    }{{ ',' if _playwright_render or _openpencil_render or _penpot_render or _qdrant_render else '' }}
 {% endif %}
 {% if _playwright_render %}
     "playwright": {
@@ -58,18 +59,30 @@
       "command": "npx",
       "args": ["@playwright/mcp@latest", "--headless", "--browser", "chromium", "--caps", "vision"],
       "env": {}
-    }{{ ',' if _openpencil_render or _penpot_render else '' }}
+    }{{ ',' if _openpencil_render or _penpot_render or _qdrant_render else '' }}
 {% endif %}
 {% if _openpencil_render %}
     "openpencil": {
       "type": "http",
       "url": "http://localhost:{{ openpencil_mcp_port | default(3150) }}/mcp"
-    }{{ ',' if _penpot_render else '' }}
+    }{{ ',' if _penpot_render or _qdrant_render else '' }}
 {% endif %}
 {% if _penpot_render %}
     "penpot": {
       "type": "http",
       "url": "http://localhost:{{ penpot_mcp_port | default(4401) }}/mcp"
+    }{{ ',' if _qdrant_render else '' }}
+{% endif %}
+{% if _qdrant_render %}
+    "qdrant": {
+      "type": "stdio",
+      "command": "/opt/workstation/ai-memory-worker/.venv/bin/python",
+      "args": ["/opt/workstation/ai-memory-worker/mcp_search.py"],
+      "env": {
+        "QDRANT_URL": "{{ qdrant_url | default('https://qd.ewutelo.cloud:443') }}",
+        "QDRANT_API_KEY": "{{ qdrant_api_key }}",
+        "HF_HUB_OFFLINE": "1"
+      }
     }
 {% endif %}
   }

@@ -22,6 +22,7 @@ qdrant_subdomain: "qd"
 nocodb_subdomain: "hq"              # → hq.<domain>
 plane_subdomain: "work"             # → work.<domain>
 dufs_subdomain: "drop"              # → drop.<domain> (file drop zone bidirectionnel)
+grapesjs_subdomain: "edit"          # → edit.<domain> (HTML visual editor — accès public)
 subdomain_preprod: "preprod"
 
 # --- VPN Access Control ---

@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GrapeJS — Éditeur MOP</title>
+  <link rel="stylesheet" href="/assets/grapesjs/css/grapes.min.css">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Toolbar ─────────────────────────────────────── */
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: #0f0f23;
+      border-bottom: 1px solid #2a2a4a;
+      flex-shrink: 0;
+      min-height: 44px;
+    }
+    #toolbar-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #9b9bc8;
+      margin-right: 4px;
+      white-space: nowrap;
+    }
+    .toolbar-sep { width: 1px; height: 22px; background: #2a2a4a; margin: 0 4px; }
+
+    button {
+      padding: 5px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+    button:hover { opacity: 0.85; }
+    #btn-import { background: #4a7eff; color: #fff; }
+    #btn-export { background: #27ae60; color: #fff; }
+    #btn-copy   { background: #8e44ad; color: #fff; }
+    #btn-clear  { background: #c0392b; color: #fff; }
+    #btn-undo   { background: #2c3e50; color: #ccc; }
+    #btn-redo   { background: #2c3e50; color: #ccc; }
+
+    /* ── Editor wrapper ───────────────────────────────── */
+    #editor-wrap {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    #gjs {
+      flex: 1;
+      height: 100%;
+    }
+
+    /* ── Modals ───────────────────────────────────────── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #1e1e3a;
+      border: 1px solid #2a2a5a;
+      border-radius: 8px;
+      padding: 20px;
+      width: 82vw;
+      max-width: 960px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-header h2 { font-size: 14px; color: #c8c8e8; font-weight: 600; }
+    .modal-hint { font-size: 11px; color: #666; }
+    .modal textarea {
+      flex: 1;
+      min-height: 360px;
+      background: #12121f;
+      border: 1px solid #333355;
+      border-radius: 4px;
+      color: #b8c8d8;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      padding: 12px;
+      resize: vertical;
+      outline: none;
+    }
+    .modal textarea:focus { border-color: #4a7eff; }
+    .modal-footer {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+    .btn-cancel { background: #2c2c4a; color: #aaa; }
+    .btn-ok     { background: #4a7eff; color: #fff; }
+    .btn-ok-g   { background: #27ae60; color: #fff; }
+    .btn-purple { background: #8e44ad; color: #fff; }
+
+    /* ── Toast notification ───────────────────────────── */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #27ae60;
+      color: #fff;
+      padding: 9px 18px;
+      border-radius: 5px;
+      font-size: 13px;
+      font-weight: 500;
+      display: none;
+      z-index: 10000;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    #toast.error { background: #c0392b; }
+  </style>
+</head>
+<body>
+
+<!-- ── Toolbar ─────────────────────────────────────────── -->
+<div id="toolbar">
+  <span id="toolbar-title">GrapeJS — Éditeur MOP</span>
+  <div class="toolbar-sep"></div>
+  <button id="btn-import">⬆ Importer HTML</button>
+  <button id="btn-export">⬇ Exporter HTML</button>
+  <button id="btn-copy">📋 Copier</button>
+  <div class="toolbar-sep"></div>
+  <button id="btn-undo">↩ Undo</button>
+  <button id="btn-redo">↪ Redo</button>
+  <div class="toolbar-sep"></div>
+  <button id="btn-clear">✕ Vider</button>
+</div>
+
+<!-- ── Editor ──────────────────────────────────────────── -->
+<div id="editor-wrap">
+  <div id="gjs"></div>
+</div>
+
+<!-- ── Modal: Import ───────────────────────────────────── -->
+<div class="modal-overlay" id="modal-import">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Importer HTML</h2>
+      <span class="modal-hint">Collez votre template complet (&lt;!DOCTYPE html&gt;…) ou juste le contenu &lt;body&gt;</span>
+    </div>
+    <textarea id="import-ta" placeholder="&lt;!DOCTYPE html&gt;&#10;&lt;html&gt;...&lt;/html&gt;"></textarea>
+    <div class="modal-footer">
+      <button class="btn-cancel" id="btn-import-cancel">Annuler</button>
+      <button class="btn-ok" id="btn-import-ok">Charger dans l'éditeur</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Export ───────────────────────────────────── -->
+<div class="modal-overlay" id="modal-export">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>HTML exporté</h2>
+      <span class="modal-hint">HTML complet prêt à coller ou à envoyer</span>
+    </div>
+    <textarea id="export-ta" readonly></textarea>
+    <div class="modal-footer">
+      <button class="btn-cancel" id="btn-export-close">Fermer</button>
+      <button class="btn-purple" id="btn-export-copy">📋 Copier</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ───────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script src="/assets/grapesjs/grapes.min.js"></script>
+<script>
+  /* ── Blocks MOP (tableaux, titres, listes — usage NOC/procédure) ── */
+  const MOP_BLOCKS = [
+    {
+      id: 'mop-h1', label: 'Titre H1', category: 'MOP',
+      content: '<h1 style="font-size:22px;font-weight:700;margin-bottom:12px">Titre principal</h1>'
+    },
+    {
+      id: 'mop-h2', label: 'Titre H2', category: 'MOP',
+      content: '<h2 style="font-size:17px;font-weight:600;margin-bottom:8px;color:#1a5276">Sous-titre</h2>'
+    },
+    {
+      id: 'mop-p', label: 'Paragraphe', category: 'MOP',
+      content: '<p style="margin-bottom:10px;line-height:1.6">Contenu du paragraphe.</p>'
+    },
+    {
+      id: 'mop-table-2col', label: 'Tableau 2 col', category: 'MOP',
+      content: `<table border="1" cellpadding="6" cellspacing="0"
+        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
+        <thead style="background:#1a5276;color:#fff">
+          <tr><th>Colonne 1</th><th>Colonne 2</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Valeur A</td><td>Valeur B</td></tr>
+          <tr style="background:#f2f4f4"><td>Valeur C</td><td>Valeur D</td></tr>
+        </tbody>
+      </table>`
+    },
+    {
+      id: 'mop-table-3col', label: 'Tableau 3 col', category: 'MOP',
+      content: `<table border="1" cellpadding="6" cellspacing="0"
+        style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px">
+        <thead style="background:#1a5276;color:#fff">
+          <tr><th>Étape</th><th>Action</th><th>Responsable</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>1</td><td>Action 1</td><td>NOC</td></tr>
+          <tr style="background:#f2f4f4"><td>2</td><td>Action 2</td><td>Ops</td></tr>
+        </tbody>
+      </table>`
+    },
+    {
+      id: 'mop-warning', label: 'Avertissement', category: 'MOP',
+      content: `<div style="background:#fef9e7;border-left:4px solid #f1c40f;
+        padding:10px 14px;margin-bottom:12px;font-size:13px">
+        <strong>⚠ Avertissement</strong><br>Texte de mise en garde ici.
+      </div>`
+    },
+    {
+      id: 'mop-danger', label: 'Danger / STOP', category: 'MOP',
+      content: `<div style="background:#fdedec;border-left:4px solid #e74c3c;
+        padding:10px 14px;margin-bottom:12px;font-size:13px">
+        <strong>🛑 STOP — Action critique</strong><br>Texte critique ici.
+      </div>`
+    },
+    {
+      id: 'mop-info', label: 'Note / Info', category: 'MOP',
+      content: `<div style="background:#ebf5fb;border-left:4px solid #2980b9;
+        padding:10px 14px;margin-bottom:12px;font-size:13px">
+        <strong>ℹ Info</strong><br>Information complémentaire ici.
+      </div>`
+    },
+    {
+      id: 'mop-list', label: 'Liste à puces', category: 'MOP',
+      content: '<ul style="padding-left:20px;margin-bottom:10px"><li>Élément 1</li><li>Élément 2</li><li>Élément 3</li></ul>'
+    },
+    {
+      id: 'mop-numbered', label: 'Liste numérotée', category: 'MOP',
+      content: '<ol style="padding-left:20px;margin-bottom:10px"><li>Étape 1</li><li>Étape 2</li><li>Étape 3</li></ol>'
+    },
+    {
+      id: 'mop-hr', label: 'Séparateur', category: 'MOP',
+      content: '<hr style="border:none;border-top:1px solid #ccc;margin:16px 0">'
+    },
+    {
+      id: 'mop-section', label: 'Section', category: 'Mise en page',
+      content: '<section style="padding:20px;margin-bottom:16px"></section>'
+    },
+    {
+      id: 'mop-2col', label: 'Deux colonnes', category: 'Mise en page',
+      content: `<div style="display:flex;gap:16px;margin-bottom:12px">
+        <div style="flex:1;padding:8px;background:#f8f9fa">Colonne gauche</div>
+        <div style="flex:1;padding:8px;background:#f8f9fa">Colonne droite</div>
+      </div>`
+    },
+  ];
+
+  /* ── Init GrapeJS ─────────────────────────────────── */
+  const editor = grapesjs.init({
+    container: '#gjs',
+    height: '100%',
+    width: 'auto',
+    storageManager: false,
+    blockManager: {
+      blocks: MOP_BLOCKS
+    },
+    styleManager: {
+      sectors: [
+        {
+          name: 'Typographie',
+          properties: ['font-family','font-size','font-weight','color','line-height','text-align']
+        },
+        {
+          name: 'Espacement',
+          properties: ['margin','margin-top','margin-right','margin-bottom','margin-left',
+                       'padding','padding-top','padding-right','padding-bottom','padding-left']
+        },
+        {
+          name: 'Dimensions',
+          properties: ['width','height','max-width','min-height']
+        },
+        {
+          name: 'Arrière-plan',
+          properties: ['background-color','background']
+        },
+        {
+          name: 'Bordure',
+          properties: ['border','border-radius','border-color','border-width','border-style']
+        },
+      ]
+    },
+    canvas: {
+      styles: [
+        'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
+      ]
+    }
+  });
+
+  /* ── Helpers ──────────────────────────────────────── */
+  function buildFullHtml() {
+    const html = editor.getHtml();
+    const css  = editor.getCss();
+    return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+${css}
+  </style>
+</head>
+<body>
+${html}
+</body>
+</html>`;
+  }
+
+  let toastTimer;
+  function toast(msg, isError = false) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = isError ? 'error' : '';
+    el.style.display = 'block';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.style.display = 'none'; }, 2500);
+  }
+
+  function openModal(id)  { document.getElementById(id).classList.add('open'); }
+  function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+  /* ── Import ───────────────────────────────────────── */
+  document.getElementById('btn-import').onclick = () => openModal('modal-import');
+  document.getElementById('btn-import-cancel').onclick = () => closeModal('modal-import');
+  document.getElementById('btn-import-ok').onclick = () => {
+    const raw = document.getElementById('import-ta').value.trim();
+    if (!raw) { toast('Aucun HTML détecté', true); return; }
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(raw, 'text/html');
+
+    // Extract <style> blocks
+    let css = '';
+    doc.querySelectorAll('style').forEach(s => { css += s.textContent + '\n'; s.remove(); });
+
+    // Use <body> content if full document, else raw as-is
+    const bodyHtml = doc.body ? doc.body.innerHTML : raw;
+
+    editor.setComponents(bodyHtml.trim());
+    if (css.trim()) editor.setStyle(css.trim());
+
+    closeModal('modal-import');
+    toast('Template chargé ✓');
+  };
+
+  /* ── Export ───────────────────────────────────────── */
+  document.getElementById('btn-export').onclick = () => {
+    document.getElementById('export-ta').value = buildFullHtml();
+    openModal('modal-export');
+  };
+  document.getElementById('btn-export-close').onclick = () => closeModal('modal-export');
+  document.getElementById('btn-export-copy').onclick = () => {
+    navigator.clipboard.writeText(document.getElementById('export-ta').value)
+      .then(() => toast('HTML copié dans le presse-papier ✓'))
+      .catch(() => toast('Erreur clipboard', true));
+  };
+
+  /* ── Copy direct ──────────────────────────────────── */
+  document.getElementById('btn-copy').onclick = () => {
+    navigator.clipboard.writeText(buildFullHtml())
+      .then(() => toast('HTML copié ✓'))
+      .catch(() => toast('Erreur clipboard', true));
+  };
+
+  /* ── Undo / Redo ──────────────────────────────────── */
+  document.getElementById('btn-undo').onclick = () => editor.UndoManager.undo();
+  document.getElementById('btn-redo').onclick = () => editor.UndoManager.redo();
+
+  /* ── Clear ────────────────────────────────────────── */
+  document.getElementById('btn-clear').onclick = () => {
+    if (!confirm('Vider l\'éditeur ? Cette action est irréversible.')) return;
+    editor.setComponents('');
+    editor.setStyle('');
+    toast('Éditeur vidé');
+  };
+
+  /* ── Close modals on overlay click ───────────────── */
+  document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+  });
+
+  /* ── Keyboard shortcuts ───────────────────────────── */
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) editor.UndoManager.undo();
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) editor.UndoManager.redo();
+    if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  });
+</script>
+</body>
+</html>

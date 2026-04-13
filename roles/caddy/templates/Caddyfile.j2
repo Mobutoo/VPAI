@@ -445,23 +445,17 @@ mop-build.{{ domain_name }} {
     import security_headers
 }
 
-# Typebot viewer / chatbot runtime (VPN-only)
+# Typebot viewer / chatbot runtime (public — MOP forms accessibles depuis Internet)
 mop.{{ domain_name }} {
-    import vpn_only
-    import vpn_error_page
-
     reverse_proxy typebot-viewer:3000
 
     import security_headers
 }
 
-# MOP PDF download server — serves /srv/mop-pdf volume (VPN-only)
+# MOP PDF download server — serves /srv/mop-pdf volume (public — liens de téléchargement partagés)
 mop-dl.{{ domain_name }} {
-    import vpn_only
-    import vpn_error_page
-
     root * /srv/mop-pdf
-    file_server
+    file_server browse
 
     import security_headers
 }
@@ -475,6 +469,15 @@ mop-mail.{{ domain_name }} {
 
     import security_headers
 }
+
+# === GrapeJS — Éditeur HTML visuel (edit.<domain>) — accès public ===
+{% if grapesjs_subdomain | default('') | length > 0 %}
+{{ grapesjs_subdomain }}.{{ domain_name }} {
+    reverse_proxy {{ project_name }}_grapesjs:80
+
+    import security_headers
+}
+{% endif %}
 
 # === Dufs — File drop zone bidirectionnel (drop.<domain>) ===
 # Upload drag & drop (navigateur → serveur) + Download (fichiers déposés par Claude)

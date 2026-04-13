@@ -1,0 +1,23 @@
+---
+# grapesjs — docker-compose
+# Éditeur HTML visuel GrapeJS — accès public, VPN non requis
+
+services:
+  grapesjs:
+    image: "{{ grapesjs_image }}"
+    container_name: "{{ project_name }}_grapesjs"
+    restart: unless-stopped
+    networks:
+      - javisi_frontend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  javisi_frontend:
+    name: "{{ project_name }}_frontend"
+    external: true

@@ -86,6 +86,8 @@
       tags: [flash-suite, phase3, apps]
     - role: dufs
       tags: [dufs, phase3, apps]
+    - role: grapesjs
+      tags: [grapesjs, phase3, apps]
     - role: msg2md
       tags: [msg2md, phase3, apps]
     - role: mop-templates

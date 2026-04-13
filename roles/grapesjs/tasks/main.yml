@@ -1,0 +1,34 @@
+---
+# grapesjs — tasks
+# Deploys: GrapeJS HTML visual editor (edit.<domain>)
+# Image: ghcr.io/mobutoo/grapesjs-editor (built from roles/grapesjs/files/Dockerfile)
+# Build:  cd roles/grapesjs/files && docker buildx build --platform linux/amd64 -t ghcr.io/mobutoo/grapesjs-editor:v0.21.13 --push .
+# Usage:  https://edit.<domain> — import HTML template, edit visually, export HTML
+
+- name: Create GrapeJS docker directory
+  ansible.builtin.file:
+    path: "{{ grapesjs_docker_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy GrapeJS docker-compose
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ grapesjs_docker_dir }}/docker-compose.yml"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart grapesjs stack
+
+- name: Start GrapeJS stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ grapesjs_docker_dir }}"
+    state: present
+    recreate: always
+  become: true
+  changed_when: false
+  tags: [grapesjs, phase3, apps]

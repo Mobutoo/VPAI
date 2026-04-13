@@ -1,0 +1,10 @@
+---
+# grapesjs — handlers
+
+- name: Restart grapesjs stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ grapesjs_docker_dir }}"
+    state: present
+    recreate: always
+  become: true
+  changed_when: false

@@ -1,0 +1,822 @@
+{
+  "version": "6.1",
+  "id": "cmnue3spm00051drwymwqg57l",
+  "name": "MOP NOC v2",
+  "events": [
+    {
+      "id": "evt_start",
+      "outgoingEdgeId": "edge_start_gtype",
+      "graphCoordinates": {
+        "x": 0,
+        "y": 0
+      },
+      "type": "start"
+    }
+  ],
+  "groups": [
+    {
+      "id": "g_type",
+      "title": "ACT 1 — Type incident",
+      "graphCoordinates": {
+        "x": 300,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_welcome",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "🔧 MOP NOC — Qualification d'incident",
+                    "bold": true
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Je vais vous guider pour qualifier l'incident et générer les procédures SOP applicables."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_type_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Quel est le type d'incident ?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_type",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "type_sup",
+              "outgoingEdgeId": "edge_type_crit",
+              "content": "SUPERVISION"
+            },
+            {
+              "id": "type_pho",
+              "outgoingEdgeId": "edge_type_crit",
+              "content": "PHOTONIQUE"
+            },
+            {
+              "id": "type_car",
+              "outgoingEdgeId": "edge_type_crit",
+              "content": "CARTE"
+            },
+            {
+              "id": "type_cha",
+              "outgoingEdgeId": "edge_type_crit",
+              "content": "CHASSIS"
+            },
+            {
+              "id": "type_nni",
+              "outgoingEdgeId": "edge_type_crit",
+              "content": "PORT NNI"
+            },
+            {
+              "id": "type_uni",
+              "outgoingEdgeId": "edge_type_crit",
+              "content": "PORT UNI"
+            },
+            {
+              "id": "type_oob",
+              "outgoingEdgeId": "edge_type_crit",
+              "content": "OOB"
+            }
+          ],
+          "options": {
+            "variableId": "var_incident_type"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_crit",
+      "title": "ACT 1 — Criticité",
+      "graphCoordinates": {
+        "x": 650,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_crit_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Quelle est la criticité de l'incident ?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_crit",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "crit_min",
+              "outgoingEdgeId": "edge_crit_info",
+              "content": "MINEUR"
+            },
+            {
+              "id": "crit_maj",
+              "outgoingEdgeId": "edge_crit_info",
+              "content": "MAJEUR"
+            },
+            {
+              "id": "crit_cri",
+              "outgoingEdgeId": "edge_crit_info",
+              "content": "CRITIQUE"
+            }
+          ],
+          "options": {
+            "variableId": "var_criticite"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_info",
+      "title": "ACT 1 — Informations",
+      "graphCoordinates": {
+        "x": 1000,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_info_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Informations de l'intervention :"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_site",
+          "type": "text input",
+          "options": {
+            "labels": {
+              "placeholder": "Site (ex: Telehouse Paris)",
+              "button": "Suivant"
+            },
+            "variableId": "var_site"
+          }
+        },
+        {
+          "id": "b_equipment",
+          "type": "text input",
+          "options": {
+            "labels": {
+              "placeholder": "Équipement (ex: Ribbon VHB-12)",
+              "button": "Suivant"
+            },
+            "variableId": "var_equipment"
+          }
+        },
+        {
+          "id": "b_technicien",
+          "type": "text input",
+          "options": {
+            "labels": {
+              "placeholder": "Technicien (ex: Jean Dupont)",
+              "button": "Suivant"
+            },
+            "variableId": "var_technicien"
+          }
+        },
+        {
+          "id": "b_date",
+          "type": "text input",
+          "outgoingEdgeId": "edge_info_route",
+          "options": {
+            "labels": {
+              "placeholder": "Date intervention (ex: 2026-04-13)",
+              "button": "Lancer"
+            },
+            "variableId": "var_date"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_route",
+      "title": "ACT 2 — Routage SOP",
+      "graphCoordinates": {
+        "x": 1350,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_route_info",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "🔍 Identification des procédures SOP applicables..."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_webhook_route",
+          "type": "Webhook",
+          "options": {
+            "responseVariableMapping": [
+              {
+                "id": "rvm_iid",
+                "variableId": "var_incident_id",
+                "bodyPath": "data.incident_id"
+              },
+              {
+                "id": "rvm_csv",
+                "variableId": "var_sops_csv",
+                "bodyPath": "data.sops_csv"
+              },
+              {
+                "id": "rvm_tot",
+                "variableId": "var_sops_total",
+                "bodyPath": "data.total"
+              }
+            ],
+            "isCustomBody": true,
+            "webhook": {
+              "headers": [
+                {
+                  "id": "hdr_ct1",
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "method": "POST",
+              "url": "https://mayi.ewutelo.cloud/webhook/mop-route",
+              "body": "{\"incident_type\":\"{{incident_type}}\",\"criticite\":\"{{criticite}}\"}"
+            }
+          }
+        },
+        {
+          "id": "b_route_confirm",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "✅ {{sops_total}} procédure(s) SOP identifiée(s) pour {{incident_type}} / {{criticite}}.\nIncident ID : {{incident_id}}"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_init_sop",
+          "type": "Set variable",
+          "options": {
+            "variableId": "var_current_sop_id",
+            "expressionToEvaluate": "\"{{sops_csv}}\".split(',')[0]",
+            "isCode": true
+          }
+        },
+        {
+          "id": "b_init_idx",
+          "type": "Set variable",
+          "outgoingEdgeId": "edge_route_loop",
+          "options": {
+            "variableId": "var_current_idx",
+            "expressionToEvaluate": "0",
+            "isCode": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_sop_loop",
+      "title": "ACT 3 — Boucle SOP",
+      "graphCoordinates": {
+        "x": 1700,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_fetch_sop",
+          "type": "Webhook",
+          "options": {
+            "responseVariableMapping": [
+              {
+                "id": "rvm_fd",
+                "variableId": "var_formatted_display",
+                "bodyPath": "formatted_display"
+              },
+              {
+                "id": "rvm_ns",
+                "variableId": "var_next_sop",
+                "bodyPath": "next_sop"
+              }
+            ],
+            "webhook": {
+              "method": "GET",
+              "url": "https://mayi.ewutelo.cloud/webhook/mop-get?sop_id={{current_sop_id}}&sops_list={{sops_csv}}&idx={{current_idx}}"
+            }
+          }
+        },
+        {
+          "id": "b_show_sop",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "{{formatted_display}}"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_ack",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "ack_ok",
+              "outgoingEdgeId": "edge_ack_cond",
+              "content": "✓ Procédure validée"
+            }
+          ],
+          "options": {}
+        }
+      ]
+    },
+    {
+      "id": "g_sop_cond",
+      "title": "ACT 3 — Condition boucle",
+      "graphCoordinates": {
+        "x": 2050,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_cond",
+          "type": "Condition",
+          "items": [
+            {
+              "id": "item_cond_empty",
+              "outgoingEdgeId": "edge_cond_true",
+              "content": {
+                "logicalOperator": "AND",
+                "comparisons": [
+                  {
+                    "id": "cmp_next_empty",
+                    "variableId": "var_next_sop",
+                    "comparisonOperator": "Is empty"
+                  }
+                ]
+              }
+            }
+          ],
+          "outgoingEdgeId": "edge_cond_false"
+        }
+      ]
+    },
+    {
+      "id": "g_sop_update",
+      "title": "ACT 3 — Mise à jour variables",
+      "graphCoordinates": {
+        "x": 2050,
+        "y": 300
+      },
+      "blocks": [
+        {
+          "id": "b_update_sop",
+          "type": "Set variable",
+          "options": {
+            "variableId": "var_current_sop_id",
+            "expressionToEvaluate": "\"{{next_sop}}\"",
+            "isCode": false
+          }
+        },
+        {
+          "id": "b_inc_idx",
+          "type": "Set variable",
+          "options": {
+            "variableId": "var_current_idx",
+            "expressionToEvaluate": "Number(\"{{current_idx}}\") + 1",
+            "isCode": true
+          }
+        },
+        {
+          "id": "b_jump",
+          "type": "Jump",
+          "options": {
+            "groupId": "g_sop_loop"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_valid",
+      "title": "ACT 4 — Validation",
+      "graphCoordinates": {
+        "x": 2400,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_valid_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "✅ Toutes les procédures ont été parcourues. Quel est le résultat de l'intervention ?"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_resolution",
+          "type": "choice input",
+          "items": [
+            {
+              "id": "res_ok",
+              "outgoingEdgeId": "edge_valid_comment",
+              "content": "Incident résolu"
+            },
+            {
+              "id": "res_esc",
+              "outgoingEdgeId": "edge_valid_comment",
+              "content": "Escalade NOC N2"
+            }
+          ],
+          "options": {
+            "variableId": "var_resolution"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_comment",
+      "title": "ACT 4 — Commentaires",
+      "graphCoordinates": {
+        "x": 2750,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_comment_prompt",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Commentaires sur l'intervention :"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_commentaires",
+          "type": "text input",
+          "options": {
+            "labels": {
+              "placeholder": "Observations, difficultés rencontrées...",
+              "button": "Suivant"
+            },
+            "variableId": "var_commentaires",
+            "isLong": true
+          }
+        },
+        {
+          "id": "b_duree",
+          "type": "text input",
+          "outgoingEdgeId": "edge_comment_gen",
+          "options": {
+            "labels": {
+              "placeholder": "Durée d'intervention (minutes)",
+              "button": "Générer MOP"
+            },
+            "variableId": "var_duree"
+          }
+        }
+      ]
+    },
+    {
+      "id": "g_generate",
+      "title": "ACT 5 — Génération PDF",
+      "graphCoordinates": {
+        "x": 3100,
+        "y": 0
+      },
+      "blocks": [
+        {
+          "id": "b_gen_info",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "📄 Génération du MOP en PDF..."
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "b_webhook_gen",
+          "type": "Webhook",
+          "options": {
+            "responseVariableMapping": [
+              {
+                "id": "rvm_purl",
+                "variableId": "var_pdf_url",
+                "bodyPath": "data.pdf_url"
+              },
+              {
+                "id": "rvm_pfn",
+                "variableId": "var_filename",
+                "bodyPath": "data.filename"
+              }
+            ],
+            "isCustomBody": true,
+            "webhook": {
+              "headers": [
+                {
+                  "id": "hdr_ct2",
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "method": "POST",
+              "url": "https://mayi.ewutelo.cloud/webhook/mop-generate",
+              "body": "{\"incident_id\":\"{{incident_id}}\",\"incident_type\":\"{{incident_type}}\",\"criticite\":\"{{criticite}}\",\"sops\":\"{{sops_csv}}\",\"site\":\"{{site}}\",\"equipment\":\"{{equipment}}\",\"technicien\":\"{{technicien}}\",\"date_intervention\":\"{{date}}\"}"
+            }
+          }
+        },
+        {
+          "id": "b_result",
+          "type": "text",
+          "content": {
+            "richText": [
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "✅ MOP généré avec succès !",
+                    "bold": true
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "📥 Télécharger : {{pdf_url}}"
+                  }
+                ]
+              },
+              {
+                "type": "p",
+                "children": [
+                  {
+                    "text": "Incident : {{incident_id}} | Résolution : {{resolution}} | Durée : {{duree}} min"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_start_gtype",
+      "from": {
+        "eventId": "evt_start"
+      },
+      "to": {
+        "groupId": "g_type"
+      }
+    },
+    {
+      "id": "edge_type_crit",
+      "from": {
+        "blockId": "b_type"
+      },
+      "to": {
+        "groupId": "g_crit"
+      }
+    },
+    {
+      "id": "edge_crit_info",
+      "from": {
+        "blockId": "b_crit"
+      },
+      "to": {
+        "groupId": "g_info"
+      }
+    },
+    {
+      "id": "edge_info_route",
+      "from": {
+        "blockId": "b_date"
+      },
+      "to": {
+        "groupId": "g_route"
+      }
+    },
+    {
+      "id": "edge_route_loop",
+      "from": {
+        "blockId": "b_init_idx"
+      },
+      "to": {
+        "groupId": "g_sop_loop"
+      }
+    },
+    {
+      "id": "edge_ack_cond",
+      "from": {
+        "blockId": "b_ack"
+      },
+      "to": {
+        "groupId": "g_sop_cond"
+      }
+    },
+    {
+      "id": "edge_cond_true",
+      "from": {
+        "blockId": "b_cond"
+      },
+      "to": {
+        "groupId": "g_valid"
+      }
+    },
+    {
+      "id": "edge_cond_false",
+      "from": {
+        "blockId": "b_cond"
+      },
+      "to": {
+        "groupId": "g_sop_update"
+      }
+    },
+    {
+      "id": "edge_valid_comment",
+      "from": {
+        "blockId": "b_resolution"
+      },
+      "to": {
+        "groupId": "g_comment"
+      }
+    },
+    {
+      "id": "edge_comment_gen",
+      "from": {
+        "blockId": "b_duree"
+      },
+      "to": {
+        "groupId": "g_generate"
+      }
+    }
+  ],
+  "variables": [
+    {
+      "id": "var_incident_type",
+      "name": "incident_type"
+    },
+    {
+      "id": "var_criticite",
+      "name": "criticite"
+    },
+    {
+      "id": "var_site",
+      "name": "site"
+    },
+    {
+      "id": "var_equipment",
+      "name": "equipment"
+    },
+    {
+      "id": "var_technicien",
+      "name": "technicien"
+    },
+    {
+      "id": "var_date",
+      "name": "date"
+    },
+    {
+      "id": "var_incident_id",
+      "name": "incident_id"
+    },
+    {
+      "id": "var_sops_csv",
+      "name": "sops_csv"
+    },
+    {
+      "id": "var_sops_total",
+      "name": "sops_total"
+    },
+    {
+      "id": "var_current_sop_id",
+      "name": "current_sop_id"
+    },
+    {
+      "id": "var_current_idx",
+      "name": "current_idx"
+    },
+    {
+      "id": "var_formatted_display",
+      "name": "formatted_display"
+    },
+    {
+      "id": "var_next_sop",
+      "name": "next_sop"
+    },
+    {
+      "id": "var_resolution",
+      "name": "resolution"
+    },
+    {
+      "id": "var_commentaires",
+      "name": "commentaires"
+    },
+    {
+      "id": "var_duree",
+      "name": "duree"
+    },
+    {
+      "id": "var_pdf_url",
+      "name": "pdf_url"
+    },
+    {
+      "id": "var_filename",
+      "name": "filename"
+    }
+  ],
+  "theme": {},
+  "selectedThemeTemplateId": null,
+  "settings": {},
+  "icon": null,
+  "folderId": null,
+  "publicId": "mop-generator-v1-mwqg57l",
+  "customDomain": null,
+  "workspaceId": "cmnu1vlk500001drwxvxfhlf7",
+  "resultsTablePreferences": null,
+  "isArchived": false,
+  "isClosed": false,
+  "whatsAppCredentialsId": null,
+  "riskLevel": null,
+  "spaceId": null
+}

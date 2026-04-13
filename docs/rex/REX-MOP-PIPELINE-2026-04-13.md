@@ -45,7 +45,30 @@ payload = {
 
 **Impact**: `deploy-workflow.sh` a été mis à jour pour appliquer ce filtrage automatiquement.
 
-### P5 — Playwright bloqué par notification "One click credential setup"
+### P5 — Clé API n8n introuvable (grep + vault + docker inspect)
+
+**Symptôme**: Aucune clé API n8n disponible pour appeler `deploy-workflow.sh`.  
+**Tentatives infructueuses** :
+- `grep -r "N8N_API_KEY"` dans le repo → vide
+- `ansible-vault view secrets.yml` → clé absente
+- `docker inspect javisi_n8n` + lecture des env vars → pas de clé injectée
+- Lecture de `roles/n8n/templates/n8n.env.j2` → variable définie mais valeur non settée en prod
+
+**Cause**: La clé n'avait jamais été créée — l'API n8n n'avait pas encore été utilisée dans ce projet.  
+**Fix**: Créer via Playwright → n8n UI Settings → API → "Create API Key" → nommer `claude-code-deploy` → scopes `workflow:read/update/list/activate`.  
+**Règle**: La clé API n8n n'est PAS dans vault pour ce projet. À créer manuellement via UI n8n, puis exporter avant d'utiliser `deploy-workflow.sh`.
+
+### P6 — `deploy-workflow.sh` échoue en deux étapes successives
+
+**Symptôme**: Première tentative → HTTP 403, puis après fix du scope → HTTP 400.  
+**Déroulé** :
+1. Preflight `GET /api/v1/workflows` → HTTP 403 (P3 — scope `workflow:list` manquant)
+2. Après ajout du scope → preflight OK, mais PUT → HTTP 400 "additional properties" (P4 — payload trop complet)
+
+**Cause**: Deux bugs indépendants découverts séquentiellement — impossible à détecter sans exécuter.  
+**Leçon**: Tester le preflight séparément du PUT avant toute tentative de deploy pour isoler les erreurs d'auth des erreurs de payload.
+
+### P7 — Playwright bloqué par notification "One click credential setup"
 
 **Symptôme**: Le clic sur un élément de dropdown ne fonctionnait pas — Playwright cliquait dans le vide.  
 **Cause**: Une alerte modale n8n ("One click credential setup") flottait par-dessus l'UI et interceptait les événements de clic.  

@@ -17,7 +17,7 @@ echo "[patch-enterprise] Patching license checks..."
 
 # --- Smart return values ---
 # isLicensed: true for everything EXCEPT showNonProdBanner
-LICENSED_BODY="if(feature==='feat:showNonProdBanner')return false;return true;"
+LICENSED_BODY="if(feature==='feat:showNonProdBanner')return false;if(feature==='feat:apiDisabled')return false;return true;"
 # getValue: 'Enterprise' for planName, -1 (unlimited) for everything else
 GETVALUE_BODY="if(feature==='planName')return'Enterprise';return -1;"
 

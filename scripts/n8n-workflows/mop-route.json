@@ -7,7 +7,10 @@
       "name": "Webhook mop-route",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [240, 300],
+      "position": [
+        240,
+        300
+      ],
       "webhookId": "mop-route",
       "parameters": {
         "httpMethod": "POST",
@@ -22,11 +25,14 @@
       "name": "SOP Matrix",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [460, 300],
+      "position": [
+        460,
+        300
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const MATRIX = {\n  SUPERVISION: {\n    MINEUR:   ['SOP-01', 'SOP-02'],\n    MAJEUR:   ['SOP-01', 'SOP-02', 'SOP-09'],\n    CRITIQUE: ['SOP-01', 'SOP-02', 'SOP-09', 'SOP-10'],\n  },\n  PHOTONIQUE: {\n    MINEUR:   ['SOP-03', 'SOP-04'],\n    MAJEUR:   ['SOP-03', 'SOP-04', 'SOP-05'],\n    CRITIQUE: ['SOP-03', 'SOP-04', 'SOP-05', 'SOP-11'],\n  },\n  CARTE: {\n    MINEUR:   ['SOP-06', 'SOP-07'],\n    MAJEUR:   ['SOP-06', 'SOP-07', 'SOP-08'],\n    CRITIQUE: ['SOP-06', 'SOP-07', 'SOP-08', 'SOP-13'],\n  },\n  CHASSIS: {\n    MINEUR:   ['SOP-06', 'SOP-11'],\n    MAJEUR:   ['SOP-06', 'SOP-11', 'SOP-12'],\n    CRITIQUE: ['SOP-06', 'SOP-11', 'SOP-12', 'SOP-13'],\n  },\n  'PORT NNI': {\n    MINEUR:   ['SOP-04', 'SOP-05'],\n    MAJEUR:   ['SOP-04', 'SOP-05', 'SOP-13'],\n    CRITIQUE: ['SOP-04', 'SOP-05', 'SOP-11', 'SOP-13'],\n  },\n  'PORT UNI': {\n    MINEUR:   ['SOP-04'],\n    MAJEUR:   ['SOP-04', 'SOP-13'],\n    CRITIQUE: ['SOP-04', 'SOP-13'],\n  },\n  OOB: {\n    MINEUR:   ['SOP-08', 'SOP-09'],\n    MAJEUR:   ['SOP-08', 'SOP-09', 'SOP-10'],\n    CRITIQUE: ['SOP-08', 'SOP-09', 'SOP-10'],\n  },\n};\n\nconst body = $input.first().json.body || $input.first().json;\nconst { incident_type, criticite } = body;\n\nif (!incident_type || !criticite) {\n  return [{ json: { error: 'missing incident_type or criticite', statusCode: 400 } }];\n}\n\nconst sops = MATRIX[incident_type]?.[criticite] ?? ['SOP-01'];\nconst incident_id = 'INC-' + new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);\n\nreturn [{ json: { sops, total: sops.length, incident_id } }];"
+        "jsCode": "const MATRIX = {\n  'SUPERVISION': {\n    MINEUR:   ['SOP-01', 'SOP-02'],\n    MAJEUR:   ['SOP-01', 'SOP-02', 'SOP-03', 'SOP-08', 'SOP-11'],\n    CRITIQUE: ['SOP-01', 'SOP-02', 'SOP-03', 'SOP-06', 'SOP-08', 'SOP-09', 'SOP-11'],\n  },\n  'PHOTONIQUE': {\n    MINEUR:   ['SOP-01', 'SOP-04'],\n    MAJEUR:   ['SOP-01', 'SOP-04', 'SOP-07', 'SOP-08', 'SOP-11'],\n    CRITIQUE: ['SOP-01', 'SOP-04', 'SOP-05', 'SOP-10', 'SOP-11', 'SOP-13'],\n  },\n  'CARTE SERVICE': {\n    MINEUR:   ['SOP-01', 'SOP-05'],\n    MAJEUR:   ['SOP-01', 'SOP-05', 'SOP-10', 'SOP-11'],\n    CRITIQUE: ['SOP-01', 'SOP-05', 'SOP-10', 'SOP-11', 'SOP-13'],\n  },\n  'CARTE MANAGEMENT': {\n    MINEUR:   ['SOP-01', 'SOP-03'],\n    MAJEUR:   ['SOP-01', 'SOP-03', 'SOP-06', 'SOP-10', 'SOP-11'],\n    CRITIQUE: ['SOP-01', 'SOP-03', 'SOP-06', 'SOP-10', 'SOP-11', 'SOP-13'],\n  },\n  'CARTE INFRA': {\n    MINEUR:   ['SOP-01', 'SOP-05'],\n    MAJEUR:   ['SOP-01', 'SOP-05', 'SOP-06', 'SOP-10', 'SOP-11'],\n    CRITIQUE: ['SOP-01', 'SOP-05', 'SOP-10', 'SOP-11', 'SOP-13'],\n  },\n  'CHASSIS': {\n    MINEUR:   ['SOP-01', 'SOP-05'],\n    MAJEUR:   ['SOP-01', 'SOP-05', 'SOP-10', 'SOP-11'],\n    CRITIQUE: ['SOP-01', 'SOP-04', 'SOP-05', 'SOP-10', 'SOP-11', 'SOP-13'],\n  },\n  'PORT NNI': {\n    MINEUR:   ['SOP-01', 'SOP-07'],\n    MAJEUR:   ['SOP-01', 'SOP-07', 'SOP-10', 'SOP-11'],\n    CRITIQUE: ['SOP-01', 'SOP-07', 'SOP-10', 'SOP-11', 'SOP-13'],\n  },\n  'PORT UNI': {\n    MINEUR:   ['SOP-01', 'SOP-07'],\n    MAJEUR:   ['SOP-01', 'SOP-07', 'SOP-10'],\n    CRITIQUE: ['SOP-01', 'SOP-07', 'SOP-10', 'SOP-11'],\n  },\n};\n\nconst body = $input.first().json.body || $input.first().json;\nconst { incident_type, criticite } = body;\n\nif (!incident_type || !criticite) {\n  return [{ json: { error: 'missing incident_type or criticite', statusCode: 400 } }];\n}\n\nconst sops = MATRIX[incident_type]?.[criticite] ?? ['SOP-01'];\nconst incident_id = 'INC-' + new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14);\n\nreturn [{ json: { sops, sops_csv: sops.join(','), total: sops.length, incident_id } }];"
       },
       "onError": "continueRegularOutput"
     },
@@ -35,7 +41,10 @@
       "name": "Respond to Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [680, 300],
+      "position": [
+        680,
+        300
+      ],
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ $json }}",
@@ -47,10 +56,26 @@
   ],
   "connections": {
     "Webhook mop-route": {
-      "main": [[{ "node": "SOP Matrix", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "SOP Matrix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "SOP Matrix": {
-      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {

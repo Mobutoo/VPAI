@@ -1,0 +1,30 @@
+---
+# dufs — docker-compose
+# Drop zone bidirectionnel : upload (navigateur→serveur) + download (serveur→navigateur)
+
+services:
+  dufs:
+    image: "{{ dufs_image }}"
+    container_name: "{{ project_name }}_dufs"
+    restart: unless-stopped
+    volumes:
+      - "{{ dufs_data_dir }}:/data"
+    # -A : enable all operations (upload, delete, search, webdav)
+    # --allow-upload : drag & drop depuis le navigateur
+    # --allow-delete : nettoyage via l'UI
+    # --log-format combined : logs Apache-style pour Caddy
+    command: /data -A --allow-upload --allow-delete --log-format combined
+    networks:
+      - javisi_frontend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  javisi_frontend:
+    name: "{{ project_name }}_frontend"
+    external: true

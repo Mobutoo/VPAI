@@ -1,0 +1,10 @@
+---
+# dufs — handlers
+
+- name: Restart dufs stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ dufs_docker_dir }}"
+    state: present
+    recreate: always
+  become: true
+  changed_when: false

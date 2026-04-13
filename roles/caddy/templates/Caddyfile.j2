@@ -468,3 +468,16 @@ mop-mail.{{ domain_name }} {
 
     import security_headers
 }
+
+# === Dufs — File drop zone bidirectionnel (drop.<domain>) ===
+# Upload drag & drop (navigateur → serveur) + Download (fichiers déposés par Claude)
+{% if dufs_subdomain | default('') | length > 0 %}
+{{ dufs_subdomain }}.{{ domain_name }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy {{ project_name }}_dufs:{{ dufs_port | default(5000) }}
+
+    import security_headers
+}
+{% endif %}

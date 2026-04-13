@@ -152,6 +152,7 @@ deploy-role: ## Déployer un rôle spécifique (usage: make deploy-role ROLE=n8n
 	$(ANSIBLE_PLAYBOOK) playbooks/stacks/site.yml \
 		-e "target_env=$(ENV)" \
 		--tags "$(ROLE)" \
+		$(EXTRA_ARGS) \
 		--diff
 
 .PHONY: openclaw-profile

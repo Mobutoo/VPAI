@@ -21,6 +21,7 @@ litellm_subdomain: "llm"
 qdrant_subdomain: "qd"
 nocodb_subdomain: "hq"              # → hq.<domain>
 plane_subdomain: "work"             # → work.<domain>
+dufs_subdomain: "drop"              # → drop.<domain> (file drop zone bidirectionnel)
 subdomain_preprod: "preprod"
 
 # --- VPN Access Control ---

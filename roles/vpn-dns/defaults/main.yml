@@ -78,14 +78,9 @@ _vpn_dns_records_default: >-
      if (qdrant_subdomain | default('')) | length > 0
      else [])
     +
-    ([{"name": firefly_subdomain ~ "." ~ domain_name, "type": "A",
+    ([{"name": flash_suite_subdomain ~ "." ~ domain_name, "type": "A",
        "value": _vpn_dns_vps_ts_ip}]
-     if (firefly_subdomain | default('')) | length > 0
-     else [])
-    +
-    ([{"name": zimboo_subdomain ~ "." ~ domain_name, "type": "A",
-       "value": _vpn_dns_vps_ts_ip}]
-     if (zimboo_subdomain | default('')) | length > 0
+     if (flash_suite_subdomain | default('')) | length > 0
      else [])
     +
     ([{"name": palais_subdomain ~ "." ~ domain_name, "type": "A",
@@ -132,21 +127,6 @@ _vpn_dns_records_default: >-
         and _vpn_dns_workstation_ts_ip | length > 0
      else [])
     +
-    ([{"name": mealie_subdomain ~ "." ~ domain_name, "type": "A",
-       "value": _vpn_dns_vps_ts_ip}]
-     if (mealie_subdomain | default('')) | length > 0
-     else [])
-    +
-    ([{"name": grocy_subdomain ~ "." ~ domain_name, "type": "A",
-       "value": _vpn_dns_vps_ts_ip}]
-     if (grocy_subdomain | default('')) | length > 0
-     else [])
-    +
-    ([{"name": koodia_subdomain ~ "." ~ domain_name, "type": "A",
-       "value": _vpn_dns_vps_ts_ip}]
-     if (koodia_subdomain | default('')) | length > 0
-     else [])
-    +
     ([{"name": openpencil_subdomain ~ "." ~ domain_name, "type": "A",
        "value": _vpn_dns_workstation_ts_ip}]
      if (openpencil_subdomain | default('')) | length > 0
@@ -187,4 +167,9 @@ _vpn_dns_records_default: >-
     +
     ([{"name": "mop-dl." ~ domain_name, "type": "A",
        "value": _vpn_dns_vps_ts_ip}])
+    +
+    ([{"name": dufs_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (dufs_subdomain | default('')) | length > 0
+     else [])
   }}

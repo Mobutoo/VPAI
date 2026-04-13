@@ -1,0 +1,6 @@
+---
+# dufs — defaults
+
+dufs_data_dir: "/opt/{{ project_name }}/data/dufs"
+dufs_docker_dir: "/opt/{{ project_name }}/docker/dufs"
+dufs_port: 5000

@@ -1,0 +1,62 @@
+{
+  "id": "FFIkjYMyxLdHroAN",
+  "name": "mop-get",
+  "nodes": [
+    {
+      "id": "mg-0001-0000-0000-000000000001",
+      "name": "Webhook mop-get",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "mop-get",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "mop-get",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mg-0001-0000-0000-000000000002",
+      "name": "SOP Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const SOPS = {\n  'SOP-01': {\n    titre: 'Vérification connectivité Lightsoft',\n    resume: 'Confirmer l\\'accès à la supervision Lightsoft et la cohérence des alarmes.',\n    etapes: [\n      { num: 1, titre: 'Ping gateway OOB', desc: 'Depuis la station NOC, ping 10.0.0.1. Timeout = problème réseau OOB.', sp_ref: '' },\n      { num: 2, titre: 'Ouvrir Lightsoft', desc: 'URL: http://lightsoft.internal — login admin.', sp_ref: 'OPSCNY-01-01' },\n      { num: 3, titre: 'Vérifier alarmes actives', desc: 'Menu Supervision > Alarmes. Noter criticité et heure.', sp_ref: '' },\n    ]\n  },\n  'SOP-02': {\n    titre: 'Reset GCC / OSPF Ribbon',\n    resume: 'Réinitialiser le canal GCC et relancer OSPF sur les nœuds VHB après perte de connectivité.',\n    etapes: [\n      { num: 1, titre: 'Identifier le nœud en alarme', desc: 'Lightsoft > Alarmes > filtrer OSPF / GCC.', sp_ref: '' },\n      { num: 2, titre: 'SSH sur le nœud', desc: 'ssh admin@<node-ip>. Vérifier état interface ge-ua/0.', sp_ref: '' },\n      { num: 3, titre: 'Reset GCC', desc: 'Commande CLI Ribbon : restart gcc-port. Attendre 30s.', sp_ref: 'OPSCNY-01-02' },\n      { num: 4, titre: 'Vérifier OSPF hello', desc: 'Lightsoft : alarme OSPF doit disparaître sous 90s.', sp_ref: '' },\n    ]\n  },\n  'SOP-03': {\n    titre: 'Escalade Ribbon TAC',\n    resume: 'Ouvrir un SR Ribbon Support si l\\'incident n\\'est pas auto-cleared après SOP-01/02.',\n    etapes: [\n      { num: 1, titre: 'Préparer les informations', desc: 'Numéro de châssis, version logicielle, alarmes actives, logs GCC.', sp_ref: '' },\n      { num: 2, titre: 'Créer le SR', desc: 'Portal : support.ribboncommunications.com > Create Service Request.', sp_ref: '' },\n      { num: 3, titre: 'Envoyer les logs', desc: 'Lightsoft > Export > System Logs (24h). Joindre au SR.', sp_ref: '' },\n    ]\n  },\n  'SOP-04': {\n    titre: 'Diagnostic optique OSNR / SPAN LOSS',\n    resume: 'Mesurer et interpréter les niveaux optiques sur la chaîne OTN.',\n    etapes: [\n      { num: 1, titre: 'Ouvrir Lightsoft > Supervision', desc: 'Menu Supervision > Vue topologie > sélectionner le lien concerné.', sp_ref: 'OPSCNY-01-03' },\n      { num: 2, titre: 'Relever OSNR', desc: 'Colonne OSNR doit être > 12 dB sur chaque canal. Valeur < 10 dB = critique.', sp_ref: '' },\n      { num: 3, titre: 'Mesurer SPAN LOSS', desc: 'Span Loss = différence Tx/Rx en dBm. Seuil normal < 20 dB.', sp_ref: '' },\n      { num: 4, titre: 'Inspecter connecteurs optiques', desc: 'Si SPAN LOSS élevé : nettoyer les connecteurs SC/PC avec kit IBC.', sp_ref: '' },\n    ]\n  },\n  'SOP-05': {\n    titre: 'Diagnostic FEC / BER',\n    resume: 'Analyser les compteurs FEC et le taux d\\'erreur bit sur les ports OTN.',\n    etapes: [\n      { num: 1, titre: 'Lightsoft > PM Counters', desc: 'Sélectionner port > onglet Performance Monitoring.', sp_ref: 'OPSCNY-02-13' },\n      { num: 2, titre: 'Lire FEC corrected/uncorrected', desc: 'FEC corrected en hausse = dégradation optique. Uncorrected > 0 = critique.', sp_ref: '' },\n      { num: 3, titre: 'Vérifier BER pre/post FEC', desc: 'Pre-FEC BER > 1e-3 = problème signal. Post-FEC BER > 0 = urgence.', sp_ref: '' },\n    ]\n  },\n  'SOP-06': {\n    titre: 'Remplacement carte service (LB/HB/VHB)',\n    resume: 'Procédure de remplacement d\\'une carte en défaut sur châssis Ribbon Apollo.',\n    etapes: [\n      { num: 1, titre: 'Confirmer la panne en DB', desc: 'Lightsoft : carte en état FAILED ou MISMATCH. SR Ribbon ouvert (SOP-03).', sp_ref: '' },\n      { num: 2, titre: 'Prévoir la carte de remplacement', desc: 'Vérifier le stock spare. Référence carte : étiquette châssis.', sp_ref: '' },\n      { num: 3, titre: 'Informer les clients affectés', desc: 'Identifier les ports UNI/NNI sur la carte. Notifier avant intervention.', sp_ref: '' },\n      { num: 4, titre: 'Extraire la carte défaillante', desc: 'Déverrouiller la carte, tirer avec précaution. ESD obligatoire.', sp_ref: '' },\n      { num: 5, titre: 'Insérer la carte de remplacement', desc: 'Insérer jusqu\\'au clic. Lightsoft : état IN-SERVICE sous 2 min.', sp_ref: '' },\n      { num: 6, titre: 'Valider la restauration', desc: 'SOP-13 (Viavi) obligatoire pour confirmation service.', sp_ref: 'OPSCNY-02-14' },\n    ]\n  },\n  'SOP-07': {\n    titre: 'Remplacement SFP / transceiver',\n    resume: 'Changer un SFP défectueux sur un port OTN ou OOB.',\n    etapes: [\n      { num: 1, titre: 'Identifier le port en LOS', desc: 'Lightsoft : alarme LOS sur port spécifique. Relever numéro de slot.', sp_ref: '' },\n      { num: 2, titre: 'Mesurer puissance optique', desc: 'Utiliser un power meter sur le connecteur d\\'entrée. Puissance nulle = SFP mort.', sp_ref: '' },\n      { num: 3, titre: 'Extraire le SFP', desc: 'Déverrouiller le levier du SFP. ESD obligatoire.', sp_ref: '' },\n      { num: 4, titre: 'Insérer le SFP de remplacement', desc: 'Même référence (longueur d\\'onde, portée). Insérer jusqu\\'au clic.', sp_ref: '' },\n      { num: 5, titre: 'Vérifier la remontée optique', desc: 'Lightsoft : LOS doit disparaître sous 60s. OSNR dans les normes.', sp_ref: '' },\n    ]\n  },\n  'SOP-08': {\n    titre: 'Vérification OOB Cogent / EuNetwork',\n    resume: 'Diagnostiquer la perte d\\'accès OOB via les liens Cogent et EuNetwork.',\n    etapes: [\n      { num: 1, titre: 'Vérifier état physique OOB', desc: 'Contrôler les LEDs du switch OOB Telehouse. Lien UP = vert.', sp_ref: '' },\n      { num: 2, titre: 'Ping opérateur OOB', desc: 'Ping gateway Cogent (10.x.x.1) ET EuNetwork (10.x.x.2).', sp_ref: '' },\n      { num: 3, titre: 'Vérifier routing OOB', desc: 'Traceroute vers Sese-AI. Comparer routes Cogent vs EuNetwork.', sp_ref: '' },\n      { num: 4, titre: 'Escalade opérateur si Down', desc: 'Cogent NOC : +33 1 XX XX XX. EuNetwork NOC : ticket portail.', sp_ref: '' },\n    ]\n  },\n  'SOP-09': {\n    titre: 'Diagnostic firewall Lugos',\n    resume: 'Vérifier et restaurer les règles de filtrage Lugos sur l\\'accès management.',\n    etapes: [\n      { num: 1, titre: 'Accéder à Lugos via console', desc: 'Accès console physique ou IPMI si OOB indisponible.', sp_ref: '' },\n      { num: 2, titre: 'Vérifier les règles actives', desc: 'lugos show rules | grep management. Confirmer que les IPs NOC sont autorisées.', sp_ref: '' },\n      { num: 3, titre: 'Réactiver la règle si désactivée', desc: 'lugos enable rule <id>. Tester l\\'accès depuis le poste NOC.', sp_ref: '' },\n    ]\n  },\n  'SOP-10': {\n    titre: 'Procédure bascule OLP',\n    resume: 'Gérer un protection switch déclenché sur un lien OTN (OLP = Optical Line Protection).',\n    etapes: [\n      { num: 1, titre: 'Identifier le switch OLP', desc: 'Lightsoft > Protection > état Working/Protect. Colonne Switch Reason.', sp_ref: '' },\n      { num: 2, titre: 'Vérifier la fibre Working', desc: 'Mesurer OSNR/puissance sur le chemin Working. Comparer au chemin Protect actif.', sp_ref: '' },\n      { num: 3, titre: 'Décider du revert', desc: 'Si chemin Working restauré : Lightsoft > Protection > Manual Revert.', sp_ref: '' },\n      { num: 4, titre: 'Confirmer la stabilité', desc: 'Observer 5 minutes. Pas de re-switch = stable. SOP-04 si dégradation persiste.', sp_ref: '' },\n    ]\n  },\n  'SOP-11': {\n    titre: 'Analyse PM Counters Lightsoft',\n    resume: 'Analyser les compteurs de performance pour identifier une dégradation progressive.',\n    etapes: [\n      { num: 1, titre: 'Lightsoft > PM Counters', desc: 'Sélectionner l\\'interface > onglet Performance Monitoring > période 24h.', sp_ref: 'OPSCNY-02-13' },\n      { num: 2, titre: 'Exporter les données', desc: 'Bouton Export CSV. Analyser ES (Errored Seconds) et SES (Severely Errored Seconds).', sp_ref: '' },\n      { num: 3, titre: 'Comparer aux seuils ITU-T G.826', desc: 'ES < 0.4% sur 24h. SES < 0.05% sur 24h.', sp_ref: '' },\n      { num: 4, titre: 'Identifier la tendance', desc: 'Si dégradation progressive → SOP-04 ou SOP-07. Ponctuelle → SOP-10.', sp_ref: '' },\n    ]\n  },\n  'SOP-12': {\n    titre: 'PM Counters détaillés (OPSCNY-02-13)',\n    resume: 'Procédure complète d\\'analyse des compteurs PM sur châssis Ribbon, référence OPSCNY-02-13.',\n    etapes: [\n      { num: 1, titre: 'Accéder à l\\'interface PM', desc: 'Lightsoft > Equipment > sélectionner châssis > Performance Monitoring.', sp_ref: 'OPSCNY-02-13' },\n      { num: 2, titre: 'Sélectionner la période', desc: '15 min pour diagnostic temps réel. 24h pour tendance. 30 jours pour bilan mensuel.', sp_ref: '' },\n      { num: 3, titre: 'Analyser les compteurs OTU', desc: 'OTU2: FEC-CW-COR, FEC-CW-UNCOR, BBE, ES, SES, UAS. Chaque compteur > 0 = anomalie.', sp_ref: '' },\n      { num: 4, titre: 'Analyser les compteurs ODU', desc: 'ODU2: BBE-PM, ES-PM, SES-PM, UAS-PM. Comparer aux seuils ITU-T G.826.', sp_ref: '' },\n      { num: 5, titre: 'Exporter le rapport', desc: 'Export PDF depuis Lightsoft. Joindre au rapport d\\'intervention.', sp_ref: 'OPSCNY-02-13' },\n    ]\n  },\n  'SOP-13': {\n    titre: 'Validation Viavi OTU2 post-restauration (OPSCNY-02-14)',\n    resume: 'Test de validation RFC 2544 / OTU2 après remplacement physique. Preuve de restauration service.',\n    etapes: [\n      { num: 1, titre: 'Connecter le Viavi MTS-5800', desc: 'Port OTU2 du MTS-5800 sur le port UNI/NNI à valider. Mode: OTU2 10.7G.', sp_ref: 'OPSCNY-02-14' },\n      { num: 2, titre: 'Configurer le test RFC 2544', desc: 'Throughput, Latency, Frame Loss, Back-to-Back. Taille trames: 64, 128, 256, 512, 1024, 1518 bytes.', sp_ref: '' },\n      { num: 3, titre: 'Lancer le test', desc: 'Durée minimale: 60s par taille de trame. Noter les résultats.', sp_ref: '' },\n      { num: 4, titre: 'Valider les seuils', desc: 'Throughput > 99.9%. Latency < 1ms. Frame Loss = 0%. B2B > 90 frames.', sp_ref: 'OPSCNY-02-14' },\n      { num: 5, titre: 'Exporter le rapport Viavi', desc: 'MTS-5800 > Reports > Export PDF. Joindre au rapport d\\'intervention final.', sp_ref: 'OPSCNY-02-14' },\n    ]\n  }\n};\n\nconst q = $input.first().json.query || {};\nconst sop_id = q.sop_id;\nconst sops_list = (q.sops_list || '').split(',').filter(Boolean);\nconst idx = parseInt(q.idx ?? '0', 10);\n\nif (!sop_id) {\n  return [{ json: { error: 'missing sop_id', statusCode: 400 } }];\n}\n\nconst sop = SOPS[sop_id];\nif (!sop) {\n  return [{ json: { error: `SOP ${sop_id} inconnue`, statusCode: 404 } }];\n}\n\nconst next_idx = idx + 1;\nconst is_last = next_idx >= sops_list.length;\nconst next_sop = is_last ? null : sops_list[next_idx];\n\nreturn [{ json: { ...sop, sop_id, next_sop, is_last, current_idx: idx } }];"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mg-0001-0000-0000-000000000003",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [680, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook mop-get": {
+      "main": [[{ "node": "SOP Data", "type": "main", "index": 0 }]]
+    },
+    "SOP Data": {
+      "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null
+}

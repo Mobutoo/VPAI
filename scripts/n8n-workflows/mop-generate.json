@@ -1,0 +1,158 @@
+{
+  "name": "mop-generate",
+  "nodes": [
+    {
+      "id": "mg-0001-0000-0000-000000000001",
+      "name": "Webhook mop-generate",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "mop-generate",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mop-generate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mg-0001-0000-0000-000000000002",
+      "name": "Build HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const SOPS = {\n  'SOP-01': 'Vérification alarmes supervision — identifier et acquitter les alarmes actives',\n  'SOP-02': 'Analyse logs supervision — isoler la source de l\\'alarme',\n  'SOP-03': 'Test OTDR — localiser une rupture ou dégradation fibre optique',\n  'SOP-04': 'Rebouclage port optique — vérifier la continuité du lien',\n  'SOP-05': 'Remplacement module SFP/XFP défectueux',\n  'SOP-06': 'Vérification alimentation — PSU principal et redondant',\n  'SOP-07': 'Réinitialisation logicielle équipement (soft reset)',\n  'SOP-08': 'Basculement OOB — activation accès hors bande de secours',\n  'SOP-09': 'Escalade NOC niveau 2 — ouverture ticket P1/P2',\n  'SOP-10': 'Procédure crise — activation cellule de crise NOC',\n  'SOP-11': 'Remplacement carte ligne / carte de service',\n  'SOP-12': 'Remplacement châssis — procédure de swap à froid',\n  'SOP-13': 'Coordination prestataire terrain — dispatch technicien on-site',\n};\n\nconst body = $input.first().json.body || $input.first().json;\nconst { incident_id, incident_type, criticite, sops, site, equipment, technicien, date_intervention, heure_debut } = body;\n\nconst sopRows = (sops || []).map(s => {\n  const desc = SOPS[s] || `Procédure ${s}`;\n  return `<tr><td class=\"sop-id\">${s}</td><td>${desc}</td><td class=\"checkbox\">☐ Fait</td></tr>`;\n}).join('\\n');\n\nconst criticiteClass = { MINEUR: 'crit-mineur', MAJEUR: 'crit-majeur', CRITIQUE: 'crit-critique' }[criticite] || '';\nconst dateStr = date_intervention || new Date().toISOString().slice(0, 10);\nconst heureStr = heure_debut || '--:--';\nconst genTime = new Date().toISOString().replace('T', ' ').slice(0, 19) + ' UTC';\nconst filename = `mop-${incident_id}.pdf`;\n\nconst html = `<!DOCTYPE html>\n<html lang=\"fr\">\n<head>\n<meta charset=\"UTF-8\">\n<style>\n  * { box-sizing: border-box; margin: 0; padding: 0; }\n  body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; color: #222; background: #fff; padding: 18mm 20mm; }\n  h1 { font-size: 18pt; color: #0d2b52; border-bottom: 3px solid #0d2b52; padding-bottom: 6px; margin-bottom: 14px; letter-spacing: 0.5px; }\n  h2 { font-size: 11pt; color: #0d2b52; margin: 18px 0 8px; text-transform: uppercase; letter-spacing: 0.3px; }\n  .meta-block { background: #f0f5fb; border-left: 4px solid #0d2b52; padding: 10px 14px; margin-bottom: 18px; border-radius: 2px; }\n  .meta-grid { display: grid; grid-template-columns: 130px 1fr 130px 1fr; gap: 4px 8px; }\n  .meta-label { font-weight: bold; color: #555; font-size: 9.5pt; }\n  .meta-val { color: #222; }\n  .crit-mineur  { color: #2e7d32; font-weight: bold; }\n  .crit-majeur  { color: #e65100; font-weight: bold; }\n  .crit-critique{ color: #b71c1c; font-weight: bold; background: #fff3f3; padding: 1px 4px; border-radius: 2px; }\n  table.sop-table { width: 100%; border-collapse: collapse; margin-top: 4px; }\n  table.sop-table th { background: #0d2b52; color: #fff; padding: 7px 10px; text-align: left; font-size: 10pt; }\n  table.sop-table td { padding: 6px 10px; border-bottom: 1px solid #dde4ef; vertical-align: top; }\n  table.sop-table tr:nth-child(even) td { background: #f7f9fc; }\n  .sop-id { font-weight: bold; color: #0d2b52; white-space: nowrap; width: 80px; }\n  .checkbox { text-align: center; width: 80px; font-size: 13pt; color: #888; }\n  .sig-block { margin-top: 30px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }\n  .sig-box { border: 1px solid #bbb; padding: 8px 12px; min-height: 60px; border-radius: 2px; }\n  .sig-label { font-size: 9pt; color: #777; margin-bottom: 4px; }\n  .footer { margin-top: 24px; font-size: 8.5pt; color: #aaa; border-top: 1px solid #ddd; padding-top: 6px; text-align: right; }\n</style>\n</head>\n<body>\n<h1>MOP — Procédure de Maintenance et d\\'Exploitation</h1>\n\n<div class=\"meta-block\">\n  <div class=\"meta-grid\">\n    <span class=\"meta-label\">Incident ID</span><span class=\"meta-val\">${incident_id || 'N/A'}</span>\n    <span class=\"meta-label\">Site</span><span class=\"meta-val\">${site || 'N/A'}</span>\n    <span class=\"meta-label\">Type incident</span><span class=\"meta-val\">${incident_type || 'N/A'}</span>\n    <span class=\"meta-label\">Équipement</span><span class=\"meta-val\">${equipment || 'N/A'}</span>\n    <span class=\"meta-label\">Criticité</span><span class=\"meta-val\"><span class=\"${criticiteClass}\">${criticite || 'N/A'}</span></span>\n    <span class=\"meta-label\">Technicien</span><span class=\"meta-val\">${technicien || 'N/A'}</span>\n    <span class=\"meta-label\">Date</span><span class=\"meta-val\">${dateStr}</span>\n    <span class=\"meta-label\">Heure début</span><span class=\"meta-val\">${heureStr}</span>\n  </div>\n</div>\n\n<h2>Procédures applicables — ${(sops || []).length} SOP(s)</h2>\n<table class=\"sop-table\">\n  <thead><tr><th>SOP</th><th>Description</th><th>Validation</th></tr></thead>\n  <tbody>${sopRows}</tbody>\n</table>\n\n<div class=\"sig-block\">\n  <div class=\"sig-box\"><div class=\"sig-label\">Technicien intervenant</div></div>\n  <div class=\"sig-box\"><div class=\"sig-label\">Responsable NOC</div></div>\n  <div class=\"sig-box\"><div class=\"sig-label\">Clôture — heure fin</div></div>\n</div>\n\n<div class=\"footer\">Généré automatiquement par MOP Machinery — ${genTime}</div>\n</body>\n</html>`;\n\nconst buf = Buffer.from(html, 'utf8');\nreturn [{\n  json: { incident_id, filename },\n  binary: {\n    'index.html': {\n      data: buf.toString('base64'),\n      mimeType: 'text/html',\n      fileName: 'index.html'\n    }\n  }\n}];"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mg-0001-0000-0000-000000000003",
+      "name": "Convert to PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://gotenberg:3000/forms/chromium/convert/html",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "index.html",
+              "inputDataFieldName": "index.html"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mg-0001-0000-0000-000000000004",
+      "name": "Write PDF",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        900,
+        300
+      ],
+      "parameters": {
+        "fileName": "={{ '/data/mop/pdf/' + $('Build HTML').item.json.filename }}",
+        "dataPropertyName": "data"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mg-0001-0000-0000-000000000005",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { pdf_url: 'https://mop-dl.ewutelo.cloud/' + $('Build HTML').item.json.filename, filename: $('Build HTML').item.json.filename, incident_id: $('Build HTML').item.json.incident_id } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook mop-generate": {
+      "main": [
+        [
+          {
+            "node": "Build HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build HTML": {
+      "main": [
+        [
+          {
+            "node": "Convert to PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to PDF": {
+      "main": [
+        [
+          {
+            "node": "Write PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write PDF": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "id": "jtvnpjvxc3RjnIwA"
+}

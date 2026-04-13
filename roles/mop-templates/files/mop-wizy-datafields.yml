@@ -1,5 +1,5 @@
 # MOP Template — Data Fields (source de vérité : wizy.ewutelo.cloud)
-# Mis à jour le 2026-04-14 — phase sub-headings 3.1-3.4, italic retiré
+# Mis à jour le 2026-04-14 — REX terrain dans s3_content, phases 3.1.1-3.1.4, italic retiré
 # Ce fichier définit le contrat d'interface entre n8n et le template GrapeJS
 #
 # Règle : tout champ injecté depuis n8n doit correspondre EXACTEMENT
@@ -32,7 +32,7 @@ revision:
   rev1_description:    ""
   rev1_prepared_by:    ""
   rev1_verified_by:    ""
-  rev1_approved_by:    "Service ISO"                  # Approbateur standard
+  rev1_approved_by:    "Service ISO"
 
 content:
   # Section 1
@@ -50,15 +50,33 @@ content:
   s2_1_1_title:        ""
 
   # Section 3 — Procédure d'intervention
-  # CONVENTION PHASES : les titres Phase X sont injectés dans s3_content
-  # en tant que sous-titres numérotés 3.1, 3.2, 3.3, 3.4 (styled paragraphs).
-  # Format injecté : "<p style='...'>3.1 Phase 1 — [titre]</p>\n[étapes]"
+  #
+  # Structure :
+  #   3.0  s3_title        — Titre de section
+  #   3.0  s3_content      — Contexte terrain / REX (une phrase sobre avant les phases)
+  #                          FORMAT ATTENDU (injection n8n) :
+  #                          "Contexte terrain (REX [période]) : [N] incidents [type] —
+  #                           [cause principale], [cause secondaire]. TTR moyen : [X] min."
+  #   3.1  s3_1_title      — "Phases d'intervention" (label fixe, non modifié)
+  #   3.1.1 s3_phase1_title / s3_phase1_content — Phase 1
+  #   3.1.2 s3_phase2_title / s3_phase2_content — Phase 2
+  #   3.1.3 s3_phase3_title / s3_phase3_content — Phase 3
+  #   3.1.4 s3_phase4_title / s3_phase4_content — Phase 4
+  #   3.1.x s3_1_1_title   — Sous-section complémentaire (ex: Points d'attention, Outils requis)
+
   s3_title:            "Description du processus (comment)"
-  s3_content:          ""                             # Phases 3.1→3.4 + étapes détaillées
-  s3_1_title:          ""                             # Sous-section complémentaire (ex: Points d'attention)
-  s3_1_content:        ""
-  s3_1_1_title:        ""                             # Niveau 3 (ex: Outils requis)
+  s3_content:          ""                             # Contexte terrain / REX — phrase technique sobre
+  s3_1_title:          "Phases d'intervention"        # Label fixe — parent des phases
+  s3_phase1_title:     ""                             # "3.1.1 Phase 1 — [titre]"
+  s3_phase1_content:   ""                             # Étapes Phase 1
+  s3_phase2_title:     ""                             # "3.1.2 Phase 2 — [titre]"
+  s3_phase2_content:   ""                             # Étapes Phase 2
+  s3_phase3_title:     ""                             # "3.1.3 Phase 3 — [titre]"
+  s3_phase3_content:   ""                             # Étapes Phase 3
+  s3_phase4_title:     ""                             # "3.1.4 Phase 4 — [titre]"
+  s3_phase4_content:   ""                             # Étapes Phase 4
+  s3_1_1_title:        ""                             # Niveau 3 complémentaire (optionnel)
 
   # Section 4
-  s4_title:            "Glossaires"
-  s4_content:          ""                             # Définitions et acronymes
+  s4_title:            "Glossaire"                    # Glossaire uniquement (REX déplacé en s3_content)
+  s4_content:          ""                             # Définitions et acronymes (NNI, LB, OLP, OSNR, SFP...)

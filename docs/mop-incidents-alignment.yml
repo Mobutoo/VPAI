@@ -1,0 +1,661 @@
+# MOP Incidents Alignment — 5 familles × 40 incidents
+# Source: incidents-otn-oob-v2.xlsx — Généré le 2026-04-14
+# Usage: valider familles, compléter refs SOP, lancer génération en lot via n8n
+#
+# CHAMPS À COMPLÉTER avant génération :
+#   - metadata.doc_date_vigueur
+#   - metadata.doc_date_revision
+#   - revision.rev1_date
+#   - content._sops_references (vérifier exhaustivité)
+#   - content.s3_phase2_content (SOPs spécifiques par famille)
+
+version: '1.0'
+generated: '2026-04-14'
+source: incidents-otn-oob-v2.xlsx
+families:
+- famille: SUPERVISION
+  categories:
+  - SUPERVISION
+  nb_incidents: 9
+  metadata:
+    doc_reference: OPSSD-03.03.M0.20-P-V1
+    doc_title: 'MOP — Supervision OTN/OOB : déconnexion et perte de lien'
+    doc_resume: Procédure d'intervention pour incidents de supervision (Lightsoft/OOB) affectant la visibilité des équipements
+      OTN.
+    doc_scope: Service Technique — Équipe NOC / exploitation OTN
+    doc_owner: Service Technique
+    doc_verificateur: Brigitte Gomes
+    doc_approbateur: Service ISO
+    doc_date_vigueur: À compléter (DD/MM/YYYY)
+    doc_date_revision: À compléter (DD/MM/YYYY)
+  revision:
+    rev1_num: '1.0'
+    rev1_date: À compléter (DD/MM/YYYY)
+    rev1_description: Création MOP famille SUPERVISION — 9 incidents couverts
+    rev1_prepared_by: Erwin MOMBILI
+    rev1_verified_by: Brigitte GOMES
+    rev1_approved_by: Service ISO
+  content:
+    s1_content: 'Symptômes couverts : Alarme MAJOR ''No OSPF hello packets received from neighbor'' sur noeuds VHB — auto-cleared
+      en <30s; Cogent prend le relai automatiquement; Coupure backbone Cogent; Impossible de se connecter à Lightsoft; NE
+      et PHO passent bleu/gris sur Lightsoft.
+
+
+      Impacts opérationnels : Aucun impact trafic si CLEARED. Symptome d''un protection switch photonique sous-jacent.; Instabilité
+      convergence — écran bleu/gris transitoire sur NE; Instabilité transitoire (convergence) — écran bleu/gris.'
+    s2_content: 'Responsable intervention : NOC / Ingénieur transmission.
+
+      Criticitées : MINEUR→MAJEUR, MINEUR, MAJEUR, CRITIQUE.
+
+      Escalade N+1 si TTR > 60 min ou impact service client.'
+    s3_content: 'Contexte terrain (REX Q1 2026) : 9 incidents supervision recensés — Protection switch sur chassis 9603 PHO
+      → interruption GCC → perte temporaire hello OSPF entre noeuds de gestion / Perte STMS / lien OOB / switch ou firewall
+      OOB HS. TTR moyen : 15–45 min.'
+    s3_phase1_title: 3.1.1 Phase 1 — Diagnostic initial
+    s3_phase1_content: '1. Acquitter alarmes sur Lightsoft/Vizee.
+
+      2. Identifier NE affecté et type d''alarme (NE en bleu/gris, MAJOR slot-rcpa Equipment Mismatch
+
+      MAJOR slot-rcpb System Synchronization Failed, MAJOR <NODE>:ge-ua/0.<ID> No OSPF hello packets received from neighbor
+      <DATE> <TIME>
+
+      Affected-Trails:
+
+      CLEARED <DATE> <TIME>).
+
+      3. Vérifier connectivité OOB vers équipement.
+
+      4. Consulter historique des tickets (NocoDB).'
+    s3_phase2_title: 3.1.2 Phase 2 — Isolation du défaut
+    s3_phase2_content: '1. Appliquer SOPs : SOP-01 → SOP-02 → SOP-08 → SOP-09 → SOP-11.
+
+      2. Vérifier alimentation et ventilation châssis.
+
+      3. Tester connectivité physique (SFP, fibre, câble OOB).
+
+      4. Comparer avec NE voisins pour isoler défaut local vs réseau.'
+    s3_phase3_title: 3.1.3 Phase 3 — Remédiation
+    s3_phase3_content: '1. Appliquer la procédure SOP identifiée en Phase 2.
+
+      2. Si échange matériel requis : contacter astreinte + ouvrir ticket RMA.
+
+      3. Documenter actions dans NocoDB (champ notes).
+
+      4. Vérifier reprise supervision Lightsoft/Vizee.'
+    s3_phase4_title: 3.1.4 Phase 4 — Clôture et capitalisation
+    s3_phase4_content: '1. Confirmer retour à la normale sur Lightsoft et Vizee.
+
+      2. Clôturer ticket NocoDB avec TTR réel, cause racine, actions.
+
+      3. Si incident récurrent : escalader vers ingénierie pour analyse RCA.
+
+      4. Mettre à jour la présente MOP si nouveau pattern identifié.'
+    s4_content: 'NE : Network Element. OOB : Out-of-Band. STMS : Synchronous Transport Management System. SFP : Small Form-factor
+      Pluggable. TTR : Time To Restore.'
+    _alarmes_lightsoft:
+    - NE en bleu/gris
+    - 'MAJOR slot-rcpa Equipment Mismatch
+
+      MAJOR slot-rcpb System Synchronization Failed'
+    - 'MAJOR <NODE>:ge-ua/0.<ID> No OSPF hello packets received from neighbor <DATE> <TIME>
+
+      Affected-Trails:
+
+      CLEARED <DATE> <TIME>'
+    _alarmes_vizee:
+    - 'Radius Account : log sessions'
+    - Alarme OSPF sur noeud VHB — verifier evenement protectionSwitch simultane sur 9603
+    - '[PROBLEM] RCP for optical applications in OPT9608 card is not up — Severity: High'
+    _sops_references:
+    - SOP-01 → SOP-02 → SOP-08 → SOP-09 → SOP-11
+    - SOP-01 → SOP-03 → SOP-10 (si >10 min)
+    - SOP-01 → SOP-04 → SOP-03 (→ SOP-11 si non CLEARED)
+    - SOP-01 → SOP-02 → SOP-08 → SOP-11
+    - SOP-01 → SOP-03 → SOP-11
+    - SOP-01 → SOP-03 → SOP-06 → SOP-10 → SOP-11
+    - SOP-01 → SOP-03 → SOP-02
+  _mapping_incidents:
+    S1:
+      sous_type: Déconnexion NE/PHO Lightsoft
+      symptome: NE et PHO passent bleu/gris sur Lightsoft
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-03 → SOP-02
+    S2:
+      sous_type: Perte lien L3 Cogent
+      symptome: Pas d'accès OOB depuis l'extérieur
+      criticite: MINEUR→MAJEUR
+      sops: SOP-01 → SOP-02 → SOP-08 → SOP-11
+    S3:
+      sous_type: Perte lien L2 Cogent
+      symptome: Coupure backbone Cogent
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-02 → SOP-08 → SOP-11
+    S4:
+      sous_type: Perte lien L2 EuNetwork
+      symptome: Cogent prend le relai automatiquement
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-02 → SOP-08 → SOP-11
+    S5:
+      sous_type: Perte double opérateur OOB simultanée
+      symptome: Plus aucun lien supervision externe actif
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-02 → SOP-08 → SOP-09 → SOP-11
+    S6:
+      sous_type: Perte login Lightsoft
+      symptome: Impossible de se connecter à Lightsoft
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-03 → SOP-11
+    S7:
+      sous_type: Écran gris/bleu (NE inaccessibles)
+      symptome: Points gris et bleu Lightsoft — chassis non joignables
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-03 → SOP-06 → SOP-10 → SOP-11
+    S8:
+      sous_type: Expiration certificat SSL
+      symptome: Perte supervision pendant laps de temps
+      criticite: MINEUR
+      sops: SOP-01 → SOP-03 → SOP-10 (si >10 min)
+    S9:
+      sous_type: Alarme OSPF hello — protection switch GCC (faux positif)
+      symptome: Alarme MAJOR 'No OSPF hello packets received from neighbor' sur noeuds VHB — auto-cleared en <30s
+      criticite: MINEUR→MAJEUR
+      sops: SOP-01 → SOP-04 → SOP-03 (→ SOP-11 si non CLEARED)
+- famille: PHOTONIQUE
+  categories:
+  - PHOTONIQUE
+  nb_incidents: 5
+  metadata:
+    doc_reference: OPSSD-03.03.M0.21-P-V1
+    doc_title: 'MOP — Photonique OTN : dégradations optiques et pannes amplificateur'
+    doc_resume: Procédure d'intervention pour dégradations de la couche optique (OLP, OSNR, SFP) sur liaisons OTN.
+    doc_scope: Service Technique — Équipe transmission / maintenance optique
+    doc_owner: Service Technique
+    doc_verificateur: Brigitte Gomes
+    doc_approbateur: Service ISO
+    doc_date_vigueur: À compléter (DD/MM/YYYY)
+    doc_date_revision: À compléter (DD/MM/YYYY)
+  revision:
+    rev1_num: '1.0'
+    rev1_date: À compléter (DD/MM/YYYY)
+    rev1_description: Création MOP famille PHOTONIQUE — 5 incidents couverts
+    rev1_prepared_by: Erwin MOMBILI
+    rev1_verified_by: Brigitte GOMES
+    rev1_approved_by: Service ISO
+  content:
+    s1_content: 'Symptômes couverts : Alarme LOS sur OSC + ampli; Alarme OLP HS — plus de bascule possible; Alarme SPAN LOSS
+      sur PHO — valeur dB dégradée; LOS/LOF multi-alarmes + absence totale signal; Vizee indique dégradation signal opérateur
+      (faux positif).
+
+
+      Impacts opérationnels : Bascule OLP si présente — sinon perte clients; Dégradation OSC + OSNR — évolutif vers coupure;
+      Mauvaise lecture état lien — SFP à remplacer.'
+    s2_content: 'Responsable intervention : NOC / Ingénieur transmission.
+
+      Criticitées : MAJEUR→CRITIQUE, MAJEUR, CRITIQUE.
+
+      Escalade N+1 si TTR > 60 min ou impact service client.'
+    s3_content: 'Contexte terrain (REX Q1 2026) : 5 incidents photonique recensés — Coupure réseau opérateur / Carte défectueuse
+      (réception signal HS). TTR moyen : 30–90 min.'
+    s3_phase1_title: 3.1.1 Phase 1 — Diagnostic initial
+    s3_phase1_content: '1. Acquitter alarmes sur Lightsoft/Vizee.
+
+      2. Identifier NE affecté et type d''alarme (SPAN LOSS sur PHO, LOS OSC + ampli, LOS + LOF généralisés).
+
+      3. Vérifier connectivité OOB vers équipement.
+
+      4. Consulter historique des tickets (NocoDB).'
+    s3_phase2_title: 3.1.2 Phase 2 — Isolation du défaut
+    s3_phase2_content: '1. Appliquer SOPs : SOP-01 → SOP-04 → SOP-07 → SOP-08 → SOP-11 → SOP-13.
+
+      2. Vérifier alimentation et ventilation châssis.
+
+      3. Tester connectivité physique (SFP, fibre, câble OOB).
+
+      4. Comparer avec NE voisins pour isoler défaut local vs réseau.'
+    s3_phase3_title: 3.1.3 Phase 3 — Remédiation
+    s3_phase3_content: '1. Appliquer la procédure SOP identifiée en Phase 2.
+
+      2. Si échange matériel requis : contacter astreinte + ouvrir ticket RMA.
+
+      3. Documenter actions dans NocoDB (champ notes).
+
+      4. Vérifier reprise supervision Lightsoft/Vizee.'
+    s3_phase4_title: 3.1.4 Phase 4 — Clôture et capitalisation
+    s3_phase4_content: '1. Confirmer retour à la normale sur Lightsoft et Vizee.
+
+      2. Clôturer ticket NocoDB avec TTR réel, cause racine, actions.
+
+      3. Si incident récurrent : escalader vers ingénierie pour analyse RCA.
+
+      4. Mettre à jour la présente MOP si nouveau pattern identifié.'
+    s4_content: 'OLP : Optical Level Power. OSNR : Optical Signal-to-Noise Ratio. SFP : Small Form-factor Pluggable. EDFA
+      : Erbium-Doped Fiber Amplifier. OTN : Optical Transport Network.'
+    _alarmes_lightsoft:
+    - SPAN LOSS sur PHO
+    - LOS OSC + ampli
+    - LOS + LOF généralisés
+    - Fausse alarme dégradation opérateur
+    _alarmes_vizee:
+    - Dégradation OSNR
+    - '[PROBLEM] LOS trail — Severity: High'
+    - Signal opérateur dégradé (faux positif)
+    - '[PROBLEM] Trail LOS — Severity: Critical'
+    _sops_references:
+    - SOP-01 → SOP-04 → SOP-07 → SOP-08 → SOP-11 → SOP-13
+    - SOP-01 → SOP-04 → SOP-08 → SOP-11
+    - SOP-01 → SOP-04 → SOP-07 → SOP-11
+    - SOP-01 → SOP-04 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    - SOP-01 → SOP-04 → SOP-05 → SOP-10 → SOP-11
+  _mapping_incidents:
+    P1:
+      sous_type: Perte lien opérateur — coupure franche
+      symptome: Alarme LOS sur OSC + ampli
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-04 → SOP-08 → SOP-11
+    P2:
+      sous_type: Dégradation signal (SPAN LOSS)
+      symptome: Alarme SPAN LOSS sur PHO — valeur dB dégradée
+      criticite: MAJEUR→CRITIQUE
+      sops: SOP-01 → SOP-04 → SOP-07 → SOP-11
+    P3:
+      sous_type: Perte carte OLP
+      symptome: Alarme OLP HS — plus de bascule possible
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-04 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    P4:
+      sous_type: Perte SFP OSC
+      symptome: Vizee indique dégradation signal opérateur (faux positif)
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-04 → SOP-05 → SOP-10 → SOP-11
+    P5:
+      sous_type: Coupure fibre physique (dark fiber)
+      symptome: LOS/LOF multi-alarmes + absence totale signal
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-04 → SOP-07 → SOP-08 → SOP-11 → SOP-13
+- famille: CARTE
+  categories:
+  - CARTE SERVICE
+  - CARTE MANAGEMENT
+  - CARTE INFRA
+  nb_incidents: 11
+  metadata:
+    doc_reference: OPSSD-03.03.M0.22-P-V1
+    doc_title: 'MOP — Cartes OTN : défaillances service, management et infrastructure'
+    doc_resume: Procédure d'intervention pour pannes de cartes (service, management, infrastructure) sur châssis OTN.
+    doc_scope: Service Technique — Équipe NOC / maintenance matérielle OTN
+    doc_owner: Service Technique
+    doc_verificateur: Brigitte Gomes
+    doc_approbateur: Service ISO
+    doc_date_vigueur: À compléter (DD/MM/YYYY)
+    doc_date_revision: À compléter (DD/MM/YYYY)
+  revision:
+    rev1_num: '1.0'
+    rev1_date: À compléter (DD/MM/YYYY)
+    rev1_description: Création MOP famille CARTE — 11 incidents couverts
+    rev1_prepared_by: Erwin MOMBILI
+    rev1_verified_by: Brigitte GOMES
+    rev1_approved_by: Service ISO
+  content:
+    s1_content: 'Symptômes couverts : Alarme FAN + RCP inaccessible; Alarme alimentation chassis; Alarme rectifier — 1 voie
+      restante; Alarme température chassis; Alarmes multiples — cascade HB + LB.
+
+
+      Impacts opérationnels : Chassis alimenté sur 1 voie — plus de redondance; Coupure clients HB + clients LB en cascade
+      (NNI); Coupure clients VHB + HB + LB en cascade.'
+    s2_content: 'Responsable intervention : NOC / Ingénieur transmission.
+
+      Criticitées : MAJEUR, CRITIQUE.
+
+      Escalade N+1 si TTR > 60 min ou impact service client.'
+    s3_content: 'Contexte terrain (REX Q1 2026) : 11 incidents carte recensés — Saturation mémoire (File System Usage Over
+      Threshold) / Carte défectueuse. TTR moyen : 30–90 min.'
+    s3_phase1_title: 3.1.1 Phase 1 — Diagnostic initial
+    s3_phase1_content: '1. Acquitter alarmes sur Lightsoft/Vizee.
+
+      2. Identifier NE affecté et type d''alarme (MAJOR slot-rcpa File System Usage Over Threshold Alert, Alarmes port LB
+      + CRC errors, Alarme température).
+
+      3. Vérifier connectivité OOB vers équipement.
+
+      4. Consulter historique des tickets (NocoDB).'
+    s3_phase2_title: 3.1.2 Phase 2 — Isolation du défaut
+    s3_phase2_content: '1. Appliquer SOPs : SOP-01 → SOP-05 → SOP-09 → SOP-11.
+
+      2. Vérifier alimentation et ventilation châssis.
+
+      3. Tester connectivité physique (SFP, fibre, câble OOB).
+
+      4. Comparer avec NE voisins pour isoler défaut local vs réseau.'
+    s3_phase3_title: 3.1.3 Phase 3 — Remédiation
+    s3_phase3_content: '1. Appliquer la procédure SOP identifiée en Phase 2.
+
+      2. Si échange matériel requis : contacter astreinte + ouvrir ticket RMA.
+
+      3. Documenter actions dans NocoDB (champ notes).
+
+      4. Vérifier reprise supervision Lightsoft/Vizee.'
+    s3_phase4_title: 3.1.4 Phase 4 — Clôture et capitalisation
+    s3_phase4_content: '1. Confirmer retour à la normale sur Lightsoft et Vizee.
+
+      2. Clôturer ticket NocoDB avec TTR réel, cause racine, actions.
+
+      3. Si incident récurrent : escalader vers ingénierie pour analyse RCA.
+
+      4. Mettre à jour la présente MOP si nouveau pattern identifié.'
+    s4_content: 'NNI : Network-to-Network Interface. UNI : User-to-Network Interface. LCT : Local Craft Terminal. MPLS : Multi-Protocol
+      Label Switching. GNE : Gateway Network Element.'
+    _alarmes_lightsoft:
+    - MAJOR slot-rcpa File System Usage Over Threshold Alert
+    - Alarmes port LB + CRC errors
+    - Alarme température
+    - Alarme rectifier
+    - Alarme switch + RCP inaccessible
+    _alarmes_vizee:
+    - Silence complet (plus de heartbeat)
+    - '[PROBLEM] HB card down'
+    - '[PROBLEM] LB card down'
+    - '[PROBLEM] VHB card down'
+    - '[PROBLEM] RCP for optical applications in OPT9608 card is not up — Severity: High'
+    _sops_references:
+    - SOP-01 → SOP-05 → SOP-09 → SOP-11
+    - SOP-01 → SOP-03 → SOP-06 → SOP-10
+    - SOP-01 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    - SOP-01 → SOP-05 → SOP-06 → SOP-10 → SOP-11
+    - SOP-01 → SOP-03 → SOP-06 → SOP-10 → SOP-11
+  _mapping_incidents:
+    CS1:
+      sous_type: Perte carte LB
+      symptome: Alarmes multiples — perte tous ports LB
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    CS2:
+      sous_type: Perte carte HB
+      symptome: Alarmes multiples — perte cascade LB
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    CS3:
+      sous_type: Perte carte VHB
+      symptome: Alarmes multiples — cascade HB + LB
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    CM1:
+      sous_type: Perte RCP — chassis 9608
+      symptome: Chassis gris/bleu sur Lightsoft
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-03 → SOP-06 → SOP-10 → SOP-11
+    CM2:
+      sous_type: Perte RCP — chassis 9603 (photonique)
+      symptome: Chassis 9603 gris/bleu — lien opérateur associé potentiellement perdu
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-03 → SOP-06 → SOP-10 → SOP-11
+    CM3:
+      sous_type: Alarme RCP sans perte (9608)
+      symptome: Chassis reste vert et joignable — alarme fichier système
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-03 → SOP-06 → SOP-10
+    CI1:
+      sous_type: Perte carte FAN — chassis 9608
+      symptome: Alarme température chassis
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    CI2:
+      sous_type: Perte switch intégré carte FAN — 9608
+      symptome: Alarme FAN + RCP inaccessible
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-05 → SOP-06 → SOP-10 → SOP-11
+    CI3:
+      sous_type: Perte carte Power
+      symptome: Alarme alimentation chassis
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    CI4:
+      sous_type: Perte rectifier (chassis 9608)
+      symptome: Alarme rectifier — 1 voie restante
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    CI5:
+      sous_type: Perte alimentation secteur totale
+      symptome: Extinction totale du rack — silence alarmes
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-05 → SOP-09 → SOP-11
+- famille: CHASSIS
+  categories:
+  - CHASSIS
+  nb_incidents: 5
+  metadata:
+    doc_reference: OPSSD-03.03.M0.23-P-V1
+    doc_title: 'MOP — Châssis OTN : alimentation, ventilation et défaillances hardware'
+    doc_resume: Procédure d'intervention pour incidents châssis OTN (alimentation redondante, ventilation, reboot inattendu).
+    doc_scope: Service Technique — Équipe NOC / maintenance infrastructure
+    doc_owner: Service Technique
+    doc_verificateur: Brigitte Gomes
+    doc_approbateur: Service ISO
+    doc_date_vigueur: À compléter (DD/MM/YYYY)
+    doc_date_revision: À compléter (DD/MM/YYYY)
+  revision:
+    rev1_num: '1.0'
+    rev1_date: À compléter (DD/MM/YYYY)
+    rev1_description: Création MOP famille CHASSIS — 5 incidents couverts
+    rev1_prepared_by: Erwin MOMBILI
+    rev1_verified_by: Brigitte GOMES
+    rev1_approved_by: Service ISO
+  content:
+    s1_content: 'Symptômes couverts : Alarme générale + cascade HB + LB; Alarme générale + cascade LB; Alarme générale + perte
+      tous ports LB; Alarmes LOS OSC + ampli — vérifier chassis vs opérateur; Alarmes LOS trails — tous clients impactés.
+
+
+      Impacts opérationnels : Perte clients HB + LB en cascade; Perte clients VHB + HB + LB en cascade; Perte lien opérateur
+      + tous clients du chassis.'
+    s2_content: 'Responsable intervention : NOC / Ingénieur transmission.
+
+      Criticitées : CRITIQUE.
+
+      Escalade N+1 si TTR > 60 min ou impact service client.'
+    s3_content: 'Contexte terrain (REX Q1 2026) : 5 incidents chassis recensés — Chassis défectueux. TTR moyen : 30–90 min.'
+    s3_phase1_title: 3.1.1 Phase 1 — Diagnostic initial
+    s3_phase1_content: '1. Acquitter alarmes sur Lightsoft/Vizee.
+
+      2. Identifier NE affecté et type d''alarme (LOS trails généralisés, LOS OSC + ampli, Alarme général chassis + ports
+      LB).
+
+      3. Vérifier connectivité OOB vers équipement.
+
+      4. Consulter historique des tickets (NocoDB).'
+    s3_phase2_title: 3.1.2 Phase 2 — Isolation du défaut
+    s3_phase2_content: '1. Appliquer SOPs : SOP-01 → SOP-05 → SOP-10 → SOP-11 → SOP-13.
+
+      2. Vérifier alimentation et ventilation châssis.
+
+      3. Tester connectivité physique (SFP, fibre, câble OOB).
+
+      4. Comparer avec NE voisins pour isoler défaut local vs réseau.'
+    s3_phase3_title: 3.1.3 Phase 3 — Remédiation
+    s3_phase3_content: '1. Appliquer la procédure SOP identifiée en Phase 2.
+
+      2. Si échange matériel requis : contacter astreinte + ouvrir ticket RMA.
+
+      3. Documenter actions dans NocoDB (champ notes).
+
+      4. Vérifier reprise supervision Lightsoft/Vizee.'
+    s3_phase4_title: 3.1.4 Phase 4 — Clôture et capitalisation
+    s3_phase4_content: '1. Confirmer retour à la normale sur Lightsoft et Vizee.
+
+      2. Clôturer ticket NocoDB avec TTR réel, cause racine, actions.
+
+      3. Si incident récurrent : escalader vers ingénierie pour analyse RCA.
+
+      4. Mettre à jour la présente MOP si nouveau pattern identifié.'
+    s4_content: 'PSU : Power Supply Unit. NEBS : Network Equipment Building Standards. IEC : International Electrotechnical
+      Commission. FRU : Field Replaceable Unit.'
+    _alarmes_lightsoft:
+    - LOS trails généralisés
+    - LOS OSC + ampli
+    - Alarme général chassis + ports LB
+    - Alarme général chassis + cascade
+    _alarmes_vizee:
+    - '[PROBLEM] VHB chassis down'
+    - '[PROBLEM] LB chassis down'
+    - '[PROBLEM] HB chassis down'
+    - '[PROBLEM] Trail LOS — Severity: Critical'
+    _sops_references:
+    - SOP-01 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    - SOP-01 → SOP-04 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+  _mapping_incidents:
+    CH1:
+      sous_type: Perte chassis LB
+      symptome: Alarme générale + perte tous ports LB
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    CH2:
+      sous_type: Perte chassis HB
+      symptome: Alarme générale + cascade LB
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    CH3:
+      sous_type: Perte chassis VHB
+      symptome: Alarme générale + cascade HB + LB
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    CH4:
+      sous_type: Perte chassis 9603 sans OLP
+      symptome: Alarmes LOS OSC + ampli — vérifier chassis vs opérateur
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-04 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+    CH5:
+      sous_type: Perte chassis 9603 avec OLP
+      symptome: Alarmes LOS trails — tous clients impactés
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-04 → SOP-05 → SOP-10 → SOP-11 → SOP-13
+- famille: PORT_NNI_UNI
+  categories:
+  - PORT NNI
+  - PORT UNI
+  nb_incidents: 10
+  metadata:
+    doc_reference: OPSSD-03.03.M0.24-P-V1
+    doc_title: 'MOP — Ports NNI/UNI OTN : pertes de signal et dégradations de service'
+    doc_resume: Procédure d'intervention pour incidents sur ports NNI et UNI (pertes LOS, dégradations BER, alarmes ODU).
+    doc_scope: Service Technique — Équipe NOC / exploitation transport
+    doc_owner: Service Technique
+    doc_verificateur: Brigitte Gomes
+    doc_approbateur: Service ISO
+    doc_date_vigueur: À compléter (DD/MM/YYYY)
+    doc_date_revision: À compléter (DD/MM/YYYY)
+  revision:
+    rev1_num: '1.0'
+    rev1_date: À compléter (DD/MM/YYYY)
+    rev1_description: Création MOP famille PORT_NNI_UNI — 10 incidents couverts
+    rev1_prepared_by: Erwin MOMBILI
+    rev1_verified_by: Brigitte GOMES
+    rev1_approved_by: Service ISO
+  content:
+    s1_content: 'Symptômes couverts : Alarme sur port UNI; Alarmes NNI 0 HB — tous ports HB impactés; Alarmes NNI 0/1 VHB
+      + cascade NNI 12/13; Alarmes NNI 1 HB — tous ports HB impactés; Alarmes NNI 12 VHB + cascade HB + LB.
+
+
+      Impacts opérationnels : Impact limité au client du port concerné; Perte clients HB NNI16 + tous ports LB en cascade;
+      Perte clients HB NNI20 + ports LB en cascade.'
+    s2_content: 'Responsable intervention : NOC / Ingénieur transmission.
+
+      Criticitées : MAJEUR, CRITIQUE.
+
+      Escalade N+1 si TTR > 60 min ou impact service client.'
+    s3_content: 'Contexte terrain (REX Q1 2026) : 10 incidents port_nni_uni recensés — Port défectueux / Port / SFP client
+      défectueux / lien client HS. TTR moyen : 15–45 min.'
+    s3_phase1_title: 3.1.1 Phase 1 — Diagnostic initial
+    s3_phase1_content: '1. Acquitter alarmes sur Lightsoft/Vizee.
+
+      2. Identifier NE affecté et type d''alarme (Alarmes NNI 13 VHB + cascade, Alarmes NNI 0 HB, Alarmes NNI 16 HB + cascade
+      LB).
+
+      3. Vérifier connectivité OOB vers équipement.
+
+      4. Consulter historique des tickets (NocoDB).'
+    s3_phase2_title: 3.1.2 Phase 2 — Isolation du défaut
+    s3_phase2_content: '1. Appliquer SOPs : SOP-01 → SOP-07 → SOP-10 → SOP-11 → SOP-13.
+
+      2. Vérifier alimentation et ventilation châssis.
+
+      3. Tester connectivité physique (SFP, fibre, câble OOB).
+
+      4. Comparer avec NE voisins pour isoler défaut local vs réseau.'
+    s3_phase3_title: 3.1.3 Phase 3 — Remédiation
+    s3_phase3_content: '1. Appliquer la procédure SOP identifiée en Phase 2.
+
+      2. Si échange matériel requis : contacter astreinte + ouvrir ticket RMA.
+
+      3. Documenter actions dans NocoDB (champ notes).
+
+      4. Vérifier reprise supervision Lightsoft/Vizee.'
+    s3_phase4_title: 3.1.4 Phase 4 — Clôture et capitalisation
+    s3_phase4_content: '1. Confirmer retour à la normale sur Lightsoft et Vizee.
+
+      2. Clôturer ticket NocoDB avec TTR réel, cause racine, actions.
+
+      3. Si incident récurrent : escalader vers ingénierie pour analyse RCA.
+
+      4. Mettre à jour la présente MOP si nouveau pattern identifié.'
+    s4_content: 'NNI : Network-to-Network Interface. UNI : User-to-Network Interface. LOS : Loss Of Signal. BER : Bit Error
+      Rate. ODU : Optical Data Unit. OTU : Optical Transport Unit.'
+    _alarmes_lightsoft:
+    - Alarmes NNI 13 VHB + cascade
+    - Alarmes NNI 0 HB
+    - Alarmes NNI 16 HB + cascade LB
+    - Alarme port UNI
+    - Alarmes NNI 16 LB
+    _alarmes_vizee:
+    - '[PROBLEM] UNI port down'
+    _sops_references:
+    - SOP-01 → SOP-07 → SOP-10 → SOP-11 → SOP-13
+    - SOP-01 → SOP-07 → SOP-10
+  _mapping_incidents:
+    N1:
+      sous_type: Perte NNI 16 — carte LB
+      symptome: Alarmes multiples port NNI 16 LB
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-07 → SOP-10 → SOP-11 → SOP-13
+    N2:
+      sous_type: Perte NNI 17 — carte LB
+      symptome: Alarmes multiples port NNI 17 LB
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-07 → SOP-10 → SOP-11 → SOP-13
+    N3:
+      sous_type: Perte NNI 16 — carte HB
+      symptome: Alarmes NNI 16 HB + cascade LB
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-07 → SOP-10 → SOP-11 → SOP-13
+    N4:
+      sous_type: Perte NNI 20 — carte HB
+      symptome: Alarmes NNI 20 HB + cascade LB
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-07 → SOP-10 → SOP-11 → SOP-13
+    N5:
+      sous_type: Perte NNI 0 — carte HB
+      symptome: Alarmes NNI 0 HB — tous ports HB impactés
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-07 → SOP-10 → SOP-11 → SOP-13
+    N6:
+      sous_type: Perte NNI 1 — carte HB
+      symptome: Alarmes NNI 1 HB — tous ports HB impactés
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-07 → SOP-10 → SOP-11 → SOP-13
+    N7:
+      sous_type: Perte NNI 12 — carte VHB
+      symptome: Alarmes NNI 12 VHB + cascade HB + LB
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-07 → SOP-10 → SOP-11 → SOP-13
+    N8:
+      sous_type: Perte NNI 13 — carte VHB
+      symptome: Alarmes NNI 13 VHB + cascade HB + LB
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-07 → SOP-10 → SOP-11 → SOP-13
+    N9:
+      sous_type: Perte NNI 0/1 — carte VHB
+      symptome: Alarmes NNI 0/1 VHB + cascade NNI 12/13
+      criticite: CRITIQUE
+      sops: SOP-01 → SOP-07 → SOP-10 → SOP-11 → SOP-13
+    U1:
+      sous_type: Perte port UNI
+      symptome: Alarme sur port UNI
+      criticite: MAJEUR
+      sops: SOP-01 → SOP-07 → SOP-10

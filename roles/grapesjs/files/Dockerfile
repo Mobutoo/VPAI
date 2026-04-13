@@ -1,22 +1,31 @@
-# GrapeJS HTML Visual Editor
-# Stage 1: Install GrapeJS via npm (fetches pinned assets at build time)
+# GrapeJS HTML Visual Editor — wizy
+# Stage 1: Install GrapeJS + Express (pinned, fetched at build time)
 FROM node:22.14-alpine AS deps
 WORKDIR /app
 RUN npm init -y && \
     npm install \
-      grapesjs@0.21.13 && \
+      grapesjs@0.21.13 \
+      express@4.19.2 && \
     npm cache clean --force
 
-# Stage 2: Nginx static server (ARM64 + amd64 via buildx)
-FROM nginx:1.27.4-alpine
-LABEL org.opencontainers.image.title="GrapeJS HTML Editor" \
-      org.opencontainers.image.version="0.21.13" \
+# Stage 2: Node runtime (serves static files + API + SSE)
+FROM node:22.14-alpine
+LABEL org.opencontainers.image.title="GrapeJS HTML Editor — wizy API" \
+      org.opencontainers.image.version="1.0.0" \
       org.opencontainers.image.source="https://github.com/Mobutoo/vpai"
 
-# GrapeJS assets (JS + CSS) from npm
-COPY --from=deps /app/node_modules/grapesjs/dist /usr/share/nginx/html/assets/grapesjs
+WORKDIR /app
 
-# Editor HTML (single-page app — no build step required)
-COPY index.html /usr/share/nginx/html/index.html
+# Dependencies
+COPY --from=deps /app/node_modules ./node_modules
+
+# API server
+COPY server.js ./server.js
+
+# Static files: editor + GrapeJS assets
+RUN mkdir -p public/assets/grapesjs
+COPY --from=deps /app/node_modules/grapesjs/dist ./public/assets/grapesjs
+COPY index.html ./public/index.html
 
 EXPOSE 80
+CMD ["node", "server.js"]

@@ -3,4 +3,4 @@
 
 grapesjs_docker_dir: "/opt/{{ project_name }}/docker/grapesjs"
 grapesjs_port: 3400
-grapesjs_subdomain: "edit"  # → edit.<domain>
+grapesjs_subdomain: "wizy"  # → wizy.<domain>

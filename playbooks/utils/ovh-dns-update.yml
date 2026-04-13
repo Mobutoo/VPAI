@@ -1,0 +1,76 @@
+---
+# playbooks/utils/ovh-dns-update.yml
+# Update an existing OVH DNS record via REST API (PUT)
+# Usage: ansible-playbook playbooks/utils/ovh-dns-update.yml \
+#          -e "dns_record_id=5402204311 dns_target=137.74.114.167"
+#
+# OVH API: PUT /domain/zone/{zone}/record/{id}
+# Docs: https://api.ovh.com/console/#/domain/zone/%7BzoneName%7D/record/%7Bid%7D#PUT
+
+- name: "Update OVH DNS record"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    dns_zone: "{{ domain_name }}"
+    dns_target: "{{ dns_target }}"
+    dns_ttl: 3600
+    dns_record_id: "{{ dns_record_id }}"
+    ovh_api_base: "https://eu.api.ovh.com/1.0"
+
+  tasks:
+    - name: "Update DNS record {{ dns_record_id }} → {{ dns_target }}"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          TIMESTAMP=$(curl -s {{ ovh_api_base }}/auth/time)
+          METHOD="PUT"
+          URL="{{ ovh_api_base }}/domain/zone/{{ dns_zone }}/record/{{ dns_record_id }}"
+          BODY='{"target":"{{ dns_target }}","ttl":{{ dns_ttl }}}'
+          SIG_RAW="{{ ovh_application_secret }}+{{ ovh_consumer_key }}+${METHOD}+${URL}+${BODY}+${TIMESTAMP}"
+          SIG=$(echo -n "$SIG_RAW" | sha1sum | cut -d' ' -f1)
+          RESULT=$(curl -s -o /tmp/ovh_put_result.json -w "%{http_code}" \
+            -X PUT "$URL" \
+            -H "X-Ovh-Application: {{ ovh_application_key }}" \
+            -H "X-Ovh-Timestamp: ${TIMESTAMP}" \
+            -H "X-Ovh-Signature: \$1\$${SIG}" \
+            -H "X-Ovh-Consumer: {{ ovh_consumer_key }}" \
+            -H "Content-Type: application/json" \
+            -d "$BODY")
+          echo "HTTP $RESULT"
+          cat /tmp/ovh_put_result.json
+      register: _update_result
+      changed_when: "'HTTP 200' in _update_result.stdout or 'HTTP 204' in _update_result.stdout"
+      no_log: true
+
+    - name: "Update result"
+      ansible.builtin.debug:
+        msg: "PUT record {{ dns_record_id }}: {{ _update_result.stdout }}"
+
+    - name: "Refresh DNS zone"
+      ansible.builtin.shell:
+        executable: /bin/bash
+        cmd: |
+          set -euo pipefail
+          TIMESTAMP=$(curl -s {{ ovh_api_base }}/auth/time)
+          METHOD="POST"
+          URL="{{ ovh_api_base }}/domain/zone/{{ dns_zone }}/refresh"
+          BODY=""
+          SIG_RAW="{{ ovh_application_secret }}+{{ ovh_consumer_key }}+${METHOD}+${URL}+${BODY}+${TIMESTAMP}"
+          SIG=$(echo -n "$SIG_RAW" | sha1sum | cut -d' ' -f1)
+          curl -s -X POST "$URL" \
+            -H "X-Ovh-Application: {{ ovh_application_key }}" \
+            -H "X-Ovh-Timestamp: ${TIMESTAMP}" \
+            -H "X-Ovh-Signature: \$1\$${SIG}" \
+            -H "X-Ovh-Consumer: {{ ovh_consumer_key }}" \
+            -H "Content-Type: application/json"
+      changed_when: true
+      no_log: true
+
+    - name: "Done"
+      ansible.builtin.debug:
+        msg: >
+          DNS record {{ dns_record_id }} updated: target={{ dns_target }} ttl={{ dns_ttl }}.
+          Zone refreshed. Allow 1-5 min for propagation.

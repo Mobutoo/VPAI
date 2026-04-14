@@ -349,6 +349,21 @@ Les skills Superpowers (brainstorming, writing-plans, TDD, etc.) restent les wor
 | `docker` | ✓ | `list-containers`, `get-logs`, `deploy-compose` |
 | `context7` | ✓ | `resolve-library-id`, `get-library-docs` (docs npm/frameworks live) — **déclencher si** : (a) qdrant score < 0.55 sur un sujet npm/framework, ou (b) R8 exige la doc officielle d'un package tiers |
 
+## MCP-First Table — INTERDIT → UTILISER À LA PLACE
+
+> Toujours charger le schéma d'abord : `ToolSearch("select:<mcp_tool_name>")`
+
+| INTERDIT | UTILISER À LA PLACE | Règle |
+|----------|---------------------|-------|
+| `curl *mayi.ewutelo.cloud/api/v1/*` | `mcp__n8n-docs__n8n_list_workflows` / `n8n_get_workflow` / `n8n_update_full_workflow` | R3/R11 |
+| `curl *mayi.ewutelo.cloud/webhook/*` | `mcp__n8n-docs__n8n_test_workflow` | R3 |
+| `curl *nocodb*/api/v2/tables/*` | `mcp__nocodb__list_records` / `insert_record` / `query` | R8 |
+| `docker logs <container>` | `mcp__docker__get-logs` | R6 |
+| `docker ps` | `mcp__docker__list-containers` | R6 |
+| `ssh * psql -U *` | `mcp__postgres__pg_execute_query` | R8 |
+| `curl *api.github.com*` | `mcp__github__list_issues` / `search_code` / `pull_request_read` | R8 |
+| `curl */form/* -d *` | `mcp__playwright__browser_navigate` + `browser_fill_form` | R2 |
+
 ## Références
 
 - `docs/audits/2026-04-11-mop-generator-execution-audit.md` — audit source (806 Bash, 0 MCP)

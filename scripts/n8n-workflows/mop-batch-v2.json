@@ -1,0 +1,268 @@
+{
+  "name": "mop-batch-v2",
+  "nodes": [
+    {
+      "id": "mb2-0001",
+      "name": "Trigger mop-batch-v2",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "mop-batch-v2",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mop-batch-v2",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mb2-0002",
+      "name": "Read Excel DUFS",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const DUFS_URL = 'https://drop.ewutelo.cloud';\nconst FILENAME = 'incidents-otn-oob-v2.xlsx';\nconst resp = await this.helpers.httpRequest({ method: 'GET', url: `${DUFS_URL}/${encodeURIComponent(FILENAME)}`, encoding: 'arraybuffer', returnFullResponse: true });\nif (resp.statusCode !== 200) throw new Error(`DUFS download failed: HTTP ${resp.statusCode}`);\nconst buf = Buffer.from(resp.body);\nreturn [{ json: { status: 'downloaded', size: buf.length, filename: FILENAME }, binary: { 'incidents.xlsx': { data: buf.toString('base64'), mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', fileName: FILENAME } } }];"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mb2-0003",
+      "name": "Parse Incidents Sheet",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const LITELLM_URL = 'https://llm.ewutelo.cloud';\nconst LITELLM_KEY = 'sk-lm-08041985e12102015m';\nconst b64 = $input.first().binary['incidents.xlsx'].data;\nconst prompt = 'Extrais la feuille Incidents du fichier Excel. Retourne un JSON array. Chaque objet: {incident_id, categorie, sous_type, reseau, criticite, symptome, impact, cause_probable, alarme_lightsoft, alarme_vizee, sops, site, cas_reels}. UNIQUEMENT le JSON array.';\nconst result = await this.helpers.httpRequest({ method: 'POST', url: `${LITELLM_URL}/v1/chat/completions`, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LITELLM_KEY}` }, body: JSON.stringify({ model: 'mop-ingest', messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${b64}` } }] }], max_tokens: 16000 }) });\nconst raw = result.choices[0].message.content;\nconst clean = raw.replace(/^```(?:json)?\\s*/m, '').replace(/\\s*```\\s*$/m, '').trim();\nconst incidents = JSON.parse(clean);\nconst body = ($input.first().json.body || {});\nconst filterIds = body.incident_ids;\nconst filtered = filterIds ? incidents.filter(i => filterIds.includes(i.incident_id)) : incidents;\nreturn filtered.map(i => ({ json: i }));"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mb2-0004",
+      "name": "Enrich with KB",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const LLM = 'https://llm.ewutelo.cloud';\nconst LLM_KEY = 'sk-lm-08041985e12102015m';\nconst QD = 'https://qd.ewutelo.cloud';\nconst QD_KEY = 'sk-qd-08041985e12102015m';\nconst i = $input.item.json;\nconst query = [i.sous_type, i.alarme_lightsoft, i.symptome, i.categorie].filter(Boolean).join(' — ');\nconst embedResp = await this.helpers.httpRequest({ method: 'POST', url: `${LLM}/v1/embeddings`, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LLM_KEY}` }, body: JSON.stringify({ model: 'mop-embed', input: [query] }) });\nconst searchResp = await this.helpers.httpRequest({ method: 'POST', url: `${QD}/collections/mop_kb/points/search`, headers: { 'Content-Type': 'application/json', 'api-key': QD_KEY }, body: JSON.stringify({ vector: embedResp.data[0].embedding, limit: 5, with_payload: true, score_threshold: 0.5 }) });\nconst chunks = (searchResp.result || []).map(r => ({ filename: r.payload.filename || '', score: Math.round(r.score * 1000) / 1000, text: (r.payload.text || '').slice(0, 400) }));\nreturn [{ json: { ...i, contexte_kb: JSON.stringify(chunks) } }];"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mb2-0005",
+      "name": "Generate MOP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://mayi.ewutelo.cloud/webhook/mop-generate",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "incident_id",
+              "value": "={{ $json.incident_id }}"
+            },
+            {
+              "name": "incident_type",
+              "value": "={{ $json.categorie }}"
+            },
+            {
+              "name": "categorie",
+              "value": "={{ $json.categorie }}"
+            },
+            {
+              "name": "sous_type",
+              "value": "={{ $json.sous_type }}"
+            },
+            {
+              "name": "criticite",
+              "value": "={{ $json.criticite }}"
+            },
+            {
+              "name": "reseau",
+              "value": "={{ $json.reseau }}"
+            },
+            {
+              "name": "site",
+              "value": "={{ $json.site }}"
+            },
+            {
+              "name": "sops",
+              "value": "={{ $json.sops }}"
+            },
+            {
+              "name": "symptome",
+              "value": "={{ $json.symptome }}"
+            },
+            {
+              "name": "impact",
+              "value": "={{ $json.impact }}"
+            },
+            {
+              "name": "cause_probable",
+              "value": "={{ $json.cause_probable }}"
+            },
+            {
+              "name": "alarme_lightsoft",
+              "value": "={{ $json.alarme_lightsoft }}"
+            },
+            {
+              "name": "alarme_vizee",
+              "value": "={{ $json.alarme_vizee }}"
+            },
+            {
+              "name": "cas_reels",
+              "value": "={{ $json.cas_reels }}"
+            },
+            {
+              "name": "contexte_kb",
+              "value": "={{ $json.contexte_kb }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mb2-0006",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const items = $input.all();\nconst generated = [], errors = [];\nfor (const item of items) {\n  const r = item.json;\n  if (r.pdf_url) generated.push({ incident_id: r.incident_id, pdf_url: r.pdf_url, docx_url: r.docx_url });\n  else errors.push({ incident_id: r.incident_id, error: r.message || 'unknown' });\n}\nreturn [{ json: { total: items.length, generated: generated.length, errors: errors.length, results: generated, failures: errors, generated_at: new Date().toISOString() } }];"
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "mb2-0007",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1560,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Trigger mop-batch-v2": {
+      "main": [
+        [
+          {
+            "node": "Read Excel DUFS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Excel DUFS": {
+      "main": [
+        [
+          {
+            "node": "Parse Incidents Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Incidents Sheet": {
+      "main": [
+        [
+          {
+            "node": "Enrich with KB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich with KB": {
+      "main": [
+        [
+          {
+            "node": "Generate MOP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate MOP": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": null,
+  "id": "yqgZUFKNhTuAYWau"
+}

@@ -124,6 +124,7 @@ def build_cover_table(doc, mop):
     table = doc.add_table(rows=1, cols=2)
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.autofit = False
 
     # Ligne titre
     row = table.rows[0]
@@ -153,6 +154,11 @@ def build_cover_table(doc, mop):
     add_row("Approbateur", "Service ISO")
     add_row("Date d'entrée en vigueur", fmt_date(mop["doc_date_vigueur"]))
     add_row("Date de révision planifiée", fmt_date(mop["doc_date_revision"]))
+
+    # Largeurs colonnes : 30% label / 70% valeur (texte utile = 16.5cm)
+    for row in table.rows[1:]:  # skip la ligne titre fusionnée
+        row.cells[0].width = Cm(5.0)
+        row.cells[1].width = Cm(11.5)
 
 
 def build_revision_table(doc, mop):
@@ -212,8 +218,9 @@ def build_section3(doc, mop):
     # REX contexte
     if mop.get("s3_content"):
         p_rex = doc.add_paragraph()
-        p_rex.add_run("Contexte terrain : ").bold = True
-        p_rex.add_run(mop["s3_content"]).font.size = Pt(10)
+        run_label = p_rex.add_run("Contexte terrain : ")
+        run_label.bold = True
+        add_multiline_content(doc, mop["s3_content"])
 
     # 3.1 — Phases
     p31 = doc.add_paragraph()
@@ -239,6 +246,15 @@ def build_section3(doc, mop):
 def generate_mop_docx(mop: dict, out_path: str):
     """Génère un fichier DOCX pour un MOP famille."""
     doc = Document()
+
+    # ── Format A4 + marges ───────────────────────────────────────────────────
+    section = doc.sections[0]
+    section.page_width = Cm(21.0)
+    section.page_height = Cm(29.7)
+    section.top_margin = Cm(2.0)
+    section.bottom_margin = Cm(2.0)
+    section.left_margin = Cm(2.5)
+    section.right_margin = Cm(2.0)
 
     # ── Styles de base ──────────────────────────────────────────────────────
     style = doc.styles["Normal"]
@@ -284,8 +300,7 @@ def generate_mop_docx(mop: dict, out_path: str):
 
     # Résumé
     add_shaded_para(doc, "RÉSUMÉ", BLEU_CLAIR, bold=True, font_size=9)
-    rsum_p = doc.add_paragraph()
-    rsum_p.add_run(mop.get("doc_resume", "")).font.size = Pt(10)
+    add_multiline_content(doc, mop.get("doc_resume", ""))
     doc.add_paragraph()
 
     # Équipements + contacts

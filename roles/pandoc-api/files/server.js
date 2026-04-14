@@ -474,7 +474,7 @@ app.post('/convert/sop-to-docx', async (req, res) => {
                 children: [para([
                   run('Étape ' + (i + 1) + ' — ', { bold: true, size: 18, color: pColor, font: 'Segoe UI' }),
                   run(titre, { bold: true, size: 18, color: '1a1a1a', font: 'Segoe UI' }),
-                  ...(desc ? [run('\n' + desc, { size: 17, color: '444444', font: 'Segoe UI' })] : [])
+                  ...(desc ? [run('\r' + desc, { size: 17, color: '444444', font: 'Segoe UI' })] : [])
                 ])]
               })]
             }))
@@ -519,6 +519,7 @@ app.post('/convert/sop-to-docx', async (req, res) => {
       sections: [{
         properties: {
           page: {
+            size: { width: mm(210), height: mm(297) },
             margin: {
               top: mm(20), bottom: mm(20),
               left: mm(25), right: mm(20)

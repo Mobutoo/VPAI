@@ -119,6 +119,95 @@ def add_multiline_content(doc, content, font_size=10, bullet=False):
         run.font.size = Pt(font_size)
 
 
+def _add_page_num_field(run):
+    """Insère un champ PAGE Word dans un run."""
+    fc1 = OxmlElement("w:fldChar"); fc1.set(qn("w:fldCharType"), "begin")
+    instr = OxmlElement("w:instrText"); instr.text = " PAGE "; instr.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+    fc2 = OxmlElement("w:fldChar"); fc2.set(qn("w:fldCharType"), "end")
+    run._r.extend([fc1, instr, fc2])
+
+
+def add_page_header(doc, ref: str, title: str):
+    """Entête courant (toutes pages sauf couverture) : ref | titre | page."""
+    section = doc.sections[0]
+    section.different_first_page_header_footer = True
+
+    hdr = section.header
+    p = hdr.paragraphs[0]
+    p.clear()
+    p.style = doc.styles["Normal"]
+
+    # Tab stops : centré à mi-page, droite en fin de zone texte (16.5cm)
+    pPr = p._p.get_or_add_pPr()
+    tabs_el = OxmlElement("w:tabs")
+    for val, pos in [("center", "4680"), ("right", "9360")]:
+        t = OxmlElement("w:tab"); t.set(qn("w:val"), val); t.set(qn("w:pos"), pos)
+        tabs_el.append(t)
+    pPr.append(tabs_el)
+    # Bordure basse
+    bdr = OxmlElement("w:pBdr")
+    bot = OxmlElement("w:bottom")
+    bot.set(qn("w:val"), "single"); bot.set(qn("w:sz"), "4")
+    bot.set(qn("w:space"), "1"); bot.set(qn("w:color"), "1F3864")
+    bdr.append(bot); pPr.append(bdr)
+
+    r1 = p.add_run(ref); r1.font.size = Pt(8); r1.font.color.rgb = BLEU_MARINE; r1.font.bold = True
+    p.add_run("\t")
+    r2 = p.add_run(title[:60]); r2.font.size = Pt(8); r2.font.italic = True
+    p.add_run("\t")
+    r3 = p.add_run(); r3.font.size = Pt(8); r3.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+    _add_page_num_field(r3)
+
+
+def add_page_footer(doc, ref: str):
+    """Pied de page : référence | INTERNE | vide (symétrique)."""
+    section = doc.sections[0]
+    ftr = section.footer
+    p = ftr.paragraphs[0]
+    p.clear()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = p.add_run(f"{ref}  —  CONFIDENTIEL INTERNE")
+    r.font.size = Pt(8); r.font.color.rgb = RGBColor(0xAA, 0xAA, 0xAA)
+
+
+def build_cachet(doc, mop):
+    """Tableau cachet signatures (Rédigé / Vérifié / Approuvé)."""
+    p = doc.add_paragraph()
+    run = p.add_run("CACHET DE VALIDATION")
+    run.bold = True; run.font.size = Pt(9); run.font.color.rgb = BLEU_MARINE
+
+    table = doc.add_table(rows=4, cols=3)
+    table.style = "Table Grid"
+    table.autofit = False
+    TABLE_W = Cm(16.5)
+    col_w = TABLE_W / 3
+
+    headers_row = table.rows[0]
+    for i, label in enumerate(["RÉDIGÉ PAR", "VÉRIFIÉ PAR", "APPROUVÉ PAR"]):
+        set_cell_bg(headers_row.cells[i], BLEU_MARINE)
+        set_cell_text(headers_row.cells[i], label, bold=True, font_size=8,
+                      color=RGBColor(0xFF, 0xFF, 0xFF))
+        headers_row.cells[i].width = col_w
+
+    names_row = table.rows[1]
+    for i, val in enumerate([mop.get("rev1_prepared_by", ""), mop.get("rev1_verified_by", ""), "Service ISO"]):
+        set_cell_bg(names_row.cells[i], BLEU_CLAIR)
+        set_cell_text(names_row.cells[i], val, bold=True, font_size=9)
+        names_row.cells[i].width = col_w
+
+    dates_row = table.rows[2]
+    for i, val in enumerate([fmt_date(mop.get("rev1_date", "")), "", ""]):
+        set_cell_text(dates_row.cells[i], val, font_size=8)
+        dates_row.cells[i].width = col_w
+
+    sig_row = table.rows[3]
+    for i in range(3):
+        set_cell_text(sig_row.cells[i], "Signature :", font_size=8)
+        sig_row.cells[i].width = col_w
+        # Zone signature vide (hauteur via espacement)
+        sig_row.cells[i].paragraphs[0].paragraph_format.space_after = Pt(24)
+
+
 def build_cover_table(doc, mop):
     """Cartouche document (tableau 2 colonnes)."""
     table = doc.add_table(rows=1, cols=2)
@@ -307,6 +396,14 @@ def generate_mop_docx(mop: dict, out_path: str):
     build_equipements(doc, mop)
     doc.add_paragraph()
     build_contacts(doc, mop)
+    doc.add_paragraph()
+
+    # Cachet signatures
+    build_cachet(doc, mop)
+
+    # Entête + pied de page (après la page de garde)
+    add_page_header(doc, mop["doc_reference"], mop["doc_title"])
+    add_page_footer(doc, mop["doc_reference"])
 
     # Page break avant sections procédure
     doc.add_page_break()
@@ -367,11 +464,7 @@ def extract_mop_data(xlsx_path: str) -> list:
         for field, row in field_map.items():
             val = ws.cell(row=row, column=ci).value
             mop[field] = val if val is not None else ""
-        # Normalise la référence : ajoute -V1 si absent
-        ref = str(mop["doc_reference"])
-        if ref and not ref.endswith("-V1"):
-            ref = ref + "-V1"
-        mop["doc_reference"] = ref
+        mop["doc_reference"] = str(mop["doc_reference"]) if mop["doc_reference"] else ""
         mops.append(mop)
 
     return mops

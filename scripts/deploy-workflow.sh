@@ -120,11 +120,19 @@ echo "  OK — REST API reachable (HTTP 200)"
 
 echo "→ PUT /api/v1/workflows/$WF_ID..."
 
+# Strip fields rejected by PUT API (id, staticData, meta, pinData)
+STRIPPED_PAYLOAD=$(python3 -c "
+import json, sys
+d = json.load(open('$WF_FILE'))
+keep = {k: d[k] for k in ('name', 'nodes', 'connections', 'settings') if k in d}
+print(json.dumps(keep))
+")
+
 PUT_RESPONSE=$(curl -sS -w "\n%{http_code}" \
   -X PUT "${N8N_BASE_URL}/api/v1/workflows/$WF_ID" \
   -H "X-N8N-API-KEY: $N8N_API_KEY" \
   -H "Content-Type: application/json" \
-  -d @"$WF_FILE")
+  -d "$STRIPPED_PAYLOAD")
 
 PUT_HTTP=$(echo "$PUT_RESPONSE" | tail -1)
 PUT_BODY=$(echo "$PUT_RESPONSE" | head -n -1)

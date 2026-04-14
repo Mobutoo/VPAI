@@ -1,0 +1,403 @@
+// =============================================================================
+// VPS TELEHOUSE — Power Apps Canvas App
+// Power Fx Source — Copy-paste ready for make.powerapps.com
+// Generated: 2026-04-14
+// =============================================================================
+
+// =============================================================================
+// APP.OnStart — Collections statiques
+// Coller dans : App > OnStart
+// =============================================================================
+
+ClearCollect(colTechsTH2,
+  {Nom: "Florian RIAUD"},
+  {Nom: "Yassin SELKA"},
+  {Nom: "Jerome GRAND'HAYE"},
+  {Nom: "Zacharie SAIDANI"},
+  {Nom: "Guillaume CANAL"},
+  {Nom: "Rachid BENGHILAS"},
+  {Nom: "Aissa MESSAOUDI"},
+  {Nom: "Christophe RENE"},
+  {Nom: "Binh VU"},
+  {Nom: "Mel LASME"},
+  {Nom: "Lyes AMGHAR"},
+  {Nom: "Boukary GASSAMA"},
+  {Nom: "Sofiane DE ALMEIDA SANTOS"},
+  {Nom: "Abdel YAKOUT"}
+);
+
+ClearCollect(colTechsTH3,
+  {Nom: "Gabriel ALONSO"},
+  {Nom: "Khaled AMGHAR"},
+  {Nom: "Chris BENDA"},
+  {Nom: "Adel DOUALANE"},
+  {Nom: "Michael LE ROUX"},
+  {Nom: "Martin REUMAUX"},
+  {Nom: "Sathees THURAIRAJAH"},
+  {Nom: "Rayan SAHIRI"}
+);
+
+ClearCollect(colAuditeurs,
+  {Nom: "Brigitte GOMES"},
+  {Nom: "Erwin MOMBILI"},
+  {Nom: "Hassan BELLAHCEN"},
+  {Nom: "Zakaria IMAGHRI"},
+  {Nom: "Stephanie DOLAK"}
+);
+
+ClearCollect(colTypesIntervention,
+  {TypeIdx: 0, Label: "Installation/Retrait d'equipement",   Couleur: "#1B4F9B"},
+  {TypeIdx: 1, Label: "Reboot electrique",                   Couleur: "#155A6C"},
+  {TypeIdx: 2, Label: "Disjonction de rack client",          Couleur: "#4A3580"},
+  {TypeIdx: 3, Label: "Tirage a plus de 2m de hauteur",      Couleur: "#1A6B43"},
+  {TypeIdx: 4, Label: "Tirage en faux plancher",             Couleur: "#7A3510"},
+  {TypeIdx: 5, Label: "Manutention de charges lourdes",      Couleur: "#5C1A4A"},
+  {TypeIdx: 6, Label: "Gestions des stocks",                 Couleur: "#2E6060"},
+  {TypeIdx: 7, Label: "Utilisation du transpalette",         Couleur: "#8B4A00"},
+  {TypeIdx: 8, Label: "Test avec un laser",                  Couleur: "#1A4A6B"}
+);
+
+ClearCollect(colEPIDef,
+  // Type 0 — Installation/Retrait d'equipement (5 EPI)
+  {TypeIdx: 0, Label: "Chaussure de securite.",       IsReco: false},
+  {TypeIdx: 0, Label: "Gant anti-coupure.",            IsReco: false},
+  {TypeIdx: 0, Label: "Casque anti-bruit.",            IsReco: false},
+  {TypeIdx: 0, Label: "Leve-serveur au-dela de 2U.",  IsReco: false},
+  {TypeIdx: 0, Label: "Port du PTI.",                  IsReco: true},
+  // Type 1 — Reboot electrique (4 EPI)
+  {TypeIdx: 1, Label: "Chaussure de securite.",        IsReco: false},
+  {TypeIdx: 1, Label: "Gant anti-coupure.",            IsReco: false},
+  {TypeIdx: 1, Label: "Casque anti-bruit.",            IsReco: true},
+  {TypeIdx: 1, Label: "Port du PTI.",                  IsReco: true},
+  // Type 2 — Disjonction de rack client (3 EPI)
+  {TypeIdx: 2, Label: "Habilitation electrique.",      IsReco: false},
+  {TypeIdx: 2, Label: "Chaussure de securite.",        IsReco: false},
+  {TypeIdx: 2, Label: "Port du PTI.",                  IsReco: true},
+  // Type 3 — Tirage a plus de 2m de hauteur (6 EPI)
+  {TypeIdx: 3, Label: "Chaussure de securite.",        IsReco: false},
+  {TypeIdx: 3, Label: "Gants anti-coupure.",           IsReco: false},
+  {TypeIdx: 3, Label: "Lunettes anti-poussiere.",      IsReco: false},
+  {TypeIdx: 3, Label: "Casquette de protection.",      IsReco: false},
+  {TypeIdx: 3, Label: "Utilisation d'une PIRL.",       IsReco: true},
+  {TypeIdx: 3, Label: "Port du PTI.",                  IsReco: true},
+  // Type 4 — Tirage en faux plancher (6 EPI)
+  {TypeIdx: 4, Label: "Chaussure de securite.",        IsReco: false},
+  {TypeIdx: 4, Label: "Gants anti-coupure.",           IsReco: false},
+  {TypeIdx: 4, Label: "Lunettes anti-poussiere.",      IsReco: false},
+  {TypeIdx: 4, Label: "Casquette de protection.",      IsReco: false},
+  {TypeIdx: 4, Label: "Ventouse.",                     IsReco: true},
+  {TypeIdx: 4, Label: "Port du PTI.",                  IsReco: true},
+  // Type 5 — Manutention de charges lourdes (3 EPI)
+  {TypeIdx: 5, Label: "Chaussure de securite.",        IsReco: false},
+  {TypeIdx: 5, Label: "Gants anti-coupure.",           IsReco: false},
+  {TypeIdx: 5, Label: "Port du PTI.",                  IsReco: true},
+  // Type 6 — Gestions des stocks (4 EPI)
+  {TypeIdx: 6, Label: "Chaussure de securite.",        IsReco: false},
+  {TypeIdx: 6, Label: "Utilisation d'une gazelle.",    IsReco: false},
+  {TypeIdx: 6, Label: "Gants anti-coupure.",           IsReco: false},
+  {TypeIdx: 6, Label: "Port du PTI.",                  IsReco: true},
+  // Type 7 — Utilisation du transpalette (2 EPI)
+  {TypeIdx: 7, Label: "Chaussure de securite.",        IsReco: false},
+  {TypeIdx: 7, Label: "Gants anti-coupure.",           IsReco: false},
+  // Type 8 — Test avec un laser (3 EPI)
+  {TypeIdx: 8, Label: "Chaussure de securite.",        IsReco: false},
+  {TypeIdx: 8, Label: "Lunettes de protection laser.", IsReco: false},
+  {TypeIdx: 8, Label: "Port du PTI.",                  IsReco: true}
+);
+
+// Initialiser les variables globales
+Set(varSite, "TH2");
+Set(varTechnicien, "");
+Set(varAuditeur, "");
+Set(varDate, Today());
+Set(varRemarque, "");
+Set(varTypeIdx, -1);
+Clear(varEPIResults);
+
+
+// =============================================================================
+// SCREEN 1 — Informations générales
+// =============================================================================
+
+// --- DropdownSite ---
+// Items :
+["TH2", "TH3"]
+
+// OnChange :
+Set(varSite, DropdownSite.SelectedText.Value);
+Set(varTechnicien, "")
+
+// --- DropdownTechnicien ---
+// Items (dépend du site sélectionné) :
+If(varSite = "TH2", colTechsTH2, colTechsTH3)
+
+// OnChange :
+Set(varTechnicien, DropdownTechnicien.SelectedText.Nom)
+
+// --- DropdownAuditeur ---
+// Items :
+colAuditeurs
+
+// OnChange :
+Set(varAuditeur, DropdownAuditeur.SelectedText.Nom)
+
+// --- DatePickerDate ---
+// DefaultDate :
+Today()
+
+// OnChange :
+Set(varDate, DatePickerDate.SelectedDate)
+
+// --- TextInputRemarque ---
+// OnChange :
+Set(varRemarque, TextInputRemarque.Text)
+
+// --- BtnSuivant1 (Bouton Suivant → Screen 2) ---
+// DisplayMode (grisé si champs obligatoires vides) :
+If(
+  varSite <> "" && varTechnicien <> "" && varAuditeur <> "",
+  DisplayMode.Edit,
+  DisplayMode.Disabled
+)
+
+// OnSelect :
+Navigate(Screen2, ScreenTransition.Cover)
+
+
+// =============================================================================
+// SCREEN 2 — Type d'intervention
+// =============================================================================
+
+// --- GalleryTypes ---
+// Items :
+colTypesIntervention
+
+// Template Height : 72
+// Items dans chaque cellule de la gallery :
+
+// LabelType (titre du type) :
+ThisItem.Label
+
+// RectangleHeader (couleur de fond) :
+// Fill : ColorValue(ThisItem.Couleur)
+
+// OnSelect de la gallery :
+Set(varTypeIdx, ThisItem.TypeIdx)
+
+// Indicateur de sélection (cercle ou checkmark) :
+// Visible :
+ThisItem.TypeIdx = varTypeIdx
+
+// --- BtnSuivant2 (Bouton Suivant → Screen 3) ---
+// DisplayMode :
+If(varTypeIdx >= 0, DisplayMode.Edit, DisplayMode.Disabled)
+
+// OnSelect :
+// Initialiser la collection de résultats EPI avec les valeurs par défaut
+ClearCollect(
+  varEPIResults,
+  AddColumns(
+    Filter(colEPIDef, TypeIdx = varTypeIdx),
+    "Etat", "Bon",
+    "Porte", "OUI"
+  )
+);
+Navigate(Screen3, ScreenTransition.Cover)
+
+// --- BtnRetour2 (← Retour Screen 1) ---
+// OnSelect :
+Navigate(Screen1, ScreenTransition.UnCover)
+
+
+// =============================================================================
+// SCREEN 3 — Vérification EPI
+// =============================================================================
+
+// --- Header couleur dynamique ---
+// Fill :
+ColorValue(
+  LookUp(colTypesIntervention, TypeIdx = varTypeIdx, Couleur)
+)
+
+// --- LabelTypeSelected (titre du type sélectionné) ---
+// Text :
+LookUp(colTypesIntervention, TypeIdx = varTypeIdx, Label)
+
+// --- GalleryEPI ---
+// Items :
+varEPIResults
+
+// Template Height : 90
+
+// LabelEPILabel (dans chaque cellule) :
+// Text :
+If(
+  ThisItem.IsReco,
+  ThisItem.Label & " (R)",
+  ThisItem.Label
+)
+// FontStyle (recommandation en italique) :
+If(ThisItem.IsReco, FontStyle.Italic, FontStyle.Normal)
+
+// RectangleBgEPI (fond de la cellule) :
+// Fill :
+If(ThisItem.IsReco, RGBA(255, 248, 200, 1), RGBA(249, 249, 254, 1))
+
+// DropdownEtat (Bon / Mauvais) :
+// Items :
+["Bon", "Mauvais"]
+// Default :
+ThisItem.Etat
+// OnChange :
+Patch(
+  varEPIResults,
+  ThisItem,
+  {Etat: DropdownEtat.SelectedText.Value}
+)
+
+// DropdownPorte (OUI / NON) :
+// Items :
+["OUI", "NON"]
+// Default :
+ThisItem.Porte
+// OnChange :
+Patch(
+  varEPIResults,
+  ThisItem,
+  {Porte: DropdownPorte.SelectedText.Value}
+)
+
+// --- BtnSuivant3 (Bouton Suivant → Screen 4) ---
+// OnSelect :
+Navigate(Screen4, ScreenTransition.Cover)
+
+// --- BtnRetour3 (← Retour Screen 2) ---
+// OnSelect :
+Navigate(Screen2, ScreenTransition.UnCover)
+
+
+// =============================================================================
+// SCREEN 4 — Récapitulatif et validation
+// =============================================================================
+
+// --- LabelStatut ---
+// Text (calcul StatutGlobal) :
+If(
+  CountIf(varEPIResults, Etat = "Mauvais") = 0,
+  "Conforme ✓",
+  If(
+    CountIf(varEPIResults, Etat = "Mauvais") = CountRows(varEPIResults),
+    "Non-conforme ✗",
+    "Partiel ⚠"
+  )
+)
+
+// Color :
+If(
+  CountIf(varEPIResults, Etat = "Mauvais") = 0,
+  Color.Green,
+  If(
+    CountIf(varEPIResults, Etat = "Mauvais") = CountRows(varEPIResults),
+    Color.Red,
+    Color.Orange
+  )
+)
+
+// --- Récap header (infos saisies) ---
+// LabelRecapSite :
+"Site : " & varSite
+
+// LabelRecapTech :
+"Technicien : " & varTechnicien
+
+// LabelRecapAuditeur :
+"Auditeur : " & varAuditeur
+
+// LabelRecapDate :
+"Date : " & Text(varDate, "dd/mm/yyyy")
+
+// LabelRecapType :
+"Type : " & LookUp(colTypesIntervention, TypeIdx = varTypeIdx, Label)
+
+// LabelRecapRemarque :
+If(varRemarque <> "", "Remarque : " & varRemarque, "")
+
+// --- GalleryRecap (tableau récap EPI) ---
+// Items :
+varEPIResults
+
+// Template Height : 60
+
+// LabelRecapEPI :
+If(ThisItem.IsReco, ThisItem.Label & " (R)", ThisItem.Label)
+
+// LabelRecapEtat :
+ThisItem.Etat
+// Color :
+If(ThisItem.Etat = "Bon", Color.Green, Color.Red)
+
+// LabelRecapPorte :
+ThisItem.Porte
+// Color :
+If(ThisItem.Porte = "OUI", Color.Green, Color.Red)
+
+// --- BtnEnregistrer (Enregistrer → SharePoint) ---
+// OnSelect :
+If(
+  Patch(
+    VPS_Audits,
+    Defaults(VPS_Audits),
+    {
+      Title:             varSite & "_" & varTechnicien & "_" & Text(varDate, "yyyymmdd"),
+      Site:              {Value: varSite},
+      Technicien:        varTechnicien,
+      Auditeur:          varAuditeur,
+      DateVisite:        varDate,
+      TypeIntervention:  LookUp(colTypesIntervention, TypeIdx = varTypeIdx, Label),
+      TypeIdx:           varTypeIdx,
+      Remarque:          varRemarque,
+      EPIResultsJSON:    JSON(varEPIResults, JSONFormat.IndentFour),
+      StatutGlobal:      {Value: If(
+                           CountIf(varEPIResults, Etat = "Mauvais") = 0,
+                           "Conforme",
+                           If(
+                             CountIf(varEPIResults, Etat = "Mauvais") = CountRows(varEPIResults),
+                             "Non-conforme",
+                             "Partiel"
+                           )
+                         )}
+    }
+  ),
+  Notify("Audit enregistré avec succès !", NotificationType.Success),
+  Notify("Erreur lors de l'enregistrement.", NotificationType.Error)
+)
+
+// --- BtnNouveau (Nouvelle saisie — reset complet) ---
+// OnSelect :
+Set(varSite, "TH2");
+Set(varTechnicien, "");
+Set(varAuditeur, "");
+Set(varDate, Today());
+Set(varRemarque, "");
+Set(varTypeIdx, -1);
+Clear(varEPIResults);
+Navigate(Screen1, ScreenTransition.Fade)
+
+// --- BtnRetour4 (← Retour Screen 3) ---
+// OnSelect :
+Navigate(Screen3, ScreenTransition.UnCover)
+
+
+// =============================================================================
+// COULEURS ET STYLE GLOBAUX (pour référence)
+// =============================================================================
+// primary    : RGBA(0, 30, 64, 1)    — #001E40 — headers, boutons primaires
+// secondary  : RGBA(0, 51, 102, 1)   — #003366
+// accent     : RGBA(27, 79, 155, 1)  — #1B4F9B — boutons nav
+// surface    : RGBA(249, 249, 254, 1) — #F9F9FE — fond app
+// surface-low: RGBA(244, 243, 248, 1) — #F4F3F8 — sections
+// white      : RGBA(255, 255, 255, 1)
+// border     : RGBA(224, 224, 224, 1) — #E0E0E0
+//
+// Règle NO-LINE : pas de BorderThickness > 0 pour délimiter les sections.
+// Utiliser des changements de Fill (couleur de fond) uniquement.

@@ -1,0 +1,10 @@
+# Dockerfile-Plugins — Image NetBox custom avec plugins (généré par Ansible)
+# Base: {{ netbox_image }} (officielle pinnée)
+FROM {{ netbox_image }}
+
+USER root
+
+RUN pip install --no-cache-dir \
+    netbox-topology-views=={{ netbox_topology_views_version }}
+
+USER unit

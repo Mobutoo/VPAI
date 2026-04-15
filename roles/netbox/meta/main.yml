@@ -1,0 +1,10 @@
+galaxy_info:
+  author: mobuone
+  description: "NetBox DCIM déployé via Docker Compose pour MediaHall"
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - "24.04"
+dependencies: []

@@ -1,0 +1,47 @@
+# roles/netbox/defaults/main.yml — Variables overridables
+
+# Répertoires
+netbox_base_dir: "/opt/mediahall/netbox"
+netbox_config_dir: "{{ netbox_base_dir }}/config"
+netbox_media_dir: "{{ netbox_base_dir }}/media"
+netbox_reports_dir: "{{ netbox_base_dir }}/reports"
+netbox_scripts_dir: "{{ netbox_base_dir }}/scripts"
+
+# Réseau
+netbox_port: 8080
+netbox_network_name: "mediahall_net"
+netbox_network_subnet: "{{ docker_network_mediahall_subnet | default('172.21.0.0/24') }}"
+
+# Base de données
+netbox_db_name: "netbox"
+netbox_db_user: "netbox"
+netbox_db_host: "netbox-postgres"
+netbox_db_port: 5432
+
+# Redis
+netbox_redis_host: "netbox-redis"
+netbox_redis_port: 6379
+
+# Plugin
+netbox_topology_views_version: "4.2.1"
+
+# Limites mémoire/CPU (règle 8 — obligatoire sur chaque service)
+netbox_memory_limit: "512m"
+netbox_memory_reservation: "256m"
+netbox_cpu_limit: "1.0"
+
+netbox_worker_memory_limit: "256m"
+netbox_worker_memory_reservation: "128m"
+netbox_worker_cpu_limit: "0.5"
+
+netbox_housekeeping_memory_limit: "128m"
+netbox_housekeeping_memory_reservation: "64m"
+netbox_housekeeping_cpu_limit: "0.25"
+
+netbox_postgres_memory_limit: "256m"
+netbox_postgres_memory_reservation: "128m"
+netbox_postgres_cpu_limit: "0.5"
+
+netbox_redis_memory_limit: "128m"
+netbox_redis_memory_reservation: "64m"
+netbox_redis_cpu_limit: "0.25"

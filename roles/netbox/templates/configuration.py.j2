@@ -1,0 +1,24 @@
+# configuration.py — Configuration Django NetBox (généré par Ansible)
+
+ALLOWED_HOSTS = [
+    '{{ netbox_subdomain }}.{{ domain_name }}',
+    'localhost',
+    '127.0.0.1',
+]
+
+PLUGINS = [
+    'netbox_topology_views',
+]
+
+PLUGINS_CONFIG = {
+    'netbox_topology_views': {
+        'static_image_directory': 'netbox_topology_views/img',
+        'allow_coordinates_saving': True,
+        'always_save_coordinates': True,
+    }
+}
+
+# CORS — accès API depuis le domaine uniquement
+CORS_ORIGIN_WHITELIST = [
+    'https://{{ netbox_subdomain }}.{{ domain_name }}',
+]

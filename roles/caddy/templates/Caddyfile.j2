@@ -495,7 +495,7 @@ mop-mail.{{ domain_name }} {
 # --- Site supplémentaire : {{ site.name }} ---
 {{ site.domain }} {
 
-    reverse_proxy localhost:{{ site.port }} {
+    reverse_proxy {{ site.host }}:{{ site.port }} {
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto {scheme}
         header_up Host {host}

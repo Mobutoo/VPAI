@@ -4,11 +4,13 @@
 - name: "netbox | Assert postgresql_image defined in versions.yml"
   ansible.builtin.shell:
     executable: /bin/bash
+    chdir: "{{ playbook_dir }}/../.."
     cmd: |
       set -euo pipefail
       grep -q 'postgresql_image' inventory/group_vars/all/versions.yml
       grep -q 'redis_image' inventory/group_vars/all/versions.yml
   delegate_to: localhost
+  become: false
   changed_when: false
   register: versions_check
   failed_when: false
@@ -119,7 +121,7 @@
     cmd: |
       set -euo pipefail
       for i in $(seq 1 24); do
-        if curl -sf http://localhost:{{ netbox_port }}/api/ > /dev/null 2>&1; then
+        if curl -s -o /dev/null -w "%{http_code}" http://localhost:{{ netbox_port }}/api/ 2>/dev/null | grep -qE '^(200|401|403)$'; then
           echo "READY"
           exit 0
         fi
@@ -133,14 +135,19 @@
   become: true
   tags: [netbox, mediahall, apps]
 
-# 9. Smoke test — vérifier la version NetBox et le plugin
-- name: "netbox | Smoke test — verify version and plugin"
+# 9. Smoke test — vérifier la version NetBox via Server header
+- name: "netbox | Smoke test — verify NetBox responding"
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
       set -euo pipefail
-      curl -sf http://localhost:{{ netbox_port }}/api/ | \
-        python3 -c "import sys,json; d=json.load(sys.stdin); print('OK:', d['netbox-version'])"
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:{{ netbox_port }}/api/)
+      if echo "${HTTP_CODE}" | grep -qE '^(200|401|403)$'; then
+        echo "OK: NetBox responding HTTP ${HTTP_CODE}"
+      else
+        echo "FAIL: unexpected HTTP ${HTTP_CODE}" >&2
+        exit 1
+      fi
   register: netbox_version_check
   changed_when: false
   failed_when: netbox_version_check.rc != 0

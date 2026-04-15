@@ -1,0 +1,16 @@
+---
+# playbooks/stacks/mediahall.yml — Stack MediaHall DCIM NetBox
+# Séparé de site.yml javisi — environnement client isolé
+# NOTE : Ce playbook est créé en plan 01-01 avec les rôles core uniquement.
+#        Le plan 01-02 l'étendra avec les rôles netbox et caddy.
+# Usage: ansible-playbook playbooks/stacks/mediahall.yml --ask-vault-pass
+
+- hosts: mediahall
+  become: true
+  roles:
+    - role: common
+      tags: [common, mediahall, core]
+    - role: docker
+      tags: [docker, mediahall, core]
+    - role: headscale-node
+      tags: [headscale-node, mediahall, core]

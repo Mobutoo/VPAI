@@ -13,3 +13,27 @@ prod_user: "root"
 
 # Clé SSH : même que story_engine (serveur partagé)
 ansible_ssh_private_key_file: "~/.ssh/seko-vpn-deploy"
+
+# Vhost NetBox injecté dans le Caddyfile.j2 Story Engine (pattern multi-projets)
+# host: Docker DNS "netbox" — accessible via réseau mediahall_net connecté au container caddy
+caddy_extra_sites:
+  - name: "mediahall"
+    domain: "mediahall.ewutelo.cloud"
+    host: "netbox"
+    port: 8080
+
+# Réseau Docker externe à connecter au container Caddy Story Engine
+# Permet l'accès Docker DNS vers netbox:8080 depuis story-engine-caddy
+caddy_extra_networks:
+  - "mediahall_net"
+
+# Nom du container Caddy dans le stack Story Engine
+caddy_container_name: "story-engine-caddy"
+
+# Localisation du projet Docker hébergeant Caddy — Story Engine sur ce serveur partagé
+caddy_docker_project_src: "/opt/story-engine"
+caddy_docker_compose_file: "docker-compose.yml"
+
+# Override: le Caddyfile actif est monté depuis /opt/story-engine/configs/
+# (caddy_config_dir default = /opt/mediahall/configs/caddy — incorrect pour ce serveur partagé)
+caddy_config_dir: "/opt/story-engine/configs"

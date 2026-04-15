@@ -60,3 +60,22 @@ caddy_public_webhook_paths:
 
 # Domaine du webhook relay (pour les commentaires/docs, le reverse proxy est sur Seko-VPN)
 caddy_webhook_relay_domain: "{{ webhook_relay_domain | default('hook.' + domain_name) }}"
+
+# Sites supplémentaires injectés dans le Caddyfile principal (pattern multi-projets)
+# Chaque entrée : { name: "mediahall", domain: "mediahall.ewutelo.cloud", host: "netbox", port: "8080" }
+caddy_extra_sites: []
+
+# Réseaux Docker supplémentaires à connecter au container Caddy (pour accès Docker DNS cross-stack)
+# Chaque entrée : nom du réseau Docker externe (ex: "mediahall_net")
+caddy_extra_networks: []
+
+# Localisation du projet Docker qui héberge Caddy (pour le handler restart)
+# Override si Caddy tourne dans un projet différent de project_name
+# Ex: mediahall surcharge vers story-engine car Caddy est dans ce stack
+caddy_docker_project_src: "/opt/{{ project_name }}"
+caddy_docker_compose_file: "docker-compose-infra.yml"
+
+# Nom du container Caddy Docker — utilisé pour connexion aux réseaux extra
+# Override si le container n'est pas nommé selon le pattern {{ project_name }}_caddy
+# Ex: story-engine utilise "story-engine-caddy"
+caddy_container_name: "{{ project_name }}_caddy"

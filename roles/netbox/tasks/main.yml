@@ -158,3 +158,15 @@
   ansible.builtin.debug:
     msg: "{{ netbox_version_check.stdout }}"
   tags: [netbox, mediahall, apps]
+
+# 10. collectstatic — nécessaire après installation du plugin (idempotent)
+- name: "netbox | Run collectstatic for plugins"
+  community.docker.docker_container_exec:
+    container: "{{ netbox_base_dir | basename }}-netbox-1"
+    user: root
+    command: >
+      sh -c "chown -R unit:unit /opt/netbox/netbox/static/ 2>/dev/null || true &&
+             python /opt/netbox/netbox/manage.py collectstatic --no-input"
+  become: true
+  changed_when: false
+  tags: [netbox, mediahall, apps]

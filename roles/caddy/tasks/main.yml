@@ -101,3 +101,18 @@
   become: true
   notify: Restart caddy stack
   when: not (common_molecule_mode | default(false))
+
+# --- Réseaux Docker supplémentaires (pattern multi-projets) ---
+# Connecte le container Caddy aux réseaux des stacks externes pour accès Docker DNS.
+# Ex: mediahall_net permet à story-engine-caddy de résoudre netbox:8080 via DNS Docker.
+
+- name: "caddy | Connect caddy container to extra networks"
+  community.docker.docker_network:
+    name: "{{ item }}"
+    connected:
+      - "{{ caddy_container_name }}"
+    appends: true
+  loop: "{{ caddy_extra_networks }}"
+  become: true
+  when: caddy_extra_networks | length > 0
+  tags: [caddy, mediahall, platform]

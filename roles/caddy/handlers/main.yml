@@ -3,9 +3,9 @@
 
 - name: Restart caddy stack
   community.docker.docker_compose_v2:
-    project_src: "/opt/{{ project_name }}"
+    project_src: "{{ caddy_docker_project_src }}"
     files:
-      - docker-compose-infra.yml
+      - "{{ caddy_docker_compose_file }}"
     services:
       - caddy
     state: restarted

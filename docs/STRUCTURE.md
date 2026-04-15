@@ -96,6 +96,7 @@ Tags: `apps`, `phase3`
 | `llamaindex-memory` | LlamaIndex memory worker (Sese-AI) |
 | `obsidian` | Obsidian sync server |
 | `mop-templates` | Templates de production MOP (Modèle Opérationnel de Production) |
+| `netbox` | NetBox DCIM — gestion inventaire physique MediaHall (racks, câblage, topologie) |
 
 ---
 

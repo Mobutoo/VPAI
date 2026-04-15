@@ -43,6 +43,7 @@ categories:
       - llamaindex-memory
       - obsidian
       - mop-templates
+      - netbox
 
   provision:
     description: "Provisioning post-deploy — setup initial des applications"

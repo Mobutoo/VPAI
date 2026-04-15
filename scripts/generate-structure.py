@@ -62,6 +62,7 @@ ROLE_DESCRIPTIONS = {
     "llamaindex-memory":   "LlamaIndex memory worker (Sese-AI)",
     "obsidian":            "Obsidian sync server",
     "mop-templates":       "Templates de production MOP (Modèle Opérationnel de Production)",
+    "netbox":              "NetBox DCIM — gestion inventaire physique MediaHall (racks, câblage, topologie)",
     # provision
     "n8n-provision":              "Création compte owner n8n via API",
     "plane-provision":            "Bucket MinIO Plane",

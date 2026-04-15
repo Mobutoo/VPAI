@@ -1,0 +1,12 @@
+---
+# inventory/group_vars/mediahall/main.yml — Variables groupe MediaHall
+
+project_name: "mediahall"
+domain_name: "ewutelo.cloud"
+netbox_subdomain: "mediahall"
+
+# Réseau Docker bridge dédié mediahall (évite collision StoryEngine 172.20.1.0/24)
+docker_network_mediahall_subnet: "172.21.0.0/24"
+
+# Utilisateur système propriétaire des fichiers déployés
+prod_user: "root"

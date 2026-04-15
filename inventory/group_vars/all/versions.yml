@@ -3,6 +3,12 @@
 # JAMAIS de :latest ou :stable — Tout est versionné
 # Vérifié le : 27 mars 2026
 
+# --- MediaHall — NetBox DCIM ---
+netbox_image: "ghcr.io/netbox-community/netbox:v4.2.9"
+# Image custom buildée avec plugin netbox-topology-views==4.2.1
+# Dockerfile-Plugins: FROM netbox_image, RUN pip install netbox-topology-views==4.2.1
+netbox_local_image: "mediahall-netbox:v4.2.9"
+
 # --- Données ---
 postgresql_image: "postgres:18.3-bookworm"  # CVE-2025-8714/8715 + buffer overflows (fix 18.3, 2026-02-26)
 redis_image: "redis:8.4.0-bookworm"  # CVE-2025-49844 RediShell CVSS 10.0 (fix 8.2.2+, 2025-10)

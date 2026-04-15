@@ -489,3 +489,29 @@ mop-mail.{{ domain_name }} {
     import security_headers
 }
 {% endif %}
+
+{% if caddy_extra_sites is defined and caddy_extra_sites | length > 0 %}
+{% for site in caddy_extra_sites %}
+# --- Site supplémentaire : {{ site.name }} ---
+{{ site.domain }} {
+
+    reverse_proxy localhost:{{ site.port }} {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up Host {host}
+    }
+
+    tls {
+        protocols tls1.2 tls1.3
+    }
+
+    log {
+        output file /var/log/caddy/{{ site.name }}-access.log {
+            roll_size 10mb
+            roll_keep 3
+        }
+        format json
+    }
+}
+{% endfor %}
+{% endif %}

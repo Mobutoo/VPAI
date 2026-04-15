@@ -10,3 +10,15 @@ docker_network_mediahall_subnet: "172.21.0.0/24"
 
 # Utilisateur système propriétaire des fichiers déployés
 prod_user: "root"
+
+# Clé SSH : flash-studio-waza (enregistrée dans hcloud, différente de seko-vpn-deploy)
+ansible_ssh_private_key_file: "~/.ssh/flash-studio"
+
+# Domain admin — requis par role headscale-node (debug Split DNS instructions)
+caddy_admin_domain: "mediahall.ewutelo.cloud"
+# Variables caddy secondaires — non utilisées pour mediahall (pas de Grafana/n8n/LiteLLM/Qdrant)
+# Définies vides pour éviter l'erreur de résolution Jinja2 dans headscale-node debug task
+caddy_grafana_domain: ""
+caddy_n8n_domain: ""
+caddy_litellm_domain: ""
+caddy_qdrant_domain: ""

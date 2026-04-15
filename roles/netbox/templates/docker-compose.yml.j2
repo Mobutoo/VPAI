@@ -1,0 +1,215 @@
+# docker-compose.yml — NetBox stack MediaHall (généré par Ansible)
+# Réseau: {{ netbox_network_subnet }} (mediahall_net — isolé de StoryEngine 172.20.1.0/24)
+
+networks:
+  mediahall_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: {{ netbox_network_subnet }}
+
+volumes:
+  netbox_postgres_data:
+  netbox_redis_data:
+
+services:
+
+  # ─────────────────────────────────────────────
+  # NetBox — application principale
+  # ─────────────────────────────────────────────
+  netbox:
+    image: "{{ netbox_local_image }}"
+    restart: unless-stopped
+    env_file: netbox.env
+    volumes:
+      - "{{ netbox_config_dir }}/configuration.py:/etc/netbox/config/configuration.py:ro"
+      - "{{ netbox_media_dir }}:/opt/netbox/netbox/media"
+      - "{{ netbox_reports_dir }}:/opt/netbox/netbox/reports"
+      - "{{ netbox_scripts_dir }}:/opt/netbox/netbox/scripts"
+    ports:
+      - "127.0.0.1:{{ netbox_port }}:8080"
+    networks:
+      - mediahall_net
+    depends_on:
+      netbox-postgres:
+        condition: service_healthy
+      netbox-redis:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/api/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: "{{ netbox_memory_limit }}"
+          cpus: "{{ netbox_cpu_limit }}"
+        reservations:
+          memory: "{{ netbox_memory_reservation }}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # ─────────────────────────────────────────────
+  # NetBox Worker — tâches asynchrones RQ
+  # ─────────────────────────────────────────────
+  netbox-worker:
+    image: "{{ netbox_local_image }}"
+    restart: unless-stopped
+    env_file: netbox.env
+    command: /opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py rqworker
+    volumes:
+      - "{{ netbox_config_dir }}/configuration.py:/etc/netbox/config/configuration.py:ro"
+      - "{{ netbox_media_dir }}:/opt/netbox/netbox/media"
+      - "{{ netbox_reports_dir }}:/opt/netbox/netbox/reports"
+      - "{{ netbox_scripts_dir }}:/opt/netbox/netbox/scripts"
+    networks:
+      - mediahall_net
+    depends_on:
+      netbox:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/netbox/venv/bin/python /opt/netbox/netbox/manage.py rqworker --help > /dev/null 2>&1 || exit 1"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: "{{ netbox_worker_memory_limit }}"
+          cpus: "{{ netbox_worker_cpu_limit }}"
+        reservations:
+          memory: "{{ netbox_worker_memory_reservation }}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # ─────────────────────────────────────────────
+  # NetBox Housekeeping — maintenance périodique
+  # ─────────────────────────────────────────────
+  netbox-housekeeping:
+    image: "{{ netbox_local_image }}"
+    restart: unless-stopped
+    env_file: netbox.env
+    command: /opt/netbox/housekeeping.sh
+    volumes:
+      - "{{ netbox_config_dir }}/configuration.py:/etc/netbox/config/configuration.py:ro"
+    networks:
+      - mediahall_net
+    depends_on:
+      netbox:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f housekeeping || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: "{{ netbox_housekeeping_memory_limit }}"
+          cpus: "{{ netbox_housekeeping_cpu_limit }}"
+        reservations:
+          memory: "{{ netbox_housekeeping_memory_reservation }}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  # ─────────────────────────────────────────────
+  # PostgreSQL — base de données NetBox
+  # ─────────────────────────────────────────────
+  netbox-postgres:
+    image: "{{ postgresql_image }}"
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "{{ netbox_db_name }}"
+      POSTGRES_USER: "{{ netbox_db_user }}"
+      POSTGRES_PASSWORD: "{{ vault_mediahall_db_password }}"
+    volumes:
+      - netbox_postgres_data:/var/lib/postgresql/data
+    networks:
+      - mediahall_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ netbox_db_user }} -d {{ netbox_db_name }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: "{{ netbox_postgres_memory_limit }}"
+          cpus: "{{ netbox_postgres_cpu_limit }}"
+        reservations:
+          memory: "{{ netbox_postgres_memory_reservation }}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+
+  # ─────────────────────────────────────────────
+  # Redis — cache + task queue NetBox
+  # ─────────────────────────────────────────────
+  netbox-redis:
+    image: "{{ redis_image }}"
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
+    volumes:
+      - netbox_redis_data:/data
+    networks:
+      - mediahall_net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: "{{ netbox_redis_memory_limit }}"
+          cpus: "{{ netbox_redis_cpu_limit }}"
+        reservations:
+          memory: "{{ netbox_redis_memory_reservation }}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

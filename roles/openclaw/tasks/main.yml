@@ -348,7 +348,7 @@
 # Deploy vref CLI to Director workspace (used in sandbox via exec tool)
 - name: Deploy vref CLI to Director workspace
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../roles/videoref-engine/files/vref"
+    src: "{{ playbook_dir }}/../../roles/videoref-engine/files/vref"
     dest: "{{ openclaw_workspace_dir }}/{{ openclaw_agent_director_name }}/vref"
     owner: "1000"
     group: "1000"

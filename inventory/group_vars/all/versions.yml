@@ -15,7 +15,7 @@ redis_image: "redis:8.4.0-bookworm"  # CVE-2025-49844 RediShell CVSS 10.0 (fix 8
 qdrant_image: "qdrant/qdrant:v1.16.3"
 
 # --- Applications ---
-openclaw_image: "ghcr.io/openclaw/openclaw:2026.3.13-1"
+openclaw_image: "ghcr.io/openclaw/openclaw:2026.4.14"
 # n8n: image custom avec patch enterprise (roles/n8n/files/Dockerfile)
 # Build: cd roles/n8n/files && docker build --build-arg N8N_VERSION=2.7.3 -t ghcr.io/mobutoo/n8n-enterprise:2.7.3 .
 # Push:  docker push ghcr.io/mobutoo/n8n-enterprise:2.7.3

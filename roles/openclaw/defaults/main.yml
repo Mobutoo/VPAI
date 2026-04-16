@@ -366,7 +366,7 @@ openclaw_swarm_enabled: true
 openclaw_swarm_max_concurrent: 6
 
 # Archive idle subagent sessions after N minutes (frees memory)
-openclaw_swarm_archive_minutes: 90
+openclaw_swarm_archive_minutes: 30
 
 # Swarm coordination timeout (seconds) — fan-out tasks auto-cancel after this
 openclaw_swarm_coordination_timeout: 600

@@ -47,7 +47,7 @@ diun_image: "crazymax/diun:4.31.0"
 socket_proxy_image: "tecnativa/docker-socket-proxy:v0.4.2"
 
 # --- Obsidian Sync ---
-couchdb_image: "apache/couchdb:3.5.1"
+couchdb_image: "apache/couchdb:3.3.3"  # TODO: upgrade 3.5.1 — migration Obsidian Sync à planifier avant deploy
 
 # --- Kitsu (animation/VFX production tracker) ---
 kitsu_image: "cgwire/cgwire:1.0.24"  # Kitsu 1.0.24 (2026-04-16)

@@ -1,7 +1,7 @@
 ---
 # inventory/group_vars/all/versions.yml — Images Docker pinnées
 # JAMAIS de :latest ou :stable — Tout est versionné
-# Vérifié le : 27 mars 2026
+# Vérifié le : 16 avril 2026
 
 # --- MediaHall — NetBox DCIM ---
 netbox_image: "ghcr.io/netbox-community/netbox:v4.2.9"
@@ -12,7 +12,7 @@ netbox_local_image: "mediahall-netbox:v4.2.9"
 # --- Données ---
 postgresql_image: "postgres:18.3-bookworm"  # CVE-2025-8714/8715 + buffer overflows (fix 18.3, 2026-02-26)
 redis_image: "redis:8.4.0-bookworm"  # CVE-2025-49844 RediShell CVSS 10.0 (fix 8.2.2+, 2025-10)
-qdrant_image: "qdrant/qdrant:v1.16.3"
+qdrant_image: "qdrant/qdrant:v1.17.1"
 
 # --- Applications ---
 openclaw_image: "ghcr.io/openclaw/openclaw:2026.4.14"
@@ -21,36 +21,36 @@ openclaw_image: "ghcr.io/openclaw/openclaw:2026.4.14"
 # Push:  docker push ghcr.io/mobutoo/n8n-enterprise:2.7.3
 n8n_image: "ghcr.io/mobutoo/n8n-enterprise:2.7.3"
 n8n_upstream_version: "2.7.3"  # version officielle n8nio/n8n sous-jacente
-litellm_image: "ghcr.io/berriai/litellm:v1.81.3-stable"
-nocodb_image: "nocodb/nocodb:0.301.3"  # SQL injection DATEADD + stored XSS + SSRF (fix 0.301.3, 2026-02-27)
-plane_web_image: "makeplane/plane-frontend:v1.2.2"
-plane_admin_image: "makeplane/plane-admin:v1.2.2"
-plane_api_image: "makeplane/plane-backend:v1.2.2"
-plane_worker_image: "makeplane/plane-backend:v1.2.2"
+litellm_image: "ghcr.io/berriai/litellm:v1.83.3-stable"
+nocodb_image: "nocodb/nocodb:2026.04.1"  # SQL injection DATEADD + stored XSS + SSRF (fix 0.301.3, 2026-02-27); CalVer depuis 2026.04.1
+plane_web_image: "makeplane/plane-frontend:v1.3.0"  # fix SSRF webhook + X-Frame-Options (2026-04)
+plane_admin_image: "makeplane/plane-admin:v1.3.0"
+plane_api_image: "makeplane/plane-backend:v1.3.0"
+plane_worker_image: "makeplane/plane-backend:v1.3.0"
 plane_minio_image: "minio/minio:RELEASE.2024-11-07T00-52-20Z"
-dufs_image: "sigoden/dufs:v0.43.0"  # TODO: vérifier dernière release → https://github.com/sigoden/dufs/releases
+dufs_image: "sigoden/dufs:v0.45.0"
 
 # --- Reverse Proxy ---
 caddy_image: "caddy:2.11.2-alpine"  # CVE-2026-30851/30852 identity injection + env leak (fix 2.11.2)
 
 # --- Observabilité ---
-grafana_image: "grafana/grafana:12.4.2"  # CVE-2026-27876 CVSS 9.1 RCE SQL expressions (fix 12.4.2, 2026-03-25)
-victoriametrics_image: "victoriametrics/victoria-metrics:v1.135.0"
-loki_image: "grafana/loki:3.6.5"
-alloy_image: "grafana/alloy:v1.13.0"
+grafana_image: "grafana/grafana:12.4.3"  # CVE-2026-27876 CVSS 9.1 RCE SQL expressions (fix 12.4.2); patch 12.4.3 (2026-04)
+victoriametrics_image: "victoriametrics/victoria-metrics:v1.140.0"
+loki_image: "grafana/loki:3.7.1"
+alloy_image: "grafana/alloy:v1.15.1"
 
 # --- Monitoring (collecteurs) ---
-cadvisor_image: "ghcr.io/google/cadvisor:0.55.1"
+cadvisor_image: "ghcr.io/google/cadvisor:v0.56.2"  # fix nil pointer deref Docker
 
 # --- Système ---
 diun_image: "crazymax/diun:4.31.0"
 socket_proxy_image: "tecnativa/docker-socket-proxy:v0.4.2"
 
 # --- Obsidian Sync ---
-couchdb_image: "apache/couchdb:3.3.3"
+couchdb_image: "apache/couchdb:3.5.1"
 
 # --- Kitsu (animation/VFX production tracker) ---
-kitsu_image: "cgwire/cgwire:1.0.19"  # Kitsu 1.0.19 + Zou 1.0.21 (2026-03-18)
+kitsu_image: "cgwire/cgwire:1.0.24"  # Kitsu 1.0.24 (2026-04-16)
 
 # --- Tunnel / VPN-only ---
 # cloudflared: RETIRÉ — remplacé par webhook relay via Seko-VPN (role webhook-relay)
@@ -64,7 +64,7 @@ firefly_image: "fireflyiii/core:version-6.5.3"
 zimboo_image: "ghcr.io/mobutoo/zimboo:v1.14.0"
 
 # --- Food & Stock (Koodia) ---
-mealie_image: "ghcr.io/mealie-recipes/mealie:v3.12.0"
+mealie_image: "ghcr.io/mealie-recipes/mealie:v3.15.1"  # 2026-04-14
 grocy_image: "lscr.io/linuxserver/grocy:4.6.0"
 koodia_image: "ghcr.io/mobutoo/koodia:v0.1.0"
 

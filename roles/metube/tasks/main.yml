@@ -24,6 +24,16 @@
     - "{{ metube_download_dir }}"
   become: true
 
+- name: "Metube | Create cookies directory"
+  ansible.builtin.file:
+    path: "{{ metube_cookies_dir }}"
+    state: directory
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0700"
+  become: true
+  when: metube_cookies_enabled | default(false)
+
 - name: "Metube | Deploy env file"
   ansible.builtin.template:
     src: metube.env.j2

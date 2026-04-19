@@ -29,3 +29,9 @@ metube_output_template: "%(title).80s [%(uploader).30s %(upload_date>%Y%m%d)s] %
 
 # Max video quality (height in pixels)
 metube_max_quality: "1080"
+
+# yt-dlp cookies — required for Instagram/TikTok (login-gated content)
+# Workflow: export Netscape cookies.txt from browser (logged-in session)
+# Place at {{ metube_cookies_dir }}/cookies.txt, then set enabled: true + redeploy
+metube_cookies_enabled: false
+metube_cookies_dir: "/opt/workstation/metube/cookies"

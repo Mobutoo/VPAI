@@ -112,6 +112,9 @@ services:
     volumes:
       - {{ metube_download_dir }}:/downloads
       - {{ creative_assets_dir }}:/app/creative-assets
+{% if metube_cookies_enabled | default(false) %}
+      - {{ metube_cookies_dir }}:/cookies:ro
+{% endif %}
     ports:
       - "127.0.0.1:{{ metube_port }}:8081"
     networks:

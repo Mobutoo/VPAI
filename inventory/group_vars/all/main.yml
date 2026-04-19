@@ -179,8 +179,8 @@ github_webhook_secret: "{{ vault_github_webhook_secret | default('') }}"
 # --- n8n <-> OpenClaw integration ---
 n8n_webhook_secret: "{{ vault_n8n_webhook_secret | default('') }}"
 n8n_webhook_base_url: "http://n8n:5678"
-# API key for OpenClaw dynamic workflow discovery (read-only use, reuses mcp key)
-n8n_discovery_api_key: "{{ vault_n8n_mcp_api_key }}"
+# API key for OpenClaw dynamic workflow discovery (dedicated OpenClaw key, public-api audience)
+n8n_discovery_api_key: "{{ vault_n8n_openclaw_api_key }}"
 
 # --- Qdrant collections (semantic cache + RAG) ---
 qdrant_cache_collection: "semantic_cache"

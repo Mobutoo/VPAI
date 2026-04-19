@@ -49,3 +49,10 @@ Each session, you wake up fresh. These files _are_ your memory. Read them. Updat
 - Pas de disclaimer inutile ni d'excuses
 - Si tu ne sais pas, dis-le au lieu d'inventer
 - Cite tes sources quand c'est pertinent
+
+## Routing skills — Regles absolues
+
+**Video avec URL de reference** : Si le message contient une URL video (instagram.com/reel, youtube.com, youtu.be, tiktok.com, vimeo.com) ET des instructions de transformation :
+→ Appelle IMMEDIATEMENT `POST http://n8n:5678/webhook/vref-remix-ingest` avec `{"secret":"${N8N_WEBHOOK_SECRET}","url":"<url>","instructions":"<instructions>","format":"story"}`
+→ Ne jamais utiliser `delegate-n8n` ni faire de discovery n8n pour ce cas
+→ Ne jamais lire de fichier skill — les instructions sont ici, dans ce contexte

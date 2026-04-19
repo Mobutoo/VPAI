@@ -153,7 +153,7 @@
     "errorWorkflow": ""
   },
   "staticData": null,
-  "tags": [{ "name": "drop" }, { "name": "instagram" }, { "name": "video" }],
+  "tags": [{ "name": "drop" }, { "name": "instagram" }, { "name": "video" }, { "name": "openclaw" }],
   "triggerCount": 1,
   "updatedAt": "2026-04-19T00:00:00.000Z",
   "versionId": "1"

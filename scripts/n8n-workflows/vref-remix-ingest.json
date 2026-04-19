@@ -278,7 +278,7 @@
     "saveDataErrorExecution": "all",
     "saveManualExecutions": true,
     "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
+    "errorWorkflow": "ggCMJPaydcKDTZPi"
   },
   "staticData": null,
   "tags": [

@@ -446,6 +446,40 @@
     - openclaw_volume_isolation | default(false)
     - openclaw_n8n_integration | default(false)
 
+- name: Sync system skills into existing agent sandboxes
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      CHANGED=0
+      for layer in system state; do
+        SANDBOX_BASE="{{ openclaw_data_dir }}/${layer}/sandboxes"
+        [ -d "${SANDBOX_BASE}" ] || continue
+        for agent_dir in "${SANDBOX_BASE}"/*/; do
+          skills_dir="${agent_dir}skills"
+          [ -d "${skills_dir}" ] || continue
+          for skill in {{ openclaw_skills | join(' ') }}; do
+            src="{{ openclaw_system_dir }}/skills/${skill}/SKILL.md"
+            dst="${skills_dir}/${skill}/SKILL.md"
+            [ -f "${src}" ] || continue
+            mkdir -p "${skills_dir}/${skill}"
+            if ! cmp -s "${src}" "${dst}" 2>/dev/null; then
+              cp "${src}" "${dst}"
+              chown -R 1000:1000 "${skills_dir}/${skill}"
+              CHANGED=1
+            fi
+          done
+        done
+      done
+      [ "${CHANGED}" -eq 1 ] && echo "SYNCED" || echo "UP_TO_DATE"
+  become: true
+  register: openclaw_sandbox_skills_sync
+  changed_when: "'SYNCED' in openclaw_sandbox_skills_sync.stdout"
+  when:
+    - openclaw_volume_isolation | default(false)
+    - openclaw_n8n_integration | default(false)
+  notify: Restart openclaw stack
+
 - name: Deploy OpenClaw environment file
   ansible.builtin.template:
     src: openclaw.env.j2

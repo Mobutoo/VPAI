@@ -78,7 +78,7 @@ cadvisor_memory_reservation: "64M"
 cadvisor_cpu_limit: "0.25"
 
 # NocoDB (Airtable-like — pipeline production IA manga)
-nocodb_memory_limit: "{{ '384M' if target_env == 'prod' else '256M' }}"
+nocodb_memory_limit: "{{ '512M' if target_env == 'prod' else '256M' }}"
 nocodb_memory_reservation: "128M"
 nocodb_cpu_limit: "0.5"
 

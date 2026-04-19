@@ -13,7 +13,10 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [260, 300],
+      "position": [
+        260,
+        300
+      ],
       "webhookId": "mi000001-5678-4000-8000-metubeingest1"
     },
     {
@@ -24,7 +27,10 @@
       "name": "Validate & Prepare",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 300]
+      "position": [
+        480,
+        300
+      ]
     },
     {
       "parameters": {
@@ -33,19 +39,27 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json.metube_payload) }}",
-        "options": { "timeout": 30000 }
+        "options": {
+          "timeout": 30000
+        }
       },
       "id": "mi-0001-0000-4000-8000-000000000003",
       "name": "POST metube /add",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [700, 300]
+      "position": [
+        700,
+        300
+      ]
     },
     {
       "parameters": {
@@ -55,7 +69,10 @@
       "name": "Merge Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [920, 300]
+      "position": [
+        920,
+        300
+      ]
     },
     {
       "parameters": {
@@ -64,8 +81,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "xc-token", "value": "={{ $env.NOCODB_API_TOKEN }}" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -77,7 +100,10 @@
       "name": "Create NocoDB record",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1140, 300]
+      "position": [
+        1140,
+        300
+      ]
     },
     {
       "parameters": {
@@ -87,19 +113,27 @@
       "name": "Extract content_id",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 300]
+      "position": [
+        1360,
+        300
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { status: 'accepted', content_id: $json.content_id, title: $json.title, message: 'Téléchargement metube démarré. Analyse en cours.' } }}",
-        "options": { "responseCode": 202 }
+        "options": {
+          "responseCode": 202
+        }
       },
       "id": "mi-0001-0000-4000-8000-000000000007",
       "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1580, 300]
+      "position": [
+        1580,
+        300
+      ]
     },
     {
       "parameters": {
@@ -108,9 +142,18 @@
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "chat_id",    "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
-            { "name": "text",       "value": "=\ud83d\udce5 Metube ingest d\u00e9marr\u00e9\\n\\n<b>{{ $('Extract content_id').first().json.title }}</b>\\n\\n\ud83c\udfaf {{ $('Extract content_id').first().json.brief.objective.slice(0, 120) }}\\n\\n\ud83d\udd11 content_id: <code>{{ $('Extract content_id').first().json.content_id }}</code>" },
-            { "name": "parse_mode", "value": "HTML" }
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}"
+            },
+            {
+              "name": "text",
+              "value": "=📥 Metube ingest démarré\\n\\n<b>{{ $('Extract content_id').first().json.title }}</b>\\n\\n🎯 {{ $('Extract content_id').first().json.brief.objective.slice(0, 120) }}\\n\\n🔑 content_id: <code>{{ $('Extract content_id').first().json.content_id }}</code>"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            }
           ]
         },
         "options": {}
@@ -119,17 +162,114 @@
       "name": "Telegram notify",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1800, 300]
+      "position": [
+        1800,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Extract content_id').first().json;\ntry {\n  await $http.request({\n    method: 'POST',\n    url: 'http://localhost:5678/webhook/cf-brief-to-concept',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({\n      secret: $env.N8N_WEBHOOK_HMAC_SECRET,\n      content_id: ctx.content_id,\n      title: ctx.title,\n      format: ctx.format || 'reel',\n      brief: ctx.brief\n    })\n  });\n  return [{ json: { cf_triggered: true, content_id: ctx.content_id } }];\n} catch(e) {\n  return [{ json: { cf_triggered: false, cf_error: e.message } }];\n}"
+      },
+      "id": "mi-0001-0000-4000-8000-000000000009",
+      "name": "Trigger CF Pipeline",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2020,
+        300
+      ]
     }
   ],
   "connections": {
-    "Webhook":              { "main": [[{ "node": "Validate & Prepare",    "type": "main", "index": 0 }]] },
-    "Validate & Prepare":   { "main": [[{ "node": "POST metube /add",       "type": "main", "index": 0 }]] },
-    "POST metube /add":     { "main": [[{ "node": "Merge Context",          "type": "main", "index": 0 }]] },
-    "Merge Context":        { "main": [[{ "node": "Create NocoDB record",   "type": "main", "index": 0 }]] },
-    "Create NocoDB record": { "main": [[{ "node": "Extract content_id",     "type": "main", "index": 0 }]] },
-    "Extract content_id":   { "main": [[{ "node": "Webhook Response",       "type": "main", "index": 0 }]] },
-    "Webhook Response":     { "main": [[{ "node": "Telegram notify",        "type": "main", "index": 0 }]] }
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate & Prepare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Prepare": {
+      "main": [
+        [
+          {
+            "node": "POST metube /add",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST metube /add": {
+      "main": [
+        [
+          {
+            "node": "Merge Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Context": {
+      "main": [
+        [
+          {
+            "node": "Create NocoDB record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create NocoDB record": {
+      "main": [
+        [
+          {
+            "node": "Extract content_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract content_id": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Response": {
+      "main": [
+        [
+          {
+            "node": "Telegram notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram notify": {
+      "main": [
+        [
+          {
+            "node": "Trigger CF Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "settings": {
     "executionOrder": "v1",
@@ -141,10 +281,18 @@
   },
   "staticData": null,
   "tags": [
-    { "name": "openclaw" },
-    { "name": "metube" },
-    { "name": "video" },
-    { "name": "content-factory" }
+    {
+      "name": "openclaw"
+    },
+    {
+      "name": "metube"
+    },
+    {
+      "name": "video"
+    },
+    {
+      "name": "content-factory"
+    }
   ],
   "triggerCount": 1,
   "updatedAt": "2026-04-19T00:00:00.000Z",

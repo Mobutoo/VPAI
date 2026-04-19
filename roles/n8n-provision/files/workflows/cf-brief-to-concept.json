@@ -12,7 +12,10 @@
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [260, 380],
+      "position": [
+        260,
+        380
+      ],
       "webhookId": "btc-webhook-0000-0000-000000000001"
     },
     {
@@ -23,7 +26,10 @@
       "name": "Validate Secret",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 380]
+      "position": [
+        480,
+        380
+      ]
     },
     {
       "parameters": {
@@ -32,19 +38,27 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ secret: $env.N8N_WEBHOOK_HMAC_SECRET, action: 'read_content', content_id: $json.content_id }) }}",
-        "options": { "timeout": 15000 }
+        "options": {
+          "timeout": 15000
+        }
       },
       "id": "btc-0001-0000-0000-0000-000000000003",
       "name": "Read Brand Profile",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [700, 380]
+      "position": [
+        700,
+        380
+      ]
     },
     {
       "parameters": {
@@ -54,7 +68,10 @@
       "name": "Step 1 Enhance Brief",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [920, 380]
+      "position": [
+        920,
+        380
+      ]
     },
     {
       "parameters": {
@@ -64,7 +81,10 @@
       "name": "Step 2 Research",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1140, 380]
+      "position": [
+        1140,
+        380
+      ]
     },
     {
       "parameters": {
@@ -74,7 +94,10 @@
       "name": "Step 3 Moodboard",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 380]
+      "position": [
+        1360,
+        380
+      ]
     },
     {
       "parameters": {
@@ -84,7 +107,10 @@
       "name": "Step 4 Concept Hook",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1580, 380]
+      "position": [
+        1580,
+        380
+      ]
     },
     {
       "parameters": {
@@ -94,7 +120,10 @@
       "name": "Step 5 Casting",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1800, 380]
+      "position": [
+        1800,
+        380
+      ]
     },
     {
       "parameters": {
@@ -104,7 +133,10 @@
       "name": "Store Results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2020, 380]
+      "position": [
+        2020,
+        380
+      ]
     },
     {
       "parameters": {
@@ -113,19 +145,27 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ secret: $env.N8N_WEBHOOK_HMAC_SECRET, action: 'update_task_status', content_id: $json.content_id, steps: [1, 2, 3, 4, 5], status: 'done' }) }}",
-        "options": { "timeout": 15000 }
+        "options": {
+          "timeout": 15000
+        }
       },
       "id": "btc-0001-0000-0000-0000-000000000010",
       "name": "Sync Kitsu",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2240, 380]
+      "position": [
+        2240,
+        380
+      ]
     },
     {
       "parameters": {
@@ -135,33 +175,194 @@
       "name": "Sync Calendar",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2460, 380]
+      "position": [
+        2460,
+        380
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { status: 'ok', content_id: $json.content_id, steps_completed: $json.steps_completed, concept_summary: $json.concept_summary } }}",
-        "options": { "responseCode": 200 }
+        "options": {
+          "responseCode": 200
+        }
       },
       "id": "btc-0001-0000-0000-0000-000000000012",
       "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [2680, 380]
+      "position": [
+        2680,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            },
+            {
+              "name": "text",
+              "value": "=📝 <b>CF Pipeline</b> — Concept généré\n\n🎬 <b>{{ $('Validate Secret').first().json.title }}</b>\n\n🪝 <i>{{ $input.first().json.concept_summary }}</i>\n\n🎙️ Script &amp; storyboard en cours..."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "btc-tg-0001-0000-0000-000000000001",
+      "name": "TG: Concept Done",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2900,
+        380
+      ]
     }
   ],
   "connections": {
-    "Webhook Trigger":    { "main": [[{ "node": "Validate Secret",     "type": "main", "index": 0 }]] },
-    "Validate Secret":    { "main": [[{ "node": "Read Brand Profile",  "type": "main", "index": 0 }]] },
-    "Read Brand Profile": { "main": [[{ "node": "Step 1 Enhance Brief","type": "main", "index": 0 }]] },
-    "Step 1 Enhance Brief": { "main": [[{ "node": "Step 2 Research",   "type": "main", "index": 0 }]] },
-    "Step 2 Research":    { "main": [[{ "node": "Step 3 Moodboard",    "type": "main", "index": 0 }]] },
-    "Step 3 Moodboard":   { "main": [[{ "node": "Step 4 Concept Hook", "type": "main", "index": 0 }]] },
-    "Step 4 Concept Hook":{ "main": [[{ "node": "Step 5 Casting",      "type": "main", "index": 0 }]] },
-    "Step 5 Casting":     { "main": [[{ "node": "Store Results",       "type": "main", "index": 0 }]] },
-    "Store Results":      { "main": [[{ "node": "Sync Kitsu",          "type": "main", "index": 0 }]] },
-    "Sync Kitsu":         { "main": [[{ "node": "Sync Calendar",       "type": "main", "index": 0 }]] },
-    "Sync Calendar":      { "main": [[{ "node": "Webhook Response",    "type": "main", "index": 0 }]] }
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate Secret",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Secret": {
+      "main": [
+        [
+          {
+            "node": "Read Brand Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Brand Profile": {
+      "main": [
+        [
+          {
+            "node": "Step 1 Enhance Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 1 Enhance Brief": {
+      "main": [
+        [
+          {
+            "node": "Step 2 Research",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 2 Research": {
+      "main": [
+        [
+          {
+            "node": "Step 3 Moodboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 3 Moodboard": {
+      "main": [
+        [
+          {
+            "node": "Step 4 Concept Hook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 4 Concept Hook": {
+      "main": [
+        [
+          {
+            "node": "Step 5 Casting",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 5 Casting": {
+      "main": [
+        [
+          {
+            "node": "Store Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Results": {
+      "main": [
+        [
+          {
+            "node": "Sync Kitsu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Kitsu": {
+      "main": [
+        [
+          {
+            "node": "Sync Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Calendar": {
+      "main": [
+        [
+          {
+            "node": "TG: Concept Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TG: Concept Done": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "settings": {
     "executionOrder": "v1",
@@ -169,10 +370,14 @@
     "saveDataErrorExecution": "all",
     "saveManualExecutions": true,
     "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
+    "errorWorkflow": "ggCMJPaydcKDTZPi"
   },
   "staticData": null,
-  "tags": [{ "name": "content-factory" }],
+  "tags": [
+    {
+      "name": "content-factory"
+    }
+  ],
   "triggerCount": 1,
   "updatedAt": "2026-03-17T00:00:00.000Z",
   "versionId": "1"

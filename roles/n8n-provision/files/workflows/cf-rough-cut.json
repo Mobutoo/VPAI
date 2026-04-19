@@ -33,7 +33,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Validate all scenes have status 'generated' and a valid asset_url\nconst { content_id, content, scenes } = $input.first().json;\n\nconst pendingScenes = scenes.filter(s => s.status !== 'generated' || !s.asset_url);\n\nif (pendingScenes.length > 0) {\n  // Return error \u2014 some scenes are not ready yet\n  // Use respondToWebhook approach: throw to let error handler respond,\n  // OR return a special marker and handle in response node.\n  // We throw with a structured message to surface to the caller.\n  const pendingNums = pendingScenes.map(s => s.scene_number);\n  throw new Error(JSON.stringify({\n    status: 'error',\n    message: 'Scenes not ready',\n    pending_scenes: pendingNums,\n    total_scenes: scenes.length,\n    ready_scenes: scenes.length - pendingScenes.length\n  }));\n}\n\nreturn [{ json: { content_id, content, scenes } }];"
+        "jsCode": "// Validate all scenes have status 'generated' and a valid asset_url\nconst { content_id, content, scenes } = $input.first().json;\n\nconst pendingScenes = scenes.filter(s => s.status !== 'generated' || !s.asset_url);\n\nif (pendingScenes.length > 0) {\n  // Return error — some scenes are not ready yet\n  // Use respondToWebhook approach: throw to let error handler respond,\n  // OR return a special marker and handle in response node.\n  // We throw with a structured message to surface to the caller.\n  const pendingNums = pendingScenes.map(s => s.scene_number);\n  throw new Error(JSON.stringify({\n    status: 'error',\n    message: 'Scenes not ready',\n    pending_scenes: pendingNums,\n    total_scenes: scenes.length,\n    ready_scenes: scenes.length - pendingScenes.length\n  }));\n}\n\nreturn [{ json: { content_id, content, scenes } }];"
       },
       "id": "cfrc-0001-0000-0000-0000-000000000003",
       "name": "Validate All Assets Ready",
@@ -72,7 +72,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Store rough cut URL in NocoDB and advance pipeline step\nconst { content_id, content, composition, render_id, rough_cut_url } = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url:    'http://localhost:5678/webhook/cf-update-content',\n    body:   {\n      secret:       expectedSecret,\n      action:       'update_content',\n      content_id,\n      rough_cut_url,\n      current_step: 10,\n      status:       'awaiting_validation'\n    },\n    json: true\n  });\n} catch (err) {\n  // Log but continue \u2014 storage failure should not block Kitsu sync\n  console.error(`Failed to store rough cut URL: ${err.message}`);\n}\n\nreturn [{ json: { content_id, content, composition, render_id, rough_cut_url } }];"
+        "jsCode": "// Store rough cut URL in NocoDB and advance pipeline step\nconst { content_id, content, composition, render_id, rough_cut_url } = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url:    'http://localhost:5678/webhook/cf-update-content',\n    body:   {\n      secret:       expectedSecret,\n      action:       'update_content',\n      content_id,\n      rough_cut_url,\n      current_step: 10,\n      status:       'awaiting_validation'\n    },\n    json: true\n  });\n} catch (err) {\n  // Log but continue — storage failure should not block Kitsu sync\n  console.error(`Failed to store rough cut URL: ${err.message}`);\n}\n\nreturn [{ json: { content_id, content, composition, render_id, rough_cut_url } }];"
       },
       "id": "cfrc-0001-0000-0000-0000-000000000006",
       "name": "Store Rough Cut URL",
@@ -123,6 +123,38 @@
       "typeVersion": 2,
       "position": [
         2020,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            },
+            {
+              "name": "text",
+              "value": "=🎉 <b>CF Pipeline</b> — Vidéo livrée dans Drop ✓\n\n📦 <code>{{ $input.first().json.content_id }}</code>\n\n{{ $input.first().json.drop_delivered ? '✅ Livraison réussie' : '⚠️ Erreur : ' + $input.first().json.drop_error }}\n\n🚀 Prête à publier !"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cfrc-tg-0001-0000-0000-000000000001",
+      "name": "TG: Video Delivered",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2240,
         300
       ]
     }
@@ -209,6 +241,17 @@
       "main": [
         [
           {
+            "node": "TG: Video Delivered",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TG: Video Delivered": {
+      "main": [
+        [
+          {
             "node": "Webhook Response",
             "type": "main",
             "index": 0
@@ -224,7 +267,7 @@
     "saveDataErrorExecution": "all",
     "saveManualExecutions": true,
     "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
+    "errorWorkflow": "ggCMJPaydcKDTZPi"
   },
   "staticData": null,
   "tags": [

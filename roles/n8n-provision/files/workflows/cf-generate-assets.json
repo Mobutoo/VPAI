@@ -12,7 +12,10 @@
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [260, 300],
+      "position": [
+        260,
+        300
+      ],
       "webhookId": "cfga-0001-0000-0000-0000-000000000001"
     },
     {
@@ -23,7 +26,10 @@
       "name": "Validate and Load",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 300]
+      "position": [
+        480,
+        300
+      ]
     },
     {
       "parameters": {
@@ -33,7 +39,10 @@
       "name": "Assign Providers",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [700, 300]
+      "position": [
+        700,
+        300
+      ]
     },
     {
       "parameters": {
@@ -43,7 +52,10 @@
       "name": "Dispatch to Creative Pipeline",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [920, 300]
+      "position": [
+        920,
+        300
+      ]
     },
     {
       "parameters": {
@@ -53,7 +65,10 @@
       "name": "Update Scene Status",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1140, 300]
+      "position": [
+        1140,
+        300
+      ]
     },
     {
       "parameters": {
@@ -63,28 +78,139 @@
       "name": "Sync Kitsu",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 300]
+      "position": [
+        1360,
+        300
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { status: 'ok', content_id: $json.content_id, scenes_dispatched: $json.scenes_dispatched, results: $json.results } }}",
-        "options": { "responseCode": 200 }
+        "options": {
+          "responseCode": 200
+        }
       },
       "id": "cfga-0001-0000-0000-0000-000000000007",
       "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1580, 300]
+      "position": [
+        1580,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            },
+            {
+              "name": "text",
+              "value": "=🖼️ <b>CF Pipeline</b> — Assets générés\n\n✅ {{ $input.first().json.scenes_dispatched }} scènes rendues\n\n🎞️ Montage Remotion en cours..."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cfga-tg-0001-0000-0000-000000000001",
+      "name": "TG: Assets Done",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1780,
+        300
+      ]
     }
   ],
   "connections": {
-    "Webhook Trigger":              { "main": [[{ "node": "Validate and Load",           "type": "main", "index": 0 }]] },
-    "Validate and Load":            { "main": [[{ "node": "Assign Providers",            "type": "main", "index": 0 }]] },
-    "Assign Providers":             { "main": [[{ "node": "Dispatch to Creative Pipeline","type": "main", "index": 0 }]] },
-    "Dispatch to Creative Pipeline":{ "main": [[{ "node": "Update Scene Status",         "type": "main", "index": 0 }]] },
-    "Update Scene Status":          { "main": [[{ "node": "Sync Kitsu",                  "type": "main", "index": 0 }]] },
-    "Sync Kitsu":                   { "main": [[{ "node": "Webhook Response",            "type": "main", "index": 0 }]] }
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate and Load",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Load": {
+      "main": [
+        [
+          {
+            "node": "Assign Providers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assign Providers": {
+      "main": [
+        [
+          {
+            "node": "Dispatch to Creative Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dispatch to Creative Pipeline": {
+      "main": [
+        [
+          {
+            "node": "Update Scene Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Scene Status": {
+      "main": [
+        [
+          {
+            "node": "Sync Kitsu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Kitsu": {
+      "main": [
+        [
+          {
+            "node": "TG: Assets Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TG: Assets Done": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "settings": {
     "executionOrder": "v1",
@@ -93,10 +219,20 @@
     "saveManualExecutions": true,
     "executionTimeout": 600,
     "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
+    "errorWorkflow": "ggCMJPaydcKDTZPi"
   },
   "staticData": null,
-  "tags": [{ "name": "content-factory" }, { "name": "generate" }, { "name": "assets" }],
+  "tags": [
+    {
+      "name": "content-factory"
+    },
+    {
+      "name": "generate"
+    },
+    {
+      "name": "assets"
+    }
+  ],
   "triggerCount": 1,
   "updatedAt": "2026-03-17T00:00:00.000Z",
   "versionId": "1",

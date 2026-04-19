@@ -12,7 +12,10 @@
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [260, 380],
+      "position": [
+        260,
+        380
+      ],
       "webhookId": "sts-webhook-0000-0000-000000000001"
     },
     {
@@ -23,7 +26,10 @@
       "name": "Validate and Read Content",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 380]
+      "position": [
+        480,
+        380
+      ]
     },
     {
       "parameters": {
@@ -33,7 +39,10 @@
       "name": "Step 6 Write Script",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [700, 380]
+      "position": [
+        700,
+        380
+      ]
     },
     {
       "parameters": {
@@ -43,7 +52,10 @@
       "name": "Step 7 Storyboard",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [920, 380]
+      "position": [
+        920,
+        380
+      ]
     },
     {
       "parameters": {
@@ -53,7 +65,10 @@
       "name": "Step 8 Sound Design",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1140, 380]
+      "position": [
+        1140,
+        380
+      ]
     },
     {
       "parameters": {
@@ -63,7 +78,10 @@
       "name": "Store Results",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 380]
+      "position": [
+        1360,
+        380
+      ]
     },
     {
       "parameters": {
@@ -72,41 +90,167 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ secret: $env.N8N_WEBHOOK_HMAC_SECRET, action: 'update_task_status', content_id: $json.content_id, steps: [6, 7, 8], status: 'done' }) }}",
-        "options": { "timeout": 15000 }
+        "options": {
+          "timeout": 15000
+        }
       },
       "id": "sts-0001-0000-0000-0000-000000000007",
       "name": "Sync Kitsu",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1580, 380]
+      "position": [
+        1580,
+        380
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { status: 'ok', content_id: $('Store Results').first().json.content_id, scenes_created: $('Store Results').first().json.scenes_created, steps_completed: [6, 7, 8] } }}",
-        "options": { "responseCode": 200 }
+        "options": {
+          "responseCode": 200
+        }
       },
       "id": "sts-0001-0000-0000-0000-000000000008",
       "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1800, 380]
+      "position": [
+        1800,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            },
+            {
+              "name": "text",
+              "value": "=🎬 <b>CF Pipeline</b> — Storyboard prêt\n\n<b>{{ $('Validate and Read Content').first().json.title }}</b>\n\n📐 {{ $('Store Results').first().json.scenes_created }} scènes créées\n\n🖼️ Génération des assets en cours..."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sts-tg-0001-0000-0000-000000000001",
+      "name": "TG: Storyboard Done",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2000,
+        380
+      ]
     }
   ],
   "connections": {
-    "Webhook Trigger":           { "main": [[{ "node": "Validate and Read Content", "type": "main", "index": 0 }]] },
-    "Validate and Read Content": { "main": [[{ "node": "Step 6 Write Script",       "type": "main", "index": 0 }]] },
-    "Step 6 Write Script":       { "main": [[{ "node": "Step 7 Storyboard",         "type": "main", "index": 0 }]] },
-    "Step 7 Storyboard":         { "main": [[{ "node": "Step 8 Sound Design",       "type": "main", "index": 0 }]] },
-    "Step 8 Sound Design":       { "main": [[{ "node": "Store Results",             "type": "main", "index": 0 }]] },
-    "Store Results":             { "main": [[{ "node": "Sync Kitsu",                "type": "main", "index": 0 }]] },
-    "Sync Kitsu":                { "main": [[{ "node": "Webhook Response",          "type": "main", "index": 0 }]] }
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate and Read Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Read Content": {
+      "main": [
+        [
+          {
+            "node": "Step 6 Write Script",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 6 Write Script": {
+      "main": [
+        [
+          {
+            "node": "Step 7 Storyboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 7 Storyboard": {
+      "main": [
+        [
+          {
+            "node": "Step 8 Sound Design",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Step 8 Sound Design": {
+      "main": [
+        [
+          {
+            "node": "Store Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Results": {
+      "main": [
+        [
+          {
+            "node": "Sync Kitsu",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Kitsu": {
+      "main": [
+        [
+          {
+            "node": "TG: Storyboard Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "TG: Storyboard Done": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "settings": {
     "executionOrder": "v1",
@@ -114,10 +258,14 @@
     "saveDataErrorExecution": "all",
     "saveManualExecutions": true,
     "callerPolicy": "workflowsFromSameOwner",
-    "errorWorkflow": ""
+    "errorWorkflow": "ggCMJPaydcKDTZPi"
   },
   "staticData": null,
-  "tags": [{ "name": "content-factory" }],
+  "tags": [
+    {
+      "name": "content-factory"
+    }
+  ],
   "triggerCount": 1,
   "updatedAt": "2026-03-17T00:00:00.000Z",
   "versionId": "1"

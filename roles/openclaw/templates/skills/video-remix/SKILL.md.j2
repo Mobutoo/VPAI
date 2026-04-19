@@ -1,0 +1,74 @@
+---
+name: video-remix
+description: Generate a new video inspired by a reference URL — automatic end-to-end pipeline (download → analyze → AI remix → CF → Drop delivery).
+metadata: { "openclaw": { "emoji": "🎬", "always": true } }
+---
+
+# Skill: Video Remix
+
+Génère une nouvelle vidéo en s'inspirant d'une vidéo de référence (URL) avec des modifications créatives.
+**Pipeline entièrement automatique** — pas de studio-produce, pas d'étapes manuelles.
+
+## Quand utiliser ce skill
+
+Dès que le message contient :
+- Une URL vidéo (YouTube, Instagram, TikTok, Vimeo…) **ET** des instructions de transformation
+- "inspiré de cette vidéo", "dans le style de", "remplace X par Y", "change les personnages"
+- "génère une vidéo", "crée une story/reel" avec une URL de référence
+
+**Ne pas utiliser** `studio-produce` pour ce type de demande — l'utilisateur veut un résultat automatique, pas un pipeline interactif.
+
+## Comment exécuter
+
+Appelle immédiatement `POST {{ n8n_webhook_base_url }}/webhook/vref-remix-ingest` :
+
+```json
+{
+  "secret": "${N8N_WEBHOOK_SECRET}",
+  "url": "<URL de la vidéo de référence>",
+  "instructions": "<instructions de transformation en langage naturel>",
+  "format": "story|reel|post",
+  "title": "<titre optionnel>"
+}
+```
+
+**Format par défaut** : `story` si non précisé.
+
+## Ce que fait le pipeline automatiquement
+
+1. **Téléchargement** — metube télécharge la vidéo de référence (720p)
+2. **Analyse** — videoref-engine extrait scènes, style, rythme, couleurs
+3. **Remix AI** — LiteLLM réécrit le prompt avec tes modifications
+4. **NocoDB** — crée un record `contents` (status: `intake`)
+5. **Telegram** — notifie avec le prompt remixé + `content_id`
+6. **CF Pipeline** — lance `cf-brief-to-concept` → génération assets → montage → Drop
+
+## Réponse attendue du webhook
+
+```json
+{
+  "status": "accepted",
+  "content_id": "42",
+  "title": "...",
+  "remixed_prompt": "Batman and Superman in a dramatic urban chase...",
+  "message": "Analyse terminée. Pipeline CF en cours."
+}
+```
+
+## Réponse à l'utilisateur
+
+Après le webhook 202 :
+
+> Pipeline lancé ✓
+> `content_id: <id>`
+> Prompt remixé : *<remixed_prompt>*
+> Livraison dans Drop dans ~15 min.
+
+## Exemples de commandes
+
+| Commande utilisateur | Instructions à extraire |
+|---|---|
+| "inspiré de cette vidéo, remplace par Batman et Superman" | `"Remplace les protagonistes par Batman et Superman"` |
+| "dans le style de ce reel mais version anime" | `"Convertir en style anime japonais"` |
+| "même structure mais avec des chats à la place" | `"Remplace les personnages par des chats"` |
+| "génère une story Instagram inspirée de ce TikTok" | `""` (instructions vides = analyse + remix style pur) |

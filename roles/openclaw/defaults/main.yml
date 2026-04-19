@@ -247,6 +247,7 @@ openclaw_skills:
   - swarm-coordinator
   - content-director
   - studio-produce
+  - video-remix
 
 # Skills supprimés — Ansible les supprime du répertoire global sur le VPS
 # Ajouter ici les skills obsolètes pour nettoyage automatique

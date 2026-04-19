@@ -14,9 +14,22 @@ Génère une nouvelle vidéo en s'inspirant d'une vidéo de référence (URL) av
 Dès que le message contient :
 - Une URL vidéo (YouTube, Instagram, TikTok, Vimeo…) **ET** des instructions de transformation
 - "inspiré de cette vidéo", "dans le style de", "remplace X par Y", "change les personnages"
-- "génère une vidéo", "crée une story/reel" avec une URL de référence
+- "génères une vidéo", "crée une story/reel" avec une URL de référence
 
 **Ne pas utiliser** `studio-produce` pour ce type de demande — l'utilisateur veut un résultat automatique, pas un pipeline interactif.
+
+## ⚠️ BYPASS DISCOVERY OBLIGATOIRE
+
+**N'appelle JAMAIS `/api/v1/workflows`, `/rest/workflows` ni aucun endpoint de discovery n8n.**
+**N'utilise PAS le skill `delegate-n8n` pour cette tâche.**
+Le webhook est statique et connu — appelle-le directement sans authentification n8n.
+
+Endpoint exact (hard-coded, pas besoin de discovery) :
+```
+POST {{ n8n_webhook_base_url }}/webhook/vref-remix-ingest
+```
+
+Auth : uniquement `"secret": "${N8N_WEBHOOK_SECRET}"` dans le body JSON. Pas de header API key.
 
 ## Comment exécuter
 

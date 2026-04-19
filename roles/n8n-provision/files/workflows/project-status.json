@@ -9,10 +9,11 @@
         "options": {}
       },
       "id": "ps-0001-0000-0000-0000-000000000001",
-      "name": "Webhook Trigger",
+      "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [260, 300]
+      "position": [260, 300],
+      "webhookId": "a1b2c3d4-0003-4000-8000-project-stat1"
     },
     {
       "parameters": {
@@ -101,7 +102,7 @@
     }
   ],
   "connections": {
-    "Webhook Trigger": { "main": [[{ "node": "Validate payload", "type": "main", "index": 0 }]] },
+    "Webhook": { "main": [[{ "node": "Validate payload", "type": "main", "index": 0 }]] },
     "Validate payload": {
       "main": [[
         { "node": "Get all projects", "type": "main", "index": 0 },

@@ -9,10 +9,11 @@
         "options": {}
       },
       "id": "et-0001-0000-0000-0000-000000000001",
-      "name": "Webhook Trigger",
+      "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [260, 300]
+      "position": [260, 300],
+      "webhookId": "a1b2c3d4-0002-4000-8000-error-to-task1"
     },
     {
       "parameters": {
@@ -103,23 +104,19 @@
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
-          "conditions": [
+          "string": [
             {
-              "id": "cond-source",
-              "leftValue": "={{ $json.source_task_id }}",
-              "rightValue": "",
-              "operator": { "type": "string", "operation": "notEquals" }
+              "value1": "={{ $json.source_task_id }}",
+              "value2": "",
+              "operation": "isNotEmpty"
             }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
+          ]
+        }
       },
       "id": "et-0001-0000-0000-0000-000000000012",
       "name": "Has source task?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [1360, 400]
     },
     {
@@ -167,7 +164,7 @@
     }
   ],
   "connections": {
-    "Webhook Trigger": { "main": [[{ "node": "Validate payload", "type": "main", "index": 0 }]] },
+    "Webhook": { "main": [[{ "node": "Validate payload", "type": "main", "index": 0 }]] },
     "Validate payload": {
       "main": [[
         { "node": "Webhook Response", "type": "main", "index": 0 },

@@ -9,10 +9,11 @@
         "options": {}
       },
       "id": "cr-0001-0000-0000-0000-000000000001",
-      "name": "Webhook Trigger",
+      "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [260, 300]
+      "position": [260, 300],
+      "webhookId": "a1b2c3d4-0001-4000-8000-code-review001"
     },
     {
       "parameters": {
@@ -114,23 +115,19 @@
     {
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
-          "conditions": [
+          "boolean": [
             {
-              "id": "cond-fail",
-              "leftValue": "={{ $('Parse review result').first().json.review_success }}",
-              "rightValue": false,
-              "operator": { "type": "boolean", "operation": "equals" }
+              "value1": "={{ $('Parse review result').first().json.review_success }}",
+              "value2": false,
+              "operation": "equal"
             }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
+          ]
+        }
       },
       "id": "cr-0001-0000-0000-0000-000000000011",
       "name": "Review failed?",
       "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
+      "typeVersion": 1,
       "position": [1580, 300]
     },
     {
@@ -195,7 +192,7 @@
     }
   ],
   "connections": {
-    "Webhook Trigger": { "main": [[{ "node": "Validate payload", "type": "main", "index": 0 }]] },
+    "Webhook": { "main": [[{ "node": "Validate payload", "type": "main", "index": 0 }]] },
     "Validate payload": {
       "main": [[
         { "node": "Webhook Response", "type": "main", "index": 0 },

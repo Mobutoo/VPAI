@@ -1,0 +1,160 @@
+{
+  "id": "2jDZYQGvLH78iVcg",
+  "name": "Drop — Video Instagram (Dufs)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "video-to-drop",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "vtd-0001-0000-4000-8000-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300],
+      "webhookId": "vtd00001-5678-4000-8000-videodrop001"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json;\nconst secret = process.env.N8N_WEBHOOK_SECRET || '';\n\nif (secret && payload.secret !== secret) {\n  throw new Error('Invalid webhook secret');\n}\n\nconst required = ['video_url', 'title', 'description'];\nfor (const field of required) {\n  if (!payload[field]) throw new Error(`Missing required field: ${field}`);\n}\n\nconst title = String(payload.title).trim();\nconst description = String(payload.description).trim();\nconst rawHashtags = payload.hashtags || [];\nconst hashtags = Array.isArray(rawHashtags) ? rawHashtags : String(rawHashtags).split(/[\\s,]+/).filter(Boolean);\n\nconst sourceSlug = (payload.slug || title)\n  .toLowerCase()\n  .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')\n  .replace(/[^a-z0-9]+/g, '-')\n  .replace(/^-|-$/g, '')\n  .slice(0, 40);\n\nconst now = new Date();\nconst date = now.toISOString().slice(0, 10);\nconst folder = `${date}-${sourceSlug}`;\nconst dropBase = 'http://javisi_dufs:5000';\n\nreturn [{ json: {\n  video_url: payload.video_url,\n  title,\n  description,\n  hashtags,\n  slug: sourceSlug,\n  folder,\n  drop_base: dropBase,\n  video_path: `/instagram/${folder}/video.mp4`,\n  meta_path: `/instagram/${folder}/meta.json`,\n  drop_public_video: `https://drop.ewutelo.cloud/instagram/${folder}/video.mp4`,\n  drop_public_folder: `https://drop.ewutelo.cloud/instagram/${folder}/`\n}}];"
+      },
+      "id": "vtd-0001-0000-4000-8000-000000000002",
+      "name": "Validate & Prepare",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'accepted', folder: $json.folder, drop_url: $json.drop_public_folder } }}",
+        "options": { "responseCode": 202 }
+      },
+      "id": "vtd-0001-0000-4000-8000-000000000003",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 480]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.video_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "dataPropertyName": "videoData"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "id": "vtd-0001-0000-4000-8000-000000000004",
+      "name": "Download Video",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $('Validate & Prepare').first().json.drop_base + $('Validate & Prepare').first().json.video_path }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "video/mp4" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "videoData",
+        "options": { "timeout": 120000 }
+      },
+      "id": "vtd-0001-0000-4000-8000-000000000005",
+      "name": "PUT video.mp4",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Validate & Prepare').first().json;\n\nconst meta = {\n  title: ctx.title,\n  description: ctx.description,\n  hashtags: ctx.hashtags,\n  date: ctx.folder.slice(0, 10),\n  source_url: ctx.video_url,\n  video_url: ctx.drop_public_video,\n  folder_url: ctx.drop_public_folder\n};\n\nreturn [{ json: { ...ctx, meta_content: JSON.stringify(meta, null, 2) } }];"
+      },
+      "id": "vtd-0001-0000-4000-8000-000000000006",
+      "name": "Build meta.json",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $json.drop_base + $json.meta_path }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "string",
+        "body": "={{ $json.meta_content }}",
+        "options": {}
+      },
+      "id": "vtd-0001-0000-4000-8000-000000000007",
+      "name": "PUT meta.json",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1360, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id",    "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text",       "value": "=📹 Vidéo prête pour Instagram\\n\\n<b>{{ $('Validate & Prepare').first().json.title }}</b>\\n\\n📁 {{ $('Validate & Prepare').first().json.drop_public_folder }}" },
+            { "name": "parse_mode", "value": "HTML" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "vtd-0001-0000-4000-8000-000000000008",
+      "name": "Telegram notify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1580, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Validate & Prepare", "type": "main", "index": 0 }]] },
+    "Validate & Prepare": {
+      "main": [[
+        { "node": "Webhook Response", "type": "main", "index": 0 },
+        { "node": "Download Video",   "type": "main", "index": 0 }
+      ]]
+    },
+    "Download Video":  { "main": [[{ "node": "PUT video.mp4",   "type": "main", "index": 0 }]] },
+    "PUT video.mp4":   { "main": [[{ "node": "Build meta.json", "type": "main", "index": 0 }]] },
+    "Build meta.json": { "main": [[{ "node": "PUT meta.json",   "type": "main", "index": 0 }]] },
+    "PUT meta.json":   { "main": [[{ "node": "Telegram notify", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "drop" }, { "name": "instagram" }, { "name": "video" }],
+  "triggerCount": 1,
+  "updatedAt": "2026-04-19T00:00:00.000Z",
+  "versionId": "1"
+}

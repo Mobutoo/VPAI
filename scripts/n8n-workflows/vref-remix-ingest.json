@@ -1,6 +1,6 @@
 {
-  "id": "vri-0001-0000-4000-8000-vrefremixin01",
-  "name": "OpenClaw — VRef Remix Ingest",
+  "id": "vR6jw6pwYg8tMu9s",
+  "name": "OpenClaw \u2014 VRef Remix Ingest",
   "nodes": [
     {
       "parameters": {
@@ -13,7 +13,10 @@
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [260, 300],
+      "position": [
+        260,
+        300
+      ],
       "webhookId": "vri00001-5678-4000-8000-vrefremixin1"
     },
     {
@@ -24,7 +27,10 @@
       "name": "Validate & Prepare",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 300]
+      "position": [
+        480,
+        300
+      ]
     },
     {
       "parameters": {
@@ -33,19 +39,27 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json.metube_payload) }}",
-        "options": { "timeout": 30000 }
+        "options": {
+          "timeout": 30000
+        }
       },
       "id": "vri-0001-0000-4000-8000-000000000003",
       "name": "POST metube /add",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [700, 300]
+      "position": [
+        700,
+        300
+      ]
     },
     {
       "parameters": {
@@ -55,7 +69,10 @@
       "name": "Poll metube /history",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [920, 300]
+      "position": [
+        920,
+        300
+      ]
     },
     {
       "parameters": {
@@ -64,19 +81,27 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify({ filename: $json.filename, template: 'default' }) }}",
-        "options": { "timeout": 300000 }
+        "options": {
+          "timeout": 300000
+        }
       },
       "id": "vri-0001-0000-4000-8000-000000000005",
       "name": "POST vref /analyze",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1140, 300]
+      "position": [
+        1140,
+        300
+      ]
     },
     {
       "parameters": {
@@ -86,7 +111,10 @@
       "name": "Build Remix Payload",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 300]
+      "position": [
+        1360,
+        300
+      ]
     },
     {
       "parameters": {
@@ -95,19 +123,27 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json.remix_payload) }}",
-        "options": { "timeout": 120000 }
+        "options": {
+          "timeout": 120000
+        }
       },
       "id": "vri-0001-0000-4000-8000-000000000007",
       "name": "POST vref /remix",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1580, 300]
+      "position": [
+        1580,
+        300
+      ]
     },
     {
       "parameters": {
@@ -117,7 +153,10 @@
       "name": "Build Brief",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1800, 300]
+      "position": [
+        1800,
+        300
+      ]
     },
     {
       "parameters": {
@@ -126,8 +165,14 @@
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            { "name": "xc-token", "value": "={{ $env.NOCODB_API_TOKEN }}" },
-            { "name": "Content-Type", "value": "application/json" }
+            {
+              "name": "xc-token",
+              "value": "={{ $env.NOCODB_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
           ]
         },
         "sendBody": true,
@@ -139,7 +184,10 @@
       "name": "Create NocoDB record",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2020, 300]
+      "position": [
+        2020,
+        300
+      ]
     },
     {
       "parameters": {
@@ -149,19 +197,27 @@
       "name": "Extract content_id",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2240, 300]
+      "position": [
+        2240,
+        300
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { status: 'accepted', content_id: $json.content_id, title: $json.title, remixed_prompt: $json.remixed_prompt, message: 'Analyse terminée. Pipeline CF en cours.' } }}",
-        "options": { "responseCode": 202 }
+        "responseBody": "={{ { status: 'accepted', content_id: $json.content_id, title: $json.title, remixed_prompt: $json.remixed_prompt, message: 'Analyse termin\u00e9e. Pipeline CF en cours.' } }}",
+        "options": {
+          "responseCode": 202
+        }
       },
       "id": "vri-0001-0000-4000-8000-000000000011",
       "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [2460, 300]
+      "position": [
+        2460,
+        300
+      ]
     },
     {
       "parameters": {
@@ -170,9 +226,18 @@
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
-            { "name": "chat_id",    "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
-            { "name": "text",       "value": "=🎬 VRef Remix prêt\\n\\n<b>{{ $('Extract content_id').first().json.title }}</b>\\n\\n🎯 {{ $('Extract content_id').first().json.instructions }}\\n\\n✨ {{ $('Extract content_id').first().json.remixed_prompt.slice(0,120) }}\\n\\n🔑 content_id: <code>{{ $('Extract content_id').first().json.content_id }}</code>" },
-            { "name": "parse_mode", "value": "HTML" }
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}"
+            },
+            {
+              "name": "text",
+              "value": "=\ud83c\udfac VRef Remix pr\u00eat\\n\\n<b>{{ $('Extract content_id').first().json.title }}</b>\\n\\n\ud83c\udfaf {{ $('Extract content_id').first().json.instructions }}\\n\\n\u2728 {{ $('Extract content_id').first().json.remixed_prompt.slice(0,120) }}\\n\\n\ud83d\udd11 content_id: <code>{{ $('Extract content_id').first().json.content_id }}</code>"
+            },
+            {
+              "name": "parse_mode",
+              "value": "HTML"
+            }
           ]
         },
         "options": {}
@@ -181,7 +246,10 @@
       "name": "Telegram notify",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2680, 300]
+      "position": [
+        2680,
+        300
+      ]
     },
     {
       "parameters": {
@@ -191,22 +259,145 @@
       "name": "Trigger CF Pipeline",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2900, 300]
+      "position": [
+        2900,
+        300
+      ]
     }
   ],
   "connections": {
-    "Webhook":                { "main": [[{ "node": "Validate & Prepare",    "type": "main", "index": 0 }]] },
-    "Validate & Prepare":     { "main": [[{ "node": "POST metube /add",      "type": "main", "index": 0 }]] },
-    "POST metube /add":       { "main": [[{ "node": "Poll metube /history",  "type": "main", "index": 0 }]] },
-    "Poll metube /history":   { "main": [[{ "node": "POST vref /analyze",    "type": "main", "index": 0 }]] },
-    "POST vref /analyze":     { "main": [[{ "node": "Build Remix Payload",   "type": "main", "index": 0 }]] },
-    "Build Remix Payload":    { "main": [[{ "node": "POST vref /remix",      "type": "main", "index": 0 }]] },
-    "POST vref /remix":       { "main": [[{ "node": "Build Brief",           "type": "main", "index": 0 }]] },
-    "Build Brief":            { "main": [[{ "node": "Create NocoDB record",  "type": "main", "index": 0 }]] },
-    "Create NocoDB record":   { "main": [[{ "node": "Extract content_id",    "type": "main", "index": 0 }]] },
-    "Extract content_id":     { "main": [[{ "node": "Webhook Response",      "type": "main", "index": 0 }]] },
-    "Webhook Response":       { "main": [[{ "node": "Telegram notify",       "type": "main", "index": 0 }]] },
-    "Telegram notify":        { "main": [[{ "node": "Trigger CF Pipeline",   "type": "main", "index": 0 }]] }
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate & Prepare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate & Prepare": {
+      "main": [
+        [
+          {
+            "node": "POST metube /add",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST metube /add": {
+      "main": [
+        [
+          {
+            "node": "Poll metube /history",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll metube /history": {
+      "main": [
+        [
+          {
+            "node": "POST vref /analyze",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST vref /analyze": {
+      "main": [
+        [
+          {
+            "node": "Build Remix Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Remix Payload": {
+      "main": [
+        [
+          {
+            "node": "POST vref /remix",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST vref /remix": {
+      "main": [
+        [
+          {
+            "node": "Build Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Brief": {
+      "main": [
+        [
+          {
+            "node": "Create NocoDB record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create NocoDB record": {
+      "main": [
+        [
+          {
+            "node": "Extract content_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract content_id": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Response": {
+      "main": [
+        [
+          {
+            "node": "Telegram notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram notify": {
+      "main": [
+        [
+          {
+            "node": "Trigger CF Pipeline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "settings": {
     "executionOrder": "v1",
@@ -219,11 +410,21 @@
   },
   "staticData": null,
   "tags": [
-    { "name": "openclaw" },
-    { "name": "vref" },
-    { "name": "remix" },
-    { "name": "video" },
-    { "name": "content-factory" }
+    {
+      "name": "openclaw"
+    },
+    {
+      "name": "vref"
+    },
+    {
+      "name": "remix"
+    },
+    {
+      "name": "video"
+    },
+    {
+      "name": "content-factory"
+    }
   ],
   "triggerCount": 1,
   "updatedAt": "2026-04-19T00:00:00.000Z",

@@ -1,6 +1,6 @@
 {
   "id": "vR6jw6pwYg8tMu9s",
-  "name": "OpenClaw \u2014 VRef Remix Ingest",
+  "name": "OpenClaw — VRef Remix Ingest",
   "nodes": [
     {
       "parameters": {
@@ -78,7 +78,7 @@
             },
             {
               "name": "text",
-              "value": "=\ud83d\udce5 <b>VRef Remix</b> \u2014 T\u00e9l\u00e9chargement lanc\u00e9\n\n\ud83c\udfac <b>{{ $('Validate & Prepare').first().json.title }}</b>\n\n\ud83c\udf10 <code>{{ $('Validate & Prepare').first().json.source_url.slice(0,60) }}</code>\n\n\u23f3 T\u00e9l\u00e9chargement vid\u00e9o en cours (1-3 min)..."
+              "value": "=📥 <b>VRef Remix</b> — Téléchargement lancé\n\n🎬 <b>{{ $('Validate & Prepare').first().json.title }}</b>\n\n🌐 <code>{{ $('Validate & Prepare').first().json.source_url.slice(0,60) }}</code>\n\n⏳ Téléchargement vidéo en cours (1-3 min)..."
             }
           ]
         },
@@ -95,7 +95,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const ctx = $('Validate & Prepare').first().json;\nconst metube_url = ctx.metube_url;\nconst source_url = ctx.source_url;\n\nfunction httpGet(url) {\n  return new Promise((resolve, reject) => {\n    const http = require('http');\n    http.get(url, (res) => {\n      let data = '';\n      res.on('data', chunk => data += chunk);\n      res.on('end', () => {\n        try { resolve(JSON.parse(data)); } catch(e) { resolve(null); }\n      });\n    }).on('error', reject);\n  });\n}\n\nconst timeout = 270000;\nconst interval = 5000;\nconst start = Date.now();\nlet result = null;\n\nwhile (!result && (Date.now() - start) < timeout) {\n  await new Promise(r => setTimeout(r, interval));\n  let history;\n  try { history = await httpGet(metube_url + '/history'); } catch(e) { continue; }\n  if (!history || typeof history !== 'object') continue;\n\n  const allItems = [\n    ...(Array.isArray(history.done)    ? history.done    : []),\n    ...(Array.isArray(history.queue)   ? history.queue   : []),\n    ...(Array.isArray(history.pending) ? history.pending : []),\n  ];\n\n  const match = allItems.find(item =>\n    item.url === source_url &&\n    (item.status === 'finished' || item.status === 'done')\n  );\n\n  if (match) {\n    result = {\n      filename:    (match.title || 'video') + '.' + (match.ext || match.format || 'mp4'),\n      video_title: match.title || '',\n      video_id:    match.id    || '',\n    };\n  }\n}\n\nif (!result) throw new Error('Metube download timeout after 270s: ' + source_url);\nreturn [{ json: { ...ctx, ...result } }];"
+        "jsCode": "const ctx = $('Validate & Prepare').first().json;\nconst metube_url = ctx.metube_url;\nconst source_url = ctx.source_url;\n\nfunction httpGet(url) {\n  return new Promise((resolve, reject) => {\n    const http = require('http');\n    http.get(url, (res) => {\n      let data = '';\n      res.on('data', chunk => data += chunk);\n      res.on('end', () => {\n        try { resolve(JSON.parse(data)); } catch(e) { resolve(null); }\n      });\n    }).on('error', reject);\n  });\n}\n\nconst timeout = 270000;\nconst interval = 5000;\nconst start = Date.now();\nlet result = null;\n\nwhile (!result && (Date.now() - start) < timeout) {\n  await new Promise(r => setTimeout(r, interval));\n  let history;\n  try { history = await httpGet(metube_url + '/history'); } catch(e) { continue; }\n  if (!history || typeof history !== 'object') continue;\n\n  // Fail fast: detect error/aborted status in done list\n  const doneItems = Array.isArray(history.done) ? history.done : [];\n  const errorMatch = doneItems.find(item =>\n    item.url === source_url &&\n    (item.status === 'error' || item.status === 'aborted' || item.status === 'failed')\n  );\n  if (errorMatch) {\n    const msg = errorMatch.msg || errorMatch.error || errorMatch.status || 'download failed';\n    throw new Error('Metube download failed: ' + msg + ' [' + source_url + ']');\n  }\n\n  const allItems = [\n    ...doneItems,\n    ...(Array.isArray(history.queue)   ? history.queue   : []),\n    ...(Array.isArray(history.pending) ? history.pending : []),\n  ];\n\n  const match = allItems.find(item =>\n    item.url === source_url &&\n    (item.status === 'finished' || item.status === 'done' || item.status === 'complete')\n  );\n\n  if (match) {\n    result = {\n      filename:    (match.title || 'video') + '.' + (match.ext || match.format || 'mp4'),\n      video_title: match.title || '',\n      video_id:    match.id    || '',\n    };\n  }\n}\n\nif (!result) throw new Error('Metube download timeout after 270s: ' + source_url);\nreturn [{ json: { ...ctx, ...result } }];"
       },
       "id": "vri-0001-0000-4000-8000-000000000004",
       "name": "Poll metube /history",
@@ -123,7 +123,7 @@
             },
             {
               "name": "text",
-              "value": "=\u2705 <b>VRef Remix</b> \u2014 Vid\u00e9o t\u00e9l\u00e9charg\u00e9e\n\n\ud83c\udfac <b>{{ $input.first().json.title }}</b>\n\n\ud83d\udcc1 <code>{{ $input.first().json.filename }}</code>\n\n\ud83d\udd0d Analyse des sc\u00e8nes en cours..."
+              "value": "=✅ <b>VRef Remix</b> — Vidéo téléchargée\n\n🎬 <b>{{ $input.first().json.title }}</b>\n\n📁 <code>{{ $input.first().json.filename }}</code>\n\n🔍 Analyse des scènes en cours..."
             }
           ]
         },
@@ -184,7 +184,7 @@
             },
             {
               "name": "text",
-              "value": "=\ud83d\udd0d <b>VRef Remix</b> \u2014 Analyse termin\u00e9e\n\n\ud83c\udfac <b>{{ $('Validate & Prepare').first().json.title }}</b>\n\n\u2728 Remix IA en cours avec les instructions :\n<i>{{ $('Validate & Prepare').first().json.instructions.slice(0,100) }}</i>"
+              "value": "=🔍 <b>VRef Remix</b> — Analyse terminée\n\n🎬 <b>{{ $('Validate & Prepare').first().json.title }}</b>\n\n✨ Remix IA en cours avec les instructions :\n<i>{{ $('Validate & Prepare').first().json.instructions.slice(0,100) }}</i>"
             }
           ]
         },
@@ -301,7 +301,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { status: 'accepted', content_id: $json.content_id, title: $json.title, remixed_prompt: $json.remixed_prompt, message: 'Analyse termin\u00e9e. Pipeline CF en cours.' } }}",
+        "responseBody": "={{ { status: 'accepted', content_id: $json.content_id, title: $json.title, remixed_prompt: $json.remixed_prompt, message: 'Analyse terminée. Pipeline CF en cours.' } }}",
         "options": {
           "responseCode": 202
         }
@@ -332,7 +332,7 @@
             },
             {
               "name": "text",
-              "value": "=\ud83c\udfac <b>VRef Remix</b> \u2014 Pipeline lanc\u00e9 \u2713\n\n<b>{{ $('Extract content_id').first().json.title }}</b>\n\n\ud83c\udfaf <i>{{ $('Extract content_id').first().json.instructions }}</i>\n\n\u2728 {{ $('Extract content_id').first().json.remixed_prompt.slice(0,120) }}\n\n\ud83d\udd11 content_id: <code>{{ $('Extract content_id').first().json.content_id }}</code>\n\n\u23f3 Livraison dans Drop dans ~15 min."
+              "value": "=🎬 <b>VRef Remix</b> — Pipeline lancé ✓\n\n<b>{{ $('Extract content_id').first().json.title }}</b>\n\n🎯 <i>{{ $('Extract content_id').first().json.instructions }}</i>\n\n✨ {{ $('Extract content_id').first().json.remixed_prompt.slice(0,120) }}\n\n🔑 content_id: <code>{{ $('Extract content_id').first().json.content_id }}</code>\n\n⏳ Livraison dans Drop dans ~15 min."
             }
           ]
         },

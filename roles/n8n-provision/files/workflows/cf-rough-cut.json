@@ -12,7 +12,10 @@
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [260, 300],
+      "position": [
+        260,
+        300
+      ],
       "webhookId": "cfrc-0001-0000-0000-0000-000000000001"
     },
     {
@@ -23,17 +26,23 @@
       "name": "Validate and Load",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 300]
+      "position": [
+        480,
+        300
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Validate all scenes have status 'generated' and a valid asset_url\nconst { content_id, content, scenes } = $input.first().json;\n\nconst pendingScenes = scenes.filter(s => s.status !== 'generated' || !s.asset_url);\n\nif (pendingScenes.length > 0) {\n  // Return error — some scenes are not ready yet\n  // Use respondToWebhook approach: throw to let error handler respond,\n  // OR return a special marker and handle in response node.\n  // We throw with a structured message to surface to the caller.\n  const pendingNums = pendingScenes.map(s => s.scene_number);\n  throw new Error(JSON.stringify({\n    status: 'error',\n    message: 'Scenes not ready',\n    pending_scenes: pendingNums,\n    total_scenes: scenes.length,\n    ready_scenes: scenes.length - pendingScenes.length\n  }));\n}\n\nreturn [{ json: { content_id, content, scenes } }];"
+        "jsCode": "// Validate all scenes have status 'generated' and a valid asset_url\nconst { content_id, content, scenes } = $input.first().json;\n\nconst pendingScenes = scenes.filter(s => s.status !== 'generated' || !s.asset_url);\n\nif (pendingScenes.length > 0) {\n  // Return error \u2014 some scenes are not ready yet\n  // Use respondToWebhook approach: throw to let error handler respond,\n  // OR return a special marker and handle in response node.\n  // We throw with a structured message to surface to the caller.\n  const pendingNums = pendingScenes.map(s => s.scene_number);\n  throw new Error(JSON.stringify({\n    status: 'error',\n    message: 'Scenes not ready',\n    pending_scenes: pendingNums,\n    total_scenes: scenes.length,\n    ready_scenes: scenes.length - pendingScenes.length\n  }));\n}\n\nreturn [{ json: { content_id, content, scenes } }];"
       },
       "id": "cfrc-0001-0000-0000-0000-000000000003",
       "name": "Validate All Assets Ready",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [700, 300]
+      "position": [
+        700,
+        300
+      ]
     },
     {
       "parameters": {
@@ -43,7 +52,10 @@
       "name": "Build Remotion Props",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [920, 300]
+      "position": [
+        920,
+        300
+      ]
     },
     {
       "parameters": {
@@ -53,17 +65,23 @@
       "name": "Trigger Remotion Render",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1140, 300]
+      "position": [
+        1140,
+        300
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// Store rough cut URL in NocoDB and advance pipeline step\nconst { content_id, content, composition, render_id, rough_cut_url } = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url:    'http://localhost:5678/webhook/cf-update-content',\n    body:   {\n      secret:       expectedSecret,\n      action:       'update_content',\n      content_id,\n      rough_cut_url,\n      current_step: 10,\n      status:       'awaiting_validation'\n    },\n    json: true\n  });\n} catch (err) {\n  // Log but continue — storage failure should not block Kitsu sync\n  console.error(`Failed to store rough cut URL: ${err.message}`);\n}\n\nreturn [{ json: { content_id, content, composition, render_id, rough_cut_url } }];"
+        "jsCode": "// Store rough cut URL in NocoDB and advance pipeline step\nconst { content_id, content, composition, render_id, rough_cut_url } = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url:    'http://localhost:5678/webhook/cf-update-content',\n    body:   {\n      secret:       expectedSecret,\n      action:       'update_content',\n      content_id,\n      rough_cut_url,\n      current_step: 10,\n      status:       'awaiting_validation'\n    },\n    json: true\n  });\n} catch (err) {\n  // Log but continue \u2014 storage failure should not block Kitsu sync\n  console.error(`Failed to store rough cut URL: ${err.message}`);\n}\n\nreturn [{ json: { content_id, content, composition, render_id, rough_cut_url } }];"
       },
       "id": "cfrc-0001-0000-0000-0000-000000000006",
       "name": "Store Rough Cut URL",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 300]
+      "position": [
+        1360,
+        300
+      ]
     },
     {
       "parameters": {
@@ -73,29 +91,131 @@
       "name": "Sync Kitsu and Upload Preview",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1580, 300]
+      "position": [
+        1580,
+        300
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { status: 'ok', content_id: $json.content_id, render_id: $json.render_id, rough_cut_url: $json.rough_cut_url, composition: $json.composition } }}",
-        "options": { "responseCode": 200 }
+        "options": {
+          "responseCode": 200
+        }
       },
       "id": "cfrc-0001-0000-0000-0000-000000000008",
       "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1800, 300]
+      "position": [
+        2240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { content_id, content, render_id, rough_cut_url } = $input.first().json;\n\nif (!rough_cut_url) {\n  return [{ json: { content_id, render_id, rough_cut_url, drop_delivered: false, drop_error: 'no rough_cut_url' } }];\n}\n\ntry {\n  const resp = await $http.request({\n    method: 'POST',\n    url: 'http://localhost:5678/webhook/video-to-drop',\n    headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({\n      secret: $env.N8N_WEBHOOK_SECRET,\n      video_url: rough_cut_url,\n      title: content.title || content_id,\n      description: (content.brief && content.brief.objective) || content.title || content_id,\n      hashtags: []\n    })\n  });\n  return [{ json: { content_id, render_id, rough_cut_url, drop_delivered: true, drop_folder: resp.folder || null } }];\n} catch(e) {\n  return [{ json: { content_id, render_id, rough_cut_url, drop_delivered: false, drop_error: e.message } }];\n}"
+      },
+      "id": "cfrc-0001-0000-0000-0000-000000000009",
+      "name": "Deliver to Drop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2020,
+        300
+      ]
     }
   ],
   "connections": {
-    "Webhook Trigger":              { "main": [[{ "node": "Validate and Load",           "type": "main", "index": 0 }]] },
-    "Validate and Load":            { "main": [[{ "node": "Validate All Assets Ready",   "type": "main", "index": 0 }]] },
-    "Validate All Assets Ready":    { "main": [[{ "node": "Build Remotion Props",        "type": "main", "index": 0 }]] },
-    "Build Remotion Props":         { "main": [[{ "node": "Trigger Remotion Render",     "type": "main", "index": 0 }]] },
-    "Trigger Remotion Render":      { "main": [[{ "node": "Store Rough Cut URL",         "type": "main", "index": 0 }]] },
-    "Store Rough Cut URL":          { "main": [[{ "node": "Sync Kitsu and Upload Preview","type": "main", "index": 0 }]] },
-    "Sync Kitsu and Upload Preview":{ "main": [[{ "node": "Webhook Response",            "type": "main", "index": 0 }]] }
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate and Load",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Load": {
+      "main": [
+        [
+          {
+            "node": "Validate All Assets Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate All Assets Ready": {
+      "main": [
+        [
+          {
+            "node": "Build Remotion Props",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Remotion Props": {
+      "main": [
+        [
+          {
+            "node": "Trigger Remotion Render",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Remotion Render": {
+      "main": [
+        [
+          {
+            "node": "Store Rough Cut URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Rough Cut URL": {
+      "main": [
+        [
+          {
+            "node": "Sync Kitsu and Upload Preview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sync Kitsu and Upload Preview": {
+      "main": [
+        [
+          {
+            "node": "Deliver to Drop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deliver to Drop": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "settings": {
     "executionOrder": "v1",
@@ -107,7 +227,17 @@
     "errorWorkflow": ""
   },
   "staticData": null,
-  "tags": [{ "name": "content-factory" }, { "name": "rough-cut" }, { "name": "remotion" }],
+  "tags": [
+    {
+      "name": "content-factory"
+    },
+    {
+      "name": "rough-cut"
+    },
+    {
+      "name": "remotion"
+    }
+  ],
   "triggerCount": 1,
   "updatedAt": "2026-03-17T00:00:00.000Z",
   "versionId": "1",

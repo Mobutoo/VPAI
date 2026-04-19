@@ -30,7 +30,7 @@ Pour obtenir la liste live de tous les workflows qui te sont destinés :
 
 ```
 GET {{ n8n_webhook_base_url }}/api/v1/workflows?active=true&limit=100
-Header: X-N8N-API-KEY: {env.N8N_DISCOVERY_API_KEY}
+Header: X-N8N-API-KEY: ${N8N_DISCOVERY_API_KEY}
 ```
 
 **Parsing :** retiens uniquement les workflows où `tags` contient `{ "name": "openclaw" }`.

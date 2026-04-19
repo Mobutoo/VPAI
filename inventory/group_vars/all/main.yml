@@ -163,6 +163,11 @@ zimboo_firefly_pat: "{{ vault_firefly_pat | default('') }}"
 nocodb_jwt_secret: "{{ vault_nocodb_jwt_secret }}"
 nocodb_api_token: "{{ vault_nocodb_api_token }}"
 nocodb_s3_bucket: "{{ s3_bucket_shared }}"  # bucket partagé — NocoDB stocke sous préfixe nc-attachments/
+# NocoDB Content Factory — IDs stables (pas de rotation)
+nocodb_cf_base_id: "pwb0jn4ncdsz460"
+nocodb_contents_table_id: "mw9sap5vuqb9f1z"
+nocodb_scenes_table_id: "mvjbzy9r75c74eo"
+nocodb_brands_table_id: "mlaplupvrdxsj98"
 
 # S3 credentials (Hetzner Object Storage — partagés avec Zerobyte backup)
 s3_access_key: "{{ vault_s3_access_key }}"

@@ -257,7 +257,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "={{ $env.NOCODB_BASE_URL + '/api/v2/tables/' + $env.NOCODB_CONTENTS_TABLE_ID + '/records' }}",
+        "url": "={{ $env.NOCODB_INTERNAL_URL + '/api/v2/tables/' + $env.NOCODB_CONTENTS_TABLE_ID + '/records' }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [

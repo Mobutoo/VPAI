@@ -116,7 +116,7 @@ services:
       - {{ metube_cookies_dir }}:/cookies:ro
 {% endif %}
     ports:
-      - "127.0.0.1:{{ metube_port }}:8081"
+      - "{{ metube_port }}:8081"
     networks:
       - creative
     deploy:

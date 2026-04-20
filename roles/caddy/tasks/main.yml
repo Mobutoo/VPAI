@@ -77,6 +77,7 @@
     mode: "0640"
   become: true
   notify: Restart caddy stack
+  when: not (caddy_skip_caddyfile | default(false) | bool)
 
 - name: Deploy admin landing page
   ansible.builtin.template:

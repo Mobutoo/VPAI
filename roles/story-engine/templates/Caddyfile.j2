@@ -31,3 +31,21 @@
 		reverse_proxy web:3000
 	}
 }
+
+vps.ewutelo.cloud {
+	# VPS Telehouse — SvelteKit SSR app
+	# Added 2026-04-17 (CICD-03 Phase 7, prod fix)
+	reverse_proxy vps-telehouse:3000
+}
+
+simubot.ewutelo.cloud {
+	# SimuBot — added 2026-04-18 (initial scaffold, container deployed in phase 01)
+	# Returns 502 until "simubot" container is deployed on simubot_caddy_bridge.
+	reverse_proxy simubot:3000
+}
+
+mediahall.ewutelo.cloud {
+	# NetBox IPAM/DCIM — réseau netbox_mediahall_net connecté au container caddy
+	# host: Docker DNS container name dans netbox_mediahall_net
+	reverse_proxy netbox-netbox-1:8080
+}

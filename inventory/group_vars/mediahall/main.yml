@@ -19,8 +19,11 @@ ansible_ssh_private_key_file: "~/.ssh/seko-vpn-deploy"
 caddy_extra_sites:
   - name: "mediahall"
     domain: "mediahall.ewutelo.cloud"
-    host: "netbox"
+    host: "netbox-netbox-1"
     port: 8080
+
+# Ne pas déployer le Caddyfile.j2 du rôle caddy — Caddyfile géré par story-engine role
+caddy_skip_caddyfile: true
 
 # Réseau Docker externe à connecter au container Caddy Story Engine
 # Permet l'accès Docker DNS vers netbox:8080 depuis story-engine-caddy

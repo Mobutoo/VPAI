@@ -1,0 +1,47 @@
+{
+  "name": "immo-finder-gif-yvette",
+  "active": false,
+  "nodes": [
+    {
+      "id": "schedule-daily-8h",
+      "name": "Schedule — 8h quotidien",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "immo-main",
+      "name": "Immo: Fetch + NocoDB Dedup + Telegram",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// ============================================================\n// CONFIG\n// ⚠️ URL PAP.fr: aller sur pap.fr → recherche locations\n//    Gif-sur-Yvette → copier l'URL de résultats → ajouter .rss\n// ============================================================\nconst PAP_RSS_URL = 'https://www.pap.fr/annonce/locations-appartement-maison-gif-sur-yvette-g37752-gg37752a.rss?nb_pieces_min=2&nb_pieces_max=3&prix_max=1200';\nconst PRIX_MAX      = 1200;\nconst PIECES_MIN    = 2;\nconst PIECES_MAX    = 3;\nconst HORIZON_JOURS = 7;\nconst TABLE_NAME    = 'immo_annonces_gif_yvette';\n\nconst NOCO_URL   = $env.NOCODB_INTERNAL_URL || 'http://nocodb:8080';\nconst NOCO_TOKEN = $env.NOCODB_API_TOKEN;\nconst BASE_ID    = $env.NOCODB_CF_BASE_ID;\nconst TG_TOKEN   = $env.TELEGRAM_MONITORING_BOT_TOKEN;\nconst TG_CHAT    = $env.TELEGRAM_MONITORING_CHAT_ID;\n\nif (!NOCO_TOKEN || !BASE_ID) {\n  throw new Error('NOCODB_API_TOKEN ou NOCODB_CF_BASE_ID manquant dans les env vars n8n');\n}\n\n// ============================================================\n// HELPERS NocoDB\n// ============================================================\nconst nH = { 'xc-token': NOCO_TOKEN, 'Content-Type': 'application/json' };\n\nasync function nGet(path) {\n  const r = await fetch(`${NOCO_URL}${path}`, { headers: nH });\n  if (!r.ok) throw new Error(`NocoDB GET ${path} → ${r.status}`);\n  return r.json();\n}\n\nasync function nPost(path, body) {\n  const r = await fetch(`${NOCO_URL}${path}`, {\n    method: 'POST', headers: nH, body: JSON.stringify(body)\n  });\n  if (!r.ok) throw new Error(`NocoDB POST ${path} → ${r.status}: ${(await r.text()).substring(0, 200)}`);\n  return r.json();\n}\n\n// ============================================================\n// AUTO-INIT: trouver ou créer la table NocoDB\n// tableId mis en cache dans staticData (persiste entre runs)\n// ============================================================\nconst sd = $workflow.staticData;\nlet tableId = sd.immoTableId;\n\nif (!tableId) {\n  const tablesResp = await nGet(`/api/v1/db/meta/projects/${BASE_ID}/tables`);\n  const existing = (tablesResp.list || []).find(t => t.table_name === TABLE_NAME);\n\n  if (existing) {\n    tableId = existing.id;\n  } else {\n    const created = await nPost(`/api/v1/db/meta/projects/${BASE_ID}/tables`, {\n      table_name: TABLE_NAME,\n      title: 'Immo — Gif-sur-Yvette',\n      columns: [\n        { title: 'ext_id',       uidt: 'SingleLineText', column_name: 'ext_id' },\n        { title: 'source',       uidt: 'SingleLineText', column_name: 'source' },\n        { title: 'titre',        uidt: 'SingleLineText', column_name: 'titre' },\n        { title: 'prix',         uidt: 'Currency',       column_name: 'prix' },\n        { title: 'pieces',       uidt: 'Number',         column_name: 'pieces' },\n        { title: 'lien',         uidt: 'URL',            column_name: 'lien' },\n        { title: 'description',  uidt: 'LongText',       column_name: 'description' },\n        { title: 'publie_le',    uidt: 'DateTime',       column_name: 'publie_le' },\n        { title: 'premiere_vue', uidt: 'DateTime',       column_name: 'premiere_vue' },\n        {\n          title: 'statut', uidt: 'SingleSelect', column_name: 'statut',\n          meta: { options: [\n            { title: 'nouveau',  color: '#36BFFF' },\n            { title: 'vu',       color: '#FFA500' },\n            { title: 'contacté', color: '#00C9A7' },\n            { title: 'ignoré',   color: '#999999' }\n          ]}\n        }\n      ]\n    });\n    tableId = created.id;\n    console.log(`Table créée: ${TABLE_NAME} → ${tableId}`);\n  }\n\n  sd.immoTableId = tableId;\n}\n\n// ============================================================\n// FETCH PAP.fr RSS\n// ============================================================\nconst getField = (block, tag) => {\n  const m = block.match(new RegExp(`<${tag}[^>]*>(?:<!\\\\[CDATA\\\\[)?([\\\\s\\\\S]*?)(?:\\\\]\\\\]>)?<\\\\/${tag}>`, 'i'));\n  return m ? m[1].trim() : '';\n};\n\nconst HORIZON_MS = HORIZON_JOURS * 24 * 60 * 60 * 1000;\nconst now = Date.now();\nconst candidates = [];\n\ntry {\n  const papResp = await fetch(PAP_RSS_URL, {\n    headers: {\n      'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',\n      'Accept': 'application/rss+xml, application/xml, text/xml, */*'\n    }\n  });\n  if (!papResp.ok) throw new Error(`PAP.fr HTTP ${papResp.status}`);\n  const xml = await papResp.text();\n\n  const itemRe = /<item>([\\s\\S]*?)<\\/item>/g;\n  let m;\n  while ((m = itemRe.exec(xml)) !== null) {\n    const block = m[1];\n    const title  = getField(block, 'title');\n    const link   = getField(block, 'link') || getField(block, 'guid');\n    const id     = getField(block, 'guid') || link;\n    const pubStr = getField(block, 'pubDate');\n    const desc   = getField(block, 'description').replace(/<[^>]+>/g, ' ').replace(/\\s+/g, ' ').trim().substring(0, 400);\n\n    if (pubStr && (now - new Date(pubStr).getTime()) > HORIZON_MS) continue;\n\n    const priceM = (title + ' ' + desc).match(/(\\d[\\d\\s]{0,5})\\s*€/);\n    const prix   = priceM ? parseInt(priceM[1].replace(/\\s/g, '')) : null;\n    if (prix && prix > PRIX_MAX) continue;\n\n    const roomM  = (title + ' ' + desc).match(/(\\d)\\s*(?:pièces?|ch\\.?\\s|chambres?)/i);\n    const pieces = roomM ? parseInt(roomM[1]) : null;\n    if (pieces !== null && (pieces < PIECES_MIN || pieces > PIECES_MAX + 1)) continue;\n\n    candidates.push({\n      ext_id:      `pap_${id}`,\n      source:      'pap.fr',\n      titre:       title,\n      prix,\n      pieces,\n      lien:        link,\n      description: desc,\n      publie_le:   pubStr ? new Date(pubStr).toISOString() : new Date().toISOString()\n    });\n  }\n} catch (e) {\n  await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {\n    method: 'POST', headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ chat_id: TG_CHAT, text: `⚠️ immo-finder: erreur PAP.fr\\n${e.message}`, parse_mode: 'HTML' })\n  });\n}\n\nif (candidates.length === 0) {\n  return [{ json: { sent: false, count: 0, reason: 'aucun candidat après filtrage' } }];\n}\n\n// ============================================================\n// DÉDUPLICATION via NocoDB (vérification par ext_id)\n// ============================================================\nconst newItems = [];\n\nfor (const item of candidates) {\n  const eid = encodeURIComponent(item.ext_id);\n  const check = await nGet(`/api/v2/tables/${tableId}/records?where=(ext_id,eq,${eid})&limit=1`);\n  if ((check.list || []).length === 0) newItems.push(item);\n}\n\nif (newItems.length === 0) {\n  console.log(`Aucune nouvelle annonce. ${candidates.length} candidates déjà vues.`);\n  return [{ json: { sent: false, count: 0, candidates: candidates.length } }];\n}\n\n// ============================================================\n// INSERT nouvelles annonces dans NocoDB\n// ============================================================\nconst now_iso = new Date().toISOString();\nfor (const item of newItems) {\n  await nPost(`/api/v2/tables/${tableId}/records`, {\n    ...item, premiere_vue: now_iso, statut: 'nouveau'\n  });\n}\n\n// ============================================================\n// TELEGRAM\n// ============================================================\nconst header = `🏠 <b>Gif-sur-Yvette — ${newItems.length} nouvelle(s) annonce(s)</b>\\n` +\n  `2-3 ch · max 1 200€ · &lt;${HORIZON_JOURS}j · PAP.fr\\n`;\n\nconst lines = newItems.map(i => {\n  const px = i.prix   ? ` · <b>${i.prix}€</b>` : '';\n  const rm = i.pieces ? ` · ${i.pieces}p`       : '';\n  return `• <a href=\"${i.lien}\">${i.titre}</a>${px}${rm}`;\n});\n\nconst chunks = [];\nlet current = header + '\\n';\nfor (const line of lines) {\n  if ((current + line + '\\n').length > 4000) { chunks.push(current); current = ''; }\n  current += line + '\\n';\n}\nif (current.trim()) chunks.push(current);\n\nfor (const chunk of chunks) {\n  await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`, {\n    method: 'POST', headers: { 'Content-Type': 'application/json' },\n    body: JSON.stringify({ chat_id: TG_CHAT, text: chunk, parse_mode: 'HTML', disable_web_page_preview: false })\n  });\n}\n\nreturn [{ json: { sent: true, count: newItems.length, items: newItems.map(i => i.titre) } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule — 8h quotidien": {
+      "main": [
+        [{ "node": "Immo: Fetch + NocoDB Dedup + Telegram", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "tags": ["immo", "finder", "gif-yvette"]
+}

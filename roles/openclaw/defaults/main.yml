@@ -200,13 +200,13 @@ openclaw_model_profiles:
   # Bypass LiteLLM. Coût inclus dans l'abonnement (pas de crédits API consommés).
   # Flow: make openclaw-oauth-start → navigateur → make openclaw-oauth-complete URL=<callback>
   openai:
-    default: "openai-codex/gpt-5.4"
-    code: "openai-codex/gpt-5.4"
-    reasoning: "openai-codex/gpt-5.4"
-    quick: "openai-codex/gpt-5.4"
-    default_fallbacks: '["custom-litellm/claude-sonnet", "custom-litellm/gpt-4o"]'
-    code_fallbacks: '["custom-litellm/claude-sonnet", "custom-litellm/gpt-4o"]'
-    reasoning_fallbacks: '["custom-litellm/claude-sonnet", "custom-litellm/gpt-4o"]'
+    default: "openai-codex/gpt-5.5"
+    code: "openai-codex/gpt-5.5"
+    reasoning: "openai-codex/gpt-5.5"
+    quick: "openai-codex/gpt-4.1-mini"
+    default_fallbacks: '["custom-litellm/deepseek-v3", "custom-litellm/gemini-flash"]'
+    code_fallbacks: '["custom-litellm/qwen3-coder", "custom-litellm/deepseek-v3"]'
+    reasoning_fallbacks: '["custom-litellm/deepseek-r1", "custom-litellm/deepseek-v3"]'
 
 # Per-agent model assignments (resolved from active profile, overridable individually)
 openclaw_concierge_model: "{{ openclaw_model_profiles[openclaw_model_profile].default }}"

@@ -78,7 +78,7 @@ Tag : `SWARM_TASK <pattern>:<id> — <instruction>` (suivi Grafana/Loki).
 
 | Mots-cles / Contexte | Sous-agent (`agentId`) | Quand |
 |---|---|---|
-| PR, pipeline, ansible, terraform, docker, deploy, code, bug, archi | `{{ openclaw_agent_builder_name }}` | Toujours deleguer |
+| PR, pipeline, ansible, terraform, docker, deploy, code, bug, archi, **n8n workflow** | `{{ openclaw_agent_builder_name }}` | Toujours deleguer |
 | manga, chapitre, roman, personnage, storyboard | `{{ openclaw_agent_writer_name }}` | Toujours deleguer |
 | email pro, rapport, relance, URSSAF, admin, courrier | `{{ openclaw_agent_writer_name }}` | Deleguer si long |
 | image, illustration, video, clip, visuel, creation | `{{ openclaw_agent_artist_name }}` | Toujours deleguer |
@@ -93,6 +93,22 @@ Tag : `SWARM_TASK <pattern>:<id> — <instruction>` (suivi Grafana/Loki).
 | courses, rdv, planning, meteo, entrainement | **Toi-meme** | Repondre directement |
 
 **Regle simple :** < 30 sec → reponds toi-meme. > 30 sec → **TOUJOURS** deleguer.
+
+## Acces n8n (Imhotep uniquement)
+
+Imhotep dispose d'un acces **n8n complet** dans son sandbox :
+- `$N8N_URL` = `http://n8n:5678` (reseau interne backend)
+- `$N8N_API_KEY` = cle API n8n (variable injectee)
+
+Operations disponibles via curl :
+```bash
+# Lister les workflows
+curl -s "$N8N_URL/api/v1/workflows" -H "X-N8N-API-KEY: $N8N_API_KEY"
+# Creer/modifier un workflow (PUT)
+curl -s -X PUT "$N8N_URL/api/v1/workflows/<id>" -H "X-N8N-API-KEY: $N8N_API_KEY" -H "Content-Type: application/json" -d @workflow.json
+# Activer un workflow
+curl -s -X POST "$N8N_URL/api/v1/workflows/<id>/activate" -H "X-N8N-API-KEY: $N8N_API_KEY"
+```
 
 ## Protocole Demande Longue
 

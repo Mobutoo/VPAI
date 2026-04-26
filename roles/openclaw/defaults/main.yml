@@ -61,7 +61,7 @@ openclaw_context_pruning_min_chars: 50000
 # Modes: "off" (no sandbox), "non-main" (sandbox subagents only), "all" (full isolation)
 openclaw_sandbox_mode: "non-main"
 openclaw_sandbox_image: "openclaw-sandbox:bookworm-slim"
-openclaw_sandbox_memory: "512m"
+openclaw_sandbox_memory: "1g"
 openclaw_sandbox_cpus: 1
 # Extra APT packages to install in sandbox (e.g., redis-tools for redis-cli)
 openclaw_sandbox_extra_packages:

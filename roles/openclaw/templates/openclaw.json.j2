@@ -125,16 +125,24 @@
           "fallbacks": {{ openclaw_code_fallbacks }}
         },
         "workspace": "{{ openclaw_system_dir }}/workspace/{{ openclaw_agent_builder_name }}",
+        "sandbox": {
+          "docker": {
+            "network": "{{ project_name }}_backend",
+            "env": {
+              "N8N_URL": "http://n8n:5678",
+              "N8N_API_KEY": "{{ n8n_discovery_api_key }}"
+            }
+          }
+        },
         "subagents": {
           "allowAgents": {{ agent_allow('builder') }}
         },
         "tools": {
-          "fs": { "workspaceOnly": true },
+          "fs": { "workspaceOnly": false },
           "exec": {
-            "applyPatch": { "workspaceOnly": true },
-            "timeoutSec": 300
+            "timeoutSec": 600
           },
-          "elevated": { "enabled": false }
+          "elevated": { "enabled": true }
         }
       },
       {
@@ -244,12 +252,11 @@
           "allowAgents": {{ agent_allow('maintainer') }}
         },
         "tools": {
-          "fs": { "workspaceOnly": true },
+          "fs": { "workspaceOnly": false },
           "exec": {
-            "applyPatch": { "workspaceOnly": true },
             "timeoutSec": 300
           },
-          "elevated": { "enabled": false }
+          "elevated": { "enabled": true }
         }
       },
       {
@@ -280,7 +287,7 @@
           }
         },
         "tools": {
-          "exec": { "timeoutSec": 30 },
+          "exec": { "timeoutSec": 120 },
           "elevated": { "enabled": false }
         }
       },

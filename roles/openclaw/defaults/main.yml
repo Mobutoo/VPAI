@@ -336,11 +336,11 @@ openclaw_telegram_topics:
 # --- WhatsApp (Tutor channel — child tablet) ---
 # whatsapp_tutor_enabled and phone set in main.yml
 
-# --- Heartbeat (v2026.3.7 native support — REX 11.19 resolved) ---
-# DÉSACTIVÉ : le heartbeat consomme des tokens LLM via le concierge agent.
-# Les checks infra sont assurés par n8n stack-health (localhost, 0 tokens).
-# Réactiver si besoin : openclaw_heartbeat_enabled: true
-openclaw_heartbeat_enabled: false
+# --- Heartbeat (v2026.3.7 native support) ---
+# Désactivé via agents.defaults.heartbeat.every: '0m' (doc officielle).
+# Les checks infra sont assurés par n8n stack-health (0 tokens).
+# Réactiver : openclaw_heartbeat_every: '30m'
+openclaw_heartbeat_every: '0m'
 openclaw_heartbeat_light_context: true
 
 # --- Plane Integration (OpenClaw → Plane API) ---

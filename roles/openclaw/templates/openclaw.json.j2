@@ -80,7 +80,10 @@
         }
       },
       "bootstrapPromptTruncationWarning": "once",
-      "timeoutSeconds": {{ openclaw_agent_timeout | default(300) }}
+      "timeoutSeconds": {{ openclaw_agent_timeout | default(300) }},
+      "heartbeat": {
+        "every": "{{ openclaw_heartbeat_every | default('0m') }}"
+      }
     },
     "list": [
       {

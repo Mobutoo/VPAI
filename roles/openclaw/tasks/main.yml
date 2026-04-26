@@ -60,6 +60,7 @@
     - telegram
     - identity
     - sandboxes
+    - locks
   # These empty dirs must pre-exist in system_dir so Docker can overlay rw child
   # bind-mounts (workspace, state/*) on top of the :ro parent system_dir mount.
   # Docker cannot mkdirat inside a :ro bind-mount — pre-creating them avoids the
@@ -282,6 +283,20 @@
     - "{{ openclaw_agent_messenger_name }}"
     - "{{ openclaw_agent_director_name }}"
     - "{{ openclaw_agent_marketer_name }}"
+  when: openclaw_volume_isolation | default(false)
+  notify: Restart openclaw stack
+
+# Deploy BOOTSTRAP.md to concierge agent directory.
+# OpenClaw reads agents/<name>/BOOTSTRAP.md at session bootstrap.
+# Absent file triggers "Bootstrap bloqué" warning sent via Telegram. REX-openclaw-bootstrap.
+- name: Deploy concierge BOOTSTRAP.md
+  ansible.builtin.template:
+    src: "agents/{{ openclaw_agent_concierge_name }}/BOOTSTRAP.md.j2"
+    dest: "{{ openclaw_state_dir }}/agents/{{ openclaw_agent_concierge_name }}/BOOTSTRAP.md"
+    owner: "1000"
+    group: "1000"
+    mode: "0644"
+  become: true
   when: openclaw_volume_isolation | default(false)
   notify: Restart openclaw stack
 

@@ -290,7 +290,8 @@ openclaw_n8n_workflows:
     description: "Rapport d'avancement projet (temps passe, livrables, blocages)"
   - name: video-to-drop
     path: video-to-drop
-    description: "Upload une video MP4 vers drop.ewutelo.cloud/instagram/{date-slug}/ avec meta.json (titre, description, hashtags) pour publication manuelle Instagram"
+    description: "Upload une video MP4 vers drop.ewutelo.cloud/instagram/{date-slug}/
+      avec meta.json (titre, description, hashtags) pour publication manuelle Instagram"
 
 # --- Budget Control (commands Telegram → n8n webhook) ---
 # Commandes reconnues par le concierge OpenClaw (via Telegram) :

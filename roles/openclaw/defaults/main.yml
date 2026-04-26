@@ -204,9 +204,9 @@ openclaw_model_profiles:
     code: "openai-codex/gpt-5.5"
     reasoning: "openai-codex/gpt-5.5"
     quick: "openai-codex/gpt-4.1-mini"
-    default_fallbacks: '["custom-litellm/deepseek-v3", "custom-litellm/gemini-flash"]'
-    code_fallbacks: '["custom-litellm/qwen3-coder", "custom-litellm/deepseek-v3"]'
-    reasoning_fallbacks: '["custom-litellm/deepseek-r1", "custom-litellm/deepseek-v3"]'
+    default_fallbacks: '["custom-litellm/deepseek-v3", "custom-litellm/gemini-flash", "custom-litellm/claude-haiku"]'
+    code_fallbacks: '["custom-litellm/qwen3-coder", "custom-litellm/deepseek-v3", "custom-litellm/claude-haiku"]'
+    reasoning_fallbacks: '["custom-litellm/deepseek-r1", "custom-litellm/deepseek-v3", "custom-litellm/claude-haiku"]'
 
 # Per-agent model assignments (resolved from active profile, overridable individually)
 openclaw_concierge_model: "{{ openclaw_model_profiles[openclaw_model_profile].default }}"

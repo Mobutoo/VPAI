@@ -1,7 +1,7 @@
 ---
 # inventory/group_vars/all/versions.yml — Images Docker pinnées
 # JAMAIS de :latest ou :stable — Tout est versionné
-# Vérifié le : 16 avril 2026
+# Vérifié le : 26 avril 2026
 
 # --- MediaHall — NetBox DCIM ---
 netbox_image: "ghcr.io/netbox-community/netbox:v4.2.9"
@@ -21,13 +21,13 @@ openclaw_image: "ghcr.io/openclaw/openclaw:2026.4.23"
 # Push:  docker push ghcr.io/mobutoo/n8n-enterprise:2.7.3
 n8n_image: "ghcr.io/mobutoo/n8n-enterprise:2.7.3"
 n8n_upstream_version: "2.7.3"  # version officielle n8nio/n8n sous-jacente
-litellm_image: "ghcr.io/berriai/litellm:v1.83.3-stable"
+litellm_image: "ghcr.io/berriai/litellm:v1.83.7-stable"
 nocodb_image: "nocodb/nocodb:2026.04.1"  # SQL injection DATEADD + stored XSS + SSRF (fix 0.301.3, 2026-02-27); CalVer depuis 2026.04.1
 plane_web_image: "makeplane/plane-frontend:v1.3.0"  # fix SSRF webhook + X-Frame-Options (2026-04)
 plane_admin_image: "makeplane/plane-admin:v1.3.0"
 plane_api_image: "makeplane/plane-backend:v1.3.0"
 plane_worker_image: "makeplane/plane-backend:v1.3.0"
-plane_minio_image: "minio/minio:RELEASE.2024-11-07T00-52-20Z"
+plane_minio_image: "minio/minio:RELEASE.2025-10-15T17-29-55Z"
 dufs_image: "sigoden/dufs:v0.45.0"
 
 # --- Reverse Proxy ---
@@ -47,7 +47,7 @@ diun_image: "crazymax/diun:4.31.0"
 socket_proxy_image: "tecnativa/docker-socket-proxy:v0.4.2"
 
 # --- Obsidian Sync ---
-couchdb_image: "apache/couchdb:3.3.3"  # TODO: upgrade 3.5.1 — migration Obsidian Sync à planifier avant deploy
+couchdb_image: "apache/couchdb:3.5.1"  # TODO: deploy bloqué — migration Obsidian Sync à planifier avant deploy
 
 # --- Kitsu (animation/VFX production tracker) ---
 kitsu_image: "cgwire/cgwire:1.0.24"  # Kitsu 1.0.24 (2026-04-16)
@@ -58,13 +58,13 @@ kitsu_image: "cgwire/cgwire:1.0.24"  # Kitsu 1.0.24 (2026-04-16)
 # cloudflared_image: "cloudflare/cloudflared:2025.1.0"
 
 # --- Firefly III (personal finance engine) ---
-firefly_image: "fireflyiii/core:version-6.5.3"
+firefly_image: "fireflyiii/core:version-6.6.1"
 
 # --- Zimboo Dashboard (Next.js financial cockpit) ---
 zimboo_image: "ghcr.io/mobutoo/zimboo:v1.14.0"
 
 # --- Food & Stock (Koodia) ---
-mealie_image: "ghcr.io/mealie-recipes/mealie:v3.15.1"  # 2026-04-14
+mealie_image: "ghcr.io/mealie-recipes/mealie:v3.16.0"  # 2026-04-26
 grocy_image: "lscr.io/linuxserver/grocy:4.6.0"
 koodia_image: "ghcr.io/mobutoo/koodia:v0.1.0"
 

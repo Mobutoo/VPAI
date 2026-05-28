@@ -11,7 +11,7 @@ netbox_local_image: "mediahall-netbox:v4.2.9"
 
 # --- Données ---
 postgresql_image: "postgres:18.4-bookworm"  # CVE-2025-8714/8715 + buffer overflows (fix 18.3, 2026-02-26); patch 18.4
-redis_image: "redis:8.4.0-bookworm"  # CVE-2025-49844 RediShell CVSS 10.0 (fix 8.2.2+, 2025-10)
+redis_image: "redis:8.4.0-bookworm"  # CVE-2025-49844 RediShell CVSS 10.0 (fix 8.2.2+, 2025-10). 8.8.0-trixie KO: entrypoint setpriv --bounding-set incompatible cap_drop:ALL+no-new-privileges (REX 2026-05-29). Reste sur 8.4.0 (dernier bookworm).
 qdrant_image: "qdrant/qdrant:v1.18.1"
 
 # --- Applications ---

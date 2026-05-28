@@ -31,7 +31,7 @@ plane_minio_image: "minio/minio:RELEASE.2025-10-15T17-29-55Z"
 dufs_image: "sigoden/dufs:v0.46.0"
 
 # --- Reverse Proxy ---
-caddy_image: "caddy:2.11.2-alpine"  # CVE-2026-30851/30852 identity injection + env leak (fix 2.11.2)
+caddy_image: "caddy:2.11.3-alpine"  # CVE-2026-30851/30852 identity injection + env leak (fix 2.11.2); patch 2.11.3
 
 # --- Observabilité ---
 grafana_image: "grafana/grafana:12.4.3"  # CVE-2026-27876 CVSS 9.1 RCE SQL expressions (fix 12.4.2); patch 12.4.3 (2026-04)

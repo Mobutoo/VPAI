@@ -43,6 +43,7 @@
     group: "{{ prod_user }}"
     mode: "0644"
   become: true
+  tags: [infra]
 
 - name: Start Infrastructure stack (Phase A)
   ansible.builtin.shell:
@@ -54,6 +55,7 @@
   become: true
   register: docker_infra_result
   changed_when: false
+  tags: [infra]
   # NOTE: changed_when: false — "ensure running" is not a config change.
   # Run 2 may create/start containers if they were recreated by handlers in run 1.
   # Smoke tests and health checks validate the actual stack state. REX-Integration.

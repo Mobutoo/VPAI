@@ -28,7 +28,7 @@ plane_admin_image: "makeplane/plane-admin:v1.3.0"
 plane_api_image: "makeplane/plane-backend:v1.3.0"
 plane_worker_image: "makeplane/plane-backend:v1.3.0"
 plane_minio_image: "minio/minio:RELEASE.2025-10-15T17-29-55Z"
-dufs_image: "sigoden/dufs:v0.45.0"
+dufs_image: "sigoden/dufs:v0.46.0"
 
 # --- Reverse Proxy ---
 caddy_image: "caddy:2.11.2-alpine"  # CVE-2026-30851/30852 identity injection + env leak (fix 2.11.2)

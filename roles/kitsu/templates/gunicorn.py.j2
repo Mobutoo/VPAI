@@ -1,4 +1,4 @@
-; {{ ansible_managed }}
+# {{ ansible_managed }}
 accesslog = "/var/log/zou/gunicorn_access.log"
 errorlog = "/var/log/zou/gunicorn_error.log"
 workers = {{ kitsu_gunicorn_workers | default(1) }}

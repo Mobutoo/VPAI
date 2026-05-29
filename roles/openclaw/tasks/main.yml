@@ -41,6 +41,7 @@
     - agents
     - skills
     - plugins
+    - logs/stability
   when: openclaw_volume_isolation | default(false)
 
 - name: Create OpenClaw bind-mount target directories in system dir

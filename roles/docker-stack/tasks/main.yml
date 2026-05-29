@@ -405,9 +405,37 @@
   # NOTE: changed_when: false — "ensure running" is not a config change.
   # Handlers in run 1 may recreate containers; run 2 then re-starts them.
   # Health checks after this task validate actual state. REX-Integration.
-  failed_when: false
   when: not (common_molecule_mode | default(false))
   # docker compose not available in molecule
+
+- name: Verify Phase B — detect missing containers
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      cd /opt/{{ project_name }}
+      DEFINED=$(docker compose -f docker-compose.yml config --services | sort)
+      RUNNING=$(docker compose -f docker-compose.yml ps --status running --services 2>/dev/null | sort)
+      MISSING=$(comm -23 <(echo "$DEFINED") <(echo "$RUNNING"))
+      if [ -n "$MISSING" ]; then
+        echo "MISSING_SERVICES:${MISSING}"
+      else
+        echo "ALL_RUNNING"
+      fi
+  become: true
+  register: phase_b_verify
+  changed_when: false
+  when: not (common_molecule_mode | default(false))
+
+- name: Fail if Phase B containers are missing
+  ansible.builtin.fail:
+    msg: >-
+      Phase B: {{ phase_b_verify.stdout_lines | select('match', 'MISSING_SERVICES.*') | list | join(' ') }}
+      — Run 'docker compose -f /opt/{{ project_name }}/docker-compose.yml logs' for details.
+  when:
+    - not (common_molecule_mode | default(false))
+    - phase_b_verify.stdout is defined
+    - "'MISSING_SERVICES' in phase_b_verify.stdout"
 
 - name: Display Applications stack status
   ansible.builtin.debug:

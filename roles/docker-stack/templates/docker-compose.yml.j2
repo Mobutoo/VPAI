@@ -107,10 +107,15 @@ services:
       # OpenClaw spawns sandbox containers via Docker socket. Sandbox bind-mount
       # paths use OPENCLAW_STATE_DIR as base. Docker daemon resolves these on the
       # HOST — so container paths MUST equal host paths for mounts to work.
-      # system/ mounted :ro — design intent (immutable at runtime). OpenClaw must NOT
-      # modify openclaw.json at runtime; doing so causes idempotence failure (Ansible
-      # detects diff on run 2 → CHANGED). REX-Integration.
-      - {{ openclaw_system_dir }}:{{ openclaw_system_dir }}:ro
+      # system/ mounted rw — OpenClaw 5.27 self-manages files under system/ (config
+      # last-known-good backup, logs/config-health.json, logs/stability/*, atomic
+      # fs-safe-replace sentinels). The blanket :ro of earlier versions caused EROFS
+      # crash-loops in 5.27. Anti-drift (REX-Integration) is preserved by mounting
+      # ONLY openclaw.json :ro just below — that one file stays Ansible-owned/immutable,
+      # so the engine cannot rewrite it (no run-2 CHANGED diff). Handler recreate:always
+      # re-resolves the single-file inode after each re-render. 2026-05-30.
+      - {{ openclaw_system_dir }}:{{ openclaw_system_dir }}
+      - {{ openclaw_system_dir }}/openclaw.json:{{ openclaw_system_dir }}/openclaw.json:ro
       - {{ openclaw_workspace_dir }}:{{ openclaw_system_dir }}/workspace
       - {{ openclaw_state_dir }}/sessions:{{ openclaw_system_dir }}/sessions
       - {{ openclaw_state_dir }}/canvas:{{ openclaw_system_dir }}/canvas

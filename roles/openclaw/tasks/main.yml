@@ -42,6 +42,7 @@
     - skills
     - plugins
     - logs/stability
+    - plugin-skills
   when: openclaw_volume_isolation | default(false)
 
 - name: Create OpenClaw bind-mount target directories in system dir

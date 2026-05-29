@@ -149,8 +149,9 @@ services:
           memory: {{ openclaw_memory_reservation }}
     # OpenClaw Gateway healthcheck: native HTTP /healthz endpoint (v2026.3.1+ #31272)
     # Replaces the WebSocket upgrade hack needed before v2026.3.1 (REX 11.2b)
+    # 2026-05-30: image 5.27 ne contient plus wget (curl présent /usr/bin/curl) → HC restait unhealthy malgré gateway ready. Bascule sur curl -sf.
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:{{ openclaw_gateway_port }}/healthz || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:{{ openclaw_gateway_port }}/healthz || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -668,7 +669,7 @@ services:
         reservations:
           memory: {{ kitsu_memory_reservation | default('384M') }}
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1/api/health')\" 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1/api/status')\" 2>/dev/null || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5

@@ -533,7 +533,7 @@
       "workspaceOnly": true
     },
     "web": {
-{% if brave_search_api_key | default('') | length > 0 %}
+{% if openclaw_web_search_enabled | default(false) and brave_search_api_key | default('') | length > 0 %}
       "search": {
         "enabled": true,
         "provider": "brave",
@@ -542,6 +542,7 @@
         "cacheTtlMinutes": 15
       },
 {% endif %}
+{# NOTE 2026-05-30: OpenClaw 5.27 a transformé `brave` en plugin à activer (web_search provider not available: brave) — la config inline `provider: brave` fait planter le gateway au boot (Invalid config). Désactivé par défaut via openclaw_web_search_enabled (default false). Pour réactiver : installer/activer le plugin brave dans 5.27 PUIS passer le flag à true. #}
       "fetch": {
         "enabled": true,
         "maxChars": 50000,

@@ -21,7 +21,7 @@ openclaw_image: "ghcr.io/openclaw/openclaw:2026.5.27"
 # Push:  docker push ghcr.io/mobutoo/n8n-enterprise:2.7.3
 n8n_image: "ghcr.io/mobutoo/n8n-enterprise:2.7.3"
 n8n_upstream_version: "2.7.3"  # version officielle n8nio/n8n sous-jacente
-litellm_image: "ghcr.io/berriai/litellm:v1.83.14-stable"
+litellm_image: "ghcr.io/berriai/litellm:v1.83.3-stable"  # ROLLBACK 2026-05-30: 1.83.14 crash-loop prisma migrate deploy (CREATE INDEX CONCURRENTLY en transaction). 1.83.3 = dernière image sans le bug, présente sur disque sese.
 nocodb_image: "nocodb/nocodb:2026.05.1"  # SQL injection DATEADD + stored XSS + SSRF (fix 0.301.3, 2026-02-27); CalVer depuis 2026.04.1
 plane_web_image: "makeplane/plane-frontend:v1.3.1"  # fix SSRF webhook + X-Frame-Options (2026-04)
 plane_admin_image: "makeplane/plane-admin:v1.3.1"

@@ -90,6 +90,21 @@ L'inventaire résout `prod_ip` → **IP publique `137.74.114.167:804` qui TIMEOU
 
 **Arrêt volontaire** : contexte saturé + prod + 00:20 → ne pas s'acharner (risque d'erreur). Reprise recommandée en session fraîche.
 
+## ✅ CLÔTURE SESSION FRAÎCHE (2026-05-30 ~01:00) — 26/26 sains
+Les 3 services restants sont **healthy**. Diagnostic R5 + fixes appliqués (repo = vérité, deployed = patché surgical, **0 drift** : un futur `deploy-role docker-stack` re-rend l'identique).
+
+| Service | Cause réelle confirmée | Fix appliqué | État |
+|---|---|---|---|
+| **LiteLLM** | boucle `prisma migrate deploy` /38s (bug 1.83.14, `CREATE INDEX CONCURRENTLY` en transaction) | **Voie SIMPLE** : `versions.yml` → `v1.83.3-stable` (image déjà sur disque) + sed tag compose déployé + `up -d --force-recreate litellm`. v1.83.3 → `No pending migrations to apply` | `healthy`, readiness 200, db connected, budget `max_budget 10.0/1d` intact |
+| **Kitsu** | gunicorn:5000=200 + nginx:80=200 OK, mais HC tape `/api/health` → **404** (endpoint inexistant en 1.0.24 ; le vrai = `/api/status` → 200) | `docker-compose.yml.j2:671` HC `/api/health`→`/api/status` + sed compose déployé + recreate | `healthy` |
+| **OpenClaw** | (1) `provider: brave` rejeté en 5.27 (devenu plugin) = crash boot ; (2) HC `wget --spider /healthz` mais **wget absent de l'image 5.27** (curl présent) → restait `health: starting`→unhealthy | (1) `openclaw.json.j2` : bloc web.search gaté `openclaw_web_search_enabled \| default(false)` → re-render via `deploy-role openclaw` (brave count=0) ; (2) `docker-compose.yml.j2:153` HC `wget --spider`→`curl -sf` + recreate | `healthy`, gateway `ready`, telegram `@WazaBangaBot` polling, 9 plugins |
+
+**Résidu non-bloquant (décision archi différée)** : OpenClaw 5.27 spamme `EROFS: read-only file system` sur `system/openclaw.json.last-good`, `system/logs/config-health.json`, `system/.fs-safe-replace.*` — le mount `system/:ro` (anti-drift idempotence, REX) interdit les écritures self-management que 5.27 a ajoutées (4.23 ne les faisait pas). **Non-fatal** : gateway ready malgré tout. Fix propre = passer `system/` (ou des sous-mounts) en rw → arbitrage `:ro` anti-drift vs self-healing 5.27, à trancher hors prod-nuit. Tracké pour tour 2.
+
+**Fichiers repo modifiés** : `inventory/group_vars/all/versions.yml`, `roles/openclaw/templates/openclaw.json.j2`, `roles/docker-stack/templates/docker-compose.yml.j2`. Lint : 0 erreur introduite (l'`Error 123` préexiste dans `roles/mop-templates/files/mop-wizy-datafields.yml`, WIP hors scope).
+
+**Réactiver web search OpenClaw plus tard** : installer/activer le plugin `brave` dans 5.27 PUIS `openclaw_web_search_enabled: true`.
+
 ### Reprise — détail LiteLLM (2 voies)
 Prérequis communs : `PG=$(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'docker exec javisi_postgresql printenv POSTGRES_PASSWORD')`.
 

@@ -141,20 +141,27 @@
 # OpenClaw Gateway (Control UI + WebSocket on port 18789)
 # basePath=/ - Gateway serves UI at root of its own subdomain
 #
-# REX: OpenClaw Control UI stores the gateway token in browser localStorage.
-# On first access, localStorage is empty -> WebSocket rejected -> "token missing" loop.
-# The /__bootstrap__ route injects the token into localStorage and redirects to /.
-# This route is VPN-protected like the rest. First-time setup:
-#   open https://{{ caddy_admin_domain }}/__bootstrap__
+# OpenClaw Control UI needs the gateway token to authenticate. Supported delivery =
+# URL fragment #token=<token> — the UI ingests it on load and persists it at its own
+# versioned per-gateway key, deriving gatewayUrl from the location (version-robust).
+# 5.27 moved the token out of settings.v1.token into openclaw.control.token.v1:<hash>,
+# which broke the old localStorage-injection bootstrap (REX 2026-05-30).
+# NOTE 5.27 also requires one-time DEVICE PAIRING: after Connect, approve on the host:
+#   docker exec {{ project_name }}_openclaw openclaw devices approve <request-id>
+# VPN-protected. First-time setup: open https://{{ caddy_admin_domain }}/__bootstrap__
 {{ caddy_admin_domain }} {
     import vpn_only
     import vpn_error_page
 
-    # Token bootstrap - first-time Control UI setup (sets localStorage token)
+    # Token bootstrap - first-time Control UI setup. Hands the token to the UI via the
+    # #token= fragment; the UI persists it at its own versioned key (5.27-compatible).
     handle /__bootstrap__ {
         header Content-Type "text/html; charset=utf-8"
+        # no-store: the bootstrap embeds the token + redirect logic; a stale cached
+        # copy (e.g. the pre-5.27 localStorage version) silently breaks pairing. 2026-05-30.
+        header Cache-Control "no-store, must-revalidate"
         respond <<BOOTSTRAP
-<!DOCTYPE html><html><head><meta charset="utf-8"><title>OpenClaw Setup</title></head><body style="background:#1a1a2e;color:#eee;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2>OpenClaw Gateway</h2><p id="msg">Configuring token...</p><script>try{let s=JSON.parse(localStorage.getItem('openclaw.control.settings.v1')||'{}');s.token='{{ openclaw_gateway_token }}';s.gatewayUrl='wss://{{ caddy_admin_domain }}';localStorage.setItem('openclaw.control.settings.v1',JSON.stringify(s));document.getElementById('msg').textContent='Token configured. Redirecting...';setTimeout(()=>window.location.href='/',500)}catch(e){document.getElementById('msg').textContent='Error: '+e.message}</script></div></body></html>
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>OpenClaw Setup</title></head><body style="background:#1a1a2e;color:#eee;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2>OpenClaw Gateway</h2><p>Loading Control UI…</p><script>/* 5.27: deliver the token through the #token= fragment. The UI ingests it on load, stores it at openclaw.control.token.v1:<hash>, and derives gatewayUrl from the location. Then click Connect and approve device pairing on the gateway host. */location.replace('/#token={{ openclaw_gateway_token }}')</script></div></body></html>
 BOOTSTRAP 200
     }
 
@@ -490,6 +497,8 @@ mop-mail.{{ domain_name }} {
 }
 {% endif %}
 
+# VPS Form (EPI Telehouse) migré hors Sese-AI vers son propre projet
+# (/home/mobuone/projects/saas/vps) — plus déployé ici. 2026-05-30.
 {% if caddy_extra_sites is defined and caddy_extra_sites | length > 0 %}
 {% for site in caddy_extra_sites %}
 # --- Site supplémentaire : {{ site.name }} ---

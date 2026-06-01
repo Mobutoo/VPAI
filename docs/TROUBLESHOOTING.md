@@ -2056,3 +2056,60 @@ sudo systemctl restart ssh
 - Toujours garder `hardening_ssh_force_open: true` jusqu'a validation VPN complete
 - Le handler sshd inclut maintenant un fallback automatique
 - Le GUARD verifie `ip addr show` en plus de `tailscale status --json`
+
+---
+
+## 54. Disque saturé — leases containerd orphelines épinglent un image-store mort (2026-06-02)
+
+**Symptôme** : Alerte Grafana "Disk usage > 90%" → Telegram. `df -h /` à 100% (95G/99G, 186M libre). `docker system df` ne montre que ~30G récupérables → ne couvre pas tout.
+
+**Diagnostic** :
+```bash
+sudo du -xhd1 /var/lib   # repère /var/lib/containerd anormalement gros
+sudo docker info | grep "Storage Driver"   # = overlay2 (image-store containerd OFF)
+sudo ctr -n moby images list / snapshots list / leases list
+```
+`/var/lib/containerd` = 18G alors que le driver Docker actif est **overlay2**.
+
+**Root cause** : Reliquat d'une ancienne activation de l'**image-store containerd**. Les snapshots orphelins (13G) restent **épinglés par des leases containerd** (`ctr -n moby leases list`) — 13 leases datées de février retenaient ~9.5G à elles seules. **Invisible à `docker system df` ET bloqué pour le GC tant que la lease existe.** Les conteneurs actifs tournent sur overlay2 → ces snapshots ne servent à rien.
+
+**Fix (SANS restart containerd — sinon reboot des shims = toute la stack)** :
+```bash
+# 1. Purges overlay2 classiques
+sudo docker builder prune -af
+sudo docker image prune -a --force        # garde uniquement images de conteneurs running
+
+# 2. Images mortes du store containerd (garder celles dont le tag = conteneur actif)
+sudo ctr -n moby images list -q | <exclure les actives> | xargs -r sudo ctr -n moby images rm
+
+# 3. LE déblocage : supprimer les leases orphelines → libère le GC
+sudo ctr -n moby leases list | tail -n +2 | awk '{print $1}' \
+  | while read l; do sudo ctr -n moby leases delete --sync "$l"; done
+```
+Résultat 2026-06-02 : snapshots 9.7G→253M, disque 100%→66% (33G libres), 55/55 conteneurs healthy.
+
+**Garde-fous** :
+- `--sync` sur `leases delete` déclenche le GC immédiatement (sinon async/paresseux).
+- **Jamais** `systemctl restart containerd` (rebooterait tous les `containerd-shim` → toute la stack).
+- Garde d'âge : ne supprimer que les leases > 7j (épargne les opérations en cours).
+- Garde driver : nettoyage leases uniquement si `docker info` Storage Driver = `overlay2`.
+
+**Prévention (automatisé)** : rôle `disk-guard` (`roles/disk-guard/`, tags `[disk-guard, phase5, ops]`) — timer systemd 15min, no-op < 80%, paliers 80% (sûr: cache+dangling+leases>7j) → 90% (+`image prune -a`), notif Telegram. Déploiement : voir §55.
+
+---
+
+## 55. Deploy prod : GitHub Actions (IP publique) vs local Tailscale (2026-06-02)
+
+**Contexte** : Confusion possible sur le canal de déploiement prod.
+
+**Règle** : Le déploiement prod **standard passe par GitHub Actions** — `.github/workflows/deploy-prod.yml`, déclenchement **manuel** (`workflow_dispatch`, taper `deploy-prod`, champ `tags` optionnel). Le runner `ubuntu-latest` est **hors mesh Tailscale** → il joint prod par l'**IP publique** (`vault_prod_ip` / secret `PROD_SERVER_IP`).
+
+**Conséquence** : `inventory/hosts.yml` `ansible_host = {{ prod_ip }}` = IP publique est **CORRECT**. Ne PAS le passer à l'IP Tailscale (casserait la CI : le runner externe ne joint pas `100.64.0.14`).
+
+**Deploy LOCAL depuis Waza** (poste qui ne voit prod que via Tailscale) :
+```bash
+make deploy-role ROLE=<role> ENV=prod EXTRA_ARGS="-e prod_ip={{ vps_tailscale_ip }}"
+# vps_tailscale_ip = 100.64.0.14 ; ansible.cfg fournit deja cle seko-vpn-deploy + port 804 + .vault_password
+```
+
+**À surveiller** : si le SSH serveur est durci en Tailscale-only, le deploy CI (IP publique) pourrait échouer → vérifier avant un `deploy-prod`. Cf §50 (SSH Lockout) + `hardening_ssh_listen_address`.

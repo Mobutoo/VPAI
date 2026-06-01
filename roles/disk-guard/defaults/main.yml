@@ -1,0 +1,31 @@
+---
+# disk-guard — purge automatique du disque sous pression
+# Déclenché par timer systemd ; paliers 80% (sûr) → 90% (agressif).
+
+disk_guard_user: "root"
+disk_guard_install_dir: "/opt/disk-guard"
+disk_guard_script: "{{ disk_guard_install_dir }}/disk-guard.sh"
+disk_guard_env_file: "{{ disk_guard_install_dir }}/disk-guard.env"
+
+disk_guard_service_name: "disk-guard"
+disk_guard_timer_name: "disk-guard"
+
+# Point de montage surveillé
+disk_guard_mountpoint: "/"
+
+# Paliers (pourcentage d'usage)
+disk_guard_threshold_soft: 80   # purge SÛRE (cache + dangling + leases orphelines)
+disk_guard_threshold_hard: 90   # ajoute `docker image prune -a` (re-pull possible)
+
+# Âge minimal (jours) d'une lease containerd orpheline avant suppression auto.
+# Protège les leases fraîches d'une opération en cours.
+disk_guard_lease_min_age_days: 7
+
+# Cadence du timer
+disk_guard_timer_on_boot_sec: "10min"
+disk_guard_timer_on_unit_active_sec: "15min"
+
+# Notification Telegram (réutilise le bot monitoring existant)
+disk_guard_notify_telegram: true
+disk_guard_telegram_bot_token: "{{ telegram_monitoring_bot_token | default('') }}"
+disk_guard_telegram_chat_id: "{{ telegram_monitoring_chat_id | default('') }}"

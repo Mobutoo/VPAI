@@ -1,0 +1,95 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# disk-guard — purge le disque sous pression (paliers SOFT→HARD).
+# Idempotent : no-op tant que l'usage < SOFT. Lock flock anti-concurrence.
+set -euo pipefail
+
+SOFT={{ disk_guard_threshold_soft }}
+HARD={{ disk_guard_threshold_hard }}
+MOUNT="{{ disk_guard_mountpoint }}"
+LEASE_MIN_AGE_DAYS={{ disk_guard_lease_min_age_days }}
+ENV_FILE="{{ disk_guard_env_file }}"
+
+# Secrets Telegram (fichier 0600). Absents = pas de notif.
+TG_BOT=""
+TG_CHAT=""
+# shellcheck disable=SC1090
+[ -r "$ENV_FILE" ] && . "$ENV_FILE"
+
+log() { echo "[disk-guard] $*"; }
+
+usage_pct() {
+  df --output=pcent "$MOUNT" | tail -1 | tr -dc '0-9'
+}
+
+notify() {
+  local msg="$1"
+  [ -n "$TG_BOT" ] && [ -n "$TG_CHAT" ] || return 0
+  curl -fsS --max-time 15 \
+    "https://api.telegram.org/bot${TG_BOT}/sendMessage" \
+    -d chat_id="${TG_CHAT}" \
+    -d parse_mode="HTML" \
+    --data-urlencode text="$msg" >/dev/null 2>&1 || log "notify telegram echec (non bloquant)"
+}
+
+# --- Anti-concurrence ---
+exec 9>/run/disk-guard.lock
+if ! flock -n 9; then
+  log "run deja en cours, abandon"
+  exit 0
+fi
+
+BEFORE="$(usage_pct)"
+if [ "$BEFORE" -lt "$SOFT" ]; then
+  log "usage ${BEFORE}% < ${SOFT}% — rien a faire"
+  exit 0
+fi
+
+HOST="$(hostname -s)"
+log "PRESSION disque ${BEFORE}% >= ${SOFT}% — purge SURE"
+
+# ---------- PALIER 1 : SUR (zero re-pull) ----------
+# 1a. Cache de build buildkit
+docker builder prune -af >/dev/null 2>&1 || log "builder prune skip"
+# 1b. Images dangling uniquement (pas -a)
+docker image prune --force >/dev/null 2>&1 || log "image prune skip"
+
+# 1c. Leases containerd orphelines > N jours — UNIQUEMENT si driver overlay2
+#     (le store image-store containerd n'est alors pas l'actif → leases = reliquats).
+DRIVER="$(docker info --format '{{ '{{' }}.Driver{{ '}}' }}' 2>/dev/null || echo unknown)"
+if [ "$DRIVER" = "overlay2" ] && command -v ctr >/dev/null 2>&1; then
+  CUTOFF="$(date -d "-${LEASE_MIN_AGE_DAYS} days" +%s)"
+  N_DEL=0
+  # Format ligne: <ID> <CREATED_AT RFC3339> <LABELS>
+  while read -r LID LCREATED _; do
+    [ -n "$LID" ] || continue
+    LTS="$(date -d "$LCREATED" +%s 2>/dev/null || echo 0)"
+    if [ "$LTS" -gt 0 ] && [ "$LTS" -lt "$CUTOFF" ]; then
+      if ctr -n moby leases delete --sync "$LID" >/dev/null 2>&1; then
+        N_DEL=$((N_DEL+1))
+      fi
+    fi
+  done < <(ctr -n moby leases list 2>/dev/null | tail -n +2)
+  [ "$N_DEL" -gt 0 ] && log "leases containerd orphelines supprimees: ${N_DEL}"
+else
+  log "driver=${DRIVER} — skip nettoyage leases containerd"
+fi
+
+MID="$(usage_pct)"
+log "apres palier SUR: ${MID}%"
+
+# ---------- PALIER 2 : AGRESSIF (si toujours >= HARD) ----------
+TIER2=""
+if [ "$MID" -ge "$HARD" ]; then
+  log "toujours ${MID}% >= ${HARD}% — purge AGRESSIVE (image prune -a)"
+  docker image prune -a --force >/dev/null 2>&1 || log "image prune -a skip"
+  TIER2=" + image prune -a"
+fi
+
+AFTER="$(usage_pct)"
+log "FINAL: ${BEFORE}% -> ${AFTER}%"
+
+# Notif uniquement si une action a eu lieu (on est >= SOFT par construction)
+notify "🧹 <b>disk-guard</b> @ ${HOST}
+Disque ${MOUNT} : <b>${BEFORE}% → ${AFTER}%</b>
+Palier SUR (cache+dangling+leases)${TIER2}"

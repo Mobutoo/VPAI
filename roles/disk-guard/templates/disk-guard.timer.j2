@@ -1,0 +1,11 @@
+[Unit]
+Description=Lance disk-guard périodiquement
+
+[Timer]
+OnBootSec={{ disk_guard_timer_on_boot_sec }}
+OnUnitActiveSec={{ disk_guard_timer_on_unit_active_sec }}
+Unit={{ disk_guard_service_name }}.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

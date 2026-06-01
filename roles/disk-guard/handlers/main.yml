@@ -1,0 +1,7 @@
+---
+# disk-guard — handlers
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true

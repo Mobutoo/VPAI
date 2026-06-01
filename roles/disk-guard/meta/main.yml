@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: disk_guard
+  author: VPAI
+  namespace: mobutoo
+  description: Purge disque automatique sous pression — timer systemd, paliers 80%→90%, notif Telegram
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

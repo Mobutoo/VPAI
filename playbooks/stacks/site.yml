@@ -94,6 +94,8 @@
       tags: [mop-templates, phase3]
     - role: gotenberg
       tags: [gotenberg, phase3, apps]
+    - role: pandoc-api
+      tags: [pandoc-api, phase3, apps]
     - role: carbone
       tags: [carbone, phase3, apps]
     - role: typebot
@@ -128,6 +130,8 @@
       tags: [backup-config, phase5, ops]
     - role: uptime-config
       tags: [uptime-config, phase5, monitoring]
+    - role: disk-guard
+      tags: [disk-guard, phase5, ops]
 
     # Phase 6 — Hardening (DERNIER - après validation complète)
     - role: hardening

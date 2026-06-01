@@ -1,0 +1,62 @@
+---
+# disk-guard — déploie le script + units systemd + active le timer.
+
+- name: Ensure disk-guard install dir
+  ansible.builtin.file:
+    path: "{{ disk_guard_install_dir }}"
+    state: directory
+    owner: "{{ disk_guard_user }}"
+    group: "{{ disk_guard_user }}"
+    mode: "0750"
+  become: true
+
+- name: Deploy disk-guard env file (Telegram secrets)
+  ansible.builtin.template:
+    src: disk-guard.env.j2
+    dest: "{{ disk_guard_env_file }}"
+    owner: "{{ disk_guard_user }}"
+    group: "{{ disk_guard_user }}"
+    mode: "0600"
+  become: true
+  no_log: true
+
+- name: Deploy disk-guard script
+  ansible.builtin.template:
+    src: disk-guard.sh.j2
+    dest: "{{ disk_guard_script }}"
+    owner: "{{ disk_guard_user }}"
+    group: "{{ disk_guard_user }}"
+    mode: "0750"
+  become: true
+
+- name: Deploy disk-guard systemd service
+  ansible.builtin.template:
+    src: disk-guard.service.j2
+    dest: "/etc/systemd/system/{{ disk_guard_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Reload systemd
+
+- name: Deploy disk-guard systemd timer
+  ansible.builtin.template:
+    src: disk-guard.timer.j2
+    dest: "/etc/systemd/system/{{ disk_guard_timer_name }}.timer"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Reload systemd
+
+- name: Flush handlers to reload systemd before enabling timer
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start disk-guard timer
+  ansible.builtin.systemd:
+    name: "{{ disk_guard_timer_name }}.timer"
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: not ansible_check_mode

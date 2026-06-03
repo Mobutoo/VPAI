@@ -77,7 +77,7 @@ Couverture réelle constatée (inventaire hooks, 2026-06-04) :
 | `isFresh(topic)` | **frais SI** `(action_count − last_action) < DECAY_N` ET pas d'invalidation événementielle en attente |
 
 - `DECAY_N` = défaut **20** tool-calls (param). Re-toucher un topic rafraîchit `last_action`.
-- Migration : ledger v1 lu → `{}` fail-open → reseed v2.
+- Migration : un ledger v1 est du JSON valide → lu **tel quel** (pas de reseed automatique). `isFresh` doit donc tolérer `last_action === undefined` → traité comme **stale** (le topic se ré-arme au prochain contact, `bumpAction` repeuple). Seul un fichier corrompu → `{}` fail-open.
 - `lib/ledger.js` gagne : `bumpAction()`, `lastAction(topic)`, `isFresh` décroissant (en plus de `read/stampTopic/invalidate/reset/allTopics` existants).
 
 ---
@@ -91,6 +91,8 @@ Trois chemins indépendants remettent un topic à `stale`. Aucun n'utilise d'hor
 | **A. Décompte d'actions** | `r0-topic-injector.js` (étendu) | `bumpAction()` à chaque appel ; `isFresh` faux si dérive ≥ `DECAY_N` | réarmer en longue session |
 | **B. Écriture REX/doc** | `r0-rex-watcher.js` **(neuf, PostToolUse `Write\|Edit`)** | si `file_path` ∈ {docs/rex, docs/runbooks, docs/audits, TROUBLESHOOTING} → extrait topic(s) via `known-topics` → `invalidate(topic)` | **REX créés mais pas appliqués plus loin** |
 | **C. 1er échec outil** | `error-escalator.js` (seuil abaissé) | échec **#1** sur cmd matchant un topic → grep chaud + ré-injecte + `invalidate(topic)`. Compteur anti-boucle reste à **#3** pour le STOP-architecture (R5) | matcher au moment du bug |
+
+> **Changement délibéré de seuils** (l'implémenteur ne doit pas croire que le spec décrit l'existant) : `error-escalator.js` shippé invalide aujourd'hui au seuil **2** (`R0_DEBUG_THRESHOLD`) et STOP-archi à **5**. Ce design les passe à **1** (ré-injection plus précoce) et **3** (STOP-archi R5 conforme à la LOI « 3 fixes »). Ce sont des modifs de valeurs, pas une description.
 
 **Point clé B** : on écrit `REX-X.md` à T0 → watcher invalide le topic → la **prochaine action** sur ce topic re-grep le chaud → le REX frais remonte en tête (tri mtime) et est réinjecté. Le savoir de la session reboucle dans la session.
 
@@ -141,6 +143,8 @@ Apports : (1) cross-projet étiqueté `[source]` (signale que ça vient d'ailleu
 
 **Garde-fou portabilité** : hors repo connu (ex. `~/macgyver`) → `sources.detect` fail-open basename + grep du seul cwd. Jamais de crash, dégradation propre.
 
+**Garde-fou amorce vide** : un projet connu sans `docs/rex/` (vérifié : `flash-studio` n'a pas de `docs/rex/`, seul VPAI en a) → seed-topics **vide**, pas d'erreur. On s'appuie alors sur le seul `r0-topic-injector` (PreToolUse) qui détecte les topics à l'usage. G3 dégrade proprement : la portabilité n'est pas un no-op, elle bascule juste de l'amorce-au-boot vers la détection-à-l'usage.
+
 ---
 
 ## 6. Partie C — Split LOI CORE / BINDING
@@ -176,7 +180,7 @@ Les 12 règles confondent **principe** (le « comment travailler », portable) e
 ## 7. Partie D — Fermeture des gaps (phasée)
 
 ### D1 — R1 hard-gate *(Phase 1)*
-`loi-op-enforcer.js` : convertir R1 advisory → **bloc dur** (`permissionDecision: "deny"`) sur `n8n import:workflow` / `docker cp *.json javisi_n8n` quand aucun `validate_workflow` du même JSON n'a été vu dans le ledger/transcript récent. Message : commande validate à lancer. Ferme la leçon fondatrice. Fail-open.
+`loi-op-enforcer.js` : convertir R1 advisory → **bloc dur** via `process.exit(2)` + message stderr — **mécanisme identique aux gates R0/R2/R7 existants** (PAS `permissionDecision:"deny"` : les gates shippés bloquent par exit-code, lignes 100/147/173) — sur `n8n import:workflow` / `docker cp *.json javisi_n8n` quand aucun `validate_workflow` du même JSON n'a été vu dans le ledger/transcript récent. Message : commande validate à lancer. Ferme la leçon fondatrice. Fail-open.
 
 ### D2 — Fermer la boucle MESURE *(Phase 2)*
 `session-memory-writer.sh` émet déjà `bash_pct`, counts tools/erreurs/compacts à chaque Stop — mais **personne n'agrège**. Ajouter un agrégateur (ledger persistant `~/.claude/metrics/sessions.jsonl` + seuil) : alerte si `mcp_calls == 0 && bash_calls > 50` (signature exacte de l'incident fondateur 806/0). **Pas d'infra eval neuve** — on ferme la boucle déjà câblée.

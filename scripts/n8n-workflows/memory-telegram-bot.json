@@ -221,7 +221,7 @@
       },
       "credentials": {
         "sshPrivateKey": {
-          "id": "REPLACE_WITH_N8N_MEMCTL_CREDENTIAL_ID",
+          "id": "P5ANiw6eFXBFP80f",
           "name": "n8n-memctl"
         }
       },

@@ -36,7 +36,7 @@ cmd_status() {
   qpts=null; qok=false
   if [ -n "$QURL" ]; then
     local r; r="$(curl -s --max-time 8 -H "api-key: $QKEY" "$QURL/collections/$COLL" 2>/dev/null || true)"
-    if [ -n "$r" ]; then qpts="$(printf '%s' "$r" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("result",{}).get("points_count","null"))' 2>/dev/null || echo null)"; [ "$qpts" != null ] && qok=true; fi
+    if [ -n "$r" ]; then qpts="$(printf '%s' "$r" | python3 -c 'import sys,json; r=json.load(sys.stdin).get("result",{}); v=r.get("points_count"); print(v if v is not None else "null")' 2>/dev/null || echo null)"; [ "$qpts" != null ] && qok=true; fi
   fi
   printf '{"last_run_ts":"%s","age_seconds":%s,"spool_depth":%s,"lock_pid":"%s","lock_alive":%s,"state_entries":%s,"qdrant_points":%s,"qdrant_reachable":%s,"timer_enabled":"%s","timer_active":"%s"}\n' \
     "$last_ts" "${age}" "${spool:-0}" "$lp" "$alive" "${state_n:-0}" "${qpts}" "$qok" "$ten" "$tac"

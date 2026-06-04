@@ -43,7 +43,8 @@ def _format(action, raw):
 def handle_update(update, owner_chat_id=OWNER):
     msg = (update or {}).get("message") or {}
     chat = (msg.get("chat") or {}).get("id")
-    text = (msg.get("text") or "").strip().split()[0] if msg.get("text") else ""
+    parts = (msg.get("text") or "").strip().split()
+    text = parts[0] if parts else ""
     if chat != owner_chat_id:
         print(f"ignored message from chat {chat}", file=sys.stderr); return
     action = CMD_MAP.get(text)

@@ -42,4 +42,13 @@ calls.clear()
 mb.handle_update(upd("/hello"), owner_chat_id=OWNER)
 check("unknown command does not dispatch memctl", calls == [])
 
+# REGRESSION: whitespace-only text must not raise IndexError
+calls.clear(); replies.clear()
+try:
+    mb.handle_update(upd("   "), owner_chat_id=OWNER)
+    check("whitespace-only text: no exception", True)
+except IndexError:
+    check("whitespace-only text: no exception", False)
+check("whitespace-only text: no memctl dispatch", calls == [])
+
 print("test_memory_bot PASS" if fails == 0 else "test_memory_bot FAIL"); sys.exit(fails)

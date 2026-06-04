@@ -29,4 +29,11 @@ bash "$MEMCTL" fix >/dev/null 2>&1
 ok "$([ -f "$MEMCTL_STATE_DIR/index.lock" ] && echo 1)" "fix preserves a live-PID lock"
 rm -f "$MEMCTL_STATE_DIR/index.lock"
 
+# REGRESSION: qdrant returns points_count:null → qdrant_points must be JSON null (not bareword None)
+FAKEBIN2="$TMP/bin2"; mkdir -p "$FAKEBIN2"
+printf '#!/bin/bash\necho '"'"'{"result":{"points_count":null,"status":"green"}}'"'"'\nexit 0\n' > "$FAKEBIN2/curl"
+chmod +x "$FAKEBIN2/curl"
+OUT="$(PATH="$FAKEBIN2:$PATH" MEMCTL_QDRANT_URL=http://x MEMCTL_TIMER_NAME=nonexistent bash "$MEMCTL" status 2>/dev/null)"
+echo "$OUT" | python3 -c 'import sys,json; d=json.load(sys.stdin); v=d["qdrant_points"]; assert v is None, "expected None, got "+repr(v)' && ok 1 "qdrant points_count:null → JSON null (not bareword None)" || ok 0 "qdrant points_count:null → JSON null"
+
 rm -rf "$TMP"; [ "$fail" = 0 ] && echo "test_memctl PASS" || { echo "test_memctl FAIL"; exit 1; }

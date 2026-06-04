@@ -109,7 +109,23 @@ def ensure_lock(lock_path: Path) -> None:
     try:
         fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     except FileExistsError as exc:
-        raise RuntimeError(f"lock file exists: {lock_path}") from exc
+        try:
+            pid = int(lock_path.read_text().strip() or "0")
+        except Exception:
+            pid = 0
+        alive = False
+        if pid > 0:
+            try:
+                os.kill(pid, 0); alive = True
+            except ProcessLookupError:
+                alive = False
+            except PermissionError:
+                alive = True
+        if alive:
+            raise RuntimeError(f"lock held by live pid {pid}: {lock_path}") from exc
+        LOG.warning("stale lock (pid=%s dead) removed — reclaiming: %s", pid, lock_path)
+        lock_path.unlink(missing_ok=True)  # stale → reclaim
+        fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(str(os.getpid()))
 
@@ -799,9 +815,11 @@ def main() -> int:
     exit_code = 1
     report_repo: str | None = None
     report_repos: list[str] = []
+    acquired = False
 
     try:
         ensure_lock(lock_path)
+        acquired = True
         check_loadavg(float(config["limits"]["loadavg_threshold"]))
         state = load_json(state_path)
         include_ext = set(config["filters"]["include_extensions"])
@@ -953,7 +971,8 @@ def main() -> int:
         exit_code = 1
         return exit_code
     finally:
-        release_lock(lock_path)
+        if acquired:
+            release_lock(lock_path)
         duration_s = (datetime.now(timezone.utc) - started_dt).total_seconds()
         try:
             loadavg_1min = os.getloadavg()[0]

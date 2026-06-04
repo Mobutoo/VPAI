@@ -82,8 +82,8 @@ iPhone (Telegram) ──cloud──► api.telegram.org ──webhook POST──
 
 ## 4. Composants — détail
 
-### 4.1 `memctl.sh` — INCHANGÉ (déjà commité)
-`status` (JSON santé), `start`/`stop` (timer enable/disable), `run` (service oneshot), `fix` (lock PID-mort → rm + run). `set -uo pipefail`, `systemctl --user`, `XDG_RUNTIME_DIR` défensif.
+### 4.1 `memctl.sh` — quasi inchangé (1 fix)
+`status` (JSON santé), `start`/`stop` (timer enable/disable), `run` (service oneshot), `fix` (lock PID-mort → rm + run). `set -uo pipefail`, `systemctl --user`, `XDG_RUNTIME_DIR` défensif. **Fix `fb9d108`** : `run`/`fix` utilisent `systemctl start --no-block` — sans ça, `start` sur un `Type=oneshot` BLOQUE jusqu'à fin du run (minutes) → hang du caller SSH/webhook → retry Telegram → runs dupliqués. Ferme le risque d'ack-timing à la source (le nœud SSH ne bloque plus).
 
 ### 4.2 `memctl-remote.sh` — NOUVEAU (garde-frontière SSH)
 ```bash

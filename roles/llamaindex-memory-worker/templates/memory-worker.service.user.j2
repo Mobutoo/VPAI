@@ -12,5 +12,6 @@ ExecStart={{ memory_worker_run_report_script }} --mode {{ memory_worker_index_mo
 Nice=19
 IOSchedulingClass=idle
 
-[Install]
-WantedBy=default.target
+# No [Install] section: this is a timer-triggered Type=oneshot. Only the timer is
+# enabled (systemctl --user enable …timer). Omitting [Install] prevents a stray
+# `enable …service` from running the worker at every login.

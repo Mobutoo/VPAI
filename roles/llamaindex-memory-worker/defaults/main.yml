@@ -137,3 +137,8 @@ memory_worker_timer_on_unit_active_sec: "30m"
 memory_worker_index_mode: "incremental"
 memory_worker_enable_gc: true
 memory_worker_gc_flag: "{{ '--gc' if memory_worker_enable_gc | bool else '' }}"
+
+# Remote control (v2): systemd-user migration + SSH forced-command from n8n
+memory_worker_uid: 1000                                   # uid of mobuone (XDG_RUNTIME_DIR)
+memory_worker_user_unit_dir: "/home/{{ memory_worker_user }}/.config/systemd/user"
+memory_worker_ssh_pubkey: "{{ memory_worker_ssh_pubkey_value | default('') }}"  # n8n-memctl public key; empty = skip authorized_key

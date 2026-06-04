@@ -377,3 +377,6 @@ memory_healthcheck_max_spool: 50
 # Secret validated on Telegram -> n8n webhook (setWebhook secret_token).
 # Telegram sends this back in X-Telegram-Bot-Api-Secret-Token on every update.
 memory_telegram_webhook_secret: "{{ vault_memory_telegram_webhook_secret | default('') }}"
+# n8n-memctl SSH public key (forced-command to memctl-remote.sh on waza).
+# Filled after Task 5 keygen. Empty until then → authorized_key task is skipped.
+memory_worker_ssh_pubkey_value: ""

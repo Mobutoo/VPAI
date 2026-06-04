@@ -1,15 +1,16 @@
 ---
 # llamaindex-memory-worker — handlers
-
-- name: Reload systemd
+- name: Reload systemd (system)
   ansible.builtin.systemd:
     daemon_reload: true
   become: true
 
-- name: Restart llamaindex-memory-worker timer
+- name: Reload systemd (user)
   ansible.builtin.systemd:
-    name: "{{ memory_worker_timer_name }}.timer"
-    state: restarted
+    daemon_reload: true
+    scope: user
   become: true
-  when: not ansible_check_mode
-  listen: Restart llamaindex-memory-worker timer
+  become_user: "{{ memory_worker_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ memory_worker_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_uid }}/bus"

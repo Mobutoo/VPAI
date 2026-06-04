@@ -59,7 +59,7 @@
     mode: "0600"
   become: true
   no_log: true
-  notify: Restart llamaindex-memory-worker timer
+  tags: [llamaindex-memory-worker, memory_remote]
 
 - name: Deploy memory worker config
   ansible.builtin.template:
@@ -69,7 +69,6 @@
     group: "{{ memory_worker_user }}"
     mode: "0644"
   become: true
-  notify: Restart llamaindex-memory-worker timer
 
 - name: Deploy memory worker sources config
   ansible.builtin.template:
@@ -88,6 +87,7 @@
     group: "{{ memory_worker_user }}"
     mode: "0755"
   become: true
+  tags: [llamaindex-memory-worker, memory_remote]
 
 - name: Deploy memory worker search script
   ansible.builtin.template:
@@ -133,7 +133,6 @@
     group: "{{ memory_worker_user }}"
     mode: "0755"
   become: true
-  notify: Restart llamaindex-memory-worker timer
 
 - name: Deploy memory worker loadavg wait script
   ansible.builtin.template:
@@ -143,7 +142,6 @@
     group: "{{ memory_worker_user }}"
     mode: "0755"
   become: true
-  notify: Restart llamaindex-memory-worker timer
 
 - name: Deploy memory worker webhook secret file
   ansible.builtin.copy:
@@ -155,31 +153,118 @@
   become: true
   no_log: true
   when: memory_worker_report_webhook_secret | length > 0
-  notify: Restart llamaindex-memory-worker timer
 
-- name: Deploy memory worker systemd service
+- name: Stat legacy SYSTEM unit files
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ item }}"
+  become: true
+  loop:
+    - "{{ memory_worker_service_name }}.service"
+    - "{{ memory_worker_timer_name }}.timer"
+  register: legacy_unit_stat
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Disable + stop legacy SYSTEM units (only if present — keeps 2nd run quiet & idempotent)
+  ansible.builtin.systemd:
+    name: "{{ item.item }}"
+    state: stopped
+    enabled: false
+  become: true
+  loop: "{{ legacy_unit_stat.results }}"
+  when: item.stat.exists
+  loop_control:
+    label: "{{ item.item }}"
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Remove legacy SYSTEM unit files
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
+  become: true
+  loop:
+    - "{{ memory_worker_service_name }}.service"
+    - "{{ memory_worker_timer_name }}.timer"
+  notify: Reload systemd (system)
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Enable linger for the memory-worker user (runs user units without login)
+  ansible.builtin.command: "loginctl enable-linger {{ memory_worker_user }}"
+  become: true
+  args:
+    creates: "/var/lib/systemd/linger/{{ memory_worker_user }}"
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Ensure user systemd unit dir
+  ansible.builtin.file:
+    path: "{{ memory_worker_user_unit_dir }}"
+    state: directory
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Deploy USER units (names MUST match memctl defaults)
   ansible.builtin.template:
-    src: llamaindex-memory-worker.service.j2
-    dest: "/etc/systemd/system/{{ memory_worker_service_name }}.service"
-    owner: root
-    group: root
+    src: "{{ item.src }}"
+    dest: "{{ memory_worker_user_unit_dir }}/{{ item.dest }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
     mode: "0644"
   become: true
-  notify:
-    - Reload systemd
-    - Restart llamaindex-memory-worker timer
+  loop:
+    - { src: "memory-worker.service.user.j2", dest: "{{ memory_worker_service_name }}.service" }
+    - { src: "memory-worker.timer.user.j2", dest: "{{ memory_worker_timer_name }}.timer" }
+  notify: Reload systemd (user)
+  tags: [llamaindex-memory-worker, memory_remote]
 
-- name: Deploy memory worker systemd timer
-  ansible.builtin.template:
-    src: llamaindex-memory-worker.timer.j2
-    dest: "/etc/systemd/system/{{ memory_worker_timer_name }}.timer"
-    owner: root
-    group: root
-    mode: "0644"
+- name: Deploy memctl.sh + memctl-remote.sh
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ memory_worker_install_dir }}/{{ item }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
   become: true
-  notify:
-    - Reload systemd
-    - Restart llamaindex-memory-worker timer
+  loop:
+    - memctl.sh
+    - memctl-remote.sh
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Ensure the user systemd instance is running (creates the XDG runtime dir after fresh linger)
+  ansible.builtin.systemd:
+    name: "user@{{ memory_worker_uid }}.service"
+    state: started
+  become: true
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Flush handlers so daemon-reload happens before enable
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable + start USER timer (kills the dormancy root cause — non-negotiable)
+  ansible.builtin.systemd:
+    name: "{{ memory_worker_timer_name }}.timer"
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  become_user: "{{ memory_worker_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ memory_worker_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_uid }}/bus"
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Install n8n-memctl forced-command SSH key
+  ansible.posix.authorized_key:
+    user: "{{ memory_worker_user }}"
+    key: "{{ memory_worker_ssh_pubkey }}"
+    state: present
+    exclusive: false
+    key_options: 'command="{{ memory_worker_install_dir }}/memctl-remote.sh",no-pty,no-port-forwarding,no-agent-forwarding,no-X11-forwarding'
+  become: true
+  when: memory_worker_ssh_pubkey | length > 0
+  tags: [llamaindex-memory-worker, memory_remote]
 
 - name: Verify memory worker script imports
   ansible.builtin.command:
@@ -191,12 +276,4 @@
     - "{{ memory_worker_inventory_collections_script }}"
   changed_when: false
   become: true
-
-- name: Enable and start memory worker timer
-  ansible.builtin.systemd:
-    name: "{{ memory_worker_timer_name }}.timer"
-    state: started
-    enabled: true
-    daemon_reload: true
-  become: true
-  when: not ansible_check_mode
+  tags: [llamaindex-memory-worker, memory_remote]

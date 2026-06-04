@@ -1,0 +1,20 @@
+# .loi-binding.yml — instanciation VPAI de LOI-CORE (~/.claude/loi/CORE.md)
+# Résolu via sources.detect(cwd). Hors-VPAI : CORE seul.
+project: VPAI
+params:
+  MEMORY_CMD: >-
+    set -a; . /opt/workstation/configs/ai-memory-worker/memory-worker.env; set +a;
+    /opt/workstation/ai-memory-worker/.venv/bin/python
+    /opt/workstation/ai-memory-worker/search_memory.py
+    --config /opt/workstation/configs/ai-memory-worker/config.yml --query
+  VALIDATOR: "mcp__n8n-docs__validate_workflow (zéro erreur bloquante = prêt)"
+  SECURE_CHANNEL: "Tailscale 100.64.0.14 — jamais l'IP publique 137.74.114.167 ni localhost:5678"
+  DEPLOY_METHOD: "REST PUT /api/v1/workflows/:id (scripts/deploy-workflow.sh) ; JSON file-first dans scripts/n8n-workflows/"
+  BROWSER_DRIVER: "Playwright MCP (browser_navigate → browser_fill_form → browser_click)"
+
+# R9/R10/R11 — anciennement règles dures, désormais REX versionnés (grep chaud + Qdrant).
+# Quand n8n monte de version, ces REX se périment via la mémoire, pas par édition manuelle.
+rex_rules:
+  R9: "IF node n8n 2.7.3 : typeVersion:1 + fixedCollection. typeVersion:2 crashe sur toutes conditions."
+  R10: "workflow_history[activeVersionId] = source de vérité d'exécution. Après import CLI : publish:workflow --id=<id>."
+  R11: "REST PUT /api/v1/workflows/:id = méthode primaire. Prérequis Caddy : route /api/v1/* → javisi_n8n:5678."

@@ -1,0 +1,16 @@
+[Unit]
+Description=LlamaIndex memory worker (user)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory={{ memory_worker_install_dir }}
+EnvironmentFile={{ memory_worker_env_file }}
+ExecStartPre={{ memory_worker_wait_calm_script }}
+ExecStart={{ memory_worker_run_report_script }} --mode {{ memory_worker_index_mode }}
+Nice=19
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target

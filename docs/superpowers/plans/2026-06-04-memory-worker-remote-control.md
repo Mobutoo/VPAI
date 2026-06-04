@@ -475,6 +475,7 @@ source .venv/bin/activate
 ansible-playbook playbooks/hosts/workstation.yml --tags memory_remote --check --diff   # review: system units removed, user units added, linger, authorized_key
 make deploy-workstation                                                                 # or the tagged playbook without --check
 ```
+> **`--check` caveat:** the two user-scope tasks (`Ensure the user systemd instance is running`, `Enable + start USER timer`) may error in `--check` on a host where `/run/user/{{ uid }}` doesn't exist yet (check-mode won't create it, then `systemctl --user` can't reach the bus). This is expected dry-run noise, not a real failure — the linger + user-instance-start tasks create the runtime dir on the real run. If the noise is unwanted, add `check_mode: false` to those two tasks. On waza (mobuone already has an active session / linger) this typically doesn't trip.
 
 - [ ] **Step 5: Verify the migration live (no sudo)**
 

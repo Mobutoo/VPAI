@@ -74,17 +74,15 @@ git rm roles/llamaindex-memory-worker/files/memory-bot.py \
        roles/llamaindex-memory-worker/tests/test_memory_bot.py
 ```
 
-- [ ] **Step 2: Drop the bot test from `run.sh`** — remove the line `python3 test_memory_bot.py || f=1`. Result:
+- [ ] **Step 2: Drop the bot test from `run.sh`** — remove only the line `python3 test_memory_bot.py || f=1` (the `test_memctl_remote.sh` line is added in Task 2, so every commit stays green). Result:
 
 ```bash
 #!/bin/bash
 set -uo pipefail; cd "$(dirname "$0")"; f=0
 bash test_memctl.sh || f=1
-bash test_memctl_remote.sh || f=1
 python3 test_lock.py || f=1
 [ "$f" = 0 ] && echo "ALL ROLE TESTS PASS" || { echo "ROLE TESTS FAILED"; exit 1; }
 ```
-(Adds the `test_memctl_remote.sh` line now; that test is created in Task 2 — run.sh will fail until then, which is fine.)
 
 - [ ] **Step 3: Verify no dangling references** to the deleted files
 
@@ -179,7 +177,18 @@ case "$cmd" in
 esac
 ```
 
-- [ ] **Step 4: Run → PASS**
+- [ ] **Step 4: Wire the test into `run.sh`** — add the line `bash test_memctl_remote.sh || f=1` (after the `test_memctl.sh` line):
+
+```bash
+#!/bin/bash
+set -uo pipefail; cd "$(dirname "$0")"; f=0
+bash test_memctl.sh || f=1
+bash test_memctl_remote.sh || f=1
+python3 test_lock.py || f=1
+[ "$f" = 0 ] && echo "ALL ROLE TESTS PASS" || { echo "ROLE TESTS FAILED"; exit 1; }
+```
+
+- [ ] **Step 5: Run → PASS**
 
 ```bash
 chmod +x roles/llamaindex-memory-worker/files/memctl-remote.sh
@@ -188,10 +197,12 @@ bash -n roles/llamaindex-memory-worker/files/memctl-remote.sh && echo "syntax OK
 bash roles/llamaindex-memory-worker/tests/run.sh                  # expect: ALL ROLE TESTS PASS
 ```
 
-- [ ] **Step 5: Commit**
+> Note: `MEMCTL_BIN` is honored ONLY by `memctl-remote.sh` (for unit-testing); the target `memctl.sh` keeps its hardcoded unit names. The prod default `/opt/workstation/ai-memory-worker/memctl.sh` = `{{ memory_worker_install_dir }}/memctl.sh` (where Task 3 deploys it). Spec §4.2 hardcodes the path; this `MEMCTL_BIN` override is a deliberate, beneficial addition — do not "fix" it back.
+
+- [ ] **Step 6: Commit**
 
 ```bash
-git add roles/llamaindex-memory-worker/files/memctl-remote.sh roles/llamaindex-memory-worker/tests/test_memctl_remote.sh
+git add roles/llamaindex-memory-worker/files/memctl-remote.sh roles/llamaindex-memory-worker/tests/test_memctl_remote.sh roles/llamaindex-memory-worker/tests/run.sh
 git commit -m "feat(memory-worker): memctl-remote.sh — forced-command SSH wrapper (allow-list, sudo-free)"
 ```
 
@@ -236,6 +247,7 @@ memory_worker_ssh_pubkey_value: ""
   become_user: "{{ memory_worker_user }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ memory_worker_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_uid }}/bus"
 ```
 The old `Restart llamaindex-memory-worker timer` handler is removed (the 7 notifies are rewired in Step 4; user-units are oneshot/timer — a forced restart is meaningless).
 
@@ -246,16 +258,26 @@ The old `Restart llamaindex-memory-worker timer` handler is removed (the 7 notif
 - [ ] **Step 5: Replace the 2 system-unit deploy tasks (`:160-183`)** with uninstall + user-unit install. Delete both `Deploy memory worker systemd service/timer` tasks and any later `Enable and start … timer` task, and insert:
 
 ```yaml
-- name: Disable + stop legacy SYSTEM units (pre-migration)
+- name: Stat legacy SYSTEM unit files
+  ansible.builtin.stat:
+    path: "/etc/systemd/system/{{ item }}"
+  become: true
+  loop:
+    - "{{ memory_worker_service_name }}.service"
+    - "{{ memory_worker_timer_name }}.timer"
+  register: legacy_unit_stat
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Disable + stop legacy SYSTEM units (only if present — keeps 2nd run quiet & idempotent)
   ansible.builtin.systemd:
-    name: "{{ item }}"
+    name: "{{ item.item }}"
     state: stopped
     enabled: false
   become: true
-  failed_when: false        # absent on fresh install is fine
-  loop:
-    - "{{ memory_worker_timer_name }}.timer"
-    - "{{ memory_worker_service_name }}.service"
+  loop: "{{ legacy_unit_stat.results }}"
+  when: item.stat.exists
+  loop_control:
+    label: "{{ item.item }}"
   tags: [llamaindex-memory-worker, memory_remote]
 
 - name: Remove legacy SYSTEM unit files
@@ -313,6 +335,13 @@ The old `Restart llamaindex-memory-worker timer` handler is removed (the 7 notif
     - memctl-remote.sh
   tags: [llamaindex-memory-worker, memory_remote]
 
+- name: Ensure the user systemd instance is running (creates /run/user/{{ memory_worker_uid }} after fresh linger)
+  ansible.builtin.systemd:
+    name: "user@{{ memory_worker_uid }}.service"
+    state: started
+  become: true
+  tags: [llamaindex-memory-worker, memory_remote]
+
 - name: Flush handlers so daemon-reload happens before enable
   ansible.builtin.meta: flush_handlers
 
@@ -327,6 +356,7 @@ The old `Restart llamaindex-memory-worker timer` handler is removed (the 7 notif
   become_user: "{{ memory_worker_user }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ memory_worker_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_uid }}/bus"
   tags: [llamaindex-memory-worker, memory_remote]
 
 - name: Install n8n-memctl forced-command SSH key
@@ -368,17 +398,21 @@ git commit -m "feat(memory-worker): migrate to systemd-user units + forced-comma
 
 > R1-bis: if the n8n-docs MCP returns `-32000`, reinit before validating. R8: confirm the exact `n8n-nodes-base.ssh` and `n8n-nodes-base.switch` param schemas via `mcp__n8n-docs__get_node` before finalizing node JSON.
 
-- [ ] **Step 1: Extend the `Handle Command` Code node** — add the 4 action commands to the router. After the existing `/memory_help` branch and before the final `else` (unknown), add:
+- [ ] **Step 1: Extend the `Handle Command` Code node** — two edits:
+  - **(a) Add the action branch** after the existing `/memory_help` branch and before the final `else` (unknown):
+    ```javascript
+      } else if (['/memory_start','/memory_stop','/memory_run','/memory_fix'].includes(cmd)) {
+        // Action command: defer to the SSH branch. Emit the bare action keyword that
+        // memctl-remote.sh's allow-list expects (status|start|stop|run|fix).
+        return [{ json: { skip: false, is_action: true, action: cmd.replace('/memory_', ''), chat_id: chatId } }];
+    ```
+  - **(b) CRITICAL — set `is_action: false` on ALL THREE other return shapes** (the Code node currently has 3 returns; a strict-boolean Switch routes `undefined` to NEITHER output, dropping unauthorized/unknown items so `Respond 200` never fires → Telegram retry storm). Patch each:
+    - unauthorized chat: `return [{ json: { skip: true, is_action: false, reason: 'unauthorized_chat', chat_id: chatId } }];`
+    - unknown command: `return [{ json: { skip: true, is_action: false, reason: 'unknown_command', text } }];`
+    - final read return: `return [{ json: { skip: false, is_action: false, chat_id: chatId, reply_text: reply } }];`
 
-```javascript
-  } else if (['/memory_start','/memory_stop','/memory_run','/memory_fix'].includes(cmd)) {
-    // Action command: defer to the SSH branch. Emit the bare action keyword that
-    // memctl-remote.sh's allow-list expects (status|start|stop|run|fix).
-    return [{ json: { skip: false, is_action: true, action: cmd.replace('/memory_', ''), chat_id: chatId } }];
-```
-And ensure the read-command return path sets `is_action: false` (add `is_action: false` to the final `return [{ json: { skip:false, chat_id, reply_text } }]`).
-
-- [ ] **Step 2: Add a `Switch`/IF-free fork after `Handle Command`** — insert a **Switch** node `Action or Read?` on `={{ $json.is_action }}` (true → SSH branch, false → existing `Should Reply?`). Use Switch (NOT a new IF v2 — R9). Rewire: `Handle Command` → `Action or Read?`; false output → `Should Reply?` (unchanged downstream); true output → `Run memctl (SSH)`.
+- [ ] **Step 2: Add a `Switch` fork after `Handle Command`** — insert a **Switch** node `Action or Read?` (NOT a new IF v2 — R9). Configure with an explicit rule `={{ $json.is_action }}` **is true** → output 0 (SSH branch), and a **`fallbackOutput`** (catch-all) → output 1 (read branch). The fallback guarantees `is_action:false` AND any unexpected `undefined` both reach the read path (which `Should Reply?` already filters on `skip`). Rewire: `Handle Command` → `Action or Read?`; output 1 (fallback/read) → `Should Reply?` (unchanged downstream → Send Reply / Respond 200); output 0 (action) → `Run memctl (SSH)`.
+  - After the edit, **trace it**: an unauthorized-chat item (`skip:true, is_action:false`) must reach `Respond 200` via the read branch, exactly as today. Confirm no item type is dropped.
 
 - [ ] **Step 3: Add the SSH node** `Run memctl (SSH)` (`n8n-nodes-base.ssh`): resource/operation = execute command; `command = {{ $json.action }}`; host `100.64.0.1`, port `22`, username `mobuone`; credential = SSH private key (referenced by id — **placeholder now**, real id wired in Task 5); short timeout (~10000 ms); `onError: continueRegularOutput`. Forced-command on waza re-validates, so even a bad `command` is contained.
 
@@ -484,6 +518,7 @@ If "Failed to connect to bus" → the wrapper's XDG/DBUS export needs adjustment
 ```bash
 ansible-playbook playbooks/hosts/workstation.yml --tags memory_remote | tail -3   # expect changed=0
 ```
+> `--tags memory_remote` covers ONLY the migration + remote-control tasks (the venv/pip/most script-deploy tasks stay untagged and are skipped). This is fine on the already-provisioned waza; it is NOT a full-provision path. The `changed=0` assertion therefore covers the tagged subset only.
 
 - [ ] **Step 10: Final commit** (credential id wiring + any tweak)
 

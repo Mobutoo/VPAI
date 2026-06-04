@@ -1,0 +1,25 @@
+# Force LF on everything deployed to Linux hosts. Shell scripts copied verbatim by
+# ansible.builtin.copy break on CRLF: `#!/bin/bash\r` → kernel exec "required file
+# not found". A Windows/autocrlf checkout would otherwise CRLF-ify these. eol=lf
+# guarantees LF on checkout regardless of platform/core.autocrlf.
+*.sh    text eol=lf
+*.bash  text eol=lf
+*.j2    text eol=lf
+*.py    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.env   text eol=lf
+*.ini   text eol=lf
+*.cfg   text eol=lf
+Makefile text eol=lf
+
+# Binaries — never normalize.
+*.docx  binary
+*.xlsx  binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gz    binary
+*.zip   binary
+*.gguf  binary

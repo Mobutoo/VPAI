@@ -44,11 +44,14 @@ cmd_status() {
 
 cmd_start() { _uctl enable --now "$TIMER" && echo "OK: timer enabled+started"; }
 cmd_stop()  { _uctl disable --now "$TIMER" && echo "OK: timer disabled"; }
-cmd_run()   { _uctl start "$SERVICE" && echo "OK: one-shot run launched"; }
+# --no-block: the worker is Type=oneshot, so `systemctl start` WITHOUT it blocks
+# until the whole index run finishes (minutes). That would hang the SSH/webhook
+# caller → Telegram retries → duplicate runs. Fire-and-return instead.
+cmd_run()   { _uctl start --no-block "$SERVICE" && echo "OK: one-shot run launched"; }
 cmd_fix() {
   local lp removed=no; lp="$(_lock_pid)"
   if [ -n "$lp" ] && ! _pid_alive "$lp"; then rm -f "$LOCK" && removed=yes; fi
-  _uctl start "$SERVICE" >/dev/null 2>&1 || true
+  _uctl start --no-block "$SERVICE" >/dev/null 2>&1 || true
   echo "OK: stale_lock_removed=$removed (pid=$lp); run triggered to drain spool"
 }
 

@@ -94,6 +94,8 @@ set -uo pipefail
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
 cmd="${SSH_ORIGINAL_COMMAND:-}"          # ce que n8n a "demandé"
+# Rejet explicite du multiligne (awk NR==1 jetterait silencieusement la ligne 2+).
+case "$cmd" in *$'\n'*) echo "denied: multiline not allowed" >&2; exit 2 ;; esac
 cmd="$(printf '%s' "$cmd" | tr -d '\r' | awk 'NR==1{print $1}')"   # 1er mot de la 1re ligne
 case "$cmd" in
   status|start|stop|run|fix) exec /opt/workstation/ai-memory-worker/memctl.sh "$cmd" ;;

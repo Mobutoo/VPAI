@@ -23,7 +23,7 @@ nocodb_subdomain: "hq"              # → hq.<domain>
 plane_subdomain: "work"             # → work.<domain>
 dufs_subdomain: "drop"              # → drop.<domain> (file drop zone bidirectionnel)
 grapesjs_subdomain: "wizy"          # → wizy.<domain> (HTML visual editor — accès public)
-vps_form_subdomain: "vps"           # → vps.<domain> (formulaire EPI Telehouse — accès public)
+# vps_form_subdomain retiré 2026-05-30 — VPS Form migré hors Sese-AI (/home/mobuone/projects/saas/vps)
 subdomain_preprod: "preprod"
 
 # --- VPN Access Control ---
@@ -304,6 +304,7 @@ openpencil_subdomain: "pencil"
 # MeTube + VideoRef Engine (workstation Pi)
 metube_subdomain: "tube"
 videoref_subdomain: "cine"
+metube_cookies_enabled: true
 
 # MOP machinery — Typebot authoring + MailHog fake SMTP (all VPN-only)
 # Declared here (not just in role defaults) so vpn-dns can build Headscale
@@ -366,6 +367,11 @@ ghcr_pull_token: "{{ vault_ghcr_pull_token }}"
 # Webhook HMAC secret for n8n App Factory workflows
 af_webhook_secret: "{{ vault_af_webhook_secret }}"
 
+# === SMOKE TESTS ===
+# Passe à true pour bloquer le playbook sur échec des smoke tests post-deploy
+# REX 2026-05-29: Phase B down masquée par failed_when:false + smoke non-bloquants
+smoke_test_strict: true
+
 # === LLAMAINDEX MEMORY WORKER ===
 # Shared secret for X-Memory-Secret header on memory-run-report webhook.
 # Worker on Waza posts its JSON report with this token; n8n ingest validates it.
@@ -379,4 +385,4 @@ memory_healthcheck_max_spool: 50
 memory_telegram_webhook_secret: "{{ vault_memory_telegram_webhook_secret | default('') }}"
 # n8n-memctl SSH public key (forced-command to memctl-remote.sh on waza).
 # Filled after Task 5 keygen. Empty until then → authorized_key task is skipped.
-memory_worker_ssh_pubkey_value: ""
+memory_worker_ssh_pubkey_value: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCNCFYbSpWo7rgEZJshBqY5NmCD9zJbblMR32kOsXuqcOFVThm2pqAt1QGkhdvYMwzH0K3MpIuHTlXkxl3uc2TlCNUne2ArUfymVtfPFPl59ezvCq9HaA3vNVaHGGJi3QVV3xx2rsTBdLRHusms+F7bbGTiD0ZgVfIImWClcB7DE74Uf8+H5npZK8xziqk+dSzp39AYLkPmgIgG0EjcxoR+QBY40AnMqbbLZzgy/CjnCjw34ZDcaV9ljz/z701OgSrWHjQTk2G/7U4b3thfhSeOvW6422jmw1ypre5MrjB6bgY4y0eS7oKhxV669yItyVXIiX8wp4OsNutj1bsuYVZFMnYhRSfCjeoKztimqo56eN0LklyyJheWCtDkUE8bLu5JSP25Hpdg1poIasXZGIL1XHAWavfi5f8Pp9CwxjYBpqVUBw6IWq3daKfqMPiUb7DiAYnXxqa59qQCrdzWvW8ob6qbXKPdbJrkQsNPULVrRjt822kSjEk3n/430h/Xq9dvbzM7IGYMW6r6s0od+3ASAxpAVVm5olsfte2YVQ8kEmn1XeBHtpo5qO0bGoJI+Y5vJfywBlUZSneeYfF/HWVAg+16yS3igSksrbyjYSUGIkjStNLyzBzQ4efD69M1fb8FCWEH64PMlO6HTAXdhWdyMLHMdg3P95xTTYFNNURWGQ== n8n-memctl"

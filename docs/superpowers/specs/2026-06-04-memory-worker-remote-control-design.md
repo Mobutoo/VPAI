@@ -107,7 +107,7 @@ esac
 ### 4.3 Extension du workflow n8n
 Structure ajoutée (réutilise les patterns IF v2 **déjà éprouvés en prod** sur ce workflow) :
 1. **Code « Handle Command »** (existant) : ajouter au routage les 4 nouvelles commandes → poser un champ `{action: 'start'|'stop'|'run'|'fix'}` quand c'est une commande d'action, sinon comportement lecture inchangé. L'auth chat-id en tête de handler **couvre déjà** les actions.
-2. **IF « Is Action? »** (nouveau, `typeVersion: 2` comme les IF existants qui fonctionnent) : route les updates `action` vers la branche SSH ; le reste (status/health/last/help) garde la branche actuelle.
+2. **Routage action vs lecture** : **NE PAS ajouter de nouveau nœud IF `typeVersion: 2`** (R9 prudence — bien que les IF v2 existants tournent live, on n'en ajoute pas). Utiliser un nœud **Switch** (hors périmètre R9) OU un champ posé par le Code node, pour router les updates `action` vers la branche SSH ; le reste (status/health/last/help) garde la branche actuelle. Les 2 IF v2 existants restent inchangés (éprouvés live).
 3. **Nœud SSH** (`n8n-nodes-base.ssh`, nouveau) : host `100.64.0.1`, port 22, user `mobuone`, credential = clé privée n8n-memctl ; commande = `={{ $json.action }}` ; **timeout court explicite** (≈10 s) pour ne pas bloquer l'ack webhook. Le forced-command côté waza ré-valide.
 4. **Code « Format Action Reply »** (nouveau) : transforme la sortie `memctl` (JSON pour status, texte sinon) en réponse Telegram lisible → rejoint le `sendMessage` existant.
 5. **Timeout/échec SSH** : `onError: continueRegularOutput` + message « action injoignable (waza down ?) » plutôt que crash silencieux.
@@ -167,11 +167,16 @@ Lock PID-validé (stale→auto-reclaim) + flag `acquired` dans `main().finally`.
 - Conventions VPAI : FQCN, `changed_when`/`failed_when`, `set -euo pipefail`, idempotence 0-changed, tags `[llamaindex-memory-worker, memory_remote]`.
 
 ### 8b. Sese (workflow n8n) — étapes manuelles/gate humain
-1. **Générer la paire de clés** n8n-memctl (ed25519). Clé **publique** → repo (var/`authorized_key`). Clé **privée** → **créer le credential SSH dans n8n** (UI ou API) pour en obtenir l'**ID** — la privée n'est jamais commitée.
-2. Éditer `scripts/n8n-workflows/memory-telegram-bot.json` (file-first) : ajouter classifier+IF+SSH+formateur ; le nœud SSH référence le credential par l'**ID obtenu à l'étape 1** (donc credential créé AVANT validate/PUT).
-3. `mcp__n8n-docs__validate_workflow` (R1) → 0 erreur bloquante.
-4. Déployer via **REST PUT** `scripts/deploy-workflow.sh` (R11) → `n8n publish:workflow` (R10).
-5. Le `setWebhook` existant reste inchangé (même token, même secret).
+
+> **Mécanisme de déploiement** : le JSON du repo est une **source canonique sans `id`** (vérifié : pas de top-level `id`/`active`). Il a été déployé par un chemin qui assigne un id (MCP `n8n_create_workflow` ou `import:workflow`). Le bon outil d'UPDATE = **`mcp__n8n-docs__n8n_update_full_workflow` par l'id live** (sémantique REST PUT R11, préserve `webhookId`+`onError` que `import:workflow` strip — R3-bis). **PAS** `deploy-workflow.sh` : il exige un top-level `id` ET hard-block les IF v2 (`:76`) → mauvais outil pour ce workflow id-less + IF v2.
+
+1. **Réinit MCP n8n-docs si expirée** (R1-bis, `-32000`) puis `n8n_health_check` → le MCP de gestion atteint l'instance live ? `n8n_list_workflows`/`n8n_get_workflow` → **récupérer l'id live** du `memory-telegram-bot`.
+2. **Contrôle de dérive (R3 préalable)** : `n8n_get_workflow` la version live et confirmer qu'elle correspond au JSON repo *modulo* id/active. Si dérive (édition UI depuis `3e35300`/v0.7.0) → **réconcilier live→repo d'abord**, sinon le push écrase silencieusement le bot qui marche.
+3. **Générer la paire de clés** n8n-memctl (ed25519). Clé **publique** → repo (var/`authorized_key`). Clé **privée** → **créer le credential SSH dans n8n** pour en obtenir l'**ID** (avant édition JSON) — la privée n'est jamais commitée.
+4. Éditer `scripts/n8n-workflows/memory-telegram-bot.json` (file-first) : ajouter classifier + **Switch** (pas de nouvelle IF v2) + nœud SSH (credential par l'ID de l'étape 3) + formateur.
+5. `mcp__n8n-docs__validate_workflow` (R1) → 0 erreur bloquante.
+6. Déployer via **`mcp__n8n-docs__n8n_update_full_workflow`** (id live de l'étape 1). PUT met à jour entité + history simultanément (R10).
+7. Le `setWebhook` existant reste inchangé (même token, même secret).
 
 ---
 

@@ -16,7 +16,26 @@
 | **doc_kind** | nature | **dérivé** (`classify_doc_kind`, existant) | N par repo |
 | drawer | unité verbatim | chunk (append-only `valid_from`/`valid_to`) | — |
 
-`repo`, `relative_path`, `topic`, `tags` complètent le payload (voir spec §3).
+### Payload du drawer (unité verbatim, append-only) — schéma complet
+
+| Champ | Type | Rôle |
+|-------|------|------|
+| `wing` | keyword | infra / saas / tools / refdocs |
+| `room` | keyword | catégorie dans le wing (cf §3) |
+| `doc_kind` | keyword | rex / doc / config / code / audit / runbook / spec / official-docs |
+| `repo` | keyword | nom du repo source (ex. fantrad, story-engine, VPAI) |
+| `relative_path` | keyword | chemin relatif dans le repo |
+| `topic` | keyword | sujet dérivé (titre section) |
+| `tags` | keyword[] | tags libres |
+| `valid_from` | datetime | début de validité |
+| `valid_to` | datetime \| null | null = drawer vivant ; daté = supplanté (append-only) |
+| `text` | text | contenu verbatim du chunk |
+| (vecteur) | 768d | embedding embeddinggemma-300m |
+
+Champs hérités du worker actuel conservés tels quels : `schema_version`, `embedding_model`, `embedding_dim`, `chunking_strategy_version`, `ref_doc_id`, `namespace` (=`repo`), `host_origin`, `source_kind`, `filename` (+ `severity`/`category`/`phase` legacy, vides).
+
+### Indexes Qdrant (action la plus rentable, cf handoff §4)
+Payload indexes sur : `wing`, `room`, `doc_kind`, `repo`, `topic`, `tags`. Sans eux, les filtres = scan complet. (Créés par `qdrant_rebuild.py --create`, déjà en place sur `memory_v2`.)
 
 ## 2. Wings (assignés par source dans sources.yml)
 

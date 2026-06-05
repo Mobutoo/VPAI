@@ -1,0 +1,58 @@
+---
+# n8n-provision — memory-telegram-bot Telegram-side provisioning
+# Idempotent: registers the bot command menu and arms the webhook only when the
+# live Telegram state drifts from the desired state. All calls hit api.telegram.org
+# (public internet) so they run from the controller via delegate_to: localhost.
+
+- name: "[tg-bot] Get current bot command menu (getMyCommands)"
+  ansible.builtin.uri:
+    url: "https://api.telegram.org/bot{{ telegram_monitoring_bot_token }}/getMyCommands"
+    method: GET
+    return_content: true
+  delegate_to: localhost
+  run_once: true
+  register: tg_bot_get_commands
+  changed_when: false
+  no_log: true  # URL carries the bot token
+
+- name: "[tg-bot] Update command menu (setMyCommands) if drifted"
+  ansible.builtin.uri:
+    url: "https://api.telegram.org/bot{{ telegram_monitoring_bot_token }}/setMyCommands"
+    method: POST
+    body_format: json
+    body:
+      commands: "{{ memory_bot_commands }}"
+    status_code: 200
+  delegate_to: localhost
+  run_once: true
+  changed_when: true
+  no_log: true  # URL carries the bot token
+  when: (tg_bot_get_commands.json.result | default([])) != memory_bot_commands
+
+- name: "[tg-bot] Get current webhook info (getWebhookInfo)"
+  ansible.builtin.uri:
+    url: "https://api.telegram.org/bot{{ telegram_monitoring_bot_token }}/getWebhookInfo"
+    method: GET
+    return_content: true
+  delegate_to: localhost
+  run_once: true
+  register: tg_bot_webhook_info
+  changed_when: false
+  no_log: true  # URL carries the bot token
+
+- name: "[tg-bot] Arm webhook (setWebhook) if URL drifted"
+  ansible.builtin.uri:
+    url: "https://api.telegram.org/bot{{ telegram_monitoring_bot_token }}/setWebhook"
+    method: POST
+    body_format: json
+    body:
+      url: "{{ memory_bot_webhook_url }}"
+      secret_token: "{{ memory_telegram_webhook_secret }}"
+      allowed_updates:
+        - message
+    status_code: 200
+  delegate_to: localhost
+  run_once: true
+  changed_when: true
+  no_log: true  # URL carries the bot token, body carries the secret_token
+  when: (tg_bot_webhook_info.json.result.url | default('')) != memory_bot_webhook_url

@@ -770,3 +770,14 @@
     # docker exec / n8n API / docker container not available in molecule
     - n8n_nuke_requested | default(false) | bool
     - n8n_nuke_container_check.stdout | default('') | length > 0
+
+# === memory-telegram-bot (@EkengeBot) Telegram-side provisioning ===
+# Registers the bot "/" command menu + arms the webhook (idempotent, drift-only).
+# Skipped in molecule and when the bot token / secret aren't configured.
+- name: Provision memory-telegram-bot (setMyCommands + setWebhook)
+  ansible.builtin.import_tasks: memory-telegram-bot.yml
+  tags: [n8n-provision, telegram-bot, provision]
+  when:
+    - not (common_molecule_mode | default(false))
+    - telegram_monitoring_bot_token | default('') | length > 0
+    - memory_telegram_webhook_secret | default('') | length > 0

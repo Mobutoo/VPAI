@@ -1,0 +1,32 @@
+---
+# n8n-provision — defaults
+
+# === memory-telegram-bot (@EkengeBot) Telegram-side provisioning ===
+# Idempotently registers the bot "/" command menu (setMyCommands) and arms the
+# Telegram webhook (setWebhook) so updates reach the n8n workflow. The webhook
+# path is exposed publicly by Caddy BEFORE the vpn_only block (see Caddyfile.j2),
+# secret validated inside the workflow via X-Telegram-Bot-Api-Secret-Token.
+
+# Public production webhook URL n8n serves for this bot (matches the workflow's
+# webhook node path + the Caddy public handle).
+memory_bot_webhook_url: "https://{{ n8n_subdomain }}.{{ domain_name }}/webhook/memory-telegram-bot"
+
+# Desired "/" command menu. Order + fields must mirror what Telegram returns
+# from getMyCommands so the idempotence compare is exact (no needless re-push).
+memory_bot_commands:
+  - command: "memory_status"
+    description: "Etat worker: dernier run + Qdrant live"
+  - command: "memory_last"
+    description: "5 derniers runs (compact)"
+  - command: "memory_health"
+    description: "Healthcheck vs seuils (pass/fail)"
+  - command: "memory_start"
+    description: "Action: active + demarre le timer worker"
+  - command: "memory_stop"
+    description: "Action: desactive le timer worker"
+  - command: "memory_run"
+    description: "Action: lance un index one-shot maintenant"
+  - command: "memory_fix"
+    description: "Action: clear lock bloque + draine le spool"
+  - command: "memory_help"
+    description: "Liste des commandes memory"

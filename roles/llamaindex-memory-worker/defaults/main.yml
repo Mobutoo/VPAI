@@ -63,17 +63,22 @@ memory_worker_version: "2026-04-11"
 memory_worker_host_origin: "waza"
 
 memory_worker_repo_roots:
-  - "/home/{{ workstation_pi_user | default('pi') }}/VPAI"
   - "/home/{{ workstation_pi_user | default('pi') }}/flash-studio"
   - "{{ workstation_projects_dir }}/saas/story-engine"
-  - "{{ workstation_projects_dir }}/ops"
 
+# Active indexing sources — single source of truth (sources.yml). The worker's
+# merge_source_roots() uses THIS list exclusively when populated; `memory_worker_repo_roots`
+# / config.yml `repos:` is only a fallback when sources.yml is empty.
+# Reconciled 2026-06-05 with the live (hand-edited) sources.yml + 4 new saas repos.
+# Nested repos (flash-infra in flash-studio; litellm/n8n/openclaw-docs in DOCS) are
+# covered as subdirectories — no separate source required.
 memory_worker_sources:
   - name: "VPAI"
     kind: "git_repo"
     root: "/home/{{ workstation_pi_user | default('pi') }}/VPAI"
     tags:
-      - "scope:infra"
+      - "scope:vpai"
+      - "kind:ansible"
   - name: "flash-studio"
     kind: "git_repo"
     root: "/home/{{ workstation_pi_user | default('pi') }}/flash-studio"
@@ -84,11 +89,38 @@ memory_worker_sources:
     root: "{{ workstation_projects_dir }}/saas/story-engine"
     tags:
       - "scope:story-engine"
-  - name: "ops"
-    kind: "doc_tree"
-    root: "{{ workstation_projects_dir }}/ops"
+  - name: "typebot-docs"
+    kind: "git_repo"
+    root: "{{ workstation_projects_dir }}/typebot-docs"
     tags:
-      - "scope:ops"
+      - "scope:typebot"
+      - "kind:official-docs"
+  - name: "DOCS"
+    kind: "git_repo"
+    root: "/home/{{ workstation_pi_user | default('pi') }}/DOCS"
+    tags:
+      - "kind:official-docs"
+      - "scope:wiki"
+  - name: "podpilot"
+    kind: "git_repo"
+    root: "{{ workstation_projects_dir }}/saas/podpilot"
+    tags:
+      - "scope:podpilot"
+  - name: "hawkeye"
+    kind: "git_repo"
+    root: "{{ workstation_projects_dir }}/saas/hawkeye"
+    tags:
+      - "scope:hawkeye"
+  - name: "fantrad"
+    kind: "git_repo"
+    root: "{{ workstation_projects_dir }}/saas/fantrad"
+    tags:
+      - "scope:fantrad"
+  - name: "riposte"
+    kind: "git_repo"
+    root: "{{ workstation_projects_dir }}/saas/riposte"
+    tags:
+      - "scope:riposte"
 
 memory_worker_include_extensions:
   - .md

@@ -1,0 +1,73 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# net-watchdog — auto-réparation connectivité (REX 2026-06-05 panne SSH waza).
+#
+# Symptôme couvert: bail DHCP eth0 perdu (RTM_DELROUTE gw=...) sans re-DISCOVER
+# par systemd-networkd -> plus de default route -> tailscale ENETUNREACH -> SSH mort.
+# Recovery: networkctl reconfigure <iface> (relance DHCP) puis restart tailscaled.
+# Idempotent: n'agit QUE si la passerelle est réellement injoignable.
+set -euo pipefail
+
+IFACE="{{ workstation_net_watchdog_iface }}"
+PING_COUNT="{{ workstation_net_watchdog_ping_count }}"
+PING_TIMEOUT="{{ workstation_net_watchdog_ping_timeout }}"
+FALLBACK="{{ workstation_net_watchdog_fallback_target }}"
+REBOOT_ON_FAIL="{{ 'true' if workstation_net_watchdog_reboot_on_fail | bool else 'false' }}"
+TAG="net-watchdog"
+
+log() { logger -t "$TAG" -- "$*"; echo "$TAG: $*"; }
+
+# Passerelle par défaut courante (vide si la route a disparu = déjà cassé).
+gateway() { ip -4 route show default 2>/dev/null | awk '/default/ {print $3; exit}'; }
+
+reachable() {
+  local target="$1"
+  ping -c "$PING_COUNT" -W "$PING_TIMEOUT" -I "$IFACE" "$target" >/dev/null 2>&1
+}
+
+GW="$(gateway || true)"
+
+# Cas sain le plus courant: gateway présente ET joignable -> rien à faire.
+if [[ -n "$GW" ]] && reachable "$GW"; then
+  exit 0
+fi
+
+# Double-check: confirmer la panne via une 2e cible avant d'agir (anti-flap).
+if [[ -n "$GW" ]] && reachable "$FALLBACK"; then
+  # Gateway ne répond pas au ping (ICMP filtré) mais Internet OK -> pas une vraie panne.
+  exit 0
+fi
+
+log "PANNE détectée: gateway='${GW:-<aucune>}' injoignable + fallback ${FALLBACK} KO -> recovery"
+
+# 1) Relancer DHCP/route sur l'interface (corrige le bail perdu).
+if networkctl reconfigure "$IFACE" 2>&1 | logger -t "$TAG"; then
+  log "networkctl reconfigure ${IFACE} OK"
+fi
+sleep 8
+
+GW="$(gateway || true)"
+if [[ -n "$GW" ]] && reachable "$GW"; then
+  log "route restaurée (gw=${GW}) -> restart tailscaled pour rebind"
+  systemctl restart tailscaled 2>&1 | logger -t "$TAG" || log "WARN: restart tailscaled échoué"
+  log "recovery RÉUSSIE"
+  exit 0
+fi
+
+# 2) Échec persistant: dernier recours = redémarrer networkd puis tailscaled.
+log "reconfigure insuffisant -> restart systemd-networkd"
+systemctl restart systemd-networkd 2>&1 | logger -t "$TAG" || true
+sleep 10
+GW="$(gateway || true)"
+if [[ -n "$GW" ]] && reachable "$GW"; then
+  systemctl restart tailscaled 2>&1 | logger -t "$TAG" || true
+  log "recovery RÉUSSIE après restart networkd (gw=${GW})"
+  exit 0
+fi
+
+log "ÉCHEC recovery: toujours sans connectivité (gw='${GW:-<aucune>}')"
+if [[ "$REBOOT_ON_FAIL" == "true" ]]; then
+  log "REBOOT_ON_FAIL=true -> systemctl reboot"
+  systemctl reboot
+fi
+exit 1

@@ -170,6 +170,16 @@ memory_worker_index_mode: "incremental"
 memory_worker_enable_gc: true
 memory_worker_gc_flag: "{{ '--gc' if memory_worker_enable_gc | bool else '' }}"
 
+# Resource control (cgroup) — REX 2026-06-05 panne SSH waza.
+# Worker non-borné (embeddinggemma-300m + sentence-transformers, pic ~3.2G RSS)
+# -> OOM global -> systemd-networkd affamé -> bail DHCP eth0 expiré -> tailscale
+# ENETUNREACH -> SSH mort ~6h30. Le cap cgroup tue le worker AVANT le réseau.
+# OOMScoreAdjust=1000 : si OOM, ce process est la 1ère victime (jamais networkd/tailscaled, cf workstation-common).
+memory_worker_memory_high: "3G"      # throttle doux (reclaim agressif au-delà)
+memory_worker_memory_max: "4G"       # plafond dur (cgroup OOM-kill le worker seul)
+memory_worker_memory_swap_max: "512M"
+memory_worker_oom_score_adjust: 1000
+
 # Remote control (v2): systemd-user migration + SSH forced-command from n8n
 memory_worker_uid: 1000                                   # uid of mobuone (XDG_RUNTIME_DIR)
 memory_worker_user_unit_dir: "/home/{{ memory_worker_user }}/.config/systemd/user"

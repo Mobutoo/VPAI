@@ -78,3 +78,27 @@ workstation_ufw_allow_cidrs:
   - "{{ vpn_network_cidr }}"    # Tailscale mesh (100.64.0.0/10)
   - "192.168.0.0/16"            # LAN local
   - "10.0.0.0/8"                # LAN alternatif (sous-reseaux prives)
+
+# --- Résilience réseau (REX 2026-06-05 panne SSH waza) ---
+# Cause: worker mémoire non-borné -> OOM global -> systemd-networkd affamé ->
+# bail DHCP eth0 perdu (RTM_DELROUTE gw) -> jamais re-DISCOVER -> tailscale
+# ENETUNREACH -> SSH (mesh) mort ~6h30. Box/WAN sains (ewutelo resté en ligne).
+# Réf: docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md
+#
+# P1 — protéger le stack réseau de l'OOM-killer (jamais 1ère victime).
+workstation_net_protect_oom: true
+workstation_net_oom_score: -900            # plage [-1000,1000]; bas = épargné
+workstation_net_protected_units:
+  - systemd-networkd
+  - tailscaled
+#
+# P3 — watchdog passerelle: si la default route/gateway tombe durablement,
+# relance DHCP (networkctl reconfigure) puis tailscaled. Auto-réparation headless.
+workstation_net_watchdog_enabled: true
+workstation_net_watchdog_iface: "eth0"
+workstation_net_watchdog_ping_count: 3
+workstation_net_watchdog_ping_timeout: 3   # secondes par ping
+workstation_net_watchdog_fallback_target: "1.1.1.1"   # 2e cible pour confirmer la panne
+workstation_net_watchdog_interval: "2min"  # OnUnitActiveSec du timer
+workstation_net_watchdog_bin: "/opt/workstation/bin/net-watchdog.sh"
+workstation_net_watchdog_reboot_on_fail: false   # escalade reboot si recovery échoue (OFF par défaut)

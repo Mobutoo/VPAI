@@ -22,3 +22,11 @@
     name: docker
     state: restarted
   become: true
+
+# Reload-only (PAS de restart networkd/tailscaled): éviter de couper la session
+# SSH-via-tailscale pendant un play. OOMScoreAdjust s'applique au prochain
+# restart/reboot. Anti-lockout, cohérent avec I4 (UFW).
+- name: Reload systemd daemon (workstation)
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true

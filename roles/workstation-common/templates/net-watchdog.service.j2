@@ -1,0 +1,12 @@
+[Unit]
+# {{ ansible_managed }}
+Description=Network connectivity watchdog (gateway/DHCP/tailscale auto-heal)
+Documentation=file://docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart={{ workstation_net_watchdog_bin }}
+# Le watchdog doit survivre à l'OOM coûte que coûte.
+OOMScoreAdjust={{ workstation_net_oom_score }}
+Nice=-5

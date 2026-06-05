@@ -260,3 +260,83 @@
 - name: Display Claude Code CLI version
   ansible.builtin.debug:
     msg: "Claude Code CLI: {{ workstation_claude_version_verify.stdout }}"
+
+# --- Résilience réseau (REX 2026-06-05 panne SSH waza) ---
+# P1: protéger systemd-networkd + tailscaled de l'OOM-killer.
+# P3: watchdog passerelle (relance DHCP + tailscaled si la route tombe).
+- name: P1 — Create OOM-protection drop-in dirs for network units
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}.service.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop: "{{ workstation_net_protected_units }}"
+  become: true
+  when: workstation_net_protect_oom | bool
+  tags: [workstation-common, net_resilience]
+
+- name: P1 — Shield network units from the OOM-killer (OOMScoreAdjust)
+  ansible.builtin.template:
+    src: oom-protect.conf.j2
+    dest: "/etc/systemd/system/{{ item }}.service.d/10-oom-protect.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ workstation_net_protected_units }}"
+  become: true
+  when: workstation_net_protect_oom | bool
+  notify: Reload systemd daemon (workstation)
+  tags: [workstation-common, net_resilience]
+
+- name: P3 — Ensure /opt/workstation/bin exists
+  ansible.builtin.file:
+    path: "/opt/workstation/bin"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: workstation_net_watchdog_enabled | bool
+  tags: [workstation-common, net_resilience]
+
+- name: P3 — Deploy net-watchdog script
+  ansible.builtin.template:
+    src: net-watchdog.sh.j2
+    dest: "{{ workstation_net_watchdog_bin }}"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: workstation_net_watchdog_enabled | bool
+  tags: [workstation-common, net_resilience]
+
+- name: P3 — Deploy net-watchdog systemd units
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/systemd/system/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - { src: "net-watchdog.service.j2", dest: "net-watchdog.service" }
+    - { src: "net-watchdog.timer.j2", dest: "net-watchdog.timer" }
+  become: true
+  when: workstation_net_watchdog_enabled | bool
+  notify: Reload systemd daemon (workstation)
+  tags: [workstation-common, net_resilience]
+
+- name: Flush handlers so daemon-reload happens before enabling the timer
+  ansible.builtin.meta: flush_handlers
+
+- name: P3 — Enable + start net-watchdog timer
+  ansible.builtin.systemd:
+    name: net-watchdog.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  when:
+    - workstation_net_watchdog_enabled | bool
+    - not ansible_check_mode      # --check n'écrit pas l'unit -> enable échouerait (artefact)
+  tags: [workstation-common, net_resilience]

@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# P1 — REX 2026-06-05: empêcher l'OOM-killer de tuer le stack réseau.
+# Sans ça, un process user en vrille (worker mémoire) déclenche un OOM global
+# qui affame systemd-networkd -> bail DHCP perdu -> tailscale ENETUNREACH -> SSH mort.
+[Service]
+OOMScoreAdjust={{ workstation_net_oom_score }}

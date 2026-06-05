@@ -1,0 +1,13 @@
+[Unit]
+# {{ ansible_managed }}
+Description=Run network watchdog every {{ workstation_net_watchdog_interval }}
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec={{ workstation_net_watchdog_interval }}
+# Si le Pi dort/se réveille, ne pas accumuler les runs ratés.
+Persistent=false
+AccuracySec=15s
+
+[Install]
+WantedBy=timers.target

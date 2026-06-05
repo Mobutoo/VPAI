@@ -12,6 +12,14 @@ ExecStart={{ memory_worker_run_report_script }} --mode {{ memory_worker_index_mo
 Nice=19
 IOSchedulingClass=idle
 
+# Resource control (cgroup) — REX 2026-06-05: worker non-borné -> OOM global ->
+# systemd-networkd affamé -> bail DHCP eth0 perdu -> tailscale ENETUNREACH -> SSH mort.
+# Le worker est OOM-killed dans son cgroup AVANT d'affamer le stack réseau.
+MemoryHigh={{ memory_worker_memory_high }}
+MemoryMax={{ memory_worker_memory_max }}
+MemorySwapMax={{ memory_worker_memory_swap_max }}
+OOMScoreAdjust={{ memory_worker_oom_score_adjust }}
+
 # No [Install] section: this is a timer-triggered Type=oneshot. Only the timer is
 # enabled (systemctl --user enable …timer). Omitting [Install] prevents a stray
 # `enable …service` from running the worker at every login.

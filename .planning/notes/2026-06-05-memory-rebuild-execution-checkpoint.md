@@ -19,7 +19,12 @@
 - Run worker non-capé (PID 58161, ~3.16G RSS) tué. RAM récupérée.
 - ⚠️ Volatile : un reboot/re-enable ramène le worker NON capé tant que fix B n'est pas déployé.
 
-## Task 1 — Deploy fix B (caps + net-resilience) — EN ATTENTE
+## ✅ FAIT 2026-06-05 ~23h45 : Task 1 (fix B déployé+vérifié) + Task 2 (Qdrant rebuild complet)
+- Task 1 : fix B déployé depuis ewutelo. Vérifié live Waza : MemoryMax=4G, OOMScoreAdjust=1000, networkd/tailscaled=-900, net-watchdog.timer active. Worker timer re-disabled (deploy l'avait ré-enabled) + run capé tué.
+- Task 2 : snapshot 14 MEMORY (257MB) → copie hors-qdrant Sese `/home/mobuone/qdrant-snapshots-2026-06-05/` (258MB, 0 zéro-byte) → wipe 15 (14 MEMORY + semantic_cache) → restart javisi_litellm (semantic_cache recréée, readiness 200) → create memory_v2 (768d cosine + 6 indexes). APP/14 intactes. Qdrant propre.
+- **PROCHAIN : Task 3 (M3) ingestion GPU** — commence par RESEARCH gate RunPod+Headscale.
+
+## Task 1 — Deploy fix B (caps + net-resilience) — ✅ FAIT (voir ci-dessus)
 - Fix B = commit `45015bb` (déjà sur origin/main). PAS déployé sur Waza (vérifié : MemoryMax=infinity, net-watchdog absent).
 - **À lancer depuis EWUTELO** (option B choisie par user), pas depuis Waza :
   ```bash

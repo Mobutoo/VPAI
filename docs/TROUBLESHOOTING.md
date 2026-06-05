@@ -284,6 +284,22 @@ extra_records:
 ```
 Puis `sudo docker restart headscale`.
 
+### 0.17 Perte SSH waza — OOM worker → bail DHCP eth0 perdu (≠ crash, ≠ box)
+
+Symptôme : SSH-via-Tailscale mort, waza absent du mesh, **mais** un autre hôte de la même box reste en ligne. Le Pi n'a **pas** planté (`last reboot` le confirme).
+
+Cause racine : un process user non-borné (`llamaindex-memory-worker`, ~3,2 Go RSS) déclenche un **OOM global** qui affame `systemd-networkd` → le bail DHCP eth0 expire (`avahi: Withdrawing address` + `RTM_DELROUTE gw=`) **sans re-DISCOVER** → plus de route → tailscale `ENETUNREACH` (`Rebind defIf="" ips=[]`) → SSH mesh mort.
+
+Diagnostic :
+```bash
+ip route show default                                   # vide = route locale perdue
+journalctl -b -1 | grep -E "oom-kill|Withdrawing address|RTM_DELROUTE"
+# Corréler les OOM avec la fenêtre de renouvellement DHCP. Un autre hôte du
+# même LAN encore en ligne = cause LOCALE (pas la box/ISP).
+```
+
+Fix (commit 45015bb) : cap cgroup sur le worker (`MemoryMax`+`OOMScoreAdjust=1000`), `OOMScoreAdjust=-900` sur networkd/tailscaled (P1), watchdog `net-watchdog.timer` qui `networkctl reconfigure eth0` + restart tailscaled (P3). Déploiement : `--tags net_resilience`. Détail : `docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md`. Voir aussi §12.9.
+
 ---
 
 ## 1. Ansible & Linting
@@ -1422,6 +1438,20 @@ handle_errors {
 **Piege** : Ne pas mettre `import vpn_error_page` sur un site qui a deja un `handle_errors` custom —
 deux blocs `handle_errors` au meme niveau causent un conflit. Integrer le fallback VPN directement
 dans le `handle_errors` du site.
+
+### 12.9 `network is unreachable` (ENETUNREACH) = route locale perdue, pas panne amont
+
+`tailscaled: ... sendto: network is unreachable` + `Rebind defIf="" ips=[]` répété = tailscale n'a **aucune route à binder**. C'est un **symptôme**, pas la cause : remonter d'un cran vers la route/DHCP/lien de l'hôte.
+
+Réflexe diagnostic :
+```bash
+ip route show default          # vide -> default route disparue (bail DHCP perdu)
+ip -brief addr show eth0       # IP encore là ? (avahi a pu la retirer à l'expiration)
+# Tester un AUTRE hôte du même LAN : s'il est en ligne, la box/WAN est saine
+# -> la panne est LOCALE à cet hôte (DHCP/networkd), pas l'ISP.
+```
+
+Cause vue sur waza (2026-06-05) : OOM global affame `systemd-networkd` → bail eth0 expire sans re-DISCOVER → ENETUNREACH 6h30. Voir §0.17 + `docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md`. Filet de sécurité headless : watchdog `networkctl reconfigure` (rôle `workstation-common`, tag `net_resilience`).
 
 ---
 

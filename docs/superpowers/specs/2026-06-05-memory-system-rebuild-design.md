@@ -31,6 +31,7 @@ Phasage : **P1 pragmatique** (mémoire utilisable, ingestion GPU, retrieval scop
 | D11 | saas rooms **par concern** (projet dans champ `repo`). | session 2026-06-05 |
 | D12 | REX/audit/incident/runbook = **facette `doc_kind`** (pas un wing). | session 2026-06-05 |
 | D13 | Reranker = **P2, contraint CPU-offline** Waza. | session 2026-06-05 |
+| D14 | **Cap mémoire obligatoire** sur tout process Waza (worker, embed, retrieval). Le worker non-borné a OOM le Pi → networkd affamé → bail DHCP perdu → SSH/Tailscale down. | `project_waza_ssh_dhcp_oom_2026_06_05.md` |
 
 ## 3. Modèle de données
 
@@ -67,6 +68,13 @@ Principe : **Wing = origine physique/domaine**, **Room = catégorie**, **`doc_ki
 | **saas** | `~/work/saas/*` | `rag`, `api`, `frontend`, `pipeline`, `prd-arch` (room = concern ; projet dans `repo`) |
 | **tools** | `~/work/tools/*` | `n8n-workflows`, `scripts`, `mcp`, `cli` |
 | **refdocs** | `~/work/refdocs/<tech>-docs` | 1 room/tech : `n8n`, `litellm`, `typebot`, `comfyui`, `kitsu`, `zitadel`, `netbird`, … (`doc_kind=official-docs`) |
+
+## 4b. Contrainte transversale — cap mémoire Waza (D14)
+
+Le memory-worker actuel **tourne sans cap** : il a saturé la RAM du Pi → `systemd-networkd` affamé → bail DHCP `eth0` perdu → `tailscale ENETUNREACH` → SSH down (réf `project_waza_ssh_dhcp_oom_2026_06_05.md`). Le worker est **stoppé** suite à cet incident. Conséquences pour la refonte :
+
+- **Tout process Waza** (worker re-ingestion incrémentale, retrieval `search_memory.py`, embed CPU) DOIT avoir un cap mémoire (`MemoryMax`/`MemoryHigh` systemd ou `mem_limit` Docker). Sibling de la mémoire incident : fix B (caps + OOM-shield + watchdog réseau) est en Ansible **mais pas déployé** → à intégrer/réutiliser, pas réinventer.
+- **Renforce le choix GPU pod (M3)** : l'embed bulk de tout le corpus sur Waza CPU est précisément la charge qui a OOM le Pi. Le pod GPU sort cette charge de Waza → le fallback « embed CPU Waza » (M3) reste un dernier recours **borné** (cap + batch petit), pas le défaut.
 
 ## 5. P1 — modules indépendamment testables
 

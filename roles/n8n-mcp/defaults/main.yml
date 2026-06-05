@@ -23,3 +23,11 @@ n8n_mcp_auth_token: "{{ vault_n8n_mcp_auth_token }}"
 # Resource limits (RPi 16GB — MCP doc server léger)
 n8n_mcp_memory_limit: "256m"
 n8n_mcp_cpu_limit: "0.5"
+
+# Management tools (16 outils CRUD workflow — optionnel)
+# Nécessite N8N_API_URL + N8N_API_KEY → active via vault_n8n_mcp_api_key
+n8n_mcp_management_enabled: "{{ vault_n8n_mcp_api_key is defined and vault_n8n_mcp_api_key | length > 0 }}"
+n8n_mcp_api_url: "https://{{ n8n_subdomain }}.{{ domain_name }}"
+n8n_mcp_api_key: "{{ vault_n8n_mcp_api_key | default('') }}"
+# extra_hosts: mayi.ewutelo.cloud → Tailscale IP de Sese (n8n/Caddy y tournent), pas waza
+n8n_mcp_extra_host: "{{ n8n_subdomain }}.{{ domain_name }}:{{ vps_tailscale_ip | default('100.64.0.14') }}"

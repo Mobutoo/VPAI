@@ -36,6 +36,9 @@
       PORT: "3000"
       LOG_LEVEL: "{{ n8n_mcp_log_level }}"
       NODE_ENV: "production"
+      N8N_API_URL: "{{ n8n_mcp_api_url if n8n_mcp_management_enabled else '' }}"
+      N8N_API_KEY: "{{ n8n_mcp_api_key if n8n_mcp_management_enabled else '' }}"
+    etc_hosts: "{{ {(n8n_subdomain + '.' + domain_name): vps_tailscale_ip | default('100.64.0.14')} if n8n_mcp_management_enabled else {} }}"
     cap_drop:
       - ALL
     memory: "{{ n8n_mcp_memory_limit }}"

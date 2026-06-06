@@ -96,11 +96,16 @@ else
   export HTTPS_PROXY=http://localhost:1055 HTTP_PROXY=http://localhost:1055
 fi
 sleep 4
-# timeout DUR : un login-server injoignable fait HANG tailscale up indéfiniment
-# (incident 2026-06-06 .com vs .cloud) -> sans timeout, bootstrap bloqué = facturation.
-timeout 120 tailscale up --login-server="$HEADSCALE_LOGIN_SERVER" --authkey="$HEADSCALE_AUTHKEY" \
-  --hostname=memory-bulk-pod --accept-dns=false >/dev/null 2>&1 \
-  || fail "tailscale up (timeout/échec — login-server $HEADSCALE_LOGIN_SERVER injoignable ?)"
+say "tailscaled log:"; tail -8 /var/log/tailscaled.log 2>/dev/null || true
+# timeout DUR + capture du motif réel (clé expirée / réseau / daemon). Ne PAS masquer.
+ts_out="$(timeout 120 tailscale up --login-server="$HEADSCALE_LOGIN_SERVER" \
+  --authkey="$HEADSCALE_AUTHKEY" --hostname=memory-bulk-pod --accept-dns=false 2>&1)"
+ts_rc=$?
+if [ $ts_rc -ne 0 ]; then
+  say "tailscale up rc=$ts_rc — sortie:"; echo "$ts_out"
+  say "tailscaled log (tail):"; tail -20 /var/log/tailscaled.log 2>/dev/null || true
+  fail "tailscale up (rc=$ts_rc — voir motif ci-dessus : authkey expirée/invalide ? réseau ?)"
+fi
 grep -q "qd.ewutelo.cloud" /etc/hosts || echo "$SESE_TAILNET_IP qd.ewutelo.cloud" >> /etc/hosts
 say "tailscale OK : $(tailscale ip -4 2>/dev/null | head -1)"
 

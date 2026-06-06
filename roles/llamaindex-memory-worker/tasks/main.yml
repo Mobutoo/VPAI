@@ -79,6 +79,16 @@
     mode: "0644"
   become: true
 
+- name: Deploy shared memory_core module (single source of truth, parity worker/pod)
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../scripts/memory/memory_core.py"
+    dest: "{{ memory_worker_install_dir }}/memory_core.py"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0644"
+  become: true
+  tags: [llamaindex-memory-worker, memory_remote]
+
 - name: Deploy memory worker index script
   ansible.builtin.template:
     src: index.py.j2

@@ -8,6 +8,7 @@ sources:
 {% for source in memory_worker_sources %}
   - name: "{{ source.name }}"
     kind: "{{ source.kind | default('git_repo') }}"
+    wing: "{{ source.wing }}"
     root: "{{ source.root }}"
 {% if source.tags is defined and source.tags %}
     tags:

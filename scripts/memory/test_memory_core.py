@@ -21,7 +21,9 @@ from memory_core import (
     build_payload,
     classify_doc_kind,
     classify_room,
+    extract_structural_meta,
     load_wing_room_lookup,
+    resolve_source,
 )
 
 
@@ -432,3 +434,86 @@ def test_constants_importable():
     assert CHUNK_OVERLAP == 200
     assert SCHEMA_VERSION == "memory_v2"
     assert CHUNKING_STRATEGY_VERSION == "2026-04-09"
+
+
+# ===========================================================================
+# resolve_source — contrat canonique (repo, wing, relative_path) — BLOCKER #1
+# ===========================================================================
+class TestResolveSource:
+    def _lookup(self, tmp_path):
+        """Construit un lookup réaliste : DOCS (refdocs, non-git arbre) +
+        VPAI (infra) + une source imbriquée pour tester nearest-ancestor."""
+        return {
+            (tmp_path / "DOCS").resolve(): {"wing": "refdocs", "name": "DOCS"},
+            (tmp_path / "VPAI").resolve(): {"wing": "infra", "name": "VPAI"},
+            (tmp_path / "VPAI" / "nested").resolve(): {"wing": "saas", "name": "nested"},
+        }
+
+    def test_docs_nested_is_one_tree(self, tmp_path):
+        """BLOCKER #1 : DOCS/n8n-docs/x.md → repo=DOCS, rel=n8n-docs/x.md
+        (PAS repo=n8n-docs). classify_room verra le slash → room=n8n."""
+        f = tmp_path / "DOCS" / "n8n-docs" / "x.md"
+        repo, wing, rel = resolve_source(f, self._lookup(tmp_path))
+        assert repo == "DOCS"
+        assert wing == "refdocs"
+        assert rel == "n8n-docs/x.md"
+        assert classify_room(wing, rel) == "n8n"
+
+    def test_vpai_role_file(self, tmp_path):
+        f = tmp_path / "VPAI" / "roles" / "caddy" / "templates" / "Caddyfile.j2"
+        repo, wing, rel = resolve_source(f, self._lookup(tmp_path))
+        assert (repo, wing, rel) == ("VPAI", "infra", "roles/caddy/templates/Caddyfile.j2")
+        assert classify_room(wing, rel) == "caddy-vpn"
+
+    def test_nearest_ancestor_wins(self, tmp_path):
+        """Source imbriquée : le chemin le plus long (nested) l'emporte sur VPAI."""
+        f = tmp_path / "VPAI" / "nested" / "src" / "api.py"
+        repo, wing, rel = resolve_source(f, self._lookup(tmp_path))
+        assert repo == "nested"
+        assert wing == "saas"
+        assert rel == "src/api.py"
+
+    def test_outside_all_sources_returns_none(self, tmp_path):
+        f = tmp_path / "elsewhere" / "y.md"
+        assert resolve_source(f, self._lookup(tmp_path)) is None
+
+    def test_name_fallback_to_basename(self, tmp_path):
+        lookup = {(tmp_path / "Repo").resolve(): {"wing": "infra", "name": ""}}
+        repo, _, _ = resolve_source(tmp_path / "Repo" / "a.py", lookup)
+        assert repo == "Repo"
+
+
+# ===========================================================================
+# extract_structural_meta — parité BLOCKER #2 (déplacé de index.py.j2)
+# ===========================================================================
+class TestExtractStructuralMeta:
+    def test_python_functions_classes_imports(self):
+        src = (
+            "import os\n"
+            "from pathlib import Path\n"
+            "def top():\n    pass\n"
+            "async def atop():\n    pass\n"
+            "class Foo:\n    def method(self):\n        pass\n"
+        )
+        meta = extract_structural_meta(Path("m.py"), src)
+        assert meta["functions"] == ["top", "atop"]  # méthodes exclues
+        assert meta["classes"] == ["Foo"]
+        assert "os" in meta["imports"] and "pathlib" in meta["imports"]
+
+    def test_python_syntax_error_safe(self):
+        meta = extract_structural_meta(Path("bad.py"), "def (:\n")
+        assert meta["functions"] == []
+
+    def test_ts_imports_exports(self):
+        src = 'import {x} from "./a";\nexport function go() {}\nexport const K = 1;\n'
+        meta = extract_structural_meta(Path("c.ts"), src)
+        assert "./a" in meta["imports"]
+        assert "go" in meta["exports"] and "K" in meta["exports"]
+
+    def test_yaml_jinja_variables(self):
+        meta = extract_structural_meta(Path("t.j2"), "x: {{ foo_bar }}\ny: {{ baz }}\n")
+        assert "foo_bar" in meta["variables"] and "baz" in meta["variables"]
+
+    def test_unknown_suffix_empty(self):
+        meta = extract_structural_meta(Path("a.md"), "# hi")
+        assert all(v == [] for v in meta.values())

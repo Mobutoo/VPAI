@@ -33,13 +33,26 @@ Un subagent (plomberie M3) a **figé ~10h** — cause quasi certaine : chargemen
   3. `sources.yml.j2` : émettre `wing`.
   4. `tasks/main.yml` : déployer `memory_core.py` → `/opt/workstation/ai-memory-worker/`.
 
+## ✅ FAIT 2026-06-06 (session post-gel) : Step 1 + Step 2 (câblage worker full-DRY)
+- **Step 1** : `memory_core` validé — 86 tests verts (`-k "not embed and not encode"`, modèle JAMAIS chargé sur Waza).
+- **memory_core complété pour parité** (advisor, 2 BLOCKERS) : ajout `sha256_file`, `git_commit_sha`, `extract_structural_meta` (étaient absents → payloads divergeaient) + `resolve_source` = AUTORITÉ UNIQUE du contrat `(repo, wing, relative_path)` partagée worker+pod. +10 tests.
+- **Step 2 — worker full-DRY** : `index.py.j2` importe TOUT de `memory_core` (doublons supprimés). `to_text_nodes`→`build_payload`+`make_node_id` avec wing/room. `process_file`→`resolve_source` (skip si hors source). `main`→`load_wing_room_lookup` 1×. **`list_repo_roots` : expansion SUPPRIMÉE** (BLOCKER #1 : DOCS=arbre unique, repo="DOCS"/rel="n8n-docs/…").
+- **defaults** `collection_name`→`memory_v2` + `wing:` ×9. **sources.yml.j2** émet wing. **config.yml.j2** +indexes wing/room. **tasks** copie `memory_core.py`→install_dir (source unique `{{ role_path }}/../../scripts/memory/`).
+- **VÉRIF** : render Jinja+`py_compile` OK ; parité démontrée (DOCS nested→DOCS/n8n ; caddy→caddy-vpn ; n8n-workflows→n8n) ; YAML OK. PAS déployé (worker disabled jusqu'à M4). `index.py --dry-run` live Waza = NON fait (llama_index absent Waza ; à faire post-deploy M4).
+- **⚠️ R0 GATE rétrogradé** : flag `/opt/workstation/configs/ai-memory-worker/r0-rebuild.flag` + patch `~/.claude/hooks/loi-op-enforcer.js` (bloc `r0Rebuild`). **À SUPPRIMER en M4** (flag + bloc hook).
+
 ## PROCHAINES ÉTAPES (ordre)
-1. **Valider memory_core** : `pytest scripts/memory/test_memory_core.py -v -k "not embed and not encode"` (éviter le chargement modèle sur Waza). Corriger si besoin.
-2. **Câbler le worker** (4 points ci-dessus).
-3. **Écrire le batch pod** `scripts/memory/gpu_ingest/` (importe memory_core ; venv pins ; staging git-clone + rsync DOCS/podpilot ; embed fp32 ; upsert direct memory_v2 via VPN ; trap staged-path → lookup keys = chemins pod).
+1. ✅ ~~Valider memory_core~~ (86 tests).
+2. ✅ ~~Câbler le worker~~ (full-DRY, voir bloc ci-dessus).
+3. **Écrire le batch pod** `scripts/memory/gpu_ingest/` (importe memory_core + `resolve_source` ; venv pins ; staging git-clone + rsync DOCS/podpilot ; embed fp32 ; upsert direct memory_v2 via VPN ; lookup wing keys = chemins pod = NOM source au top-niveau, cf contrat resolve_source).
 4. **Provision** : clé Headscale éphémère (hub seko-vpn) + pod CPU RunPod on-demand (REST /v1/pods) → join mesh → run batch → spot-check parité → bulk.
 5. **Teardown** pod + **révoquer** clé Headscale.
 6. **M4** : repointer `search_memory.py` + MCP qdrant-find sur memory_v2 (répare R0) ; filtres wing/room ; cap process ; re-enable worker timer (incrémental, capé).
+   **Nettoyages M4 obligatoires** (faits/préparés en session 2026-06-06) :
+   - SUPPRIMER `/opt/workstation/configs/ai-memory-worker/r0-rebuild.flag` + le bloc `r0Rebuild` dans `~/.claude/hooks/loi-op-enforcer.js` (rétablit le hard-block R0).
+   - State/spool v1 déjà neutralisés (backups `/opt/workstation/data/ai-memory-worker/{state/memory_state.json.2026-06-06-v1-stale.bak,spool.2026-06-06-v1-stale.bak}`). NE PAS les restaurer (memory_v1 wipé). Supprimer les `.bak` une fois memory_v2 validé. Le worker repartira state vide = full pass idempotent (upsert par node_id, recouvre le pod sans trou).
+   - Vérif deploy-time : la copie `{{ role_path }}/../../scripts/memory/memory_core.py` (tasks) ne se valide qu'au run du rôle → confirmer au 1er deploy M4.
+   - Lancer `index.py --dry-run` live sur Waza (post-deploy, après install llama_index sur la cible) pour valider la chaîne complète bout-en-bout.
 7. Plan B (reorg M1 + manifeste M5 ~/work).
 
 ---

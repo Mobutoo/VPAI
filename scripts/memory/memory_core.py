@@ -13,8 +13,10 @@ build_payload) ne dépendent que de stdlib + pyyaml.
 
 from __future__ import annotations
 
+import ast as _ast
 import hashlib
 import re
+import subprocess
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -192,6 +194,39 @@ def load_wing_room_lookup(sources_path: str | Path) -> dict[Path, dict[str, str]
     return lookup
 
 
+def resolve_source(
+    abs_path: str | Path, lookup: dict[Path, dict[str, str]]
+) -> tuple[str, str, str] | None:
+    """Autorité UNIQUE du contrat (repo, wing, relative_path) — worker ET pod.
+
+    Trouve la source racine ANCÊTRE LA PLUS PROCHE (chemin le plus long) de
+    abs_path et retourne (repo_name, wing, relative_path-relatif-à-cette-racine).
+
+    Contrat canonique (BLOCKER parité #1) : repo = NOM de la source de plus haut
+    niveau (ex. "DOCS"), relative_path inclut les sous-dossiers (ex.
+    "n8n-docs/x.md"). PAS d'expansion des repos git imbriqués. Le worker comme le
+    pod doivent obéir à CE contrat pour des ref_doc_id / node_id identiques.
+
+    Retourne None si abs_path est hors de toute source configurée.
+    """
+    resolved = Path(abs_path).expanduser().resolve()
+    best_root: Path | None = None
+    best_meta: dict[str, str] | None = None
+    best_rel: Path | None = None
+    for root, meta in lookup.items():
+        try:
+            rel = resolved.relative_to(root)
+        except ValueError:
+            continue
+        if best_root is None or len(root.parts) > len(best_root.parts):
+            best_root, best_meta, best_rel = root, meta, rel
+    if best_root is None or best_meta is None or best_rel is None:
+        return None
+    repo = best_meta.get("name") or best_root.name
+    wing = best_meta.get("wing", "")
+    return repo, wing, best_rel.as_posix()
+
+
 # ---------------------------------------------------------------------------
 # 4. Helpers utilitaires (partagés, extraits de index.py.j2)
 # ---------------------------------------------------------------------------
@@ -201,6 +236,88 @@ def utcnow_iso() -> str:
 
 def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def sha256_file(path: Path) -> str:
+    """Hash du contenu fichier (copie exacte de index.py.j2 — parité)."""
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def git_commit_sha(repo_root: Path, file_path: Path) -> str:
+    """Dernier commit SHA touchant file_path (copie exacte de index.py.j2 — parité)."""
+    try:
+        result = subprocess.run(
+            [
+                "git", "-C", str(repo_root), "log", "-n", "1", "--format=%H", "--",
+                str(Path(file_path).relative_to(repo_root)),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return ""
+    return result.stdout.strip()
+
+
+def extract_structural_meta(path: Path, text: str) -> dict[str, list[str]]:
+    """Métadonnées structurelles (functions/classes/imports/exports/variables).
+
+    Copie exacte de index.py.j2 — partagée worker/pod pour garantir des payloads
+    identiques (BLOCKER parité #2). Stdlib only (ast + re).
+    """
+    suffix = Path(path).suffix.lower()
+    functions: list[str] = []
+    classes: list[str] = []
+    imports: list[str] = []
+    exports: list[str] = []
+    variables: list[str] = []
+
+    if suffix == ".py":
+        try:
+            tree = _ast.parse(text)
+            # IN-02: top-level only — exclude class methods from functions list
+            for node in tree.body:
+                if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)):
+                    functions.append(node.name)
+                elif isinstance(node, _ast.ClassDef):
+                    classes.append(node.name)
+            # WR-02: capture both `from X import Y` and plain `import X`
+            _from_imports = [
+                node.module
+                for node in _ast.walk(tree)
+                if isinstance(node, _ast.ImportFrom) and node.module
+            ]
+            _plain_imports = [
+                alias.name.split(".")[0]
+                for node in _ast.walk(tree)
+                if isinstance(node, _ast.Import)
+                for alias in node.names
+            ]
+            imports = list(dict.fromkeys(_from_imports + _plain_imports))
+        except SyntaxError:
+            pass
+
+    elif suffix in {".ts", ".tsx", ".js", ".jsx"}:
+        imports = re.findall(r"from\s+['\"]([^'\"]+)['\"]", text)
+        exports = re.findall(
+            r"export\s+(?:default\s+)?(?:function|class|const|type|interface)\s+(\w+)", text
+        )
+
+    elif suffix in {".yml", ".yaml", ".j2"}:
+        variables = list(dict.fromkeys(re.findall(r"\{\{\s*([a-zA-Z_]\w*)", text)))
+
+    return {
+        "functions": functions[:50],
+        "classes": classes[:20],
+        "imports": imports[:40],
+        "exports": exports[:40],
+        "variables": variables[:60],
+    }
 
 
 def normalize_topic(value: str) -> str:

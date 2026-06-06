@@ -45,7 +45,7 @@ memory_worker_python_packages:
   - "sentence-transformers>=5.1,<5.2"
   - "pyyaml>=6,<7"
 
-memory_worker_collection_name: "memory_v1"
+memory_worker_collection_name: "memory_v2"
 memory_worker_qdrant_url: "https://{{ qdrant_subdomain }}.{{ domain_name }}:443"
 memory_worker_qdrant_api_key: "{{ qdrant_api_key }}"
 memory_worker_qdrant_timeout: 30
@@ -74,49 +74,58 @@ memory_worker_repo_roots:
 # covered as subdirectories — no separate source required.
 memory_worker_sources:
   - name: "VPAI"
+    wing: "infra"
     kind: "git_repo"
     root: "/home/{{ workstation_pi_user | default('pi') }}/VPAI"
     tags:
       - "scope:vpai"
       - "kind:ansible"
   - name: "flash-studio"
+    wing: "saas"
     kind: "git_repo"
     root: "/home/{{ workstation_pi_user | default('pi') }}/flash-studio"
     tags:
       - "scope:flash"
   - name: "story-engine"
+    wing: "saas"
     kind: "git_repo"
     root: "{{ workstation_projects_dir }}/saas/story-engine"
     tags:
       - "scope:story-engine"
   - name: "typebot-docs"
+    wing: "refdocs"
     kind: "git_repo"
     root: "{{ workstation_projects_dir }}/typebot-docs"
     tags:
       - "scope:typebot"
       - "kind:official-docs"
   - name: "DOCS"
+    wing: "refdocs"
     kind: "git_repo"
     root: "/home/{{ workstation_pi_user | default('pi') }}/DOCS"
     tags:
       - "kind:official-docs"
       - "scope:wiki"
   - name: "podpilot"
+    wing: "saas"
     kind: "git_repo"
     root: "{{ workstation_projects_dir }}/saas/podpilot"
     tags:
       - "scope:podpilot"
   - name: "hawkeye"
+    wing: "saas"
     kind: "git_repo"
     root: "{{ workstation_projects_dir }}/saas/hawkeye"
     tags:
       - "scope:hawkeye"
   - name: "fantrad"
+    wing: "saas"
     kind: "git_repo"
     root: "{{ workstation_projects_dir }}/saas/fantrad"
     tags:
       - "scope:fantrad"
   - name: "riposte"
+    wing: "saas"
     kind: "git_repo"
     root: "{{ workstation_projects_dir }}/saas/riposte"
     tags:

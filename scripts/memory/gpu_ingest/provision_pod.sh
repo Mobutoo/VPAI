@@ -101,9 +101,10 @@ post_create() {  # $1 = PROBE_ONLY
   [ -n "$id" ] && echo "[create] POD_ID=$id" >&2 || echo "[create] ⚠️ pas d'id — voir réponse" >&2
 }
 
+# NB : les réponses RunPod incluent .env EN CLAIR -> toujours del(.env) avant affichage.
 cmd_status()    { load_secrets; curl -sS "$API/$1" -H "Authorization: Bearer $RUNPOD_API_KEY" | jq 'del(.env)'; }
-cmd_stop()      { load_secrets; curl -sS -X POST "$API/$1/stop" -H "Authorization: Bearer $RUNPOD_API_KEY" -w '\nHTTP %{http_code}\n'; }
-cmd_terminate() { load_secrets; curl -sS -X DELETE "$API/$1" -H "Authorization: Bearer $RUNPOD_API_KEY" -w '\nHTTP %{http_code}\n'; }
+cmd_stop()      { load_secrets; curl -sS -X POST "$API/$1/stop" -H "Authorization: Bearer $RUNPOD_API_KEY" | jq 'del(.env) | {id, desiredStatus, lastStatusChange}'; }
+cmd_terminate() { load_secrets; curl -sS -X DELETE "$API/$1" -H "Authorization: Bearer $RUNPOD_API_KEY" -w 'HTTP %{http_code}\n'; }
 
 case "${1:---check}" in
   --check)     cmd_check 0 ;;

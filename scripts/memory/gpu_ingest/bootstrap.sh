@@ -54,6 +54,20 @@ trap on_exit EXIT INT TERM
 self_stop() { do_stop "$1"; exit "${2:-0}"; }
 fail() { say "GATE FAIL: $*"; exit 1; }   # le trap EXIT self-stoppe
 
+# Watchdog DUR (filet ultime) : si le bootstrap HANG (ex. tailscale up contre un
+# login-server injoignable — incident 2026-06-06), le trap EXIT ne se déclenche pas
+# car le script ne sort jamais. Ce watchdog appelle l'API stop après WATCHDOG_MAX,
+# quoi qu'il arrive. Process indépendant (pas de partage du flag STOPPED -> stop API
+# idempotent côté RunPod).
+WATCHDOG_MAX="${WATCHDOG_MAX:-2700}"   # 45 min
+if [ -n "${RUNPOD_API_KEY:-}" ] && [ -n "${RUNPOD_POD_ID:-}" ]; then
+  ( sleep "$WATCHDOG_MAX"
+    curl -sS -X POST "https://rest.runpod.io/v1/pods/${RUNPOD_POD_ID}/stop" \
+      -H "Authorization: Bearer ${RUNPOD_API_KEY}" >/dev/null 2>&1 || true
+  ) & disown
+  say "watchdog armé : self-stop dur dans ${WATCHDOG_MAX}s"
+fi
+
 # ---------------------------------------------------------------------------
 say "=== G1 deps + Tailscale ==="
 export DEBIAN_FRONTEND=noninteractive
@@ -72,8 +86,11 @@ else
   export HTTPS_PROXY=http://localhost:1055 HTTP_PROXY=http://localhost:1055
 fi
 sleep 4
-tailscale up --login-server="$HEADSCALE_LOGIN_SERVER" --authkey="$HEADSCALE_AUTHKEY" \
-  --hostname=memory-bulk-pod --accept-dns=false >/dev/null 2>&1 || fail "tailscale up"
+# timeout DUR : un login-server injoignable fait HANG tailscale up indéfiniment
+# (incident 2026-06-06 .com vs .cloud) -> sans timeout, bootstrap bloqué = facturation.
+timeout 120 tailscale up --login-server="$HEADSCALE_LOGIN_SERVER" --authkey="$HEADSCALE_AUTHKEY" \
+  --hostname=memory-bulk-pod --accept-dns=false >/dev/null 2>&1 \
+  || fail "tailscale up (timeout/échec — login-server $HEADSCALE_LOGIN_SERVER injoignable ?)"
 grep -q "qd.ewutelo.cloud" /etc/hosts || echo "$SESE_TAILNET_IP qd.ewutelo.cloud" >> /etc/hosts
 say "tailscale OK : $(tailscale ip -4 2>/dev/null | head -1)"
 

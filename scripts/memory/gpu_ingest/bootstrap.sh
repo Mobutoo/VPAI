@@ -217,6 +217,11 @@ beacon g3_clone_done
 say "=== G4 venv + deps + punkt ==="
 python3 -m venv /opt/ingest || fail "venv"
 . /opt/ingest/bin/activate
+# torch CPU n'utilise pas tous les cœurs par défaut sur ces pods (observé 2026-06-06 :
+# pod x86 16vCPU ~2 chunks/s VS Pi ARM 4-threads ~9/s -> torch sous-utilise le CPU).
+# Forcer le threading aligne le débit sur le nb de vCPU réels.
+export OMP_NUM_THREADS="$(nproc)" MKL_NUM_THREADS="$(nproc)" NUMEXPR_NUM_THREADS="$(nproc)"
+say "threads CPU: OMP_NUM_THREADS=$OMP_NUM_THREADS"
 pip install -q -U pip >/dev/null 2>&1 || true
 timeout 1800 pip install -q -r "$GPU_DIR/requirements.lock.txt" >/dev/null 2>&1 || fail "pip install lock (timeout/erreur 1800s)"
 beacon g4_pip_done
@@ -288,6 +293,15 @@ check_one "VPAI/README.md"            "$STAGING/VPAI/README.md"           || fai
 check_one "story-engine/README.md"    "$STAGING/story-engine/README.md"   || fail "node_id divergent"
 check_one "typebot-docs/README.md"    "$STAGING/typebot-docs/README.md"   || fail "node_id divergent"
 beacon g7_parity_ok
+
+# Benchmark RÉEL du débit embedding sur CE hardware (fini les estimations). Encode 512
+# chunks et écrit chunks/s + ETA dans diag_bench (lisible depuis Waza AVANT le bulk).
+say "=== G7b benchmark débit embedding ==="
+bench=$(python -c "import sys; sys.path.insert(0,'$CODE_DIR'); import time; from memory_core import EmbeddingGemmaEncoder; e=EmbeddingGemmaEncoder('google/embeddinggemma-300m',True); d=[('Titre','Phrase de contenu technique pour mesurer le debit embedding du pod.')]*512; e.encode_documents(d[:16]); t=time.time(); e.encode_documents(d); dt=time.time()-t; print(round(512/dt,1))" 2>/dev/null | tail -1)
+eta=$(python3 -c "b=float('${bench:-0}' or 0); print('NA' if b<=0 else f'{78500/b/60:.0f} min')" 2>/dev/null)
+report_diag bench "embedding=${bench} chunks/s threads=${OMP_NUM_THREADS} ETA_78500=${eta}"
+say "BENCH embedding=${bench} chunks/s -> ETA ~${eta}"
+beacon g7b_bench
 
 say "=== G8 bulk ingest ==="
 # Si au prochain run g8_bulk_start est présent mais memory_v2.points reste 0 longtemps,

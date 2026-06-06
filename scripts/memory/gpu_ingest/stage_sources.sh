@@ -22,12 +22,13 @@ clone() {
   fi
 }
 
-clone VPAI         "git@github-seko:Mobutoo/vpai.git"
-clone flash-studio "git@github-seko:Mobutoo/flash-studio.git"      # VÉRIFIER
-clone story-engine "git@github-seko:Mobutoo/story-engine.git"      # VÉRIFIER
-clone hawkeye      "git@github-seko:Mobutoo/hawkeye.git"           # VÉRIFIER
-clone fantrad      "git@github-seko:Mobutoo/fantrad.git"           # VÉRIFIER
-clone riposte      "git@github-seko:Mobutoo/riposte.git"           # VÉRIFIER
+# Remotes vérifiés 2026-06-06 depuis l'origin des clones Waza (casse exacte).
+clone VPAI         "git@github-seko:Mobutoo/VPAI.git"
+clone flash-studio "git@github-seko:Mobutoo/flash-studio.git"
+clone story-engine "git@github-seko:Mobutoo/story-engine.git"
+clone hawkeye      "git@github-seko:Mobutoo/hawkeye.git"
+clone fantrad      "git@github-seko:Mobutoo/FanTrad.git"
+clone riposte      "git@github-seko:Mobutoo/riposte.git"
 clone typebot-docs "https://github.com/baptisteArno/typebot.io.git"
 
 echo "[stage] git sources OK."

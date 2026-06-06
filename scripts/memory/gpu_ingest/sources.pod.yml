@@ -22,12 +22,9 @@ sources:
   - name: "typebot-docs"
     wing: "refdocs"
     root: "/staging/typebot-docs"
-  - name: "DOCS"
-    wing: "refdocs"
-    root: "/staging/DOCS"
-  - name: "podpilot"
-    wing: "saas"
-    root: "/staging/podpilot"
+  # NB : DOCS + podpilot = LOCAL-ONLY (pas de remote git) -> indexés par le worker
+  # Waza en incrémental au M4, PAS par le pod (décision figée checkpoint). Le pod ne
+  # traite que les 7 sources git clonables -> bootstrap sans clé SSH / sans rsync Waza.
   - name: "hawkeye"
     wing: "saas"
     root: "/staging/hawkeye"

@@ -1,85 +1,114 @@
 #!/usr/bin/env bash
-# provision_pod.sh — pod CPU RunPod on-demand pour l'ingestion bulk mémoire.
+# provision_pod.sh — pod CPU RunPod on-demand, bootstrap NON-SUPERVISÉ.
 #
-# Source API (R8, doc officielle 2026-06-06) :
-#   POST https://rest.runpod.io/v1/pods   (Authorization: Bearer <key>)
-#   requis: imageName, computeType=CPU. clés: name, cloudType, vcpuCount,
-#   containerDiskInGb, volumeInGb, ports[], env{}, dataCenterIds[].
-#   GET/DELETE https://rest.runpod.io/v1/pods/{id}
+# Crée un pod qui se bootstrappe seul (dockerStartCmd -> clone VPAI -> bootstrap.sh) :
+# Tailscale -> Qdrant -> clone 7 repos (PAT) -> venv -> self-check node_id -> bulk ->
+# sentinelle -> self-STOP. Aucune connexion/intervention après --create.
 #
-# Secrets : RUNPOD_API_KEY depuis ~/projects/saas/fantrad/.env (jamais en clair/commit).
-# Par défaut : --check (DRY, affiche payload + curl, n'appelle PAS l'API).
+# Doc API (R8) : POST/GET/DELETE https://rest.runpod.io/v1/pods[/{id}]
+#                POST .../{id}/stop  (coupe compute ; volumeInGb=0 => 0 charge stockage)
+#
+# Secrets chargés (jamais commit) :
+#   pod-ingest.env       : HEADSCALE_AUTHKEY, HEADSCALE_LOGIN_SERVER, GITHUB_PAT
+#   memory-worker.env    : QDRANT_URL, QDRANT_API_KEY
+#   fantrad/.env         : RUNPOD_API_KEY
 #
 # Usage :
-#   ./provision_pod.sh --check                 # dry-run (défaut) : montre la requête
-#   ./provision_pod.sh --create                # crée le pod (gate humain)
-#   ./provision_pod.sh --status <podId>
-#   ./provision_pod.sh --terminate <podId>     # + révoquer la clé Headscale ensuite
+#   ./provision_pod.sh --check          # DRY : payload (secrets masqués), aucun appel
+#   ./provision_pod.sh --probe          # crée un pod PROBE_ONLY=1 (R4 : valide Tailscale+Qdrant puis self-stop)
+#   ./provision_pod.sh --create         # crée le pod d'ingestion complet
+#   ./provision_pod.sh --status <id>
+#   ./provision_pod.sh --stop <id>      # arrête (compute off) — préféré au teardown
+#   ./provision_pod.sh --terminate <id> # DELETE définitif (+ révoquer la clé Headscale)
 set -euo pipefail
 
 API="https://rest.runpod.io/v1/pods"
+ENV_POD="${ENV_POD:-/opt/workstation/configs/ai-memory-worker/pod-ingest.env}"
+ENV_QDRANT="${ENV_QDRANT:-/opt/workstation/configs/ai-memory-worker/memory-worker.env}"
 ENV_RUNPOD="${ENV_RUNPOD:-/home/mobuone/projects/saas/fantrad/.env}"
 
-# --- Paramètres pod (overridables par env) ---------------------------------
 POD_NAME="${POD_NAME:-memory-bulk-ingest}"
-# IMAGE : DOIT fournir Python 3.12.x (parité venv worker). python:3.12-bookworm a
-# apt (git/rsync/build-essential installables au runtime). Contrôle via terminal web
-# RunPod (ou sshd si installé). ⚠️ Si tu préfères une base RunPod, VÉRIFIE sa version Python.
-POD_IMAGE="${POD_IMAGE:-python:3.12-bookworm}"
+POD_IMAGE="${POD_IMAGE:-python:3.12-bookworm}"   # DOIT être Python 3.12.x (parité venv worker)
 VCPU="${VCPU:-16}"
-CLOUD_TYPE="${CLOUD_TYPE:-SECURE}"          # SECURE (fiable) | COMMUNITY (moins cher)
-CONTAINER_DISK_GB="${CONTAINER_DISK_GB:-60}"  # deps (torch CPU ~2G) + repos + corpus
-VOLUME_GB="${VOLUME_GB:-0}"                  # éphémère : pas de persistance requise
-PORTS_JSON="${PORTS_JSON:-[\"22/tcp\"]}"
+CLOUD_TYPE="${CLOUD_TYPE:-SECURE}"
+CONTAINER_DISK_GB="${CONTAINER_DISK_GB:-60}"
+VOLUME_GB="${VOLUME_GB:-0}"
+GIT_OWNER="${GIT_OWNER:-Mobutoo}"
+SESE_TAILNET_IP="${SESE_TAILNET_IP:-100.64.0.14}"
 
-load_key() {
-  if [ -z "${RUNPOD_API_KEY:-}" ]; then
-    [ -f "$ENV_RUNPOD" ] || { echo "RUNPOD_API_KEY absent et $ENV_RUNPOD introuvable" >&2; exit 1; }
-    set -a; . "$ENV_RUNPOD"; set +a
-  fi
-  [ -n "${RUNPOD_API_KEY:-}" ] || { echo "RUNPOD_API_KEY vide" >&2; exit 1; }
+load_secrets() {
+  for f in "$ENV_POD" "$ENV_QDRANT" "$ENV_RUNPOD"; do
+    [ -f "$f" ] || { echo "env introuvable: $f" >&2; exit 1; }
+    set -a; . "$f"; set +a
+  done
+  : "${HEADSCALE_AUTHKEY:?absent (pod-ingest.env)}"
+  : "${HEADSCALE_LOGIN_SERVER:?absent (pod-ingest.env)}"
+  : "${GITHUB_PAT:?absent (pod-ingest.env — PAT read-only)}"
+  : "${QDRANT_URL:?absent (memory-worker.env)}"
+  : "${QDRANT_API_KEY:?absent (memory-worker.env)}"
+  : "${RUNPOD_API_KEY:?absent (fantrad/.env)}"
 }
 
-build_payload() {
+build_env_json() {  # $1 = PROBE_ONLY value
   jq -n \
-    --arg name "$POD_NAME" --arg image "$POD_IMAGE" --arg cloud "$CLOUD_TYPE" \
-    --argjson vcpu "$VCPU" --argjson cdisk "$CONTAINER_DISK_GB" --argjson vol "$VOLUME_GB" \
-    --argjson ports "$PORTS_JSON" '
-    {
-      name: $name, imageName: $image, computeType: "CPU", cloudType: $cloud,
-      vcpuCount: $vcpu, containerDiskInGb: $cdisk, volumeInGb: $vol, ports: $ports
+    --arg authkey "$HEADSCALE_AUTHKEY" --arg login "$HEADSCALE_LOGIN_SERVER" \
+    --arg pat "$GITHUB_PAT" --arg qurl "$QDRANT_URL" --arg qkey "$QDRANT_API_KEY" \
+    --arg rpkey "$RUNPOD_API_KEY" --arg sese "$SESE_TAILNET_IP" --arg owner "$GIT_OWNER" \
+    --arg probe "$1" '{
+      HEADSCALE_AUTHKEY:$authkey, HEADSCALE_LOGIN_SERVER:$login, GITHUB_PAT:$pat,
+      QDRANT_URL:$qurl, QDRANT_API_KEY:$qkey, RUNPOD_API_KEY:$rpkey,
+      SESE_TAILNET_IP:$sese, GIT_OWNER:$owner, PROBE_ONLY:$probe
     }'
 }
 
-cmd_check() {
-  echo "[check] payload (DRY — aucun appel API) :"
-  build_payload
-  echo
-  echo "[check] commande réelle équivalente :"
-  echo "  curl -sS -X POST '$API' -H 'Authorization: Bearer \$RUNPOD_API_KEY' \\"
-  echo "    -H 'Content-Type: application/json' -d '<payload ci-dessus>'"
-  echo "[check] lancer avec --create pour exécuter (gate humain)."
+DOCKER_START_CMD='set -e; export DEBIAN_FRONTEND=noninteractive; apt-get update -qq; apt-get install -y -qq git curl >/dev/null; git clone --depth 1 "https://x-access-token:${GITHUB_PAT}@github.com/${GIT_OWNER}/VPAI.git" /staging/VPAI; exec bash /staging/VPAI/scripts/memory/gpu_ingest/bootstrap.sh'
+
+build_payload() {  # $1 = PROBE_ONLY value
+  jq -n \
+    --arg name "$POD_NAME" --arg image "$POD_IMAGE" --arg cloud "$CLOUD_TYPE" \
+    --argjson vcpu "$VCPU" --argjson cdisk "$CONTAINER_DISK_GB" --argjson vol "$VOLUME_GB" \
+    --argjson envobj "$(build_env_json "$1")" --arg startcmd "$DOCKER_START_CMD" '
+    {
+      name: $name, imageName: $image, computeType: "CPU", cloudType: $cloud,
+      vcpuCount: $vcpu, containerDiskInGb: $cdisk, volumeInGb: $vol,
+      ports: ["22/tcp"],
+      dockerEntrypoint: ["/bin/bash"],
+      dockerStartCmd: ["-lc", $startcmd],
+      env: $envobj
+    }'
 }
 
-cmd_create() {
-  load_key
-  local payload; payload="$(build_payload)"
-  echo "[create] POST $API …" >&2
+mask() { jq '.env |= with_entries(.value |= (if (.|length)>8 then .[0:6]+"…" else "***" end))'; }
+
+cmd_check() {
+  load_secrets
+  echo "[check] payload (secrets MASQUÉS, aucun appel API) :"
+  build_payload "${1:-0}" | mask
+  echo "[check] --probe pour R4 (Tailscale+Qdrant puis self-stop), --create pour le run complet."
+}
+
+post_create() {  # $1 = PROBE_ONLY
+  load_secrets
+  local payload; payload="$(build_payload "$1")"
+  echo "[create] POST $API (PROBE_ONLY=$1) …" >&2
   local resp; resp="$(curl -sS -X POST "$API" \
     -H "Authorization: Bearer $RUNPOD_API_KEY" \
     -H "Content-Type: application/json" -d "$payload")"
-  echo "$resp" | jq . 2>/dev/null || echo "$resp"
+  echo "$resp" | jq 'del(.env)' 2>/dev/null || echo "$resp"
   local id; id="$(echo "$resp" | jq -r '.id // empty' 2>/dev/null)"
   [ -n "$id" ] && echo "[create] POD_ID=$id" >&2 || echo "[create] ⚠️ pas d'id — voir réponse" >&2
 }
 
-cmd_status()    { load_key; curl -sS "$API/$1" -H "Authorization: Bearer $RUNPOD_API_KEY" | jq .; }
-cmd_terminate() { load_key; curl -sS -X DELETE "$API/$1" -H "Authorization: Bearer $RUNPOD_API_KEY" -w '\nHTTP %{http_code}\n'; }
+cmd_status()    { load_secrets; curl -sS "$API/$1" -H "Authorization: Bearer $RUNPOD_API_KEY" | jq 'del(.env)'; }
+cmd_stop()      { load_secrets; curl -sS -X POST "$API/$1/stop" -H "Authorization: Bearer $RUNPOD_API_KEY" -w '\nHTTP %{http_code}\n'; }
+cmd_terminate() { load_secrets; curl -sS -X DELETE "$API/$1" -H "Authorization: Bearer $RUNPOD_API_KEY" -w '\nHTTP %{http_code}\n'; }
 
 case "${1:---check}" in
-  --check)     cmd_check ;;
-  --create)    cmd_create ;;
+  --check)     cmd_check 0 ;;
+  --probe)     post_create 1 ;;
+  --create)    post_create 0 ;;
   --status)    [ -n "${2:-}" ] || { echo "usage: --status <podId>" >&2; exit 2; }; cmd_status "$2" ;;
+  --stop)      [ -n "${2:-}" ] || { echo "usage: --stop <podId>" >&2; exit 2; }; cmd_stop "$2" ;;
   --terminate) [ -n "${2:-}" ] || { echo "usage: --terminate <podId>" >&2; exit 2; }; cmd_terminate "$2" ;;
-  *) echo "usage: $0 [--check|--create|--status <id>|--terminate <id>]" >&2; exit 2 ;;
+  *) echo "usage: $0 [--check|--probe|--create|--status <id>|--stop <id>|--terminate <id>]" >&2; exit 2 ;;
 esac

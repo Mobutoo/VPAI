@@ -1,0 +1,158 @@
+{
+  "generated_from": "venv worker Waza (memory_core repo)",
+  "note": "parité self-check: node_id+chunk_text_sha+chunk_count doivent matcher côté pod",
+  "samples": {
+    "VPAI/CLAUDE.md": {
+      "repo": "VPAI",
+      "relative_path": "CLAUDE.md",
+      "wing": "infra",
+      "room": "ansible-roles",
+      "chunk_count": 14,
+      "nodes": [
+        {
+          "node_id": "924cbadc-877b-b024-2770-d6b5c8f69668",
+          "chunk_index": 0,
+          "chunk_text_sha256": "9b6d233e7b87c25a9b71560d2870015b954b2733baa180250ea58c9ba23087a0"
+        },
+        {
+          "node_id": "f2fb0c92-165b-1a0f-b425-ec2299a621d5",
+          "chunk_index": 1,
+          "chunk_text_sha256": "6bdb1b8fb1903a3f6b83d8b57b476639563ae7d0bda07bbcbddf4894eabd3238"
+        },
+        {
+          "node_id": "9834bf0f-c53e-85cb-1ff1-df102609c032",
+          "chunk_index": 2,
+          "chunk_text_sha256": "7fcbe01cdd7c71ba64a158ec8a30d3938ac3a3e6baf80d16e8e1e7fb762f8d5a"
+        },
+        {
+          "node_id": "21c48552-05ce-3e59-e10f-147e1415a80c",
+          "chunk_index": 3,
+          "chunk_text_sha256": "ff8dc2d90fa144476244f1abff2391ed7992e150aedeee574b3c873e3bc66eef"
+        },
+        {
+          "node_id": "26a77f72-87c9-2869-5310-af8b59a0f0ab",
+          "chunk_index": 4,
+          "chunk_text_sha256": "5e32bfb1c059759e7d5544471b60322cea20620f0b3aa9fa86ca69e6e5df4377"
+        },
+        {
+          "node_id": "f270c9f6-5479-ee02-1f49-4b93bd43a0e6",
+          "chunk_index": 5,
+          "chunk_text_sha256": "ef520d68ed2dd02e8e59daffa70e98be0986e81216c7e8086890da1441d2a268"
+        },
+        {
+          "node_id": "476885ec-9cc4-0997-7442-39773b2b6c9a",
+          "chunk_index": 6,
+          "chunk_text_sha256": "981ac9f4d1e8cce2514b6e32fce61e127efdef408ca3f11f9644b3663fbc0789"
+        },
+        {
+          "node_id": "c6522310-9464-d331-a0bb-d82d4f081598",
+          "chunk_index": 7,
+          "chunk_text_sha256": "447999c8ea62fb210c2c58c16c6c815be7ea58e56a5166321b13778c2cc1914c"
+        },
+        {
+          "node_id": "e55cde7b-be8b-d0f7-4449-7ffb206a8f61",
+          "chunk_index": 8,
+          "chunk_text_sha256": "ef76116ff8b2152da3be91d282479fe9719070938abadfb44064159b13d8f116"
+        },
+        {
+          "node_id": "6f096c91-e06a-68e9-1682-c9dcaf207916",
+          "chunk_index": 9,
+          "chunk_text_sha256": "1ab471158f0a995b80ce8370756c70d9d82bfa761e004e7f5053fd26b19c7015"
+        },
+        {
+          "node_id": "1a13295a-5b99-ffe3-1e84-64c68d042c31",
+          "chunk_index": 10,
+          "chunk_text_sha256": "e4d4c99e709847afb2afaf3f7fcede1af446d45b7316883a234801fb2fbf4371"
+        },
+        {
+          "node_id": "2246974b-98b3-a2c6-92d3-34017b9f4b24",
+          "chunk_index": 11,
+          "chunk_text_sha256": "7912d5c026a0e39f1f86288043d07e81c5306243da5305a941ab6b15f15a5a22"
+        },
+        {
+          "node_id": "28e79cdf-a1ba-0822-b922-8d5b562bc5de",
+          "chunk_index": 12,
+          "chunk_text_sha256": "d84d85cd308e80f3a26a22d4798db53f23c366e4cadc938d228520674f13cee8"
+        },
+        {
+          "node_id": "adf06788-dfef-1d00-b7ab-6e46bd068ac3",
+          "chunk_index": 13,
+          "chunk_text_sha256": "d10ba1790eadbfdc3f8c77ae8d7fc46d6393f8fb61ffa73a43544fe006030d93"
+        }
+      ]
+    },
+    "story-engine/README.md": {
+      "repo": "story-engine",
+      "relative_path": "README.md",
+      "wing": "saas",
+      "room": "prd-arch",
+      "chunk_count": 1,
+      "nodes": [
+        {
+          "node_id": "5b58ca1a-743c-0116-dbac-0e2160743285",
+          "chunk_index": 0,
+          "chunk_text_sha256": "463a7cd833c6eb8e97319a02e7af3278f3a6b9831e518063b016f9a973ce1485"
+        }
+      ]
+    },
+    "typebot-docs/README.md": {
+      "repo": "typebot-docs",
+      "relative_path": "README.md",
+      "wing": "refdocs",
+      "room": "misc",
+      "chunk_count": 10,
+      "nodes": [
+        {
+          "node_id": "7d863506-c56e-00be-01fb-c4ab4baa5c5a",
+          "chunk_index": 0,
+          "chunk_text_sha256": "cb838c8c0bcda45184e5842b587fc7e7bdf66b71e346c8c71d44cc0e4161eb1c"
+        },
+        {
+          "node_id": "b763df4e-cae6-3197-d67a-bfcabbc6c8ad",
+          "chunk_index": 1,
+          "chunk_text_sha256": "fae0ab525f79dcbc9160357ad705666ff00e6aa77139d5d75dec29160f740c0c"
+        },
+        {
+          "node_id": "b74ed688-003c-acf1-6935-9038e5b569d2",
+          "chunk_index": 2,
+          "chunk_text_sha256": "deab7ea17fa862a9342d9a629fa4aaeee392faabfd3e0a3903c15f8b49d9023c"
+        },
+        {
+          "node_id": "3decf21d-4f73-bb46-809e-388d6d677f5e",
+          "chunk_index": 3,
+          "chunk_text_sha256": "183ca4040321c7cffe29d654600b31035d5c336696ea275aca6b2be4241da8d7"
+        },
+        {
+          "node_id": "5bb41e80-10e3-09b2-c34d-3dd6656f765f",
+          "chunk_index": 4,
+          "chunk_text_sha256": "d5c274293e649f1c527aa0c8469c677ededbc621ed5761b435f484322119038a"
+        },
+        {
+          "node_id": "49ee74b3-859c-e5dd-f41d-6c82a434a1dd",
+          "chunk_index": 5,
+          "chunk_text_sha256": "06f1e306a7818e9a1394da8d7903404a7d1ff3e476312a2b78e78320c60097ca"
+        },
+        {
+          "node_id": "5b76b98d-9e0d-179a-0b02-bebe0f3dd75e",
+          "chunk_index": 6,
+          "chunk_text_sha256": "fa20e7771062ceddb9b31d4b1b0e2c8c22f498327e0bf04721039e6e39643195"
+        },
+        {
+          "node_id": "030f196c-fb3e-3ffc-8272-e5aa7b4a977b",
+          "chunk_index": 7,
+          "chunk_text_sha256": "564b50b6a177f26c5c6ea1a4de653adfc9280f7d480c7437b3777d9417d2c5cd"
+        },
+        {
+          "node_id": "5f268f06-d760-7aaf-1c27-35ae7a97a737",
+          "chunk_index": 8,
+          "chunk_text_sha256": "787add333e1b325f309a2858ffdcbc15aa14fd14d5da246f0fd07d82c619d998"
+        },
+        {
+          "node_id": "718feec0-5cab-0e0f-2360-fa0bb5412628",
+          "chunk_index": 9,
+          "chunk_text_sha256": "5e94c67ee58b1f4effd7ee8b06c308036fb2585dc385c572d65392bba44c5a66"
+        }
+      ]
+    }
+  }
+}

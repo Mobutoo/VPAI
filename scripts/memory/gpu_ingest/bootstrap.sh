@@ -35,6 +35,17 @@ QBASE="${QDRANT_URL%/}"                  # ex https://qd.ewutelo.cloud:443
 QHDR=(-H "api-key: ${QDRANT_API_KEY:-}")
 CURL=(curl -fsS --max-time 30)
 
+# Balise d'étape : crée une collection 'stage_<x>' (1-dim, jetable) -> témoin de
+# progression LISIBLE DEPUIS WAZA (le pod n'a pas de logs via API). Le hang du run
+# précédent (points=0 1h40, pas d'EXITED) était indiagnosticable faute de ces balises.
+# Teardown : supprimer les collections stage_* (cf handoff). best-effort, jamais bloquant.
+beacon() {
+  curl -sS -X PUT "$QBASE/collections/stage_$1" "${QHDR[@]}" \
+    -H 'Content-Type: application/json' -d '{"vectors":{"size":1,"distance":"Cosine"}}' \
+    >/dev/null 2>&1 || true
+  say "beacon stage_$1"
+}
+
 # Filet anti-orphelin (REX FanTrad PROCEDURES.md P1 : trap EXIT => 0 pod orphelin).
 # do_stop est idempotent ; le trap EXIT le déclenche sur TOUTE sortie (gate fail,
 # erreur non gérée, SIGTERM), pas seulement les chemins explicites.
@@ -147,6 +158,7 @@ diag_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "${QHDR[@]}" "$
 say "diag: healthz HTTP      = $diag_code"
 "${CURL[@]}" "${QHDR[@]}" "$QBASE/healthz" >/dev/null || fail "qdrant healthz injoignable (HTTP $diag_code)"
 say "qdrant healthz OK"
+beacon g2_qdrant_ok
 
 if [ "${PROBE_ONLY:-0}" = "1" ]; then
   # Témoin observable à distance : écrire la collection prouve Tailscale+Qdrant+write
@@ -167,10 +179,10 @@ say "pas de sentinelle (code=$code) -> ingestion"
 
 say "=== G3 clone 7 sources git ==="
 mkdir -p "$STAGING"
-clone() {  # name url
+clone() {  # name url ; timeout DUR (un clone qui hang bloquait tout G3 sans EXITED)
   local dest="$STAGING/$1"
   [ -d "$dest/.git" ] && { say "  $1 déjà"; return; }
-  git clone --depth 1 "$2" "$dest" >/dev/null 2>&1 || fail "clone $1"
+  timeout 300 git clone --depth 1 "$2" "$dest" >/dev/null 2>&1 || fail "clone $1 (timeout/erreur 300s)"
   say "  cloné $1"
 }
 PAT_PREFIX="https://x-access-token:${GITHUB_PAT}@github.com/${GIT_OWNER}"
@@ -180,15 +192,20 @@ clone story-engine "$PAT_PREFIX/story-engine.git"
 clone hawkeye      "$PAT_PREFIX/hawkeye.git"
 clone fantrad      "$PAT_PREFIX/FanTrad.git"
 clone riposte      "$PAT_PREFIX/riposte.git"
+# typebot.io = gros monorepo public : suspect n°1 du hang G3 (clone long sans logs).
+# Filet = timeout 300s dans clone() ci-dessus (un hang -> fail+self-stop, plus 1h40 muet).
 clone typebot-docs "https://github.com/baptisteArno/typebot.io.git"
+beacon g3_clone_done
 
 say "=== G4 venv + deps + punkt ==="
 python3 -m venv /opt/ingest || fail "venv"
 . /opt/ingest/bin/activate
 pip install -q -U pip >/dev/null 2>&1 || true
-pip install -q -r "$GPU_DIR/requirements.lock.txt" >/dev/null 2>&1 || fail "pip install lock"
+timeout 1800 pip install -q -r "$GPU_DIR/requirements.lock.txt" >/dev/null 2>&1 || fail "pip install lock (timeout/erreur 1800s)"
+beacon g4_pip_done
 python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')" >/dev/null 2>&1 || fail "nltk punkt"
 say "venv prêt : $(python --version)"
+beacon g4_venv_done
 
 say "=== G5 memory_v2 existe ==="
 "${CURL[@]}" "${QHDR[@]}" "$QBASE/collections/memory_v2" >/dev/null || fail "collection memory_v2 absente"
@@ -216,8 +233,12 @@ check_one() {  # key file
 check_one "VPAI/CLAUDE.md"            "$STAGING/VPAI/CLAUDE.md"            || fail "node_id divergent (chunking/pins)"
 check_one "story-engine/README.md"    "$STAGING/story-engine/README.md"   || fail "node_id divergent"
 check_one "typebot-docs/README.md"    "$STAGING/typebot-docs/README.md"   || fail "node_id divergent"
+beacon g7_parity_ok
 
 say "=== G8 bulk ingest ==="
+# Si au prochain run g8_bulk_start est présent mais memory_v2.points reste 0 longtemps,
+# le hang est l'embedding (download/charge modèle HF gated, ou débit CPU) — PAS G3/G4.
+beacon g8_bulk_start
 python "${PI[@]}" 2>&1 | tee -a "$LOG"
 rc=${PIPESTATUS[0]}
 [ "$rc" = "0" ] || fail "bulk rc=$rc"

@@ -25,7 +25,17 @@ au worker). Le wheel torch x86 ≠ ARM ⇒ vecteurs ~0.99999 cos (accepté, pas 
 ### 0. Gate humain (Step 4 du checkpoint)
 - Clé Headscale **éphémère** sur le hub seko-vpn :
   `ssh -i ~/.ssh/seko-vpn-deploy mobuone@87.106.30.160` → `headscale preauthkeys create --ephemeral` (+ ACL nœud).
-- Pod CPU RunPod on-demand (REST `https://rest.runpod.io/v1/pods`, creds `~/projects/saas/fantrad/.env`), image **python 3.12**.
+- Pod CPU RunPod on-demand via `provision_pod.sh` (REST `/v1/pods`, doc R8 2026-06-06 ;
+  creds `~/projects/saas/fantrad/.env`) :
+  ```bash
+  ./provision_pod.sh --check          # dry : montre le payload, aucun appel
+  ./provision_pod.sh --create         # crée le pod -> POD_ID
+  ./provision_pod.sh --status <id>    # état
+  ./provision_pod.sh --terminate <id> # teardown (puis révoquer la clé Headscale)
+  ```
+  Défaut : `python:3.12-bookworm` 16 vCPU SECURE 60G. Contrôle pod = terminal web RunPod
+  (ou sshd si installé). Image overridable via `POD_IMAGE=…` (garder Python 3.12.x).
+  Clé deploy `github-seko` à monter sur le pod (6 repos privés ; typebot = https public).
 
 ### 1. Venv + deps (sur le pod)
 ```bash

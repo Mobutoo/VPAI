@@ -220,7 +220,12 @@ python3 -m venv /opt/ingest || fail "venv"
 pip install -q -U pip >/dev/null 2>&1 || true
 timeout 1800 pip install -q -r "$GPU_DIR/requirements.lock.txt" >/dev/null 2>&1 || fail "pip install lock (timeout/erreur 1800s)"
 beacon g4_pip_done
-python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')" >/dev/null 2>&1 || fail "nltk punkt"
+nltk_rc=1; nltk_out=""
+for k in 1 2 3; do
+  nltk_out=$(python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')" 2>&1) && { nltk_rc=0; break; }
+  say "nltk retry $k"; sleep 5
+done
+[ $nltk_rc -eq 0 ] || { report_diag nltk "$nltk_out"; fail "nltk punkt x3 (trace -> diag_nltk)"; }
 say "venv prêt : $(python --version)"
 
 # CACHE TIKTOKEN OFFLINE (root cause hang G7 2026-06-06) : SentenceSplitter (llama-index)
@@ -232,7 +237,11 @@ export TIKTOKEN_CACHE_DIR="$GPU_DIR/tiktoken_cache"
 say "TIKTOKEN_CACHE_DIR=$TIKTOKEN_CACHE_DIR ($(ls "$TIKTOKEN_CACHE_DIR" 2>/dev/null | wc -l) fichier(s))"
 # Warm-up chunker : force le 1er usage SentenceSplitter MAINTENANT (beaconé+borné).
 # Si tiktoken tentait encore le réseau, ça échoue ici en 60s — plus de hang muet 15min.
-timeout 60 python -c "import sys; sys.path.insert(0,'$CODE_DIR'); from pathlib import Path; from memory_core import build_chunks, CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHUNKS_PER_FILE; build_chunks(Path('CLAUDE.md'), open('$STAGING/VPAI/CLAUDE.md').read(), CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHUNKS_PER_FILE); print('chunker warm OK')" || fail "warm-up chunker (tiktoken offline KO ?)"
+cw_out=$(timeout 60 python -c "import sys; sys.path.insert(0,'$CODE_DIR'); from pathlib import Path; from memory_core import build_chunks, CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHUNKS_PER_FILE; print(build_chunks(Path('CLAUDE.md'), open('$STAGING/VPAI/CLAUDE.md').read(), CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHUNKS_PER_FILE).__len__(),'chunks'); print('chunker warm OK')" 2>&1)
+cw_rc=$?
+echo "$cw_out"
+[ $cw_rc -eq 0 ] || { report_diag chunker "rc=$cw_rc
+$cw_out"; fail "warm-up chunker rc=$cw_rc (tiktoken offline KO ? trace -> diag_chunker)"; }
 beacon g4_venv_done
 
 # Warm-up modèle HF MAINTENANT (download 1.2GB gated, borné+beaconé). Seule inconnue

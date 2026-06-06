@@ -3,6 +3,47 @@
 **Pourquoi** : user redémarre Ewutelo (canal SSH → Waza). Reprise propre ici.
 **Session Claude** : tourne SUR Waza. Reconnecter via SSH Ewutelo→Waza.
 
+---
+# 🔴 REPRISE 2026-06-06 (après gel subagent 10h) — LIRE EN PREMIER
+
+## Incident
+Un subagent (plomberie M3) a **figé ~10h** — cause quasi certaine : chargement de `SentenceTransformer(embeddinggemma-300m)` dans `test_memory_core.py` **sur Waza ARM** (lent/hang). **LEÇON DURE : ne JAMAIS charger/encoder le modèle sur Waza. L'embed tourne UNIQUEMENT sur le pod x86.** Marquer les tests embed `@pytest.mark.skipif` hors-pod.
+
+## État VÉRIFIÉ (au moment de la reprise)
+- **T1 fix B** : déployé + vérifié. Worker MemoryMax=4G/OOMScoreAdjust=1000, networkd/tailscaled=-900, net-watchdog.timer active. Worker timer **disabled** (à garder ainsi jusqu'à fin M3).
+- **T2 Qdrant** : `memory_v2` créée **vide** (768d cosine + 6 indexes wing/room/doc_kind/repo/topic/tags). 15 collections wipées. 14 APP épargnées. LiteLLM sain (semantic_cache recréée). Snapshots **offsite Sese** : `/home/mobuone/qdrant-snapshots-2026-06-05/` (258MB, 0 zéro-byte) + dans qdrant.
+- **Manifeste taxonomie** : `docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md` (commit cc67ad2) = SOURCE CANONIQUE wing/room/doc_kind + payload complet.
+- **R0 memory search CASSÉ** : `qdrant-find` MCP + `search_memory.py` pointent `memory_v1` (wipé). Réparé seulement quand memory_v2 peuplé + tooling repointé (partie M4).
+
+## Décisions M3 (FIGÉES ce soir)
+- **Bulk via 1 SEUL Pod CPU costaud** (RunPod 16-24 vCPU), PAS GPU. Raison : coût négligeable des 2 côtés (~$0.10-0.20), wall-clock similaire (borné par upsert VPN, pas l'embed), et **CPU pod = parité exacte** (pas de gate). Parallèle multi-pods = inutile.
+- **Parité = priorité user**. Pod x86, pins IDENTIQUES Waza : `sentence-transformers==5.1.2`, `torch==2.11.0`, `transformers==4.57.6`, `numpy==2.4.4`, modèle `google/embeddinggemma-300m`, `normalize=true`, **fp32**. x86 vs ARM → cosine ≈0.99999 (pas bit-exact, OK). Spot-check 1-échantillon non bloquant.
+- **Corpus** : 11 390 fichiers / 104 MB / **~78 500 chunks** (fantrad domine 60MB). Refdocs Tier1/2 viendront plus tard (D7).
+- **Staging pod** : repos clonables via `git@github-seko` (VPAI, flash-studio, story-engine, FanTrad, hawkeye, riposte, typebot-docs `https://github.com/baptisteArno/typebot.io.git`). **LOCAL-ONLY** (rsync Waza→pod via mesh) : **DOCS** (16MB), **podpilot**.
+- **Worker local PAS dans le hot-path bulk** : pod embed+upsert ; Waza ne sert que ~16MB local-only ; limiteur réel = upsert VPN → Sese Qdrant. Waza worker = incrémental après.
+- **Creds RunPod** : `~/projects/saas/fantrad/.env` (`RUNPOD_API_KEY`, `RUNPOD_VOLUME_ID`, `RUNPOD_ENDPOINT_ID`). Tooling fantrad = **serverless** (GraphQL `saveEndpoint`) → l'**on-demand pod** est à faire via REST `https://rest.runpod.io/v1/pods` (à vérifier R8).
+- **Clé Headscale éphémère** : créer sur le HUB seko-vpn : `ssh -i ~/.ssh/seko-vpn-deploy mobuone@87.106.30.160` → `headscale preauthkeys create --ephemeral` (+ ACL nœud) → **révoquer après** teardown pod.
+
+## Travail M3 PARTIEL (commit 71f8c63, WIP NON VÉRIFIÉ)
+- ✅ `scripts/memory/memory_core.py` (compile OK) : `classify_doc_kind`, `classify_room` (règles manifeste §3), `load_wing_room_lookup`, `build_payload`, chunking, `EmbeddingGemmaEncoder`. **MODULE PARTAGÉ** worker+batch (DRY/parité).
+- ⚠️ `scripts/memory/test_memory_core.py` : écrit mais **JAMAIS exécuté** (gel). À lancer **sans** les tests embed sur Waza (ou sur pod).
+- ❌ **PAS FAIT** : câblage worker. `roles/llamaindex-memory-worker/` INCHANGÉ → reste à faire :
+  1. `index.py.j2` : importer `memory_core`, ajouter wing/room/valid_from/valid_to au payload, compléter `merge_source_roots`.
+  2. `defaults/main.yml` : `wing:` par source (VPAI→infra ; flash-studio/story-engine/podpilot/hawkeye/fantrad/riposte→saas ; DOCS/typebot-docs→refdocs) + `collection_name`→`memory_v2`.
+  3. `sources.yml.j2` : émettre `wing`.
+  4. `tasks/main.yml` : déployer `memory_core.py` → `/opt/workstation/ai-memory-worker/`.
+
+## PROCHAINES ÉTAPES (ordre)
+1. **Valider memory_core** : `pytest scripts/memory/test_memory_core.py -v -k "not embed and not encode"` (éviter le chargement modèle sur Waza). Corriger si besoin.
+2. **Câbler le worker** (4 points ci-dessus).
+3. **Écrire le batch pod** `scripts/memory/gpu_ingest/` (importe memory_core ; venv pins ; staging git-clone + rsync DOCS/podpilot ; embed fp32 ; upsert direct memory_v2 via VPN ; trap staged-path → lookup keys = chemins pod).
+4. **Provision** : clé Headscale éphémère (hub seko-vpn) + pod CPU RunPod on-demand (REST /v1/pods) → join mesh → run batch → spot-check parité → bulk.
+5. **Teardown** pod + **révoquer** clé Headscale.
+6. **M4** : repointer `search_memory.py` + MCP qdrant-find sur memory_v2 (répare R0) ; filtres wing/room ; cap process ; re-enable worker timer (incrémental, capé).
+7. Plan B (reorg M1 + manifeste M5 ~/work).
+
+---
+
 ## Artefacts (commités sur origin/main sauf indiqué)
 - Spec : `docs/superpowers/specs/2026-06-05-memory-system-rebuild-design.md` (D1-D14) — `1ec1ae0`+`eea187b`
 - Plan A : `docs/superpowers/plans/2026-06-05-memory-rebuild-core.md` — `7d5e90a` (local, **pas poussé**)

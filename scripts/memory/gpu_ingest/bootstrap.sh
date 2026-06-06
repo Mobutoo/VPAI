@@ -46,6 +46,17 @@ beacon() {
   say "beacon stage_$1"
 }
 
+# report_diag <suffix> <texte> : écrit le texte (tail) en payload d'un point Qdrant
+# -> trace d'erreur LISIBLE DEPUIS WAZA (pas de logs pod via API). Termine le devinage.
+report_diag() {
+  local msg; msg=$(printf '%s' "$2" | tail -c 1500 | jq -Rs . 2>/dev/null || echo '"(jq KO)"')
+  curl -sS -X PUT "$QBASE/collections/diag_$1" "${QHDR[@]}" -H 'Content-Type: application/json' \
+    -d '{"vectors":{"size":1,"distance":"Cosine"}}' >/dev/null 2>&1 || true
+  curl -sS -X PUT "$QBASE/collections/diag_$1/points" "${QHDR[@]}" -H 'Content-Type: application/json' \
+    -d "{\"points\":[{\"id\":1,\"vector\":[0.0],\"payload\":{\"msg\":$msg}}]}" >/dev/null 2>&1 || true
+  say "diag_$1 écrit (lisible depuis Waza)"
+}
+
 # Filet anti-orphelin (REX FanTrad PROCEDURES.md P1 : trap EXIT => 0 pod orphelin).
 # do_stop est idempotent ; le trap EXIT le déclenche sur TOUTE sortie (gate fail,
 # erreur non gérée, SIGTERM), pas seulement les chemins explicites.
@@ -70,6 +81,12 @@ on_exit() {
     sleep 1500
   fi
   do_stop "trap exit rc=$rc"
+  # RunPod ré-exécute dockerStartCmd si le conteneur SORT (restart-loop observé
+  # 2026-06-06 : "already exists" + ré-joins Tailscale en boucle). Après avoir
+  # demandé le stop API, on ATTEND le kill externe au lieu de sortir tout de suite
+  # (sinon RunPod relance avant que le stop propage). Le watchdog dur reste le filet.
+  say "attente du kill externe (anti restart-loop)…"
+  sleep 180
 }
 trap on_exit EXIT INT TERM
 self_stop() { do_stop "$1"; exit "${2:-0}"; }
@@ -222,7 +239,14 @@ beacon g4_venv_done
 # restante : le download depuis huggingface.co (hôte ≠ Azure/nltk) hang-t-il sur le pod ?
 # Si oui, échec localisé ici (pas en plein G8). Si OK -> G8 = embedding pur, modèle en cache.
 say "=== G4b warm-up modèle embeddinggemma-300m ==="
-timeout 1200 python -c "import sys; sys.path.insert(0,'$CODE_DIR'); from memory_core import EmbeddingGemmaEncoder; EmbeddingGemmaEncoder('google/embeddinggemma-300m', True); print('model warm OK')" || fail "warm-up modèle HF (download/charge/gated KO ?)"
+mw_out=$(timeout 1200 python -c "import sys; sys.path.insert(0,'$CODE_DIR'); from memory_core import EmbeddingGemmaEncoder; e=EmbeddingGemmaEncoder('google/embeddinggemma-300m', True); print('model warm OK')" 2>&1)
+mw_rc=$?
+echo "$mw_out"
+if [ $mw_rc -ne 0 ]; then
+  report_diag model_warm "rc=$mw_rc
+$mw_out"
+  fail "warm-up modèle HF rc=$mw_rc (trace -> collection diag_model_warm, lisible depuis Waza)"
+fi
 beacon g4_model_warm
 
 say "=== G5 memory_v2 existe ==="
@@ -260,7 +284,7 @@ say "=== G8 bulk ingest ==="
 beacon g8_bulk_start
 python "${PI[@]}" 2>&1 | tee -a "$LOG"
 rc=${PIPESTATUS[0]}
-[ "$rc" = "0" ] || fail "bulk rc=$rc"
+[ "$rc" = "0" ] || { report_diag bulk "bulk rc=$rc — $(tail -c 1200 "$LOG")"; fail "bulk rc=$rc (trace -> diag_bulk)"; }
 
 say "=== G9 sentinelle + report ==="
 curl -sS -X PUT "$QBASE/collections/ingest_done" "${QHDR[@]}" -H 'Content-Type: application/json' \

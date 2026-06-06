@@ -45,6 +45,7 @@ from memory_core import (  # noqa: E402
     MAX_CHUNKS_PER_FILE,
     EmbeddingGemmaEncoder,
     build_chunks,
+    build_repo_git_shas,
     classify_doc_kind,
     classify_room,
     extract_structural_meta,
@@ -107,8 +108,13 @@ def build_vector_store(client, collection: str):
     )
 
 
-def process_one(file_abs: Path, lookup, encoder, host_origin: str):
-    """Construit les TextNode (embeddings inclus) pour un fichier. None si à ignorer."""
+def process_one(file_abs: Path, lookup, encoder, host_origin: str, git_shas_by_root=None):
+    """Construit les TextNode pour un fichier (embeddings inclus si encoder!=None).
+
+    git_shas_by_root : dict {root: {rel: sha}} précalculé (1 traversée git/repo, cf
+    build_repo_git_shas) — évite ~1 subprocess git/fichier (66% du temps bulk mesuré).
+    None -> fallback git_commit_sha par-fichier (verify-sample/benchmark, parité testée).
+    """
     resolved = resolve_source(file_abs, lookup)
     if resolved is None:
         return None
@@ -128,7 +134,10 @@ def process_one(file_abs: Path, lookup, encoder, host_origin: str):
     # git_sha : repo_root = root de la source (clone). "" si non-git (DOCS rsync) — non
     # inclus dans node_id (payload only), divergence acceptée vs worker pour ces sources.
     src_root = _source_root_for(file_abs, lookup)
-    git_sha = git_commit_sha(src_root, file_abs) if src_root else ""
+    if git_shas_by_root is not None:
+        git_sha = git_shas_by_root.get(src_root, {}).get(rel, "") if src_root else ""
+    else:
+        git_sha = git_commit_sha(src_root, file_abs) if src_root else ""
     struct_meta = extract_structural_meta(Path(rel), text)
     nodes = to_text_nodes(
         repo=repo,
@@ -213,17 +222,15 @@ def cmd_verify_sample(args, lookup) -> int:
 
 
 def cmd_benchmark(args, lookup) -> int:
-    """Bench HONNÊTE du débit embedding sur CE hardware.
+    """Bench HONNÊTE du chemin OPTIMISÉ sur CE hardware.
 
-    Mirror EXACT du bulk : itère de VRAIS fichiers clonés et appelle process_one
-    (donc encode_documents PAR FICHIER, ~13 chunks/appel). Surtout PAS un méga-batch
-    de strings identiques — sur GPU le débit est sensible à la taille de batch, un
-    méga-batch surévalue ce que le bulk per-fichier atteint réellement.
+    Mirror exact du bulk optimisé : git SHAs précalculés + build CPU sans embed +
+    encode BATCHÉ cross-fichier (batch_size=encode_batch). Sépare temps CPU (build :
+    chunk+metadata) et GPU (encode) -> dit où est le goulot, pas juste un débit global.
     Reporte device + dtype. Fail-fast si EXPECT_CUDA=1 et GPU non utilisé / non-fp32.
     """
     n = args.benchmark
     encoder = EmbeddingGemmaEncoder(EMBEDDING_MODEL, NORMALIZE)
-    # device/dtype réels du modèle chargé (ST auto-sélectionne cuda si dispo).
     try:
         param = next(encoder.model.parameters())
         device = str(param.device)
@@ -241,28 +248,35 @@ def cmd_benchmark(args, lookup) -> int:
 
     from memory_core import iter_source_files
 
-    files = 0
-    chunks = 0
-    t0 = time.monotonic()
+    git_shas_by_root = {root: build_repo_git_shas(root) for root in lookup if root.exists()}
+    files = chunks = 0
+    t_cpu = t_gpu = 0.0
+    buf: list = []
     for root, meta in lookup.items():
-        if not root.exists():
+        if not root.exists() or files >= n:
             continue
         for file_abs in iter_source_files(root):
             if files >= n:
                 break
-            res = process_one(file_abs, lookup, encoder, args.host_origin)
+            s = time.monotonic()
+            res = process_one(file_abs, lookup, None, args.host_origin, git_shas_by_root)
+            t_cpu += time.monotonic() - s
             if res is None:
                 continue
             files += 1
+            buf.extend(res[4])
             chunks += len(res[4])
-        if files >= n:
-            break
-    dur = time.monotonic() - t0
+    if buf:  # encode tout le buffer en 1 fois (gros matmul)
+        s = time.monotonic()
+        encoder.encode_documents([(x.metadata["title"], x.text) for x in buf], batch_size=args.encode_batch)
+        t_gpu += time.monotonic() - s
+    dur = t_cpu + t_gpu
     rate = chunks / max(1e-6, dur)
-    eta_min = (78500 / rate / 60) if rate > 0 else 0
+    eta_min = (chunks and 23664 / rate / 60) or 0
     log(
         f"BENCH files={files} chunks={chunks} dur={dur:.1f}s rate={rate:.1f} "
-        f"device={device} dtype={dtype} eta_78500={eta_min:.0f}min"
+        f"cpu_build={t_cpu:.1f}s gpu_encode={t_gpu:.1f}s batch={args.encode_batch} "
+        f"device={device} dtype={dtype} eta_24k={eta_min:.0f}min"
     )
     return 0
 
@@ -277,19 +291,34 @@ def cmd_ingest(args, lookup) -> int:
 
     from memory_core import iter_source_files
 
-    seen = 0
-    indexed_files = 0
-    indexed_chunks = 0
-    skipped = 0
-    errors = 0
-    batch: list = []
+    # PHASE GIT : 1 traversée git/repo (au lieu de ~1 subprocess/fichier = 66% du temps
+    # bulk mesuré 2026-06-06). Parité stricte vérifiée vs git_commit_sha (300/300).
+    t_git = time.monotonic()
+    git_shas_by_root = {root: build_repo_git_shas(root) for root in lookup if root.exists()}
+    log(f"git SHAs précalculés: {sum(len(d) for d in git_shas_by_root.values())} fichiers "
+        f"/ {len(git_shas_by_root)} repos en {time.monotonic()-t_git:.1f}s")
+
+    seen = indexed_files = indexed_chunks = skipped = errors = 0
+    t_cpu = t_gpu = 0.0  # instrumentation : build (CPU) vs encode (GPU)
+    pending: list = []   # TextNode SANS embedding, accumulés cross-fichier
     t0 = time.monotonic()
 
     def flush():
-        nonlocal batch
-        if batch and vector_store is not None:
-            vector_store.add(batch)
-        batch = []
+        """Encode TOUT le buffer en 1 appel (gros matmul GPU) puis upsert."""
+        nonlocal pending, t_gpu
+        if not pending:
+            return
+        if encoder is not None:
+            s = time.monotonic()
+            embs = encoder.encode_documents(
+                [(n.metadata["title"], n.text) for n in pending], batch_size=args.encode_batch
+            )
+            for n, e in zip(pending, embs, strict=True):
+                n.embedding = e
+            t_gpu += time.monotonic() - s
+        if vector_store is not None:
+            vector_store.add(pending)
+        pending = []
 
     for root, meta in lookup.items():
         if not root.exists():
@@ -300,7 +329,10 @@ def cmd_ingest(args, lookup) -> int:
                 break
             seen += 1
             try:
-                res = process_one(file_abs, lookup, encoder, args.host_origin)
+                # encoder=None -> build SANS embedding (encode batché au flush)
+                s = time.monotonic()
+                res = process_one(file_abs, lookup, None, args.host_origin, git_shas_by_root)
+                t_cpu += time.monotonic() - s
             except Exception as exc:  # noqa: BLE001
                 errors += 1
                 log(f"ERROR {file_abs}: {type(exc).__name__}: {exc}")
@@ -312,22 +344,25 @@ def cmd_ingest(args, lookup) -> int:
             indexed_files += 1
             indexed_chunks += len(nodes)
             if args.dry_run:
-                if seen % 200 == 0:
+                if seen % 500 == 0:
                     log(f"dry-run seen={seen} files={indexed_files} chunks={indexed_chunks}")
                 continue
-            batch.extend(nodes)
-            if len(batch) >= args.batch_size:
+            pending.extend(nodes)
+            if len(pending) >= args.flush_chunks:
                 flush()
-            if seen % 200 == 0:
-                rate = indexed_chunks / max(1e-6, time.monotonic() - t0)
-                log(f"seen={seen} files={indexed_files} chunks={indexed_chunks} ({rate:.0f} chunk/s)")
+            if seen % 500 == 0:
+                el = time.monotonic() - t0
+                log(f"seen={seen} files={indexed_files} chunks={indexed_chunks} "
+                    f"({indexed_chunks/max(1e-6,el):.0f} ch/s | cpu={t_cpu:.0f}s gpu={t_gpu:.0f}s)")
         if args.limit and seen >= args.limit:
             break
     flush()
     dur = time.monotonic() - t0
     log(
         f"DONE seen={seen} indexed_files={indexed_files} indexed_chunks={indexed_chunks} "
-        f"skipped={skipped} errors={errors} dur={dur:.0f}s dry_run={args.dry_run}"
+        f"skipped={skipped} errors={errors} dur={dur:.0f}s "
+        f"cpu_build={t_cpu:.0f}s gpu_encode={t_gpu:.0f}s "
+        f"({indexed_chunks/max(1e-6,dur):.1f} ch/s) dry_run={args.dry_run}"
     )
     return 1 if errors else 0
 
@@ -336,13 +371,15 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Bulk memory ingestion pod -> Qdrant memory_v2.")
     p.add_argument("--sources", required=True, help="sources.pod.yml (mapping root->wing/name).")
     p.add_argument("--collection", default="memory_v2")
-    p.add_argument("--batch-size", type=int, default=128, help="points par upsert Qdrant.")
+    p.add_argument("--batch-size", type=int, default=128, help="(déprécié) points par upsert — voir --flush-chunks.")
+    p.add_argument("--flush-chunks", type=int, default=1024, help="chunks accumulés avant encode batché + upsert.")
+    p.add_argument("--encode-batch", type=int, default=256, help="batch_size GPU de SentenceTransformer.encode (défaut ST=32).")
     p.add_argument("--limit", type=int, default=0, help="max fichiers (0 = illimité).")
     p.add_argument("--host-origin", default=HOST_ORIGIN, help="PARITÉ: garder 'waza'.")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--preflight", action="store_true", help="vérifie roots/lookup puis sort.")
     p.add_argument("--verify-sample", help="dump déterministe node_id pour UN fichier puis sort.")
-    p.add_argument("--benchmark", type=int, default=0, help="bench débit sur N vrais fichiers (per-fichier) puis sort.")
+    p.add_argument("--benchmark", type=int, default=0, help="bench chemin optimisé sur N vrais fichiers puis sort.")
     return p.parse_args()
 
 

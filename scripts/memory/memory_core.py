@@ -280,6 +280,35 @@ def git_commit_sha(repo_root: Path, file_path: Path) -> str:
     return result.stdout.strip()
 
 
+def build_repo_git_shas(repo_root: Path) -> dict[str, str]:
+    """Map {chemin_relatif: dernier_commit_SHA} pour TOUT le repo en 1 traversée git.
+
+    Remplace ~N subprocess `git_commit_sha` (1 par fichier = 66% du temps d'ingestion
+    bulk mesuré 2026-06-06) par UN SEUL `git log`. Parité STRICTE avec git_commit_sha :
+    git log est reverse-chronologique -> la PREMIÈRE occurrence d'un chemin = son commit
+    le plus récent = exactement ce que `git log -n 1 -- <path>` renvoie par fichier.
+    `core.quotePath=false` -> chemins UTF-8 bruts (pas d'octal \\xxx) ; `--no-renames`
+    aligne sur git_commit_sha (qui ne suit pas les renommages). git_sha = payload-only
+    (hors node_id) -> un miss éventuel ne casse pas l'idempotence.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-c", "core.quotePath=false", "-C", str(repo_root), "log",
+             "--format=C:%H", "--name-only", "--no-renames"],
+            check=False, capture_output=True, text=True,
+        )
+    except OSError:
+        return {}
+    shas: dict[str, str] = {}
+    cur = ""
+    for line in result.stdout.split("\n"):
+        if line.startswith("C:"):
+            cur = line[2:]
+        elif line and cur and line not in shas:
+            shas[line] = cur  # 1re occurrence = commit le plus récent (reverse-chrono)
+    return shas
+
+
 def extract_structural_meta(path: Path, text: str) -> dict[str, list[str]]:
     """Métadonnées structurelles (functions/classes/imports/exports/variables).
 
@@ -670,16 +699,24 @@ class EmbeddingGemmaEncoder:
         )
         return vector.tolist()
 
-    def encode_documents(self, documents: list[tuple[str, str]]) -> list[list[float]]:
+    def encode_documents(
+        self, documents: list[tuple[str, str]], batch_size: int | None = None
+    ) -> list[list[float]]:
         prompts = []
         for title, text in documents:
             safe_title = title.strip() if title.strip() else "none"
             prompts.append(f"title: {safe_title} | text: {text}")
-        vectors = self.model.encode(
-            prompts,
-            normalize_embeddings=self.normalize_embeddings,
-            show_progress_bar=False,
-        )
+        # batch_size : ST défaut=32. Sur GPU, un batch plus grand (256+) = matmuls plus
+        # gros -> meilleure occupation SM. Vecteurs équivalents à tolérance fp près
+        # (padding/réduction du batch décale ~1e-6, < divergence ARM/x86 déjà acceptée ;
+        # node_id=texte inchangé). None -> défaut ST (parité stricte worker).
+        kwargs: dict[str, Any] = {
+            "normalize_embeddings": self.normalize_embeddings,
+            "show_progress_bar": False,
+        }
+        if batch_size is not None:
+            kwargs["batch_size"] = batch_size
+        vectors = self.model.encode(prompts, **kwargs)
         return [vector.tolist() for vector in vectors]
 
 

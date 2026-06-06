@@ -55,21 +55,21 @@ build_env_json() {  # $1 = PROBE_ONLY value
     --arg authkey "$HEADSCALE_AUTHKEY" --arg login "$HEADSCALE_LOGIN_SERVER" \
     --arg pat "$GITHUB_PAT" --arg qurl "$QDRANT_URL" --arg qkey "$QDRANT_API_KEY" \
     --arg rpkey "$RUNPOD_API_KEY" --arg sese "$SESE_TAILNET_IP" --arg owner "$GIT_OWNER" \
-    --arg hf "$HF_TOKEN" --arg probe "$1" '{
+    --arg hf "$HF_TOKEN" --arg probe "$1" --arg keep "${2:-0}" '{
       HEADSCALE_AUTHKEY:$authkey, HEADSCALE_LOGIN_SERVER:$login, GITHUB_PAT:$pat,
       QDRANT_URL:$qurl, QDRANT_API_KEY:$qkey, RUNPOD_API_KEY:$rpkey,
       HF_TOKEN:$hf, HUGGINGFACE_HUB_TOKEN:$hf,
-      SESE_TAILNET_IP:$sese, GIT_OWNER:$owner, PROBE_ONLY:$probe
+      SESE_TAILNET_IP:$sese, GIT_OWNER:$owner, PROBE_ONLY:$probe, DEBUG_KEEPALIVE:$keep
     }'
 }
 
 DOCKER_START_CMD='set -e; export DEBIAN_FRONTEND=noninteractive; apt-get update -qq; apt-get install -y -qq git curl >/dev/null; git clone --depth 1 "https://x-access-token:${GITHUB_PAT}@github.com/${GIT_OWNER}/VPAI.git" /staging/VPAI; exec bash /staging/VPAI/scripts/memory/gpu_ingest/bootstrap.sh'
 
-build_payload() {  # $1 = PROBE_ONLY value
+build_payload() {  # $1 = PROBE_ONLY  $2 = DEBUG_KEEPALIVE
   jq -n \
     --arg name "$POD_NAME" --arg image "$POD_IMAGE" --arg cloud "$CLOUD_TYPE" \
     --argjson vcpu "$VCPU" --argjson cdisk "$CONTAINER_DISK_GB" --argjson vol "$VOLUME_GB" \
-    --argjson envobj "$(build_env_json "$1")" --arg startcmd "$DOCKER_START_CMD" '
+    --argjson envobj "$(build_env_json "$1" "${2:-0}")" --arg startcmd "$DOCKER_START_CMD" '
     {
       name: $name, imageName: $image, computeType: "CPU", cloudType: $cloud,
       vcpuCount: $vcpu, containerDiskInGb: $cdisk, volumeInGb: $vol,
@@ -89,10 +89,10 @@ cmd_check() {
   echo "[check] --probe pour R4 (Tailscale+Qdrant puis self-stop), --create pour le run complet."
 }
 
-post_create() {  # $1 = PROBE_ONLY
+post_create() {  # $1 = PROBE_ONLY  $2 = DEBUG_KEEPALIVE
   load_secrets
-  local payload; payload="$(build_payload "$1")"
-  echo "[create] POST $API (PROBE_ONLY=$1) …" >&2
+  local payload; payload="$(build_payload "$1" "${2:-0}")"
+  echo "[create] POST $API (PROBE_ONLY=$1 DEBUG_KEEPALIVE=${2:-0}) …" >&2
   local resp; resp="$(curl -sS -X POST "$API" \
     -H "Authorization: Bearer $RUNPOD_API_KEY" \
     -H "Content-Type: application/json" -d "$payload")"
@@ -107,11 +107,12 @@ cmd_stop()      { load_secrets; curl -sS -X POST "$API/$1/stop" -H "Authorizatio
 cmd_terminate() { load_secrets; curl -sS -X DELETE "$API/$1" -H "Authorization: Bearer $RUNPOD_API_KEY" -w 'HTTP %{http_code}\n'; }
 
 case "${1:---check}" in
-  --check)     cmd_check 0 ;;
-  --probe)     post_create 1 ;;
-  --create)    post_create 0 ;;
+  --check)        cmd_check 0 ;;
+  --probe)        post_create 1 0 ;;
+  --debug-probe)  post_create 1 1 ;;   # PROBE_ONLY + keepalive (logs console lisibles)
+  --create)       post_create 0 0 ;;
   --status)    [ -n "${2:-}" ] || { echo "usage: --status <podId>" >&2; exit 2; }; cmd_status "$2" ;;
   --stop)      [ -n "${2:-}" ] || { echo "usage: --stop <podId>" >&2; exit 2; }; cmd_stop "$2" ;;
   --terminate) [ -n "${2:-}" ] || { echo "usage: --terminate <podId>" >&2; exit 2; }; cmd_terminate "$2" ;;
-  *) echo "usage: $0 [--check|--probe|--create|--status <id>|--stop <id>|--terminate <id>]" >&2; exit 2 ;;
+  *) echo "usage: $0 [--check|--probe|--debug-probe|--create|--status <id>|--stop <id>|--terminate <id>]" >&2; exit 2 ;;
 esac

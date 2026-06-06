@@ -49,7 +49,17 @@ do_stop() {
     say "WARN: RUNPOD_API_KEY/RUNPOD_POD_ID absent — stop manuel requis"
   fi
 }
-on_exit() { local rc=$?; do_stop "trap exit rc=$rc"; }
+on_exit() {
+  local rc=$?
+  # DEBUG : garder le conteneur vivant après sortie pour lire les logs console
+  # (RunPod n'expose pas les logs via API ; le conteneur qui exit fait disparaître
+  # la trace). Le watchdog dur coupe quand même à WATCHDOG_MAX.
+  if [ "${DEBUG_KEEPALIVE:-0}" = "1" ]; then
+    say "DEBUG_KEEPALIVE=1 (rc=$rc) — conteneur maintenu 1500s pour lecture logs console. Watchdog stoppe à ${WATCHDOG_MAX}s."
+    sleep 1500
+  fi
+  do_stop "trap exit rc=$rc"
+}
 trap on_exit EXIT INT TERM
 self_stop() { do_stop "$1"; exit "${2:-0}"; }
 fail() { say "GATE FAIL: $*"; exit 1; }   # le trap EXIT self-stoppe

@@ -82,7 +82,11 @@ say "=== G2 Qdrant joignable ==="
 say "qdrant healthz OK"
 
 if [ "${PROBE_ONLY:-0}" = "1" ]; then
-  say "PROBE_ONLY=1 -> primitif réseau prouvé (R4). Stop."
+  # Témoin observable à distance : écrire la collection prouve Tailscale+Qdrant+write
+  # (le pod n'a pas de logs lisibles via API REST). Lisible ensuite depuis Waza.
+  curl -sS -X PUT "$QBASE/collections/probe_ok" "${QHDR[@]}" -H 'Content-Type: application/json' \
+    -d '{"vectors":{"size":1,"distance":"Cosine"}}' -w '\n[probe] PUT HTTP %{http_code}\n' || say "WARN probe_ok PUT"
+  say "PROBE_ONLY=1 -> primitif réseau prouvé (R4) + témoin probe_ok écrit. Stop."
   self_stop "probe ok" 0
 fi
 

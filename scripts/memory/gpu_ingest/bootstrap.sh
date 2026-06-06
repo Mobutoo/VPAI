@@ -225,6 +225,39 @@ say "threads CPU: OMP_NUM_THREADS=$OMP_NUM_THREADS"
 pip install -q -U pip >/dev/null 2>&1 || true
 timeout 1800 pip install -q -r "$GPU_DIR/requirements.lock.txt" >/dev/null 2>&1 || fail "pip install lock (timeout/erreur 1800s)"
 beacon g4_pip_done
+
+# --- GPU : aligner torch sur le driver hôte (sinon GPU idle silencieux) -----------
+# Le lock pinne torch==2.11.0 = build cu13 (CUDA 13) -> exige driver CUDA>=13. Sur un
+# hôte L4 driver 12.x, cuda.is_available()=False -> fallback CPU (observé: GPU 0%,
+# CPU 100%). On DÉTECTE la CUDA max du driver (nvidia-smi, runtime, pas de devinette)
+# et on réinstalle torch depuis l'index cuXY <= cmax (compat minor-version CUDA).
+# torch 2.11.0 existe sur cu126/cu128/cu130 (vérifié 2026-06-06) -> version préservée
+# si driver>=12.6 ; sinon downgrade torch (divergence vecteurs acceptée, node_id=texte).
+if [ "${EXPECT_CUDA:-0}" = "1" ]; then
+  smi=$(nvidia-smi 2>&1 | head -20 || echo "nvidia-smi ABSENT")
+  cmax=$(printf '%s' "$smi" | grep -oE 'CUDA Version: [0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+' | head -1)
+  drv=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1)
+  idx=""; tspec="torch"
+  case "$cmax" in
+    13.*|14.*)      idx="" ;;                              # lock cu13 OK
+    12.8|12.9)      idx="cu128"; tspec="torch==2.11.0" ;;
+    12.6|12.7)      idx="cu126"; tspec="torch==2.11.0" ;;
+    12.4|12.5)      idx="cu124" ;;                         # torch<=2.6 (unpinned)
+    12.1|12.2|12.3) idx="cu121" ;;                         # torch<=2.5
+    11.*|12.0)      idx="cu118" ;;
+    *)              idx="cu126"; tspec="torch==2.11.0" ;;  # inconnu -> tente cu126
+  esac
+  report_diag gpu "driver=$drv cuda_max=$cmax -> torch_index=${idx:-default-cu13} tspec=$tspec | $(printf '%s' "$smi" | tr '\n' ' ' | cut -c1-300)"
+  if [ -n "$idx" ]; then
+    say "GPU: driver CUDA $cmax (driver $drv) -> réinstalle $tspec depuis $idx"
+    timeout 1200 pip install -q --force-reinstall --no-cache-dir "$tspec" \
+      --index-url "https://download.pytorch.org/whl/$idx" >/dev/null 2>&1 \
+      || { report_diag gpu "FAIL réinstall $tspec @ $idx"; fail "réinstall torch $idx KO"; }
+    say "GPU: torch réinstallé ($tspec @ $idx)"
+  else
+    say "GPU: driver CUDA $cmax >= 13 -> torch cu13 du lock conservé"
+  fi
+fi
 nltk_rc=1; nltk_out=""
 for k in 1 2 3; do
   nltk_out=$(python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')" 2>&1) && { nltk_rc=0; break; }
@@ -257,16 +290,21 @@ beacon g4_venv_done
 say "=== G4b warm-up modèle embeddinggemma-300m ==="
 mw_out=$(timeout 1200 python -c "
 import sys, os; sys.path.insert(0,'$CODE_DIR')
+import torch
+tcuda=torch.version.cuda; avail=torch.cuda.is_available()
+gpu=torch.cuda.get_device_name(0) if avail else 'none'
+print(f'torch={torch.__version__} torch.version.cuda={tcuda} cuda.is_available={avail} gpu={gpu}')
 from memory_core import EmbeddingGemmaEncoder
 e=EmbeddingGemmaEncoder('google/embeddinggemma-300m', True)
 p=next(e.model.parameters()); dev=str(p.device); dt=str(p.dtype)
 print(f'model warm OK device={dev} dtype={dt}')
 if os.environ.get('EXPECT_CUDA')=='1':
-    assert dev.startswith('cuda'), f'EXPECT_CUDA=1 mais device={dev} (GPU non utilisé)'
+    assert dev.startswith('cuda'), f'EXPECT_CUDA=1 mais device={dev} (GPU non utilisé) torch.cuda={tcuda} avail={avail}'
     assert dt=='torch.float32', f'EXPECT_CUDA=1 mais dtype={dt} (≠ fp32, vecteurs divergents)'
 " 2>&1)
 mw_rc=$?
 echo "$mw_out"
+report_diag gpu_warm "rc=$mw_rc | $(printf '%s' "$mw_out" | tr '\n' ' ' | cut -c1-400)"
 if [ $mw_rc -ne 0 ]; then
   report_diag model_warm "rc=$mw_rc
 $mw_out"

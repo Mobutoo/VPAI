@@ -63,7 +63,11 @@ build_env_json() {  # $1 = PROBE_ONLY value
     }'
 }
 
-DOCKER_START_CMD='set -e; export DEBIAN_FRONTEND=noninteractive; apt-get update -qq; apt-get install -y -qq git curl >/dev/null; git clone --depth 1 "https://x-access-token:${GITHUB_PAT}@github.com/${GIT_OWNER}/VPAI.git" /staging/VPAI; exec bash /staging/VPAI/scripts/memory/gpu_ingest/bootstrap.sh'
+# Préambule : verbeux (set -x -> console RunPod), pas de set -e (sinon exit avant
+# tout diagnostic). Sur succès -> exec bootstrap.sh (qui prend le relais + son trap).
+# Sur échec préambule -> si DEBUG_KEEPALIVE=1 garder vivant pour lire les logs console,
+# sinon self-stop (pas d'orphelin). Retry apt (réseau pod parfois pas prêt au boot).
+DOCKER_START_CMD='set -x; export DEBIAN_FRONTEND=noninteractive; { for i in 1 2 3; do apt-get update && break; echo "apt retry $i"; sleep 5; done; apt-get install -y git curl && git clone --depth 1 "https://x-access-token:${GITHUB_PAT}@github.com/${GIT_OWNER}/VPAI.git" /staging/VPAI && exec bash /staging/VPAI/scripts/memory/gpu_ingest/bootstrap.sh; }; rc=$?; echo "=== PREAMBLE FAILED rc=$rc ==="; if [ "${DEBUG_KEEPALIVE:-0}" = "1" ]; then echo "keepalive 1800s — lis Container Logs"; sleep 1800; fi; [ -n "${RUNPOD_API_KEY:-}" ] && curl -s -X POST "https://rest.runpod.io/v1/pods/${RUNPOD_POD_ID}/stop" -H "Authorization: Bearer ${RUNPOD_API_KEY}" >/dev/null 2>&1'
 
 build_payload() {  # $1 = PROBE_ONLY  $2 = DEBUG_KEEPALIVE
   jq -n \

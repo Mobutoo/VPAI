@@ -98,8 +98,11 @@ fi
 sleep 4
 say "tailscaled log:"; tail -8 /var/log/tailscaled.log 2>/dev/null || true
 # timeout DUR + capture du motif réel (clé expirée / réseau / daemon). Ne PAS masquer.
+# --accept-dns=true OBLIGATOIRE : le pod doit recevoir le split-DNS Headscale
+# (qd.ewutelo.cloud -> 100.64.0.14 tailnet). Sinon il résout l'IP PUBLIQUE OVH et
+# Caddy renvoie 403 (client_ip hors VPN). Le proxy userspace résout via ce DNS.
 ts_out="$(timeout 120 tailscale up --login-server="$HEADSCALE_LOGIN_SERVER" \
-  --authkey="$HEADSCALE_AUTHKEY" --hostname=memory-bulk-pod --accept-dns=false 2>&1)"
+  --authkey="$HEADSCALE_AUTHKEY" --hostname=memory-bulk-pod --accept-dns=true 2>&1)"
 ts_rc=$?
 if [ $ts_rc -ne 0 ]; then
   say "tailscale up rc=$ts_rc — sortie:"; echo "$ts_out"

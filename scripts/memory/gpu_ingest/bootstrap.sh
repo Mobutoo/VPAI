@@ -205,7 +205,25 @@ timeout 1800 pip install -q -r "$GPU_DIR/requirements.lock.txt" >/dev/null 2>&1 
 beacon g4_pip_done
 python -c "import nltk; nltk.download('punkt'); nltk.download('punkt_tab')" >/dev/null 2>&1 || fail "nltk punkt"
 say "venv prêt : $(python --version)"
+
+# CACHE TIKTOKEN OFFLINE (root cause hang G7 2026-06-06) : SentenceSplitter (llama-index)
+# télécharge cl100k_base depuis openaipublic.blob.core.windows.net au 1er chunk. Ce
+# endpoint Azure HANG depuis le pod (alors que github/nltk/HF passent). Le fichier est
+# baké dans le repo (clé sha1 déterministe) -> résolution offline, zéro réseau, parité
+# tokenizer garantie. Le tokenizer DOIT rester tiktoken (sinon node_id divergent).
+export TIKTOKEN_CACHE_DIR="$GPU_DIR/tiktoken_cache"
+say "TIKTOKEN_CACHE_DIR=$TIKTOKEN_CACHE_DIR ($(ls "$TIKTOKEN_CACHE_DIR" 2>/dev/null | wc -l) fichier(s))"
+# Warm-up chunker : force le 1er usage SentenceSplitter MAINTENANT (beaconé+borné).
+# Si tiktoken tentait encore le réseau, ça échoue ici en 60s — plus de hang muet 15min.
+timeout 60 python -c "import sys; sys.path.insert(0,'$CODE_DIR'); from pathlib import Path; from memory_core import build_chunks, CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHUNKS_PER_FILE; build_chunks(Path('CLAUDE.md'), open('$STAGING/VPAI/CLAUDE.md').read(), CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHUNKS_PER_FILE); print('chunker warm OK')" || fail "warm-up chunker (tiktoken offline KO ?)"
 beacon g4_venv_done
+
+# Warm-up modèle HF MAINTENANT (download 1.2GB gated, borné+beaconé). Seule inconnue
+# restante : le download depuis huggingface.co (hôte ≠ Azure/nltk) hang-t-il sur le pod ?
+# Si oui, échec localisé ici (pas en plein G8). Si OK -> G8 = embedding pur, modèle en cache.
+say "=== G4b warm-up modèle embeddinggemma-300m ==="
+timeout 1200 python -c "import sys; sys.path.insert(0,'$CODE_DIR'); from memory_core import EmbeddingGemmaEncoder; EmbeddingGemmaEncoder('google/embeddinggemma-300m', True); print('model warm OK')" || fail "warm-up modèle HF (download/charge/gated KO ?)"
+beacon g4_model_warm
 
 say "=== G5 memory_v2 existe ==="
 "${CURL[@]}" "${QHDR[@]}" "$QBASE/collections/memory_v2" >/dev/null || fail "collection memory_v2 absente"
@@ -214,14 +232,15 @@ export QDRANT_URL QDRANT_API_KEY
 PI=("$GPU_DIR/pod_ingest.py" --sources "$GPU_DIR/sources.pod.yml")
 
 say "=== G6 preflight ==="
-python "${PI[@]}" --preflight || fail "preflight"
+timeout 600 python "${PI[@]}" --preflight || fail "preflight (timeout 600s)"
+beacon g6_preflight_done
 
 say "=== G7 self-check node_id (parité) ==="
 REF="$GPU_DIR/reference_nodeids.json"
 check_one() {  # key file
   local key="$1" file="$2"
   local got exp
-  got=$(python "${PI[@]}" --verify-sample "$file" 2>/dev/null \
+  got=$(timeout 120 python "${PI[@]}" --verify-sample "$file" 2>/dev/null \
     | jq -S '{chunk_count, nodes:[.nodes[]|{node_id,chunk_text_sha256}]}')
   exp=$(jq -S --arg k "$key" '.samples[$k] | {chunk_count, nodes:[.nodes[]|{node_id,chunk_text_sha256}]}' "$REF")
   if [ "$got" != "$exp" ]; then

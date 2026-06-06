@@ -55,11 +55,13 @@ build_env_json() {  # $1 = PROBE_ONLY value
     --arg authkey "$HEADSCALE_AUTHKEY" --arg login "$HEADSCALE_LOGIN_SERVER" \
     --arg pat "$GITHUB_PAT" --arg qurl "$QDRANT_URL" --arg qkey "$QDRANT_API_KEY" \
     --arg rpkey "$RUNPOD_API_KEY" --arg sese "$SESE_TAILNET_IP" --arg owner "$GIT_OWNER" \
-    --arg hf "$HF_TOKEN" --arg probe "$1" --arg keep "${2:-0}" '{
+    --arg hf "$HF_TOKEN" --arg probe "$1" --arg keep "${2:-0}" \
+    --arg wd "${WATCHDOG_MAX:-14400}" '{
       HEADSCALE_AUTHKEY:$authkey, HEADSCALE_LOGIN_SERVER:$login, GITHUB_PAT:$pat,
       QDRANT_URL:$qurl, QDRANT_API_KEY:$qkey, RUNPOD_API_KEY:$rpkey,
       HF_TOKEN:$hf, HUGGINGFACE_HUB_TOKEN:$hf,
-      SESE_TAILNET_IP:$sese, GIT_OWNER:$owner, PROBE_ONLY:$probe, DEBUG_KEEPALIVE:$keep
+      SESE_TAILNET_IP:$sese, GIT_OWNER:$owner, PROBE_ONLY:$probe, DEBUG_KEEPALIVE:$keep,
+      WATCHDOG_MAX:$wd
     }'
 }
 
@@ -67,7 +69,7 @@ build_env_json() {  # $1 = PROBE_ONLY value
 # tout diagnostic). Sur succès -> exec bootstrap.sh (qui prend le relais + son trap).
 # Sur échec préambule -> si DEBUG_KEEPALIVE=1 garder vivant pour lire les logs console,
 # sinon self-stop (pas d'orphelin). Retry apt (réseau pod parfois pas prêt au boot).
-DOCKER_START_CMD='set -x; export DEBIAN_FRONTEND=noninteractive; { for i in 1 2 3; do apt-get update && break; echo "apt retry $i"; sleep 5; done; apt-get install -y git curl && git clone --depth 1 "https://x-access-token:${GITHUB_PAT}@github.com/${GIT_OWNER}/VPAI.git" /staging/VPAI && exec bash /staging/VPAI/scripts/memory/gpu_ingest/bootstrap.sh; }; rc=$?; echo "=== PREAMBLE FAILED rc=$rc ==="; if [ "${DEBUG_KEEPALIVE:-0}" = "1" ]; then echo "keepalive 1800s — lis Container Logs"; sleep 1800; fi; [ -n "${RUNPOD_API_KEY:-}" ] && curl -s -X POST "https://rest.runpod.io/v1/pods/${RUNPOD_POD_ID}/stop" -H "Authorization: Bearer ${RUNPOD_API_KEY}" >/dev/null 2>&1'
+DOCKER_START_CMD='set -x; export DEBIAN_FRONTEND=noninteractive; { for i in 1 2 3; do apt-get update && break; echo "apt retry $i"; sleep 5; done; apt-get install -y git curl && { ok=0; for j in 1 2 3 4 5; do git clone --depth 1 "https://x-access-token:${GITHUB_PAT}@github.com/${GIT_OWNER}/VPAI.git" /staging/VPAI && { ok=1; break; }; echo "git clone retry $j (rc=$?)"; rm -rf /staging/VPAI; sleep 10; done; [ "$ok" = 1 ]; } && exec bash /staging/VPAI/scripts/memory/gpu_ingest/bootstrap.sh; }; rc=$?; echo "=== PREAMBLE FAILED rc=$rc ==="; if [ "${DEBUG_KEEPALIVE:-0}" = "1" ]; then echo "keepalive 1800s — lis Container Logs"; sleep 1800; fi; [ -n "${RUNPOD_API_KEY:-}" ] && curl -s -X POST "https://rest.runpod.io/v1/pods/${RUNPOD_POD_ID}/stop" -H "Authorization: Bearer ${RUNPOD_API_KEY}" >/dev/null 2>&1'
 
 build_payload() {  # $1 = PROBE_ONLY  $2 = DEBUG_KEEPALIVE
   jq -n \

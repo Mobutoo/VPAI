@@ -82,18 +82,22 @@ fi
 say "=== G1 deps + Tailscale ==="
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq || fail "apt update"
-apt-get install -y -qq git curl ca-certificates jq python3-venv iproute2 >/dev/null || fail "apt install"
+apt-get install -y -qq git curl ca-certificates jq python3-venv iproute2 socat dnsutils >/dev/null || fail "apt install"
 curl -fsSL https://tailscale.com/install.sh | sh >/dev/null 2>&1 || fail "tailscale install"
 
+USERSPACE=0
 if [ -e /dev/net/tun ]; then
   say "TUN dispo -> mode kernel"
   tailscaled --state=/var/lib/tailscale/tailscaled.state >/var/log/tailscaled.log 2>&1 &
 else
+  USERSPACE=1
   say "pas de TUN -> userspace + http proxy :1055"
   tailscaled --tun=userspace-networking --outbound-http-proxy-listen=localhost:1055 \
     --state=mem: >/var/log/tailscaled.log 2>&1 &
-  # qdrant-client (httpx) + curl honorent HTTPS_PROXY. Pas de SOCKS (socksio absent du lock).
-  export HTTPS_PROXY=http://localhost:1055 HTTP_PROXY=http://localhost:1055
+  # PAS d'export HTTPS_PROXY global : le préambule a prouvé l'egress public DIRECT
+  # (apt+git clone sans proxy). github/HF/rest.runpod.io sortent en direct ; seul
+  # Qdrant passe par le mesh, via le pont socat ci-dessous (socat dialogue avec le
+  # proxy :1055 explicitement, indépendant de l'env). => self-stop direct sans watchdog.
 fi
 sleep 4
 say "tailscaled log:"; tail -8 /var/log/tailscaled.log 2>/dev/null || true
@@ -109,11 +113,39 @@ if [ $ts_rc -ne 0 ]; then
   say "tailscaled log (tail):"; tail -20 /var/log/tailscaled.log 2>/dev/null || true
   fail "tailscale up (rc=$ts_rc — voir motif ci-dessus : authkey expirée/invalide ? réseau ?)"
 fi
-grep -q "qd.ewutelo.cloud" /etc/hosts || echo "$SESE_TAILNET_IP qd.ewutelo.cloud" >> /etc/hosts
 say "tailscale OK : $(tailscale ip -4 2>/dev/null | head -1)"
 
+# --- Routage Qdrant via le mesh ---
+# qd.ewutelo.cloud N'EST PAS un nom MagicDNS (*.ts.net) : c'est un domaine custom
+# avec split-DNS Headscale -> 100.64.0.14 pour les pairs tailnet. En userspace, le
+# proxy HTTP :1055 résout pourtant l'IP PUBLIQUE OVH (split-DNS non propagé au proxy ;
+# /etc/hosts ignoré sur le CONNECT) -> Caddy `vpn_only` 403 (incident 2026-06-06).
+# Fix déterministe SANS DNS : pont socat épinglé sur l'IP tailnet de Sese.
+#   socat 127.0.0.1:443 --(CONNECT 100.64.0.14:443 via proxy :1055)--> Caddy mesh
+#   /etc/hosts qd.ewutelo.cloud -> 127.0.0.1 => curl ET httpx (qdrant-client) sortent
+#   par socat (mesh). HF/github/runpod sortent en DIRECT (pas de proxy global).
+#   NO_PROXY=qd... : ceinture+bretelles si un proxy était hérité d'ailleurs (sinon moot).
+if [ "$USERSPACE" = 1 ]; then
+  say "userspace -> pont socat qd.ewutelo.cloud:443 -> tailnet $SESE_TAILNET_IP via proxy :1055"
+  socat TCP4-LISTEN:443,bind=127.0.0.1,reuseaddr,fork \
+    "PROXY:127.0.0.1:${SESE_TAILNET_IP}:443,proxyport=1055" >/var/log/socat.log 2>&1 &
+  disown
+  sleep 2
+  sed -i '/qd\.ewutelo\.cloud/d' /etc/hosts
+  echo "127.0.0.1 qd.ewutelo.cloud" >> /etc/hosts
+  export NO_PROXY="qd.ewutelo.cloud,127.0.0.1,localhost" no_proxy="qd.ewutelo.cloud,127.0.0.1,localhost"
+else
+  grep -q "qd.ewutelo.cloud" /etc/hosts || echo "$SESE_TAILNET_IP qd.ewutelo.cloud" >> /etc/hosts
+fi
+
 say "=== G2 Qdrant joignable ==="
-"${CURL[@]}" "${QHDR[@]}" "$QBASE/healthz" >/dev/null || fail "qdrant healthz injoignable"
+# Dump diagnostic (les logs pod ne sont lisibles que via console UI -> tout d'un coup).
+say "diag: getent qd        = $(getent hosts qd.ewutelo.cloud 2>/dev/null | tr '\n' ' ')"
+say "diag: tailscale ping    = $(timeout 15 tailscale ping "$SESE_TAILNET_IP" 2>&1 | tail -1)"
+[ "$USERSPACE" = 1 ] && say "diag: socat.log         = $(tail -3 /var/log/socat.log 2>/dev/null | tr '\n' '|')"
+diag_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "${QHDR[@]}" "$QBASE/healthz" 2>/dev/null || echo 000)
+say "diag: healthz HTTP      = $diag_code"
+"${CURL[@]}" "${QHDR[@]}" "$QBASE/healthz" >/dev/null || fail "qdrant healthz injoignable (HTTP $diag_code)"
 say "qdrant healthz OK"
 
 if [ "${PROBE_ONLY:-0}" = "1" ]; then

@@ -328,6 +328,14 @@ def cmd_ingest(args, lookup) -> int:
     pending: list = []   # TextNode SANS embedding, accumulés cross-fichier
     t0 = time.monotonic()
 
+    # bf16 : autocast cuda côté POD uniquement (tensor cores L4, ~1.64x). L'encodeur
+    # partagé reste fp32-pur -> worker Waza ARM intact (pas de bf16 HW de toute façon).
+    # Dérive fp32-vs-bf16 mesurée min=0.99992 (n=398) -> mixage worker-fp32/pod-bf16 sûr.
+    autocast_cm = None
+    if args.bf16:
+        import torch
+        autocast_cm = lambda: torch.autocast("cuda", dtype=torch.bfloat16)
+
     def flush():
         """Encode TOUT le buffer en 1 appel (gros matmul GPU) puis upsert."""
         nonlocal pending, t_gpu
@@ -335,9 +343,12 @@ def cmd_ingest(args, lookup) -> int:
             return
         if encoder is not None:
             s = time.monotonic()
-            embs = encoder.encode_documents(
-                [(n.metadata["title"], n.text) for n in pending], batch_size=args.encode_batch
-            )
+            prompts_b = [(n.metadata["title"], n.text) for n in pending]
+            if autocast_cm is not None:
+                with autocast_cm():
+                    embs = encoder.encode_documents(prompts_b, batch_size=args.encode_batch)
+            else:
+                embs = encoder.encode_documents(prompts_b, batch_size=args.encode_batch)
             for n, e in zip(pending, embs, strict=True):
                 n.embedding = e
             t_gpu += time.monotonic() - s
@@ -386,7 +397,7 @@ def cmd_ingest(args, lookup) -> int:
     log(
         f"DONE seen={seen} indexed_files={indexed_files} indexed_chunks={indexed_chunks} "
         f"skipped={skipped} errors={errors} dur={dur:.0f}s "
-        f"cpu_build={t_cpu:.0f}s gpu_encode={t_gpu:.0f}s "
+        f"cpu_build={t_cpu:.0f}s gpu_encode={t_gpu:.0f}s bf16={args.bf16} "
         f"({indexed_chunks/max(1e-6,dur):.1f} ch/s) dry_run={args.dry_run}"
     )
     return 1 if errors else 0
@@ -399,6 +410,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--batch-size", type=int, default=128, help="(déprécié) points par upsert — voir --flush-chunks.")
     p.add_argument("--flush-chunks", type=int, default=1024, help="chunks accumulés avant encode batché + upsert.")
     p.add_argument("--encode-batch", type=int, default=64, help="batch_size GPU (256 OOM sur L4 24GB avec seq 2048 ; 64 = 1/4 footprint, sûr).")
+    p.add_argument("--bf16", action="store_true", help="autocast bf16 cuda côté pod (tensor cores ~1.64x, dérive mesurée 0.99992). Encodeur reste fp32-pur.")
     p.add_argument("--limit", type=int, default=0, help="max fichiers (0 = illimité).")
     p.add_argument("--host-origin", default=HOST_ORIGIN, help="PARITÉ: garder 'waza'.")
     p.add_argument("--dry-run", action="store_true")

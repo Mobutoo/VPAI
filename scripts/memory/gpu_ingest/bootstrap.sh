@@ -363,7 +363,11 @@ say "=== G8 bulk ingest ==="
 # Si au prochain run g8_bulk_start est présent mais memory_v2.points reste 0 longtemps,
 # le hang est l'embedding (download/charge modèle HF gated, ou débit CPU) — PAS G3/G4.
 beacon g8_bulk_start
-python "${PI[@]}" 2>&1 | tee -a "$LOG"
+# bf16 (autocast cuda) en mode GPU -> tensor cores L4 (~1.64x), dérive 0.99992 mesurée.
+# Sur pod CPU (EXPECT_CUDA!=1) : fp32 (pas de cuda autocast).
+BULK_ARGS=()
+[ "${EXPECT_CUDA:-0}" = "1" ] && BULK_ARGS+=(--bf16)
+python "${PI[@]}" "${BULK_ARGS[@]}" 2>&1 | tee -a "$LOG"
 rc=${PIPESTATUS[0]}
 [ "$rc" = "0" ] || { report_diag bulk "bulk rc=$rc — $(tail -c 1200 "$LOG")"; fail "bulk rc=$rc (trace -> diag_bulk)"; }
 

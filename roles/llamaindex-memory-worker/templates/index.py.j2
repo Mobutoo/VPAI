@@ -448,7 +448,10 @@ def main() -> int:
             LOG.info("preflight completed")
             exit_code = 0
             return exit_code
-        encoder = EmbeddingGemmaEncoder(
+        # JAMAIS de chargement modèle en dry-run : --dry-run = mode seed-state
+        # model-free (écrit l'état size/mtime/hash sans embed). Évite tout
+        # bulk-embed sur Waza (ARM) — cf leçon gel subagent. Le bulk = pod x86.
+        encoder = None if args.dry_run else EmbeddingGemmaEncoder(
             model_name=config["embedding"]["model_name"],
             normalize_embeddings=bool(config["embedding"]["normalize_embeddings"]),
         )
@@ -621,7 +624,7 @@ def process_file(
     args: argparse.Namespace,
     config: dict[str, Any],
     state: dict[str, Any],
-    encoder: EmbeddingGemmaEncoder,
+    encoder: EmbeddingGemmaEncoder | None,
     vector_store: QdrantVectorStore | None,
     repo_root: Path,
     path: Path,
@@ -677,13 +680,6 @@ def process_file(
         host_origin="{{ memory_worker_host_origin }}",
     )
     batch_size = int(config["limits"]["batch_size"])
-    prepared_nodes: list[TextNode] = []
-    for node_batch in batched(nodes, batch_size):
-        embeddings = encoder.encode_documents([(node.metadata["title"], node.text) for node in node_batch])
-        for node, embedding in zip(node_batch, embeddings, strict=True):
-            node.embedding = embedding
-            prepared_nodes.append(node)
-
     stat = path.stat()
     next_state = {
         "size": stat.st_size,
@@ -695,10 +691,21 @@ def process_file(
         "last_indexed_at": utcnow_iso(),
     }
 
+    # Dry-run AVANT tout embed : aucune construction de vecteur (encoder est None).
+    # = mode seed-state model-free. Au M4, après le bulk pod, un `--mode full --dry-run`
+    # ensemence l'état (size/mtime/hash) sans ré-embedder sur Waza ; l'incrémental ne
+    # touche ensuite QUE les fichiers réellement modifiés.
     if args.dry_run:
-        LOG.info("would index %s (%s chunks)", relative_path, len(prepared_nodes))
+        LOG.info("would index %s (%s chunks)", relative_path, len(nodes))
         state[key] = next_state
-        return len(prepared_nodes)
+        return len(nodes)
+
+    prepared_nodes: list[TextNode] = []
+    for node_batch in batched(nodes, batch_size):
+        embeddings = encoder.encode_documents([(node.metadata["title"], node.text) for node in node_batch])
+        for node, embedding in zip(node_batch, embeddings, strict=True):
+            node.embedding = embedding
+            prepared_nodes.append(node)
 
     try:
         vector_store.delete(ref_id)

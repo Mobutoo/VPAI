@@ -38,7 +38,7 @@ Un subagent (plomberie M3) a **figé ~10h** — cause quasi certaine : chargemen
 - **memory_core complété pour parité** (advisor, 2 BLOCKERS) : ajout `sha256_file`, `git_commit_sha`, `extract_structural_meta` (étaient absents → payloads divergeaient) + `resolve_source` = AUTORITÉ UNIQUE du contrat `(repo, wing, relative_path)` partagée worker+pod. +10 tests.
 - **Step 2 — worker full-DRY** : `index.py.j2` importe TOUT de `memory_core` (doublons supprimés). `to_text_nodes`→`build_payload`+`make_node_id` avec wing/room. `process_file`→`resolve_source` (skip si hors source). `main`→`load_wing_room_lookup` 1×. **`list_repo_roots` : expansion SUPPRIMÉE** (BLOCKER #1 : DOCS=arbre unique, repo="DOCS"/rel="n8n-docs/…").
 - **defaults** `collection_name`→`memory_v2` + `wing:` ×9. **sources.yml.j2** émet wing. **config.yml.j2** +indexes wing/room. **tasks** copie `memory_core.py`→install_dir (source unique `{{ role_path }}/../../scripts/memory/`).
-- **VÉRIF** : render Jinja+`py_compile` OK ; parité démontrée (DOCS nested→DOCS/n8n ; caddy→caddy-vpn ; n8n-workflows→n8n) ; YAML OK. PAS déployé (worker disabled jusqu'à M4). `index.py --dry-run` live Waza = NON fait (llama_index absent Waza ; à faire post-deploy M4).
+- **VÉRIF** : render Jinja+`py_compile`+pyflakes CLEAN ; parité démontrée (DOCS nested→DOCS/n8n ; caddy→caddy-vpn ; n8n-workflows→n8n) ; YAML OK. PAS déployé (worker disabled jusqu'à M4). NB : le venv worker `/opt/workstation/ai-memory-worker/.venv` A llama-index (≠ le `.venv` projet) ; `--dry-run` est model-free (fix 2026-06-06) → smoke-test possible sans embed.
 - **⚠️ R0 GATE rétrogradé** : flag `/opt/workstation/configs/ai-memory-worker/r0-rebuild.flag` + patch `~/.claude/hooks/loi-op-enforcer.js` (bloc `r0Rebuild`). **À SUPPRIMER en M4** (flag + bloc hook).
 
 ## PROCHAINES ÉTAPES (ordre)
@@ -52,13 +52,20 @@ Un subagent (plomberie M3) a **figé ~10h** — cause quasi certaine : chargemen
    - **VÉRIF** : pod_ingest compile+pyflakes CLEAN ; testé live sur **venv worker** Waza (`--verify-sample VPAI/CLAUDE.md` → 14 chunks, node_ids déterministes, punkt OK) = RÉFÉRENCE pour le diff Step 4. (Spot-check cross-env Waza↔pod = à faire au Step 4 quand le pod existe.)
    - **À confirmer côté pod (Step 4, advisor)** : QdrantVectorStore.add utilise bien `node.id_` comme point-id ; staging sans double-nesting ; punkt+punkt_tab téléchargés.
 4. **Provision** : clé Headscale éphémère (hub seko-vpn) + pod CPU RunPod on-demand (REST /v1/pods) → join mesh → run batch → spot-check parité → bulk.
+   **Spot-check Step 4 (advisor — diff cross-env Waza↔pod via `--verify-sample`)** : NE PAS se limiter à CLAUDE.md (markdown/infra). Diffuser ≥1 fichier par chunk_kind ET par wing : (a) **fichier DOCS imbriqué** refdocs (valide attribution BLOCKER #1 + room refdocs + chunk markdown-section) ; (b) **fichier `.py`** (chunk_kind `llama-sentence` + chemin AST `extract_structural_meta`). Réf Waza = `/opt/workstation/ai-memory-worker/.venv/bin/python pod_ingest.py --verify-sample` (encoder=None, model-free, sûr).
 5. **Teardown** pod + **révoquer** clé Headscale.
 6. **M4** : repointer `search_memory.py` + MCP qdrant-find sur memory_v2 (répare R0) ; filtres wing/room ; cap process ; re-enable worker timer (incrémental, capé).
    **Nettoyages M4 obligatoires** (faits/préparés en session 2026-06-06) :
    - SUPPRIMER `/opt/workstation/configs/ai-memory-worker/r0-rebuild.flag` + le bloc `r0Rebuild` dans `~/.claude/hooks/loi-op-enforcer.js` (rétablit le hard-block R0).
-   - State/spool v1 déjà neutralisés (backups `/opt/workstation/data/ai-memory-worker/{state/memory_state.json.2026-06-06-v1-stale.bak,spool.2026-06-06-v1-stale.bak}`). NE PAS les restaurer (memory_v1 wipé). Supprimer les `.bak` une fois memory_v2 validé. Le worker repartira state vide = full pass idempotent (upsert par node_id, recouvre le pod sans trou).
+   - State/spool v1 neutralisés en backup (`/opt/workstation/data/ai-memory-worker/{state/memory_state.json.2026-06-06-v1-stale.bak,spool.2026-06-06-v1-stale.bak}`). NE PAS restaurer (memory_v1 wipé). Supprimer les `.bak` une fois memory_v2 validé.
+   - 🔴 **SEED-STATE OBLIGATOIRE avant re-enable du timer** (advisor — sinon le worker reprocesse + RÉ-EMBED les ~78k chunks SUR WAZA, ce que le pod existe précisément pour éviter). État vide ⇒ `should_process`=True partout. Procédure post-bulk pod :
+     ```
+     index.py --config <cfg> --mode full --dry-run --report-path /tmp/seed.json
+     ```
+     `--dry-run` est désormais **model-free** (encoder jamais construit, fix 2026-06-06) : il écrit l'état size/mtime/hash SANS embed. Ensuite SEULEMENT `systemctl --user enable --now` le timer → l'incrémental ne touche que les fichiers réellement modifiés. (Copier l'état du pod ne marche PAS : size/mtime diffèrent clone-pod vs working-tree Waza.)
+   - **Règle réconciliée** : "jamais de **bulk**-embed sur Waza" (le bulk = pod x86). L'embed incrémental per-fichier des fichiers réellement modifiés par le worker capé reste OK. La leçon gel = pas de chargement modèle dans un contexte fragile / pas de full-pass embed sur ARM.
    - Vérif deploy-time : la copie `{{ role_path }}/../../scripts/memory/memory_core.py` (tasks) ne se valide qu'au run du rôle → confirmer au 1er deploy M4.
-   - Lancer `index.py --dry-run` live sur Waza (post-deploy, après install llama_index sur la cible) pour valider la chaîne complète bout-en-bout.
+   - Smoke-test model-free dispo dès aujourd'hui : `index.py --preflight-only` (retourne avant l'encoder — valide bootstrap main() + list_repo_roots no-expansion contre qdrant live).
 7. Plan B (reorg M1 + manifeste M5 ~/work).
 
 ---

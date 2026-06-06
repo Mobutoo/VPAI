@@ -237,7 +237,9 @@ export TIKTOKEN_CACHE_DIR="$GPU_DIR/tiktoken_cache"
 say "TIKTOKEN_CACHE_DIR=$TIKTOKEN_CACHE_DIR ($(ls "$TIKTOKEN_CACHE_DIR" 2>/dev/null | wc -l) fichier(s))"
 # Warm-up chunker : force le 1er usage SentenceSplitter MAINTENANT (beaconé+borné).
 # Si tiktoken tentait encore le réseau, ça échoue ici en 60s — plus de hang muet 15min.
-cw_out=$(timeout 60 python -c "import sys; sys.path.insert(0,'$CODE_DIR'); from pathlib import Path; from memory_core import build_chunks, CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHUNKS_PER_FILE; print(build_chunks(Path('CLAUDE.md'), open('$STAGING/VPAI/CLAUDE.md').read(), CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHUNKS_PER_FILE).__len__(),'chunks'); print('chunker warm OK')" 2>&1)
+# String EN MÉMOIRE (pas de fichier) : le warm-up ne doit dépendre d'aucun fichier du
+# clone. CLAUDE.md était gitignored -> absent du clone -> FileNotFoundError (run l2ngb).
+cw_out=$(timeout 60 python -c "import sys; sys.path.insert(0,'$CODE_DIR'); from pathlib import Path; from memory_core import build_chunks, CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHUNKS_PER_FILE; t='# Warm-up\n\n'+('Phrase de chauffe tiktoken. '*80); print(len(build_chunks(Path('warmup.md'), t, CHUNK_SIZE, CHUNK_OVERLAP, MAX_CHUNKS_PER_FILE)),'chunks'); print('chunker warm OK')" 2>&1)
 cw_rc=$?
 echo "$cw_out"
 [ $cw_rc -eq 0 ] || { report_diag chunker "rc=$cw_rc
@@ -282,7 +284,7 @@ check_one() {  # key file
   fi
   say "  parité OK $key"
 }
-check_one "VPAI/CLAUDE.md"            "$STAGING/VPAI/CLAUDE.md"            || fail "node_id divergent (chunking/pins)"
+check_one "VPAI/README.md"            "$STAGING/VPAI/README.md"           || fail "node_id divergent (chunking/pins)"
 check_one "story-engine/README.md"    "$STAGING/story-engine/README.md"   || fail "node_id divergent"
 check_one "typebot-docs/README.md"    "$STAGING/typebot-docs/README.md"   || fail "node_id divergent"
 beacon g7_parity_ok

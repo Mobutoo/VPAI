@@ -1,86 +1,7 @@
 {
   "generated_from": "venv worker Waza (memory_core repo)",
-  "note": "parité self-check: node_id+chunk_text_sha+chunk_count doivent matcher côté pod",
+  "note": "VPAI sample = README.md (CLAUDE.md est gitignored, absent du clone pod — rattrapé par le worker incrémental M4). Générés via venv worker Waza, host_origin=waza, encoder=None.",
   "samples": {
-    "VPAI/CLAUDE.md": {
-      "repo": "VPAI",
-      "relative_path": "CLAUDE.md",
-      "wing": "infra",
-      "room": "ansible-roles",
-      "chunk_count": 14,
-      "nodes": [
-        {
-          "node_id": "924cbadc-877b-b024-2770-d6b5c8f69668",
-          "chunk_index": 0,
-          "chunk_text_sha256": "9b6d233e7b87c25a9b71560d2870015b954b2733baa180250ea58c9ba23087a0"
-        },
-        {
-          "node_id": "f2fb0c92-165b-1a0f-b425-ec2299a621d5",
-          "chunk_index": 1,
-          "chunk_text_sha256": "6bdb1b8fb1903a3f6b83d8b57b476639563ae7d0bda07bbcbddf4894eabd3238"
-        },
-        {
-          "node_id": "9834bf0f-c53e-85cb-1ff1-df102609c032",
-          "chunk_index": 2,
-          "chunk_text_sha256": "7fcbe01cdd7c71ba64a158ec8a30d3938ac3a3e6baf80d16e8e1e7fb762f8d5a"
-        },
-        {
-          "node_id": "21c48552-05ce-3e59-e10f-147e1415a80c",
-          "chunk_index": 3,
-          "chunk_text_sha256": "ff8dc2d90fa144476244f1abff2391ed7992e150aedeee574b3c873e3bc66eef"
-        },
-        {
-          "node_id": "26a77f72-87c9-2869-5310-af8b59a0f0ab",
-          "chunk_index": 4,
-          "chunk_text_sha256": "5e32bfb1c059759e7d5544471b60322cea20620f0b3aa9fa86ca69e6e5df4377"
-        },
-        {
-          "node_id": "f270c9f6-5479-ee02-1f49-4b93bd43a0e6",
-          "chunk_index": 5,
-          "chunk_text_sha256": "ef520d68ed2dd02e8e59daffa70e98be0986e81216c7e8086890da1441d2a268"
-        },
-        {
-          "node_id": "476885ec-9cc4-0997-7442-39773b2b6c9a",
-          "chunk_index": 6,
-          "chunk_text_sha256": "981ac9f4d1e8cce2514b6e32fce61e127efdef408ca3f11f9644b3663fbc0789"
-        },
-        {
-          "node_id": "c6522310-9464-d331-a0bb-d82d4f081598",
-          "chunk_index": 7,
-          "chunk_text_sha256": "447999c8ea62fb210c2c58c16c6c815be7ea58e56a5166321b13778c2cc1914c"
-        },
-        {
-          "node_id": "e55cde7b-be8b-d0f7-4449-7ffb206a8f61",
-          "chunk_index": 8,
-          "chunk_text_sha256": "ef76116ff8b2152da3be91d282479fe9719070938abadfb44064159b13d8f116"
-        },
-        {
-          "node_id": "6f096c91-e06a-68e9-1682-c9dcaf207916",
-          "chunk_index": 9,
-          "chunk_text_sha256": "1ab471158f0a995b80ce8370756c70d9d82bfa761e004e7f5053fd26b19c7015"
-        },
-        {
-          "node_id": "1a13295a-5b99-ffe3-1e84-64c68d042c31",
-          "chunk_index": 10,
-          "chunk_text_sha256": "e4d4c99e709847afb2afaf3f7fcede1af446d45b7316883a234801fb2fbf4371"
-        },
-        {
-          "node_id": "2246974b-98b3-a2c6-92d3-34017b9f4b24",
-          "chunk_index": 11,
-          "chunk_text_sha256": "7912d5c026a0e39f1f86288043d07e81c5306243da5305a941ab6b15f15a5a22"
-        },
-        {
-          "node_id": "28e79cdf-a1ba-0822-b922-8d5b562bc5de",
-          "chunk_index": 12,
-          "chunk_text_sha256": "d84d85cd308e80f3a26a22d4798db53f23c366e4cadc938d228520674f13cee8"
-        },
-        {
-          "node_id": "adf06788-dfef-1d00-b7ab-6e46bd068ac3",
-          "chunk_index": 13,
-          "chunk_text_sha256": "d10ba1790eadbfdc3f8c77ae8d7fc46d6393f8fb61ffa73a43544fe006030d93"
-        }
-      ]
-    },
     "story-engine/README.md": {
       "repo": "story-engine",
       "relative_path": "README.md",
@@ -153,6 +74,81 @@
           "chunk_text_sha256": "5e94c67ee58b1f4effd7ee8b06c308036fb2585dc385c572d65392bba44c5a66"
         }
       ]
+    },
+    "VPAI/README.md": {
+      "chunk_count": 13,
+      "nodes": [
+        {
+          "chunk_index": 0,
+          "chunk_text_sha256": "968f28f9ed733ca2754b9587033d31e9a2b11f986d426cc97bf4822574569d77",
+          "node_id": "78792172-f67d-dffd-7cb8-264ce6ea6925"
+        },
+        {
+          "chunk_index": 1,
+          "chunk_text_sha256": "2b4de9ebce16e5bbb9ba28f33edb4c875bb9d77b739b9f48e7be3db79c966093",
+          "node_id": "e7a73838-a671-d76b-df2c-83fff8c95f79"
+        },
+        {
+          "chunk_index": 2,
+          "chunk_text_sha256": "6094ba9f94dceee8620568b7e5944ec921f07fe7a7297a239d8877d750a0f85d",
+          "node_id": "68ea06ea-83af-0843-391e-57f927ef4af0"
+        },
+        {
+          "chunk_index": 3,
+          "chunk_text_sha256": "1985dd2230f19f78053dffdd87e216bc0de15281ed671f03ee450271c3537590",
+          "node_id": "bea096e7-6d6d-7dce-9b05-e75828204af9"
+        },
+        {
+          "chunk_index": 4,
+          "chunk_text_sha256": "787ede63537dff024be730e4d6ce32ab678f7d425e9ad48960716167ded1c5fa",
+          "node_id": "a6da0b0c-57c1-1225-ccc4-a3f702a46f35"
+        },
+        {
+          "chunk_index": 5,
+          "chunk_text_sha256": "970ff3fea849f8611d6f75ac6058b5ad58f382b2f1dc3c5280d1458ce752fdd2",
+          "node_id": "d0b71696-a78e-6852-5d54-b098dcc190fd"
+        },
+        {
+          "chunk_index": 6,
+          "chunk_text_sha256": "b8bdcf230b7b4a9fb162d0c9f8e85539f84dd537c524eea654b5f2dcf2b3feb7",
+          "node_id": "4d7320a3-7efb-5de0-da67-189ebaac8b2c"
+        },
+        {
+          "chunk_index": 7,
+          "chunk_text_sha256": "cd374abde181be62e8aee5e8d76d3056efc512e487302d3064444508e7c715e3",
+          "node_id": "a7ba301e-4dda-5bfc-dc86-d7746e7ed892"
+        },
+        {
+          "chunk_index": 8,
+          "chunk_text_sha256": "5ba1111e65bd88b549a309bce3b44f3d26916edb0aed59f079f0e575d33666f8",
+          "node_id": "3b5d053c-158d-c1e2-acd5-3780ffa067a9"
+        },
+        {
+          "chunk_index": 9,
+          "chunk_text_sha256": "1992d01a55fae6532fcbfa472f699bf1bb08841c8759d6734821fd8d3b1e74ab",
+          "node_id": "206cee7b-637b-a406-05e9-fa6401f94953"
+        },
+        {
+          "chunk_index": 10,
+          "chunk_text_sha256": "142b2b54958b4045e03c67f4d4d1113ab74ab8d6fc56b53a1252c345b45ec2f8",
+          "node_id": "34f53121-1e91-55b9-f1b6-f463eea660e1"
+        },
+        {
+          "chunk_index": 11,
+          "chunk_text_sha256": "e0ad3efc137f85bf62dcd81bd5344cef78928c8fcb636aaa8de0de1aeaa49369",
+          "node_id": "e769f7c7-b458-675b-9abb-ecde76ba5e34"
+        },
+        {
+          "chunk_index": 12,
+          "chunk_text_sha256": "0ffc2af0fffc2ece57b59c3387819b6d792423f61ab1d61e4230459b7fd51f88",
+          "node_id": "480e2255-56e3-0b3d-5ccb-637e700fb6da"
+        }
+      ],
+      "ref_doc_id": "waza:VPAI:README.md",
+      "relative_path": "README.md",
+      "repo": "VPAI",
+      "room": "ansible-roles",
+      "wing": "infra"
     }
   }
 }

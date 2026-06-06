@@ -99,17 +99,24 @@ Terminer le **M3** du rebuild mémoire : ingérer en masse le corpus (7 sources 
 | git per-fichier | 38.5 ms/f (66.6% du hors-encode) | bench Waza 200 fichiers |
 | git batch | ×180 (62s→0.35s, 1503 fichiers VPAI), parité 300/300 | test local |
 | fp32 batch-64 | 32.4 ch/s (+42% vs 22.8 per-fichier) | `diag_bench` |
-| **bf16** | **53.2 ch/s** (1.64×) | `diag_bench` |
+| **bf16** | **53.2 ch/s** (L4, 1.64×) ; **183.5 ch/s** (RTX 4090) | `diag_bench` |
 | Dérive fp32↔bf16 | **min 0.99992 / mean 0.99997** (n=398) | autocast GPU |
-| Driver L4 | 580.159.04 / CUDA 13.0 | `nvidia-smi` (diag_gpu) |
+| Driver-aware prouvé en prod | L4 580.159.04/CUDA 13.0 → cu13 gardé ; **4090 570.172.08/CUDA 12.8 → cu128 réinstallé auto** | `nvidia-smi` (diag_gpu) |
+| Collection finale canonique | **memory_v2 = 23 692 pts** (wipe→ré-ingest bf16 from 0, 0 orphelin) | `points_count` |
 
 ## Commits
 
-`988b219` (OMP/bench) → `a83a03b` (GPU + fail-fast cuda/fp32 + bench honnête) → `33966d7` (torch driver-aware) → `a193bd7` (git per-repo + encode batché) → `68898f2` (split cpu/gpu + dérive bf16 + encode_batch 64) → `4aabd1f` (bulk bf16 hybride).
+`988b219` (OMP/bench) → `a83a03b` (GPU + fail-fast cuda/fp32 + bench honnête) → `33966d7` (torch driver-aware) → `a193bd7` (git per-repo + encode batché) → `68898f2` (split cpu/gpu + dérive bf16 + encode_batch 64) → `4aabd1f` (bulk bf16 hybride) → `eec9547` (M4 mcp_search repoint memory_v2, repo worker) → docs `0c96fcb`/`e37fe20`/`091f9d7` (rapport, REX, vision tool, plan M1).
 
-## Reste à faire (post-bulk bf16)
+## État final & reste (mis à jour 2026-06-06 fin de session)
 
-1. Vérifier compte final bf16 ≈ 23 672 (preuve d'écrasement idempotent complet).
-2. **Teardown** : terminer pod, révoquer clé Headscale (éphémère) + PAT, `rm pod-ingest.env`, supprimer collections `stage_*`/`diag_*`/`probe_ok`/`ingest_done`.
-3. **Rotation secrets exposés** : `HF_TOKEN`, `QDRANT_API_KEY`, `RUNPOD_API_KEY`.
-4. **M4** : repointer `search_memory.py` + `qdrant-find` sur `memory_v2`, retirer `r0-rebuild.flag` + bloc hook `r0Rebuild`, purger `.bak`.
+**FAIT** :
+1. ✅ **M3 bulk bf16 canonique** : `memory_v2` = **23 692 pts**, wipe→ré-ingest from 0 (0 orphelin), pod EXITED (0 facturation).
+2. ✅ **Teardown partiel** : pods terminés, collections transitoires `stage_*`/`diag_*`/`ingest_done` supprimées.
+3. ✅ **M4** : `config.yml collection_name=memory_v2` (pilote `search_memory.py` ET `mcp_search.py`), recherche froide vérifiée (3/3 requêtes), `r0-rebuild.flag` supprimé + bloc `r0Rebuild` retiré du hook (hard-block R0 réactivé, `node -c` OK), `.bak` : aucun. NB : un MCP qdrant-find déjà lancé garde l'ancienne collection en cache → effectif au prochain démarrage de session.
+4. ✅ **M5 manifeste** taxonomie (préexistant) : `docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md`.
+
+**RESTE** :
+1. 🔒 **Rotation secrets exposés** (dashboards externes, gate humain) : `HF_TOKEN`, `QDRANT_API_KEY`, `RUNPOD_API_KEY` + révoquer clé Headscale éphémère + PAT read-only. `rm pod-ingest.env` après.
+2. 📁 **M1 reorg `~/work/`** : plan écrit `.planning/notes/2026-06-06-plan-b-reorg-repertoires-M1.md`, à exécuter en session dédiée (sûr pour la mémoire : node_id path-indépendant).
+3. 🧩 **Extraction tool autonome** dockerisé : vision `.planning/notes/2026-06-06-memory-tool-extraction-vision.md` (nouvelle session).

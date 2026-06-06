@@ -36,17 +36,19 @@ Coût : ~$0.39/h (L4), bulk ≈ 10-15 min → quelques centimes par run.
 
 ## 4. État actuel
 
-- Pipeline **prouvé bout-en-bout** : un run fp32 batch-64 a complété (sentinelle `ingest_done`, `memory_v2`=23 672, self-stop propre).
-- **Run bf16 en cours** (pod `tkf07peh1913di`) → écrase idempotemment les points fp32 en bf16. Vérification attendue : compte final ≈ 23 672.
-- 6 commits poussés sur `origin/main` (`988b219`→`4aabd1f`).
+- ✅ **M3 bulk bf16 canonique TERMINÉ** : `memory_v2` = **23 692 pts** (wipe→ré-ingest from 0, 0 orphelin), pod EXITED. Driver-aware re-prouvé en prod (RTX 4090 / CUDA 12.8 → torch cu128 réinstallé auto, bf16 183.5 ch/s).
+- ✅ **M4 TERMINÉ** : recherche repointée sur memory_v2 (config.yml → search_memory.py + mcp_search.py), vérifiée 3/3, flag/hook r0-rebuild retirés, R0 hard-block réactivé.
+- ✅ **Teardown** : pods terminés, collections transitoires supprimées.
+- Commits : `988b219`→`4aabd1f` (pipeline) + `eec9547` (M4) + docs `0c96fcb`/`e37fe20`/`091f9d7`.
 - REX détaillé : `docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md`.
 
 ## 5. Reste à faire
 
-1. **Vérifier** le run bf16 (compte ≈ 23 672 + parité node_id).
-2. **Teardown** : terminer le pod, révoquer la clé Headscale éphémère + le PAT read-only, `rm pod-ingest.env`, supprimer les collections transitoires `stage_*`/`diag_*`/`probe_ok`/`ingest_done`.
-3. **Rotation des secrets exposés** durant l'opération : `HF_TOKEN`, `QDRANT_API_KEY`, `RUNPOD_API_KEY`.
-4. **M4** : repointer `search_memory.py` + `mcp__qdrant__qdrant-find` sur `memory_v2`, retirer le flag `r0-rebuild.flag` + le bloc hook `r0Rebuild`, purger les `.bak`. Rétablit le canal froid de recherche mémoire.
+1. 🔒 **Rotation des secrets exposés** (gate humain, dashboards) : `HF_TOKEN`, `QDRANT_API_KEY`, `RUNPOD_API_KEY` + révoquer clé Headscale éphémère + PAT read-only, `rm pod-ingest.env`.
+2. 📁 **M1 reorg `~/work/`** : plan `.planning/notes/2026-06-06-plan-b-reorg-repertoires-M1.md`, à exécuter en session dédiée.
+3. 🧩 **Extraction tool autonome** dockerisé : `.planning/notes/2026-06-06-memory-tool-extraction-vision.md`.
+
+_(M3 bulk, M4 recherche, M5 manifeste, teardown collections : ✅ faits — cf §4.)_
 
 ## 6. Réutilisabilité
 

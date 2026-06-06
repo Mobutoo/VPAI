@@ -31,6 +31,20 @@ Wings = ceux du manifeste M5 (infra/saas/refdocs/tools). Repos imbriqués (flash
 2. **Repos non-mémoire** (ase, koodia, mediahall, simubot, trek, vps, zimboo) : déplacés aussi (cohérence) ou laissés ? Ils ne sont pas dans `sources.yml`.
 3. **Symlinks de compat** aux anciens chemins (`~/projects/saas/* → ~/work/saas/*`) : OUI par défaut (filet pour tout outillage non recensé), à retirer après stabilisation.
 
+## 3bis. ⚠️ Exécution depuis Claude-sur-Waza — À LIRE AVANT
+
+La session Claude tourne **sur Waza** avec cwd = `~/VPAI`. Risques spécifiques :
+
+| # | Risque | Gravité | Mitigation |
+|---|---|---|---|
+| 1 | **CWD arraché** : déplacer VPAI (ou le dossier courant) → chaque Bash suivant casse (`getcwd failed`), session morte. | 🔴 critique | **Ne PAS déplacer VPAI** → garder `~/VPAI` + `ln -s ~/VPAI ~/work/infra/VPAI`. **`cd ~` AVANT tout `mv`.** Ne jamais `mv` le répertoire courant. |
+| 2 | **MCP filesystem** opère sur `/home/mobuone/projects` (CLAUDE.md global) → pointe dans le vide si `~/projects/` bouge. | 🟠 | Maj config MCP + symlink de compat `~/projects/saas/* → ~/work/saas/*`. |
+| 3 | **Fenêtre incohérente** entre `mv` et maj configs (`config.yml`/`sources.yml` pointent dans le vide). | 🟡 | **Worker timer reste `disabled`** pendant l'op. Ordre strict : moves → maj configs → audit grep → validation. |
+| 4 | **CLAUDE.md / hooks** chargés au démarrage de session, pas rechargés à chaud. | 🟢 | OK tant que VPAI reste en place ; effet des maj = prochaine session. |
+
+**Règle d'or** : VPAI reste à `~/VPAI` (symlink dans `~/work/infra/`), `cd ~` avant les `mv`, worker disabled.
+**Alternative la plus sûre** : lancer le reorg depuis un **shell SSH normal** (hors session Claude) ou depuis **ewutelo** → le cwd de la session n'est jamais en jeu.
+
 ## 4. Procédure d'exécution (idempotente, par lots)
 
 ```bash

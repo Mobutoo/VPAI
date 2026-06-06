@@ -266,17 +266,42 @@ def cmd_benchmark(args, lookup) -> int:
             files += 1
             buf.extend(res[4])
             chunks += len(res[4])
-    if buf:  # encode tout le buffer en 1 fois (gros matmul)
+
+    prompts = [(x.metadata["title"], x.text) for x in buf]
+    fp32_vecs = []
+    if prompts:  # encode fp32 batché (gros matmul) — mesure du débit GPU réel
         s = time.monotonic()
-        encoder.encode_documents([(x.metadata["title"], x.text) for x in buf], batch_size=args.encode_batch)
+        fp32_vecs = encoder.encode_documents(prompts, batch_size=args.encode_batch)
         t_gpu += time.monotonic() - s
     dur = t_cpu + t_gpu
     rate = chunks / max(1e-6, dur)
-    eta_min = (chunks and 23664 / rate / 60) or 0
+    enc_rate = chunks / max(1e-6, t_gpu)
+
+    # MESURE bf16 (cuda only) : dérive vecteurs + débit. EmbeddingGemma est Gemma-dérivé
+    # (bf16-natif) -> bf16 active les tensor cores L4 (30->~240 TFLOP). Gate qualité =
+    # dérive cosinus MESURÉE (pas dogme fp32). min>0.999 -> bf16 sûr pour mixer avec les
+    # vecteurs worker fp32. Vecteurs normalisés -> cosinus = produit scalaire.
+    drift = "skip(non-cuda)"
+    bf16_rate = 0.0
+    if device.startswith("cuda") and fp32_vecs:
+        try:
+            import numpy as np, torch
+            samp = min(400, len(prompts))
+            s = time.monotonic()
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                bf16_vecs = encoder.encode_documents(prompts[:samp], batch_size=args.encode_batch)
+            bf16_rate = samp / max(1e-6, time.monotonic() - s)
+            a = np.array(fp32_vecs[:samp]); b = np.array(bf16_vecs)
+            cos = (a * b).sum(axis=1)  # normalisés -> dot = cosinus
+            drift = f"min={cos.min():.5f} mean={cos.mean():.5f} n={samp}"
+        except Exception as exc:  # noqa: BLE001
+            drift = f"ERR {type(exc).__name__}: {exc}"
+
     log(
         f"BENCH files={files} chunks={chunks} dur={dur:.1f}s rate={rate:.1f} "
-        f"cpu_build={t_cpu:.1f}s gpu_encode={t_gpu:.1f}s batch={args.encode_batch} "
-        f"device={device} dtype={dtype} eta_24k={eta_min:.0f}min"
+        f"cpu_build={t_cpu:.1f}s gpu_encode={t_gpu:.1f}s enc_rate={enc_rate:.1f} "
+        f"batch={args.encode_batch} device={device} dtype={dtype} "
+        f"bf16_drift=[{drift}] bf16_rate={bf16_rate:.1f}"
     )
     return 0
 
@@ -373,7 +398,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--collection", default="memory_v2")
     p.add_argument("--batch-size", type=int, default=128, help="(déprécié) points par upsert — voir --flush-chunks.")
     p.add_argument("--flush-chunks", type=int, default=1024, help="chunks accumulés avant encode batché + upsert.")
-    p.add_argument("--encode-batch", type=int, default=256, help="batch_size GPU de SentenceTransformer.encode (défaut ST=32).")
+    p.add_argument("--encode-batch", type=int, default=64, help="batch_size GPU (256 OOM sur L4 24GB avec seq 2048 ; 64 = 1/4 footprint, sûr).")
     p.add_argument("--limit", type=int, default=0, help="max fichiers (0 = illimité).")
     p.add_argument("--host-origin", default=HOST_ORIGIN, help="PARITÉ: garder 'waza'.")
     p.add_argument("--dry-run", action="store_true")

@@ -345,15 +345,18 @@ beacon g7_parity_ok
 # (comme le bulk, ~13 chunks/appel). PAS un méga-batch de strings identiques (qui
 # surévaluait à 137 chunks/s un débit per-fichier réel ~1.5/s). Reporte device+dtype.
 # Si EXPECT_CUDA=1 et GPU non utilisé / non-fp32 -> rc=2 -> fail-fast ici (pas en plein G8).
-say "=== G7b benchmark débit embedding (per-fichier, honnête) ==="
-bench_line=$(timeout 600 python "${PI[@]}" --benchmark 40 2>&1 | grep '^\[pod_ingest\].*BENCH' | tail -1)
+say "=== G7b benchmark (chemin optimisé : split cpu/gpu + dérive bf16) ==="
+# Capture TOUTE la sortie (la traceback a été perdue 2x à cause d'un grep BENCH-only).
+bench_out=$(timeout 600 python "${PI[@]}" --benchmark 40 2>&1)
 brc=$?
+bench_line=$(printf '%s' "$bench_out" | grep '^\[pod_ingest\].*BENCH' | tail -1)
 say "$bench_line"
 if [ $brc -ne 0 ] || [ -z "$bench_line" ]; then
-  report_diag bench "rc=$brc bench_line=[$bench_line] (EXPECT_CUDA=${EXPECT_CUDA:-0})"
-  fail "benchmark rc=$brc (GPU non utilisé / non-fp32 si EXPECT_CUDA=1, ou timeout) — trace diag_bench"
+  # dump la fin de la sortie complète (inclut la traceback) -> diag_bench lisible Waza
+  report_diag bench "rc=$brc EXPECT_CUDA=${EXPECT_CUDA:-0} | TRACE: $(printf '%s' "$bench_out" | tail -c 1200)"
+  fail "benchmark rc=$brc (trace complète -> diag_bench)"
 fi
-report_diag bench "$bench_line EXPECT_CUDA=${EXPECT_CUDA:-0} threads=${OMP_NUM_THREADS}"
+report_diag bench "$bench_line EXPECT_CUDA=${EXPECT_CUDA:-0}"
 beacon g7b_bench
 
 say "=== G8 bulk ingest ==="

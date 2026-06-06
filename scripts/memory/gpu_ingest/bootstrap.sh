@@ -255,7 +255,16 @@ beacon g4_venv_done
 # restante : le download depuis huggingface.co (hôte ≠ Azure/nltk) hang-t-il sur le pod ?
 # Si oui, échec localisé ici (pas en plein G8). Si OK -> G8 = embedding pur, modèle en cache.
 say "=== G4b warm-up modèle embeddinggemma-300m ==="
-mw_out=$(timeout 1200 python -c "import sys; sys.path.insert(0,'$CODE_DIR'); from memory_core import EmbeddingGemmaEncoder; e=EmbeddingGemmaEncoder('google/embeddinggemma-300m', True); print('model warm OK')" 2>&1)
+mw_out=$(timeout 1200 python -c "
+import sys, os; sys.path.insert(0,'$CODE_DIR')
+from memory_core import EmbeddingGemmaEncoder
+e=EmbeddingGemmaEncoder('google/embeddinggemma-300m', True)
+p=next(e.model.parameters()); dev=str(p.device); dt=str(p.dtype)
+print(f'model warm OK device={dev} dtype={dt}')
+if os.environ.get('EXPECT_CUDA')=='1':
+    assert dev.startswith('cuda'), f'EXPECT_CUDA=1 mais device={dev} (GPU non utilisé)'
+    assert dt=='torch.float32', f'EXPECT_CUDA=1 mais dtype={dt} (≠ fp32, vecteurs divergents)'
+" 2>&1)
 mw_rc=$?
 echo "$mw_out"
 if [ $mw_rc -ne 0 ]; then
@@ -294,13 +303,19 @@ check_one "story-engine/README.md"    "$STAGING/story-engine/README.md"   || fai
 check_one "typebot-docs/README.md"    "$STAGING/typebot-docs/README.md"   || fail "node_id divergent"
 beacon g7_parity_ok
 
-# Benchmark RÉEL du débit embedding sur CE hardware (fini les estimations). Encode 512
-# chunks et écrit chunks/s + ETA dans diag_bench (lisible depuis Waza AVANT le bulk).
-say "=== G7b benchmark débit embedding ==="
-bench=$(python -c "import sys; sys.path.insert(0,'$CODE_DIR'); import time; from memory_core import EmbeddingGemmaEncoder; e=EmbeddingGemmaEncoder('google/embeddinggemma-300m',True); d=[('Titre','Phrase de contenu technique pour mesurer le debit embedding du pod.')]*512; e.encode_documents(d[:16]); t=time.time(); e.encode_documents(d); dt=time.time()-t; print(round(512/dt,1))" 2>/dev/null | tail -1)
-eta=$(python3 -c "b=float('${bench:-0}' or 0); print('NA' if b<=0 else f'{78500/b/60:.0f} min')" 2>/dev/null)
-report_diag bench "embedding=${bench} chunks/s threads=${OMP_NUM_THREADS} ETA_78500=${eta}"
-say "BENCH embedding=${bench} chunks/s -> ETA ~${eta}"
+# Benchmark HONNÊTE : --benchmark itère de VRAIS fichiers clonés et encode PAR FICHIER
+# (comme le bulk, ~13 chunks/appel). PAS un méga-batch de strings identiques (qui
+# surévaluait à 137 chunks/s un débit per-fichier réel ~1.5/s). Reporte device+dtype.
+# Si EXPECT_CUDA=1 et GPU non utilisé / non-fp32 -> rc=2 -> fail-fast ici (pas en plein G8).
+say "=== G7b benchmark débit embedding (per-fichier, honnête) ==="
+bench_line=$(timeout 600 python "${PI[@]}" --benchmark 40 2>&1 | grep '^\[pod_ingest\].*BENCH' | tail -1)
+brc=$?
+say "$bench_line"
+if [ $brc -ne 0 ] || [ -z "$bench_line" ]; then
+  report_diag bench "rc=$brc bench_line=[$bench_line] (EXPECT_CUDA=${EXPECT_CUDA:-0})"
+  fail "benchmark rc=$brc (GPU non utilisé / non-fp32 si EXPECT_CUDA=1, ou timeout) — trace diag_bench"
+fi
+report_diag bench "$bench_line EXPECT_CUDA=${EXPECT_CUDA:-0} threads=${OMP_NUM_THREADS}"
 beacon g7b_bench
 
 say "=== G8 bulk ingest ==="

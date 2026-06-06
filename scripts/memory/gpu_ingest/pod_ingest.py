@@ -212,6 +212,61 @@ def cmd_verify_sample(args, lookup) -> int:
     return 0
 
 
+def cmd_benchmark(args, lookup) -> int:
+    """Bench HONNÊTE du débit embedding sur CE hardware.
+
+    Mirror EXACT du bulk : itère de VRAIS fichiers clonés et appelle process_one
+    (donc encode_documents PAR FICHIER, ~13 chunks/appel). Surtout PAS un méga-batch
+    de strings identiques — sur GPU le débit est sensible à la taille de batch, un
+    méga-batch surévalue ce que le bulk per-fichier atteint réellement.
+    Reporte device + dtype. Fail-fast si EXPECT_CUDA=1 et GPU non utilisé / non-fp32.
+    """
+    n = args.benchmark
+    encoder = EmbeddingGemmaEncoder(EMBEDDING_MODEL, NORMALIZE)
+    # device/dtype réels du modèle chargé (ST auto-sélectionne cuda si dispo).
+    try:
+        param = next(encoder.model.parameters())
+        device = str(param.device)
+        dtype = str(param.dtype)
+    except Exception:  # noqa: BLE001
+        device, dtype = "unknown", "unknown"
+
+    expect_cuda = os.environ.get("EXPECT_CUDA", "") == "1"
+    if expect_cuda and not device.startswith("cuda"):
+        log(f"FAIL EXPECT_CUDA=1 mais device={device} (GPU non utilisé) — abort fail-fast")
+        return 2
+    if expect_cuda and dtype != "torch.float32":
+        log(f"FAIL EXPECT_CUDA=1 mais dtype={dtype} (≠ fp32) — vecteurs divergents vs Waza/CPU, abort")
+        return 2
+
+    from memory_core import iter_source_files
+
+    files = 0
+    chunks = 0
+    t0 = time.monotonic()
+    for root, meta in lookup.items():
+        if not root.exists():
+            continue
+        for file_abs in iter_source_files(root):
+            if files >= n:
+                break
+            res = process_one(file_abs, lookup, encoder, args.host_origin)
+            if res is None:
+                continue
+            files += 1
+            chunks += len(res[4])
+        if files >= n:
+            break
+    dur = time.monotonic() - t0
+    rate = chunks / max(1e-6, dur)
+    eta_min = (78500 / rate / 60) if rate > 0 else 0
+    log(
+        f"BENCH files={files} chunks={chunks} dur={dur:.1f}s rate={rate:.1f} "
+        f"device={device} dtype={dtype} eta_78500={eta_min:.0f}min"
+    )
+    return 0
+
+
 def cmd_ingest(args, lookup) -> int:
     encoder = None if args.dry_run else EmbeddingGemmaEncoder(EMBEDDING_MODEL, NORMALIZE)
     vector_store = None
@@ -287,6 +342,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--preflight", action="store_true", help="vérifie roots/lookup puis sort.")
     p.add_argument("--verify-sample", help="dump déterministe node_id pour UN fichier puis sort.")
+    p.add_argument("--benchmark", type=int, default=0, help="bench débit sur N vrais fichiers (per-fichier) puis sort.")
     return p.parse_args()
 
 
@@ -299,6 +355,8 @@ def main() -> int:
         return cmd_preflight(args, lookup)
     if args.verify_sample:
         return cmd_verify_sample(args, lookup)
+    if args.benchmark:
+        return cmd_benchmark(args, lookup)
     return cmd_ingest(args, lookup)
 
 

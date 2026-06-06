@@ -15,8 +15,10 @@
 #
 # Usage :
 #   ./provision_pod.sh --check          # DRY : payload (secrets masqués), aucun appel
+#   ./provision_pod.sh --check-gpu      # DRY : payload GPU (computeType GPU, EXPECT_CUDA=1)
 #   ./provision_pod.sh --probe          # crée un pod PROBE_ONLY=1 (R4 : valide Tailscale+Qdrant puis self-stop)
-#   ./provision_pod.sh --create         # crée le pod d'ingestion complet
+#   ./provision_pod.sh --create         # crée le pod d'ingestion complet (CPU)
+#   ./provision_pod.sh --create-gpu     # bulk one-time sur GPU (fail-fast si GPU non utilisé/non-fp32)
 #   ./provision_pod.sh --status <id>
 #   ./provision_pod.sh --stop <id>      # arrête (compute off) — préféré au teardown
 #   ./provision_pod.sh --terminate <id> # DELETE définitif (+ révoquer la clé Headscale)
@@ -35,6 +37,17 @@ CONTAINER_DISK_GB="${CONTAINER_DISK_GB:-60}"
 VOLUME_GB="${VOLUME_GB:-0}"
 GIT_OWNER="${GIT_OWNER:-Mobutoo}"
 SESE_TAILNET_IP="${SESE_TAILNET_IP:-100.64.0.14}"
+
+# --- GPU (one-time bulk) ---------------------------------------------------
+# computeType=GPU + fail-fast EXPECT_CUDA=1 (warm-up G4b + bench G7b). Le modèle
+# fait 1.2GB -> n'importe quel GPU bon marché suffit. gpuTypeIds = liste de repli
+# (RunPod prend le 1er disponible). Si le driver hôte est trop ancien pour le torch
+# cu13 du lock -> torch.cuda.is_available()=False -> fail-fast (pod self-stop ~3min).
+COMPUTE_TYPE="${COMPUTE_TYPE:-CPU}"
+GPU_COUNT="${GPU_COUNT:-1}"
+# Ada/récent en tête : driver hôte plus probablement ≥580 (requis par torch cu13 du
+# lock). Ampère en repli. Tous secure=true (validés via GraphQL gpuTypes 2026-06-06).
+GPU_TYPE_IDS="${GPU_TYPE_IDS:-[\"NVIDIA L4\",\"NVIDIA RTX 2000 Ada Generation\",\"NVIDIA RTX 4000 Ada Generation\",\"NVIDIA RTX A4000\",\"NVIDIA RTX A4500\",\"NVIDIA GeForce RTX 4090\"]}"
 
 load_secrets() {
   for f in "$ENV_POD" "$ENV_QDRANT" "$ENV_RUNPOD"; do
@@ -56,12 +69,13 @@ build_env_json() {  # $1 = PROBE_ONLY value
     --arg pat "$GITHUB_PAT" --arg qurl "$QDRANT_URL" --arg qkey "$QDRANT_API_KEY" \
     --arg rpkey "$RUNPOD_API_KEY" --arg sese "$SESE_TAILNET_IP" --arg owner "$GIT_OWNER" \
     --arg hf "$HF_TOKEN" --arg probe "$1" --arg keep "${2:-0}" \
-    --arg wd "${WATCHDOG_MAX:-14400}" '{
+    --arg wd "${WATCHDOG_MAX:-14400}" \
+    --arg cuda "$([ "$COMPUTE_TYPE" = GPU ] && echo 1 || echo 0)" '{
       HEADSCALE_AUTHKEY:$authkey, HEADSCALE_LOGIN_SERVER:$login, GITHUB_PAT:$pat,
       QDRANT_URL:$qurl, QDRANT_API_KEY:$qkey, RUNPOD_API_KEY:$rpkey,
       HF_TOKEN:$hf, HUGGINGFACE_HUB_TOKEN:$hf,
       SESE_TAILNET_IP:$sese, GIT_OWNER:$owner, PROBE_ONLY:$probe, DEBUG_KEEPALIVE:$keep,
-      WATCHDOG_MAX:$wd
+      WATCHDOG_MAX:$wd, EXPECT_CUDA:$cuda
     }'
 }
 
@@ -72,18 +86,27 @@ build_env_json() {  # $1 = PROBE_ONLY value
 DOCKER_START_CMD='set -x; export DEBIAN_FRONTEND=noninteractive; { for i in 1 2 3; do apt-get update && break; echo "apt retry $i"; sleep 5; done; apt-get install -y git curl && { if [ -d /staging/VPAI/.git ]; then echo "VPAI déjà cloné (restart) -> skip clone"; ok=1; else ok=0; for j in 1 2 3 4 5; do git clone --depth 1 "https://x-access-token:${GITHUB_PAT}@github.com/${GIT_OWNER}/VPAI.git" /staging/VPAI && { ok=1; break; }; echo "git clone retry $j (rc=$?)"; rm -rf /staging/VPAI; sleep 10; done; fi; [ "$ok" = 1 ]; } && exec bash /staging/VPAI/scripts/memory/gpu_ingest/bootstrap.sh; }; rc=$?; echo "=== PREAMBLE FAILED rc=$rc ==="; if [ "${DEBUG_KEEPALIVE:-0}" = "1" ]; then echo "keepalive 1800s — lis Container Logs"; sleep 1800; fi; [ -n "${RUNPOD_API_KEY:-}" ] && curl -s -X POST "https://rest.runpod.io/v1/pods/${RUNPOD_POD_ID}/stop" -H "Authorization: Bearer ${RUNPOD_API_KEY}" >/dev/null 2>&1'
 
 build_payload() {  # $1 = PROBE_ONLY  $2 = DEBUG_KEEPALIVE
-  jq -n \
+  local base
+  base=$(jq -n \
     --arg name "$POD_NAME" --arg image "$POD_IMAGE" --arg cloud "$CLOUD_TYPE" \
     --argjson vcpu "$VCPU" --argjson cdisk "$CONTAINER_DISK_GB" --argjson vol "$VOLUME_GB" \
-    --argjson envobj "$(build_env_json "$1" "${2:-0}")" --arg startcmd "$DOCKER_START_CMD" '
+    --argjson envobj "$(build_env_json "$1" "${2:-0}")" --arg startcmd "$DOCKER_START_CMD" \
+    --arg ctype "$COMPUTE_TYPE" '
     {
-      name: $name, imageName: $image, computeType: "CPU", cloudType: $cloud,
+      name: $name, imageName: $image, computeType: $ctype, cloudType: $cloud,
       vcpuCount: $vcpu, containerDiskInGb: $cdisk, volumeInGb: $vol,
       ports: ["22/tcp"],
       dockerEntrypoint: ["/bin/bash"],
       dockerStartCmd: ["-lc", $startcmd],
       env: $envobj
-    }'
+    }')
+  if [ "$COMPUTE_TYPE" = GPU ]; then
+    # GPU : ajoute gpuCount + gpuTypeIds (liste de repli). vcpuCount ignoré côté GPU.
+    echo "$base" | jq --argjson gc "$GPU_COUNT" --argjson gt "$GPU_TYPE_IDS" \
+      '. + {gpuCount:$gc, gpuTypeIds:$gt}'
+  else
+    echo "$base"
+  fi
 }
 
 mask() { jq '.env |= with_entries(.value |= (if (.|length)>8 then .[0:6]+"…" else "***" end))'; }
@@ -114,11 +137,13 @@ cmd_terminate() { load_secrets; curl -sS -X DELETE "$API/$1" -H "Authorization: 
 
 case "${1:---check}" in
   --check)        cmd_check 0 ;;
+  --check-gpu)    COMPUTE_TYPE=GPU cmd_check 0 ;;
   --probe)        post_create 1 0 ;;
   --debug-probe)  post_create 1 1 ;;   # PROBE_ONLY + keepalive (logs console lisibles)
   --create)       post_create 0 0 ;;
+  --create-gpu)   COMPUTE_TYPE=GPU post_create 0 0 ;;   # bulk one-time GPU (EXPECT_CUDA=1, fail-fast)
   --status)    [ -n "${2:-}" ] || { echo "usage: --status <podId>" >&2; exit 2; }; cmd_status "$2" ;;
   --stop)      [ -n "${2:-}" ] || { echo "usage: --stop <podId>" >&2; exit 2; }; cmd_stop "$2" ;;
   --terminate) [ -n "${2:-}" ] || { echo "usage: --terminate <podId>" >&2; exit 2; }; cmd_terminate "$2" ;;
-  *) echo "usage: $0 [--check|--probe|--debug-probe|--create|--status <id>|--stop <id>|--terminate <id>]" >&2; exit 2 ;;
+  *) echo "usage: $0 [--check|--check-gpu|--probe|--debug-probe|--create|--create-gpu|--status <id>|--stop <id>|--terminate <id>]" >&2; exit 2 ;;
 esac

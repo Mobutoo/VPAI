@@ -30,6 +30,22 @@ SCHEMA_VERSION = "memory_v2"
 CHUNKING_STRATEGY_VERSION = "2026-04-09"
 CHUNK_SIZE = 1600
 CHUNK_OVERLAP = 200
+MAX_CHUNKS_PER_FILE = 200
+
+# Filtres de selection de fichiers — MIROIR de
+# roles/llamaindex-memory-worker/defaults/main.yml (include_extensions /
+# exclude_dirs / max_file_bytes). DOIVENT rester synchronises : le worker lit son
+# config.yml (rendu des defaults), le pod lit ces constantes. Divergence = trous
+# (un fichier ignore d'un cote), pas de corruption — le worker incremental rattrape.
+INCLUDE_EXTENSIONS = {
+    ".md", ".txt", ".rst", ".py", ".js", ".jsx", ".ts", ".tsx", ".go", ".sh",
+    ".sql", ".json", ".yml", ".yaml", ".j2", ".env", ".toml", ".ini",
+}
+EXCLUDE_DIRS = {
+    ".git", "node_modules", "dist", "build", ".next", ".turbo", ".venv", "venv",
+    "__pycache__", ".mypy_cache", ".pytest_cache", ".playwright-mcp", "coverage",
+}
+MAX_FILE_BYTES = 1048576
 
 
 # ---------------------------------------------------------------------------
@@ -674,3 +690,99 @@ def make_node_id(ref_id: str, chunk_index: int, chunk_text: str) -> str:
     """Génère un UUID déterministe pour un chunk (même logique que index.py.j2)."""
     digest = sha256_text(f"{ref_id}:{chunk_index}:{chunk_text}")
     return str(uuid.UUID(digest[:32]))
+
+
+# ---------------------------------------------------------------------------
+# 10. iter_source_files — walk filtré partagé (worker + pod), stdlib only
+# ---------------------------------------------------------------------------
+def iter_source_files(
+    root: Path,
+    include_ext: set[str] | None = None,
+    exclude_dirs: set[str] | None = None,
+    max_file_bytes: int = MAX_FILE_BYTES,
+):
+    """Itère les fichiers indexables sous `root` (filtres canoniques partagés).
+
+    Même logique que le worker (iter_repo_files) : filtre par extension, taille,
+    et élague les répertoires exclus. Yield des chemins absolus.
+    """
+    import os
+
+    inc = include_ext if include_ext is not None else INCLUDE_EXTENSIONS
+    exc = exclude_dirs if exclude_dirs is not None else EXCLUDE_DIRS
+    for current_root, dirs, files in os.walk(root):
+        dirs[:] = [d for d in dirs if d not in exc]
+        current = Path(current_root)
+        for filename in files:
+            path = current / filename
+            if path.suffix.lower() not in inc:
+                continue
+            try:
+                if path.stat().st_size > max_file_bytes:
+                    continue
+            except FileNotFoundError:
+                continue
+            yield path
+
+
+# ---------------------------------------------------------------------------
+# 11. to_text_nodes — chunks -> list[TextNode] (PARTAGÉ worker+pod, parité node)
+# ---------------------------------------------------------------------------
+def to_text_nodes(
+    *,
+    repo: str,
+    path: Path,
+    relative_path: str,
+    wing: str,
+    room: str,
+    topic: str,
+    content_hash: str,
+    git_sha: str,
+    chunks: list[Chunk],
+    struct_meta: dict[str, list[str]] | None = None,
+    embedding_model: str = "google/embeddinggemma-300m",
+    embedding_dim: int = 768,
+    host_origin: str = "waza",
+    valid_from: str | None = None,
+):
+    """Construit les TextNode (id_ déterministe + payload complet) pour un fichier.
+
+    SOURCE UNIQUE worker+pod : garantit que les deux produisent des node_id et
+    payloads IDENTIQUES. TextNode est lazy-importé (llama-index) pour permettre
+    l'import de memory_core sans la dépendance (tests purs).
+
+    Les axes embedding_model/dim/host_origin sont des PARAMÈTRES (le worker passe
+    ses valeurs Jinja rendues ; le pod passe les mêmes littéraux). host_origin
+    DOIT rester "waza" des deux côtés (ref_doc_id/tags/node_id en dépendent).
+    """
+    from llama_index.core.schema import TextNode  # type: ignore[import]
+
+    tags = build_tags(repo, classify_doc_kind(path), detect_language(path))
+    ref_id = ref_doc_id(repo, relative_path)
+    now = valid_from or utcnow_iso()
+    nodes = []
+    for chunk in chunks:
+        metadata = build_payload(
+            wing=wing,
+            room=room,
+            repo=repo,
+            relative_path=relative_path,
+            path=path,
+            topic=topic,
+            tags=tags,
+            chunk_index=chunk.chunk_index,
+            chunk_count=chunk.chunk_count,
+            chunk_kind=chunk.chunk_kind,
+            section=chunk.section,
+            chunk_title=chunk.title,
+            content_hash=content_hash,
+            git_sha=git_sha,
+            struct_meta=struct_meta,
+            embedding_model=embedding_model,
+            embedding_dim=embedding_dim,
+            host_origin=host_origin,
+            valid_from=now,
+        )
+        node_id = make_node_id(ref_id, chunk.chunk_index, chunk.text)
+        nodes.append(TextNode(id_=node_id, text=chunk.text, metadata=metadata))
+    return nodes

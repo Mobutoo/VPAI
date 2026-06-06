@@ -44,7 +44,13 @@ Un subagent (plomberie M3) a **figé ~10h** — cause quasi certaine : chargemen
 ## PROCHAINES ÉTAPES (ordre)
 1. ✅ ~~Valider memory_core~~ (86 tests).
 2. ✅ ~~Câbler le worker~~ (full-DRY, voir bloc ci-dessus).
-3. **Écrire le batch pod** `scripts/memory/gpu_ingest/` (importe memory_core + `resolve_source` ; venv pins ; staging git-clone + rsync DOCS/podpilot ; embed fp32 ; upsert direct memory_v2 via VPN ; lookup wing keys = chemins pod = NOM source au top-niveau, cf contrat resolve_source).
+3. ✅ ~~Écrire le batch pod~~ `scripts/memory/gpu_ingest/` — FAIT 2026-06-06 :
+   - `pod_ingest.py` (importe memory_core ; modes `--preflight`/`--verify-sample`/`--dry-run`/bulk ; upsert via `QdrantVectorStore.add` = mêmes clés payload que worker ; `host_origin=waza` ; chemin RELATIF passé à to_text_nodes = parité classify_doc_kind).
+   - `requirements.lock.txt` = **pip freeze du venv worker live** (104 pkgs, llama-index-core==0.12.52.post1, tiktoken==0.12.0, nltk==3.9.4, Py3.12.3) — pin du stack pure-python complet (advisor BLOCKER : dérive chunking → node_id). torch/wheels x86 = vecteurs ~cos0.99999 accepté.
+   - `sources.pod.yml` (root /staging/<name> → wing/name identiques defaults). `stage_sources.sh` (clone github-seko ⚠️remotes à VÉRIFIER + rsync DOCS/podpilot doc). `README.md` runbook (gate→venv→punkt→staging→preflight→**spot-check node_id Waza↔pod**→bulk→teardown).
+   - **Refacto parité** : `to_text_nodes` + `iter_source_files` + constantes INCLUDE_EXTENSIONS/EXCLUDE_DIRS/MAX_FILE_BYTES déplacés/ajoutés dans memory_core (worker re-câblé, pyflakes CLEAN, 86 tests).
+   - **VÉRIF** : pod_ingest compile+pyflakes CLEAN ; testé live sur **venv worker** Waza (`--verify-sample VPAI/CLAUDE.md` → 14 chunks, node_ids déterministes, punkt OK) = RÉFÉRENCE pour le diff Step 4. (Spot-check cross-env Waza↔pod = à faire au Step 4 quand le pod existe.)
+   - **À confirmer côté pod (Step 4, advisor)** : QdrantVectorStore.add utilise bien `node.id_` comme point-id ; staging sans double-nesting ; punkt+punkt_tab téléchargés.
 4. **Provision** : clé Headscale éphémère (hub seko-vpn) + pod CPU RunPod on-demand (REST /v1/pods) → join mesh → run batch → spot-check parité → bulk.
 5. **Teardown** pod + **révoquer** clé Headscale.
 6. **M4** : repointer `search_memory.py` + MCP qdrant-find sur memory_v2 (répare R0) ; filtres wing/room ; cap process ; re-enable worker timer (incrémental, capé).

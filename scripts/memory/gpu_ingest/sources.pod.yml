@@ -1,0 +1,39 @@
+---
+# sources.pod.yml — mapping staging pod -> (wing, name) pour pod_ingest.py.
+#
+# PARITÉ : `name` et `wing` DOIVENT être identiques à
+# roles/llamaindex-memory-worker/defaults/main.yml (memory_worker_sources).
+# `root` = emplacement de staging sur le pod. Le contenu de chaque source doit
+# se trouver EXACTEMENT à ce root (pas de double-nesting : `git clone … /staging/VPAI`,
+# rsync sans dossier parent en plus) — sinon relative_path décale -> node_id divergent.
+#
+# Consommé par memory_core.load_wing_room_lookup (clés résolues en realpath).
+
+sources:
+  - name: "VPAI"
+    wing: "infra"
+    root: "/staging/VPAI"
+  - name: "flash-studio"
+    wing: "saas"
+    root: "/staging/flash-studio"
+  - name: "story-engine"
+    wing: "saas"
+    root: "/staging/story-engine"
+  - name: "typebot-docs"
+    wing: "refdocs"
+    root: "/staging/typebot-docs"
+  - name: "DOCS"
+    wing: "refdocs"
+    root: "/staging/DOCS"
+  - name: "podpilot"
+    wing: "saas"
+    root: "/staging/podpilot"
+  - name: "hawkeye"
+    wing: "saas"
+    root: "/staging/hawkeye"
+  - name: "fantrad"
+    wing: "saas"
+    root: "/staging/fantrad"
+  - name: "riposte"
+    wing: "saas"
+    root: "/staging/riposte"

@@ -30,23 +30,19 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 # --- Source unique de vérité partagée worker <-> batch pod (parité) ----------
 # (schema_version / chunking_strategy_version sont posés par build_payload.)
 from memory_core import (
-    Chunk,
     EmbeddingGemmaEncoder,
     build_chunks,
-    build_payload,
-    build_tags,
     classify_doc_kind,
     classify_room,
-    detect_language,
     extract_structural_meta,
     extract_topic,
     git_commit_sha,
     load_wing_room_lookup,
-    make_node_id,
     ref_doc_id,
     resolve_source,
     sha256_file,
     sha256_text,
+    to_text_nodes,
     utcnow_iso,
 )
 
@@ -192,56 +188,6 @@ def iter_target_files(
 def state_key(repo: str, relative_path: str) -> str:
     return f"{repo}:{relative_path}"
 
-
-def to_text_nodes(
-    repo: str,
-    path: Path,
-    relative_path: str,
-    wing: str,
-    room: str,
-    topic: str,
-    content_hash: str,
-    git_sha: str,
-    chunks: list[Chunk],
-    struct_meta: dict[str, list[str]] | None = None,
-) -> list[TextNode]:
-    # Payload + node_id construits via memory_core (source unique partagée pod).
-    # Les valeurs Jinja (modèle/dim/host) sont passées en arguments rendus.
-    tags = build_tags(repo, classify_doc_kind(path), detect_language(path))
-    ref_id = ref_doc_id(repo, relative_path)
-    now = utcnow_iso()
-    nodes: list[TextNode] = []
-    for chunk in chunks:
-        metadata = build_payload(
-            wing=wing,
-            room=room,
-            repo=repo,
-            relative_path=relative_path,
-            path=path,
-            topic=topic,
-            tags=tags,
-            chunk_index=chunk.chunk_index,
-            chunk_count=chunk.chunk_count,
-            chunk_kind=chunk.chunk_kind,
-            section=chunk.section,
-            chunk_title=chunk.title,
-            content_hash=content_hash,
-            git_sha=git_sha,
-            struct_meta=struct_meta,
-            embedding_model="{{ memory_worker_embedding_model }}",
-            embedding_dim={{ memory_worker_embedding_dim }},
-            host_origin="{{ memory_worker_host_origin }}",
-            valid_from=now,
-        )
-        node_id = make_node_id(ref_id, chunk.chunk_index, chunk.text)
-        nodes.append(
-            TextNode(
-                id_=node_id,
-                text=chunk.text,
-                metadata=metadata,
-            )
-        )
-    return nodes
 
 
 def build_qdrant_client(config: dict[str, Any]) -> QdrantClient:
@@ -715,7 +661,21 @@ def process_file(
     git_sha = git_commit_sha(repo_root, path)
     ref_id = ref_doc_id(repo, relative_path)
     struct_meta = extract_structural_meta(Path(relative_path), content)
-    nodes = to_text_nodes(repo, Path(relative_path), relative_path, wing, room, topic, content_hash, git_sha, chunks, struct_meta=struct_meta)
+    nodes = to_text_nodes(
+        repo=repo,
+        path=Path(relative_path),
+        relative_path=relative_path,
+        wing=wing,
+        room=room,
+        topic=topic,
+        content_hash=content_hash,
+        git_sha=git_sha,
+        chunks=chunks,
+        struct_meta=struct_meta,
+        embedding_model="{{ memory_worker_embedding_model }}",
+        embedding_dim={{ memory_worker_embedding_dim }},
+        host_origin="{{ memory_worker_host_origin }}",
+    )
     batch_size = int(config["limits"]["batch_size"])
     prepared_nodes: list[TextNode] = []
     for node_batch in batched(nodes, batch_size):

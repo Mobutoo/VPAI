@@ -46,6 +46,7 @@ load_secrets() {
   : "${GITHUB_PAT:?absent (pod-ingest.env — PAT read-only)}"
   : "${QDRANT_URL:?absent (memory-worker.env)}"
   : "${QDRANT_API_KEY:?absent (memory-worker.env)}"
+  : "${HF_TOKEN:?absent (memory-worker.env — embeddinggemma-300m est gated)}"
   : "${RUNPOD_API_KEY:?absent (fantrad/.env)}"
 }
 
@@ -54,9 +55,10 @@ build_env_json() {  # $1 = PROBE_ONLY value
     --arg authkey "$HEADSCALE_AUTHKEY" --arg login "$HEADSCALE_LOGIN_SERVER" \
     --arg pat "$GITHUB_PAT" --arg qurl "$QDRANT_URL" --arg qkey "$QDRANT_API_KEY" \
     --arg rpkey "$RUNPOD_API_KEY" --arg sese "$SESE_TAILNET_IP" --arg owner "$GIT_OWNER" \
-    --arg probe "$1" '{
+    --arg hf "$HF_TOKEN" --arg probe "$1" '{
       HEADSCALE_AUTHKEY:$authkey, HEADSCALE_LOGIN_SERVER:$login, GITHUB_PAT:$pat,
       QDRANT_URL:$qurl, QDRANT_API_KEY:$qkey, RUNPOD_API_KEY:$rpkey,
+      HF_TOKEN:$hf, HUGGINGFACE_HUB_TOKEN:$hf,
       SESE_TAILNET_IP:$sese, GIT_OWNER:$owner, PROBE_ONLY:$probe
     }'
 }

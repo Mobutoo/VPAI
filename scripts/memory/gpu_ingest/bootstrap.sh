@@ -35,18 +35,24 @@ QBASE="${QDRANT_URL%/}"                  # ex https://qd.ewutelo.cloud:443
 QHDR=(-H "api-key: ${QDRANT_API_KEY:-}")
 CURL=(curl -fsS --max-time 30)
 
-self_stop() {
-  local why="$1"
-  say "SELF-STOP ($why)"
+# Filet anti-orphelin (REX FanTrad PROCEDURES.md P1 : trap EXIT => 0 pod orphelin).
+# do_stop est idempotent ; le trap EXIT le déclenche sur TOUTE sortie (gate fail,
+# erreur non gérée, SIGTERM), pas seulement les chemins explicites.
+STOPPED=0
+do_stop() {
+  [ "$STOPPED" = 1 ] && return 0; STOPPED=1
+  say "SELF-STOP ($1)"
   if [ -n "${RUNPOD_API_KEY:-}" ] && [ -n "${RUNPOD_POD_ID:-}" ]; then
     curl -sS -X POST "https://rest.runpod.io/v1/pods/${RUNPOD_POD_ID}/stop" \
       -H "Authorization: Bearer ${RUNPOD_API_KEY}" -w '\n[stop] HTTP %{http_code}\n' || true
   else
     say "WARN: RUNPOD_API_KEY/RUNPOD_POD_ID absent — stop manuel requis"
   fi
-  exit "${2:-0}"
 }
-fail() { say "GATE FAIL: $*"; self_stop "fail: $*" 1; }
+on_exit() { local rc=$?; do_stop "trap exit rc=$rc"; }
+trap on_exit EXIT INT TERM
+self_stop() { do_stop "$1"; exit "${2:-0}"; }
+fail() { say "GATE FAIL: $*"; exit 1; }   # le trap EXIT self-stoppe
 
 # ---------------------------------------------------------------------------
 say "=== G1 deps + Tailscale ==="

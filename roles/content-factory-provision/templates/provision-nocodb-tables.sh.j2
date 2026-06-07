@@ -189,7 +189,7 @@ echo "[$(date)] Missing columns check complete."
 # Step 6: Seed Paul Taff brand profile
 echo "[$(date)] Checking Paul Taff brand profile..."
 BRAND_ROWS=$(curl -sf -H "xc-token: ${TOKEN}" \
-  "${BASE_URL}/api/v2/meta/bases/${BASE_ID}/tables/${BRANDS_ID}/records?where=(name,eq,Paul Taff)&limit=1" 2>/dev/null || true)
+  "${BASE_URL}/api/v2/tables/${BRANDS_ID}/records?where=(name,eq,Paul Taff)&limit=1" 2>/dev/null || true)
 BRAND_EXISTS=$(echo "$BRAND_ROWS" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
@@ -201,7 +201,7 @@ if [ "$BRAND_EXISTS" = "0" ]; then
   curl -sf -X POST \
     -H "xc-token: ${TOKEN}" \
     -H "Content-Type: application/json" \
-    "${BASE_URL}/api/v2/meta/bases/${BASE_ID}/tables/${BRANDS_ID}/records" \
+    "${BASE_URL}/api/v2/tables/${BRANDS_ID}/records" \
     -d '{
       "name": "Paul Taff",
       "tagline": "Des agents IA avec du caractere",

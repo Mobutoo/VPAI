@@ -35,8 +35,16 @@ story_engine_qdrant_image: "qdrant/qdrant:v1.16.3"
 story_engine_jwt_secret: "{{ vault_story_engine_jwt_secret | default('change-me-in-production') }}"
 story_engine_litellm_url: "https://llm.{{ domain_name }}/v1"
 story_engine_litellm_api_key: "{{ vault_litellm_master_key | default('') }}"
-story_engine_embedding_model: "text-embedding-3-small"
+story_engine_embedding_model: "embedding"  # LiteLLM alias -> text-embedding-3-small (1536d)
 story_engine_token_budget_daily: 50000
+
+# Brevo transactional email (v1.5)
+story_engine_brevo_api_key: "{{ vault_story_engine_brevo_api_key | default('') }}"
+story_engine_brevo_reset_template_id: "{{ vault_story_engine_brevo_reset_template_id | default(1) }}"
+story_engine_brevo_verify_template_id: "{{ vault_story_engine_brevo_verify_template_id | default(2) }}"
+story_engine_brevo_sender_email: "{{ vault_story_engine_brevo_sender_email | default('noreply@ewutelo.cloud') }}"
+story_engine_brevo_sender_name: "{{ vault_story_engine_brevo_sender_name | default('StoryEngine') }}"
+story_engine_frontend_url: "https://story.{{ domain_name }}"
 
 # Caddy
 story_engine_caddy_image: "caddy:2.10-alpine"

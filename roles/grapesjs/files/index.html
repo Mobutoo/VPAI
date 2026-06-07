@@ -560,6 +560,7 @@ ${html}
 
     editor.setComponents(bodyHtml.trim());
     if (css.trim()) editor.setStyle(css.trim());
+    runCanvasToc();
 
     closeModal('modal-import');
     toast('Template chargé ✓');
@@ -633,6 +634,35 @@ ${html}
   let sseSource = null;
   let saveTimer  = null;
 
+  /* ── TOC rebuild dans le canvas (GrapeJS bloque les <script> inline) ── */
+  function runCanvasToc() {
+    setTimeout(() => {
+      try {
+        const canvasDoc = editor.Canvas.getDocument();
+        const toc = canvasDoc.getElementById('toc-container');
+        if (!toc) return;
+        const headings = canvasDoc.querySelectorAll('[data-toc-level]');
+        let html = '';
+        headings.forEach(h => {
+          const level  = parseInt(h.getAttribute('data-toc-level'));
+          // Lire le texte complet du heading (numéro + titre) en normalisant &nbsp;
+          const title  = h.textContent.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+          const anchor = h.id;
+          const ml  = (level - 1) * 16;
+          const fw  = level === 1 ? 'bold' : 'normal';
+          const fi  = level === 3 ? 'italic' : 'normal';
+          const col = level === 1 ? '#002060' : level === 2 ? '#1B3281' : '#1F497D';
+          html += `<div style="display:flex;align-items:baseline;margin:${level > 1 ? 2 : 6}px 0;margin-left:${ml}px">`
+                + `<a href="#${anchor}" style="font-family:Calibri,Arial,sans-serif;font-size:10pt;font-weight:${fw};font-style:${fi};color:${col};text-decoration:none;white-space:nowrap">${title}</a>`
+                + `<span style="flex:1;border-bottom:1px dotted #999;margin:0 6px;height:1em;min-width:20px"></span>`
+                + `<span style="font-family:Calibri,Arial,sans-serif;font-size:10pt;font-weight:${fw};color:${col}">—</span>`
+                + `</div>`;
+        });
+        toc.innerHTML = html;
+      } catch(_) {}
+    }, 300);
+  }
+
   function loadFromApi(data) {
     if (!data.html) return;
     const parser = new DOMParser();
@@ -642,6 +672,7 @@ ${html}
     const bodyHtml = doc.body ? doc.body.innerHTML : data.html;
     editor.setComponents(bodyHtml.trim());
     if (css.trim()) editor.setStyle(css.trim());
+    runCanvasToc();
   }
 
   function connectSSE() {

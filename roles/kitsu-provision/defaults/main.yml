@@ -1,7 +1,7 @@
 ---
 # kitsu-provision — defaults
 kitsu_provision_config_dir: "/opt/{{ project_name }}/configs/kitsu"
-kitsu_admin_email: "{{ vault_kitsu_admin_email | default('admin@' + domain_name) }}"
+kitsu_admin_email: "{{ vault_kitsu_admin_email | default('seko.mobutoo@gmail.com') }}"
 kitsu_admin_password: "{{ vault_kitsu_admin_password }}"
 kitsu_secret_key: "{{ vault_kitsu_secret_key }}"
 

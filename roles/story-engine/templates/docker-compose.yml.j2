@@ -154,6 +154,9 @@ services:
       - {{ story_engine_data_dir }}/caddy_config:/config
     networks:
       - backend
+{% for net in caddy_extra_networks | default([]) %}
+      - {{ net }}
+{% endfor %}
     mem_limit: {{ story_engine_caddy_mem_limit }}
     depends_on:
       api:
@@ -169,6 +172,10 @@ services:
 networks:
   backend:
     driver: bridge
+{% for net in caddy_extra_networks | default([]) %}
+  {{ net }}:
+    external: true
+{% endfor %}
 
 volumes:
   exports_data:

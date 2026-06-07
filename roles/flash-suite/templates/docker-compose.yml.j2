@@ -1,30 +1,10 @@
 # {{ ansible_managed }}
-# Flash Suite — Docker Compose stack
-# Deployed by Ansible role flash-suite
+# Flash Suite — Docker Compose stack (Sese-AI integration)
+# No Caddy — routes handled by main javisi_caddy via Caddyfile.j2
 
 name: {{ flash_suite_compose_project }}
 
 services:
-  caddy:
-    image: {{ flash_suite_caddy_image }}
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - {{ flash_suite_base_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    environment:
-      CLIENT_DOMAIN: "{{ flash_suite_domain }}"
-      SUITE_INTERNAL_KEY: "{{ flash_suite_internal_key }}"
-    networks:
-      - frontend
-    depends_on:
-      shell:
-        condition: service_healthy
-    restart: unless-stopped
-
   postgres:
     image: {{ flash_suite_postgres_image }}
     container_name: suite_postgres
@@ -32,6 +12,12 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
     environment:
       POSTGRES_USER: "{{ flash_suite_postgres_user }}"
       POSTGRES_PASSWORD: "{{ flash_suite_postgres_password }}"
@@ -47,37 +33,74 @@ services:
       timeout: 5s
       retries: 5
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:7-alpine
+    container_name: suite_redis
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   shell:
-    image: {{ flash_suite_shell_image }}
+    image: suite-shell:local
     container_name: suite_shell
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    volumes:
+      - {{ flash_suite_config_dir }}/suite-registry.yaml:/app/suite-registry.yaml:ro
     environment:
       NODE_ENV: production
       PORT: "{{ flash_suite_shell_port }}"
-      ZITADEL_ISSUER: "{{ flash_suite_zitadel_issuer }}"
-      ZITADEL_CLIENT_ID: "{{ flash_suite_zitadel_client_id }}"
-      ZITADEL_CLIENT_SECRET: "{{ flash_suite_zitadel_client_secret }}"
       AUTH_SECRET: "{{ flash_suite_auth_secret }}"
       AUTH_URL: "https://{{ flash_suite_domain }}"
       AUTH_TRUST_HOST: "true"
       SUITE_DATABASE_URL: "postgresql://{{ flash_suite_postgres_user }}:{{ flash_suite_postgres_password }}@postgres:{{ flash_suite_postgres_port }}/{{ flash_suite_postgres_db }}"
       SUITE_INTERNAL_KEY: "{{ flash_suite_internal_key }}"
+      REDIS_URL: "redis://redis:6379"
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
-      - frontend
       - backend
+      - javisi_frontend
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:{{ flash_suite_shell_port }}"]
+      test: ["CMD", "node", "-e", "const http=require('http');const r=http.get('http://localhost:{{ flash_suite_shell_port }}',{timeout:3000},res=>{process.exit(res.statusCode<500?0:1)});r.on('error',()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 20s
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   event-cron:
     image: alpine:3.21
@@ -102,32 +125,51 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   ase:
-    image: {{ flash_suite_ase_image }}
+    image: suite-ase:local
     container_name: suite_ase
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
     environment:
+      DATABASE_URL: "postgresql://{{ flash_suite_postgres_user }}:{{ flash_suite_postgres_password }}@postgres:{{ flash_suite_postgres_port }}/{{ flash_suite_postgres_db }}"
       FORCE_SCRIPT_NAME: /flow
       STATIC_URL: /flow/static/
       VITE_BASE_PATH: /flow/
       ALLOWED_HOSTS: "*"
       CSRF_TRUSTED_ORIGINS: "https://{{ flash_suite_domain }}"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - backend
+      - javisi_frontend
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/flow/api/health"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/flow/')\" || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   zimboo:
-    image: {{ flash_suite_zimboo_image }}
+    image: suite-zimboo:local
     container_name: suite_zimboo
     security_opt:
       - no-new-privileges:true
@@ -137,16 +179,22 @@ services:
       SUITE_BASE_PATH: /finance
     networks:
       - backend
+      - javisi_frontend
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/finance/api/health"]
+      test: ["CMD", "node", "-e", "const http=require('http');const r=http.get('http://localhost:3000/finance',{timeout:3000},res=>{process.exit(res.statusCode<500?0:1)});r.on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   koodia:
-    image: {{ flash_suite_koodia_image }}
+    image: suite-koodia:local
     container_name: suite_koodia
     security_opt:
       - no-new-privileges:true
@@ -156,19 +204,25 @@ services:
       SUITE_BASE_PATH: /food
     networks:
       - backend
+      - javisi_frontend
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/food/api/health"]
+      test: ["CMD", "node", "-e", "const http=require('http');const r=http.get('http://localhost:3100/food',{timeout:3000},res=>{process.exit(res.statusCode<500?0:1)});r.on('error',()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
-  frontend:
   backend:
+  javisi_frontend:
+    name: {{ project_name }}_frontend
+    external: true
 
 volumes:
-  caddy_data:
-  caddy_config:
   postgres_data:

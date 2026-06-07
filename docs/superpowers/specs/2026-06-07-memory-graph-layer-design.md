@@ -91,6 +91,10 @@ sur les **vecteurs document stockés** :
 2. **Agréger** les voisins-chunks en arêtes **fichier↔fichier** (poids = agrégat des
    similarités de paires de chunks). **Jamais** de mean-pool des vecteurs fichier (lossy).
 
+**Seuils `τ_high` / `τ_low`** : valeur de départ P1 `τ_high=0.78`, `τ_low=0.62`
+(cosinus sur vecteurs normalisés), à calibrer sur le benchmark P4. Exposés en config
+(pas en dur) pour ajustement sans rebuild de code.
+
 Conséquence : l'ANN reste **server-side Qdrant** → 0 vecteur tiré sur le Pi,
 0 cosine local ARM → tue le coût "23k recherches" et la crainte ARM.
 
@@ -142,10 +146,11 @@ Multi-repo : **tout ce qui est dans `memory_v2`** (repos déclarés dans
 
 | Phase | Livre | Gate |
 |---|---|---|
-| **P1** | modèle nœuds/arêtes + graphe Qdrant-derived (méta + `similar_to` recommend-by-id) + `graph_query` + **query log** + tests | — |
+| **P0** | pré-requis P2 : valider wheels tree-sitter ARM64 sur waza (§9). Échec → bascule extracteur | bloque P2 |
+| **P1** | modèle nœuds/arêtes + graphe Qdrant-derived (méta + `similar_to` recommend-by-id) + `graph_query` + **query log** + tests. **Tranche** : rôle `memory-graph` dédié vs extension worker (§8) | — |
 | **P2** | **`varflow_extract` Ansible/Jinja D'ABORD** (`defines_var`/`uses_var`), puis `ast_extract` code (`calls`/`imports`) | — |
 | **P3** | `graph_mcp` stdio waza + hook R0 (`get_neighbors`) + `save-result` + `rationale_extract` | — |
-| **P4** | **GATE DUR** : benchmark token/rappel multi-hop **vs** vecteur seul. Décide si P5-P6 partent | **bloque P5-P6** |
+| **P4** | **GATE DUR** : benchmark token/rappel multi-hop **vs** vecteur seul sur un jeu de questions relationnelles. **Critère de passage** : ≥+15 % de rappel sur questions multi-hop **OU** ≥30 % de tokens économisés vs lecture corpus, sans régression sur le rappel flou. Sinon P5-P6 ré-évalués | **bloque P5-P6** |
 | **P5** | god-nodes/centralité + communautés (Leiden) → affine `topic` ; **affected** (`var→role→service`) ; benchmark token | conditionné P4 |
 | **P6** (option) | `pg_introspect` (schéma DB n8n, douleur R10) ; `mcp_ingest` (MCP orphelins) ; wiki/callflow Mermaid ; merge-driver union `graph.json` | conditionné P4 |
 

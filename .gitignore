@@ -47,6 +47,17 @@ id_*
 *.swo
 *~
 .DS_Store
+
+# --- Artefacts de vérification (racine du repo, non versionnés) ---
+/*.png
+/*.jpg
+/*.jpeg
+/*.pdf
+/*.msg
+/.tmp-verify/
+/200
+/incidents.xlsx
+/incidents-otn-oob-v1.xlsx
 Thumbs.db
 
 # --- Molecule ---

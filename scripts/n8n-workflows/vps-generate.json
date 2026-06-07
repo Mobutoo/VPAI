@@ -1,0 +1,160 @@
+{
+  "name": "vps-generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vps-generate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.body.template_url || 'https://drop.ewutelo.cloud/Simu/VPS.2025_25.xlsx' }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "Fetch Template",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// VPS Generator — génère un fichier Excel individuel par personne\n// Cellule-map (0-indexed en openpyxl, mais xlsx utilise A1):\n//   B2  — Document réalisé par {auteur}\n//   E4  — Remarque (optionnel)\n//   C11 — NOM audité\n//   C12 — SITE\n//   VPS1: auditeur=F12, date=F13, état=col E, porté=col F  (lignes 15-50)\n//   VPS2: auditeur=H12, date=H13, état=col G, porté=col H\n//   VPS3: auditeur=J12, date=J13, état=col I, porté=col J\n//   VPS4: auditeur=L12, date=L13, état=col K, porté=col L\n//   VPS5: auditeur=N12, date=N13, état=col M, porté=col N\n\nlet XLSX;\ntry {\n  XLSX = require('xlsx');\n} catch (e) {\n  // Fallback chemin absolu (n8n 2.7.3, avant redéploiement avec xlsx dans NODE_FUNCTION_ALLOW_EXTERNAL)\n  XLSX = require('/usr/local/lib/node_modules/n8n/node_modules/xlsx');\n}\n\nconst body           = $('Webhook').first().json.body;\nconst items          = body.items          || [];\nconst metadataAuthor = body.metadata_author  || 'System';\nconst metadataCreator= body.metadata_creator || metadataAuthor;\nconst rawDate        = body.metadata_date    || new Date().toISOString().split('T')[0];\nconst metadataDate   = new Date(rawDate + 'T12:00:00');\nconst outputFolder   = (body.output_folder || 'Simu/Generated').replace(/^\\/|\\/$/g, '');\nconst templateSheet  = body.template_sheet || 'Fiche_VPS.2';\n\nconst templateBinary = $input.first().binary.data;\nconst templateBuffer = Buffer.from(templateBinary.data, 'base64');\n\nconst VPS_COLS = [\n  { auditeur: 'F12', date: 'F13', etat: 'E', porte: 'F' },\n  { auditeur: 'H12', date: 'H13', etat: 'G', porte: 'H' },\n  { auditeur: 'J12', date: 'J13', etat: 'I', porte: 'J' },\n  { auditeur: 'L12', date: 'L13', etat: 'K', porte: 'L' },\n  { auditeur: 'N12', date: 'N13', etat: 'M', porte: 'N' },\n];\n\nconst results = [];\n\nfor (const item of items) {\n  const wb = XLSX.read(templateBuffer, {\n    type: 'buffer',\n    cellStyles: true,\n    cellDates: true,\n    cellNF: true,\n  });\n\n  if (!wb.Sheets[templateSheet]) {\n    throw new Error(`Feuille \"${templateSheet}\" introuvable. Disponibles: ${wb.SheetNames.join(', ')}`);\n  }\n\n  // Clonage profond — préserve merges, styles, largeurs de colonnes\n  const ws = JSON.parse(JSON.stringify(wb.Sheets[templateSheet]));\n\n  const nomAudite = item.nom_audite       || 'FICHE';\n  const siteAudit = item.site             || '';\n  const docAuteur = item.auteur_document  || metadataCreator;\n\n  // En-tête\n  ws['B2']  = { v: `Document réalisé par ${docAuteur}.`, t: 's' };\n  ws['C11'] = { v: nomAudite, t: 's' };\n  ws['C12'] = { v: siteAudit, t: 's' };\n\n  if (item.remarque) {\n    ws['E4'] = { v: item.remarque, t: 's' };\n  } else {\n    delete ws['E4'];\n    delete ws['E5'];\n  }\n\n  // Remplissage VPS 1-5\n  const vpsSessions = Array.isArray(item.vps) ? item.vps : [];\n  for (let idx = 0; idx < 5; idx++) {\n    const vps  = vpsSessions[idx];\n    const cols = VPS_COLS[idx];\n    if (!vps) continue;\n\n    if (vps.auditeur) ws[cols.auditeur] = { v: vps.auditeur, t: 's' };\n\n    if (vps.date) {\n      const d = new Date(vps.date + 'T00:00:00');\n      ws[cols.date] = { v: d, t: 'd', z: 'dd/mm/yyyy' };\n    }\n\n    const epiMode   = vps.epi_mode   || '';\n    const epiValues = vps.epi_values || {};\n\n    for (let row = 15; row <= 50; row++) {\n      const typeCell = ws[`B${row}`];\n      if (!typeCell || !typeCell.v) continue;\n\n      let etat = '', porte = '';\n\n      if (epiMode === 'OK') {\n        etat = 'OK'; porte = 'OK';\n      } else if (epiMode === 'NON') {\n        etat = 'NON'; porte = 'NON';\n      } else if (epiMode === 'random') {\n        etat  = Math.random() > 0.15 ? 'OK' : 'NON';\n        porte = Math.random() > 0.15 ? 'OK' : 'NON';\n      } else if (epiValues[String(row)]) {\n        etat  = epiValues[String(row)].etat  || '';\n        porte = epiValues[String(row)].porte || '';\n      }\n\n      if (etat)  ws[`${cols.etat}${row}`]  = { v: etat,  t: 's' };\n      if (porte) ws[`${cols.porte}${row}`] = { v: porte, t: 's' };\n    }\n  }\n\n  // Nouveau workbook mono-feuille (fichier individuel)\n  const newWb = {\n    SheetNames: [nomAudite],\n    Sheets: { [nomAudite]: ws },\n    Props: {\n      Author:       metadataCreator,\n      LastAuthor:   metadataAuthor,\n      CreatedDate:  metadataDate,\n      ModifiedDate: metadataDate,\n      Title:        `VPS - ${nomAudite}`,\n      Subject:      `Visite Prévention Sécurité - ${siteAudit}`,\n      Company:      'TELEHOUSE',\n      Application:  'VPS Generator',\n    },\n  };\n\n  const outBuffer = XLSX.write(newWb, {\n    type:        'buffer',\n    bookType:    'xlsx',\n    cellStyles:  true,\n    cellDates:   true,\n    compression: true,\n  });\n\n  // Nom de fichier safe (sans accents, sans caractères spéciaux)\n  const safeNom    = nomAudite\n    .normalize('NFD').replace(/[\\u0300-\\u036f]/g, '')\n    .replace(/[^a-zA-Z0-9\\s_-]/g, '').trim()\n    .replace(/\\s+/g, '_');\n  const dateSuffix = rawDate.replace(/-/g, '');\n  const filename   = `VPS_${safeNom}_${dateSuffix}.xlsx`;\n\n  results.push({\n    json: {\n      filename,\n      nom_audite:    nomAudite,\n      site:          siteAudit,\n      output_folder: outputFolder,\n      upload_url:    `https://drop.ewutelo.cloud/${outputFolder}/${filename}`,\n    },\n    binary: {\n      data: {\n        data:     outBuffer.toString('base64'),\n        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',\n        fileName: filename,\n        fileSize: outBuffer.length,\n      },\n    },\n  });\n}\n\nreturn results;\n"
+      },
+      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "name": "Generate Files",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ 'https://drop.ewutelo.cloud/' + $json.output_folder + '/' + $json.filename }}",
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "name": "Upload to Dufs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [920, 300]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "files",
+        "options": {}
+      },
+      "id": "a1b2c3d4-0005-0005-0005-000000000005",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [1140, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, count: $json.files.length, files: $json.files.map(f => ({ nom_audite: f.nom_audite, site: f.site, filename: f.filename, url: f.upload_url })) }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "application/json; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "id": "a1b2c3d4-0006-0006-0006-000000000006",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1360, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Fetch Template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Template": {
+      "main": [
+        [
+          {
+            "node": "Generate Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Files": {
+      "main": [
+        [
+          {
+            "node": "Upload to Dufs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to Dufs": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-04-13T00:00:00.000Z",
+  "versionId": "vps-generator-v1"
+}

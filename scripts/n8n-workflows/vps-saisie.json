@@ -1,0 +1,89 @@
+{
+  "name": "vps-saisie",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vps-saisie",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "b1c2d3e4-0001-0001-0001-000000000001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// VPS Saisie — normalise + enrichit la soumission\nconst body = $input.first().json.body;\n\nconst now  = new Date().toISOString();\nconst date = body.date || now.split('T')[0];\n\n// Calcul statut global (recalcul serveur — ne pas faire confiance au client)\nconst epis = body.epi_results || [];\nconst nMauvais = epis.filter(e => e.etat === 'Mauvais').length;\nconst nNon     = epis.filter(e => e.porte === 'NON').length;\nconst statut   = nMauvais === 0 ? 'Conforme' :\n                 nMauvais === epis.length ? 'Non-conforme' : 'Partiel';\n\nconst record = {\n  site:          body.site          || '',\n  technicien:    body.technicien    || '',\n  auditeur:      body.auditeur      || '',\n  date_visite:   date,\n  type_idx:      body.type_idx      ?? -1,\n  type_label:    body.type_label    || '',\n  remarque:      body.remarque      || '',\n  epi_results:   JSON.stringify(epis),\n  nb_epi:        epis.length,\n  nb_mauvais:    nMauvais,\n  nb_non_porte:  nNon,\n  statut,\n  submitted_at:  body.submitted_at || now,\n  received_at:   now,\n};\n\nreturn [{ json: record }];\n"
+      },
+      "id": "b1c2d3e4-0002-0002-0002-000000000002",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NOCODB_BASE_URL + '/api/v2/tables/' + $env.NOCODB_VPS_TABLE_ID + '/records' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "xc-auth", "value": "={{ $env.NOCODB_API_TOKEN }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": "={{ $json }}",
+        "options": {}
+      },
+      "id": "b1c2d3e4-0003-0003-0003-000000000003",
+      "name": "Save to NocoDB",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, statut: $('Normalize').first().json.statut, received_at: $('Normalize').first().json.received_at }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Content-Type", "value": "application/json; charset=utf-8" },
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "b1c2d3e4-0004-0004-0004-000000000004",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [700, 380]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Normalize", "type": "main", "index": 0 }]]
+    },
+    "Normalize": {
+      "main": [
+        [
+          { "node": "Save to NocoDB", "type": "main", "index": 0 },
+          { "node": "Respond", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2026-04-14T00:00:00.000Z",
+  "versionId": "vps-saisie-v1"
+}

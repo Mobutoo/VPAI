@@ -23,6 +23,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 XLSX_PATH = os.path.join(BASE_DIR, "docs", "mop-incidents-alignment-review.xlsx")
 FALLBACK_XLSX = "/tmp/mop-align-review.xlsx"
 OUT_DIR = os.path.join(BASE_DIR, "docs", "mop")
+LOGO_PATH = os.path.join(BASE_DIR, "roles", "mop-templates", "files", "mop-logo.jpg")
 
 # ─── Couleurs VPAI ───────────────────────────────────────────────────────────
 BLEU_MARINE = RGBColor(0x1F, 0x38, 0x64)   # #1F3864
@@ -209,23 +210,17 @@ def build_cachet(doc, mop):
 
 
 def build_cover_table(doc, mop):
-    """Cartouche document (tableau 2 colonnes)."""
-    table = doc.add_table(rows=1, cols=2)
+    """Carte d'identité du document — structure matching Wizy template."""
+    # ── Label section ────────────────────────────────────────────────────────
+    p_label = doc.add_paragraph()
+    r = p_label.add_run("Carte d'identité du document")
+    r.bold = True; r.font.size = Pt(9); r.font.color.rgb = BLEU_MARINE
+
+    # ── Tableau identité (2 colonnes) ─────────────────────────────────────
+    table = doc.add_table(rows=0, cols=2)
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
     table.autofit = False
-
-    # Ligne titre
-    row = table.rows[0]
-    c0, c1 = row.cells[0], row.cells[1]
-    c0.merge(c1)
-    set_cell_bg(c0, BLEU_MARINE)
-    p = c0.paragraphs[0]
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run("MÉTHODE D'OPÉRATION ET DE PROCÉDURE")
-    run.bold = True
-    run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
-    run.font.size = Pt(12)
 
     def add_row(label, value, label_bg=BLEU_CLAIR):
         row = table.add_row()
@@ -233,21 +228,39 @@ def build_cover_table(doc, mop):
         set_cell_bg(c0, label_bg)
         set_cell_text(c0, label, bold=True, font_size=9)
         set_cell_text(c1, value, font_size=9)
+        c0.width = Cm(5.0)
+        c1.width = Cm(11.5)
 
     add_row("Référence", mop["doc_reference"])
-    add_row("Titre", mop["doc_title"])
-    add_row("Type", "MOP")
-    add_row("Confidentialité", "Interne")
-    add_row("Propriétaire", "Service Technique")
-    add_row("Vérificateur", mop["doc_verificateur"])
+    add_row("Type de document", "MOP")
+    add_row("Niveau de confidentialité", "Interne")
+    add_row("Titre du document", mop["doc_title"])
+    add_row("Résumé", mop.get("doc_resume", ""))
+    add_row("Champ d'application", mop.get("doc_scope", "Réseau OTN — NOC Javisi"))
+    add_row("Documents associés", mop.get("doc_associated", "Aucun document associé identifié à ce jour."))
+    add_row("Propriétaire", mop.get("doc_owner", "Service Technique"))
+    add_row("Vérificateur", mop.get("doc_verificateur", ""))
     add_row("Approbateur", "Service ISO")
-    add_row("Date d'entrée en vigueur", fmt_date(mop["doc_date_vigueur"]))
-    add_row("Date de révision planifiée", fmt_date(mop["doc_date_revision"]))
 
-    # Largeurs colonnes : 30% label / 70% valeur (texte utile = 16.5cm)
-    for row in table.rows[1:]:  # skip la ligne titre fusionnée
-        row.cells[0].width = Cm(5.0)
-        row.cells[1].width = Cm(11.5)
+    # ── Tableau dates (2 colonnes égales) ────────────────────────────────
+    doc.add_paragraph()
+    table_dates = doc.add_table(rows=2, cols=2)
+    table_dates.style = "Table Grid"
+    table_dates.autofit = False
+
+    # Header row
+    for i, label in enumerate(["Entrée en vigueur", "Révision"]):
+        c = table_dates.rows[0].cells[i]
+        set_cell_bg(c, BLEU_CLAIR)
+        set_cell_text(c, label, bold=True, font_size=9)
+        c.width = Cm(8.25)
+
+    # Values row
+    vals = [fmt_date(mop.get("doc_date_vigueur", "")), fmt_date(mop.get("doc_date_revision", ""))]
+    for i, val in enumerate(vals):
+        c = table_dates.rows[1].cells[i]
+        set_cell_text(c, val, font_size=9)
+        c.width = Cm(8.25)
 
 
 def build_revision_table(doc, mop):
@@ -365,7 +378,16 @@ def generate_mop_docx(mop: dict, out_path: str):
             pass
 
     # ── Sections ─────────────────────────────────────────────────────────────
-    # Page de garde
+    # Page de garde — logo
+    if os.path.exists(LOGO_PATH):
+        logo_p = doc.add_paragraph()
+        logo_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        logo_run = logo_p.add_run()
+        logo_run.add_picture(LOGO_PATH, width=Cm(5.0))
+
+    doc.add_paragraph()
+
+    # Titre centré
     title_p = doc.add_paragraph()
     title_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     title_run = title_p.add_run(mop["doc_title"])
@@ -373,13 +395,18 @@ def generate_mop_docx(mop: dict, out_path: str):
     title_run.font.size = Pt(16)
     title_run.font.color.rgb = BLEU_MARINE
 
+    # Type + référence
+    type_p = doc.add_paragraph()
+    type_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    type_p.add_run("Procédure = MOP").font.size = Pt(10)
+
     ref_p = doc.add_paragraph()
     ref_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    ref_p.add_run(mop["doc_reference"]).font.size = Pt(11)
+    ref_p.add_run(mop["doc_reference"]).font.size = Pt(10)
 
     doc.add_paragraph()
 
-    # Cartouche
+    # Carte d'identité
     build_cover_table(doc, mop)
     doc.add_paragraph()
 

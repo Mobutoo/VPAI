@@ -16,34 +16,33 @@ from pathlib import Path
 # DATA
 # ============================================================
 
-# Mapping anciens IDs SOP → nouveaux IDs (fusion 13→9)
+# Mapping anciens IDs SOP → nouveaux IDs (fusion 13→8, format XX-SOP)
 MAPPING_OLD_NEW = {
-    'SOP-01': 'SOP-01',
-    'SOP-02': 'SOP-02',
-    'SOP-03': 'SOP-03',
-    'SOP-04': 'SOP-04',
-    'SOP-05': 'SOP-04',   # fusionné dans SOP-04
-    'SOP-06': 'SOP-06',
-    'SOP-07': 'SOP-06',   # fusionné dans SOP-06
-    'SOP-08': 'SOP-01',   # OOB Cogent → dans SOP-01
-    'SOP-09': 'SOP-09',
-    'SOP-10': 'SOP-07',   # OLP → nouveau SOP-07
-    'SOP-11': 'SOP-05',   # PM counters → nouveau SOP-05
-    'SOP-12': 'SOP-05',   # fusionné dans SOP-05
-    'SOP-13': 'SOP-08',   # Viavi → nouveau SOP-08
+    'SOP-01': '10-SOP',
+    'SOP-02': '10-SOP',   # supprimé — Reset GCC absorbé dans 10-SOP
+    'SOP-03': '15-SOP',
+    'SOP-04': '14-SOP',
+    'SOP-05': '11-SOP',   # Analyse Optique SFP
+    'SOP-06': '13-SOP',
+    'SOP-07': '14-SOP',   # Bascule OLP fusionné dans Diagnostic signal OTN
+    'SOP-08': '10-SOP',   # OOB Cogent fusionné dans 10-SOP
+    'SOP-09': '10-SOP',   # Firewall Lugos fusionné dans 10-SOP
+    'SOP-10': '16-SOP',   # Escalade Supervision (Lugos)
+    'SOP-11': '11-SOP',
+    'SOP-12': '11-SOP',   # fusionné dans 11-SOP
+    'SOP-13': '12-SOP',   # Test Viavi E2E
 }
 
-# 9 SOPs cibles
+# 8 SOPs cibles (format XX-SOP, réf OPSSD-03.03.S0.XX-SOP)
 SOP_NEW = {
-    'SOP-01': ('S0.10', 'Vérification OOB & accès management'),
-    'SOP-02': ('S0.11', 'Reset GCC / OSPF Ribbon'),
-    'SOP-03': ('S0.12', 'Escalade Ribbon TAC'),
-    'SOP-04': ('S0.13', 'Diagnostic signal OTN (OSNR + FEC/BER)'),
-    'SOP-05': ('S0.14', 'PM Counters OTN'),
-    'SOP-06': ('S0.15', 'Remplacement matériel (carte + SFP)'),
-    'SOP-07': ('S0.16', 'Bascule OLP'),
-    'SOP-08': ('S0.17', 'Validation Viavi post-restauration'),
-    'SOP-09': ('S0.18', 'Diagnostic firewall Lugos'),
+    '10-SOP': ('S0.10', 'Vérification OOB & Accès management'),
+    '11-SOP': ('S0.11', 'Analyse Optique SFP'),
+    '12-SOP': ('S0.12', 'Test Viavi E2E'),
+    '13-SOP': ('S0.13', 'Remplacement matériel (carte + SFP)'),
+    '14-SOP': ('S0.14', 'Diagnostic signal OTN (OSNR + FEC/BER)'),
+    '15-SOP': ('S0.15', 'Escalade Constructeur (Ribbon)'),
+    '16-SOP': ('S0.16', 'Escalade Supervision (Lugos)'),
+    '17-SOP': ('S0.17', 'Escalade Opérateur'),
 }
 
 # Famille MOP par domaine

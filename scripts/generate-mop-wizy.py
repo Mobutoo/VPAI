@@ -287,6 +287,28 @@ def generate_html(mop_id: str) -> str:
         for child in list(BeautifulSoup(toc_html, "html.parser").contents):
             toc_container.append(child)
 
+    # Supprimer les titres de section vides (s2_1_1_title, s3_1_1_title non renseignés)
+    # Structure : <p data-toc-level="3">X.Y.Z <span data-field="..."></span></p>
+    for p in soup.find_all("p", attrs={"data-toc-level": True}):
+        spans = p.find_all("span", attrs={"data-field": True})
+        if spans and all(not s.get_text(strip=True) for s in spans):
+            p.decompose()
+
+    # Injection CSS print : marges réduites + "Saut de page" masqué + historique sans coupure
+    head = soup.find("head")
+    if head:
+        style_tag = soup.new_tag("style")
+        style_tag.string = (
+            "@media print, @page { margin: 0.8cm 1.5cm !important; }\n"
+            "@page { margin: 0.8cm 1.5cm !important; }\n"
+            # Masquer le label "— Saut de page —" (span enfant direct des divs de saut GrapeJS)
+            "#ioa6jv span, #i0nxsk span { display: none !important; }\n"
+            # Éviter coupure dans le tableau historique
+            "table { break-inside: auto; }\n"
+            "tr { break-inside: avoid; }\n"
+        )
+        head.append(style_tag)
+
     return str(soup)
 
 
@@ -315,9 +337,12 @@ def generate_pdf(html_path: Path, mop_id: str) -> Path | None:
     )
 
     # Gotenberg Chromium — rendu CSS fidèle (web fonts, flexbox, grid)
+    # marginTop/Bottom/Left/Right en pouces (0.4" ≈ 1cm)
     status = ssh(
         f"curl -s -X POST http://localhost:3000/forms/chromium/convert/html "
         f"-F 'files=@{remote_html};filename=index.html' "
+        f"-F 'marginTop=0.4' -F 'marginBottom=0.4' "
+        f"-F 'marginLeft=0.6' -F 'marginRight=0.6' "
         f"-o {remote_pdf} -w '%{{http_code}}'"
     )
 
@@ -332,6 +357,36 @@ def generate_pdf(html_path: Path, mop_id: str) -> Path | None:
         check=True, capture_output=True
     )
     return local_pdf
+
+
+# ─── DOCX via python-docx (batch generator, couleurs VPAI) ───────────────────
+
+def generate_docx(mop_id: str) -> Path | None:
+    """Génère le DOCX stylisé (couleurs VPAI) via generate-mop-batch.py."""
+    import importlib.util
+    batch_script = REPO_ROOT / "scripts" / "generate-mop-batch.py"
+    spec = importlib.util.spec_from_file_location("mop_batch", str(batch_script))
+    mod  = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # Trouver la source Excel (même logique que batch)
+    xlsx = REPO_ROOT / "docs" / "mop-incidents-alignment-review.xlsx"
+    if not xlsx.exists():
+        xlsx = EXCEL_FILE  # fallback .playwright-mcp/
+    if not xlsx.exists():
+        print(f"  [WARN] DOCX: source Excel introuvable", file=sys.stderr)
+        return None
+
+    mops = mod.extract_mop_data(str(xlsx))
+    # Trouver le MOP correspondant (M0.20 → index 0, M0.21 → index 1, etc.)
+    mop_idx = {"M0.20": 0, "M0.21": 1, "M0.22": 2, "M0.23": 3, "M0.24": 4}.get(mop_id)
+    if mop_idx is None or mop_idx >= len(mops):
+        print(f"  [WARN] DOCX: MOP {mop_id} introuvable dans le batch", file=sys.stderr)
+        return None
+
+    local_docx = Path(f"/tmp/mop-{mop_id}.docx")
+    mod.generate_mop_docx(mops[mop_idx], str(local_docx))
+    return local_docx
 
 
 # ─── Upload drop.ewutelo.cloud ────────────────────────────────────────────────
@@ -370,13 +425,25 @@ def process_mop(mop_id: str, output_dir: Path):
         print(f"  PDF : {pdf_path} ({pdf_path.stat().st_size:,} B)", file=sys.stderr)
         code = upload_drop(pdf_path, pdf_path.name)
         print(f"  drop PDF : {code}", file=sys.stderr)
-        return {
-            "html": f"{DROP_BASE}/mop-{mop_id}.html",
-            "pdf":  f"{DROP_BASE}/mop-{mop_id}.pdf",
-        }
     else:
         print(f"  [WARN] PDF échoué pour {mop_id}", file=sys.stderr)
-        return {"html": f"{DROP_BASE}/mop-{mop_id}.html"}
+
+    # DOCX via python-docx (couleurs VPAI)
+    print(f"[{mop_id}] Génération DOCX python-docx...", file=sys.stderr)
+    docx_path = generate_docx(mop_id)
+    if docx_path and docx_path.exists():
+        print(f"  DOCX : {docx_path} ({docx_path.stat().st_size:,} B)", file=sys.stderr)
+        code = upload_drop(docx_path, docx_path.name)
+        print(f"  drop DOCX : {code}", file=sys.stderr)
+    else:
+        print(f"  [WARN] DOCX échoué pour {mop_id}", file=sys.stderr)
+
+    urls = {"html": f"{DROP_BASE}/mop-{mop_id}.html"}
+    if pdf_path and pdf_path.exists():
+        urls["pdf"] = f"{DROP_BASE}/mop-{mop_id}.pdf"
+    if docx_path and docx_path.exists():
+        urls["docx"] = f"{DROP_BASE}/mop-{mop_id}.docx"
+    return urls
 
 
 def main():

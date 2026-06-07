@@ -50,6 +50,7 @@
     - "{{ mop_data_dir }}"
     - "{{ mop_templates_dir }}"
     - "{{ mop_pdf_dir }}"
+    - "{{ mop_docx_dir }}"
     - "{{ mop_dead_letter_dir }}"
   become: true
   tags: [mop-templates, phase3]

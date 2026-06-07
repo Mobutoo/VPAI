@@ -125,13 +125,42 @@ sese concret (OpenClaw/n8n/équipe) n'est prouvé.
 Multi-repo : **tout ce qui est dans `memory_v2`** (repos déclarés dans
 `sources.yml` / `config.yml`), pas un repo isolé.
 
-## 8. Déploiement (LOI)
+## 8. Placement des fichiers + déploiement (LOI / manifeste)
 
-- Rôle Ansible `memory-graph` (ou extension du rôle worker), tags `[memory_graph, phaseN]`.
-- Deps tree-sitter **pinnées** dans `versions.yml`. venv waza.
-- Build via **timer systemd-user waza**, déclenché **après** le cycle d'ingest worker.
-- R7 : Tailscale only (accès Qdrant `qd.ewutelo.cloud` via VPN).
-- FQCN + `changed_when`/`failed_when` + `set -euo pipefail`.
+**Décision : extension du rôle existant `roles/llamaindex-memory-worker/`** — pas de
+nouveau rôle. Le graphe partage venv, config Qdrant, timer et `memory_core.py` du worker.
+
+### Source de vérité (committée, repo VPAI)
+
+Même emplacement que `memory_core.py` (cf `scripts/memory/`) :
+
+```
+scripts/memory/graph/
+  graph_build.py        graph_query.py      querylog.py
+  varflow_extract.py    ast_extract.py      rationale_extract.py
+  graph_mcp.py          test_*.py           (fixtures/)
+```
+
+### Déploiement via le rôle worker (mirror du pattern `memory_core.py`)
+
+| Fichier rôle | Action |
+|---|---|
+| `roles/llamaindex-memory-worker/tasks/main.yml` | + tâches `ansible.builtin.copy` de `{{ role_path }}/../../scripts/memory/graph/*.py` → `{{ memory_worker_install_dir }}/graph/` (idempotent, comme la tâche `memory_core.py` existante L82-90) |
+| `templates/graph-build.service.user.j2` + `.timer.user.j2` | systemd-user waza, **déclenché après** le cycle d'ingest worker (chaîné via `run-and-report.sh.j2` ou `OnUnitInactiveSec`) |
+| `defaults/main.yml` | + `memory_worker_graph_dir`, seuils `τ`, k kNN |
+| `templates/requirements.txt.j2` | + deps tree-sitter (versions **pinnées**) |
+| `roles/claude-code/templates/mcp.json.j2` | + entrée MCP **stdio** `graph` → `graph_mcp.py` (consommée par R0/Claude Code sur waza) |
+
+### Conventions imposées (manifeste)
+
+- **Tags** : `[llamaindex-memory-worker, memory_remote]` sur chaque tâche (parité avec
+  l'existant — pas de tag inventé).
+- **FQCN** (`ansible.builtin.*`) + `changed_when`/`failed_when` explicites + `copy`
+  idempotent (0 changed au 2ᵉ run).
+- `set -euo pipefail` + `executable: /bin/bash` sur tout bloc `shell`.
+- Deps tree-sitter **pinnées** dans `inventory/group_vars/all/versions.yml` (jamais flottant).
+- **R7** : Tailscale only — accès Qdrant `qd.ewutelo.cloud` via VPN.
+- Idle-gate : réutilise `memory-wait-calm.sh` / `loadavg_threshold` du worker.
 
 ## 9. Tests (R4 sibling-first)
 
@@ -147,10 +176,10 @@ Multi-repo : **tout ce qui est dans `memory_v2`** (repos déclarés dans
 | Phase | Livre | Gate |
 |---|---|---|
 | **P0** | pré-requis P2 : valider wheels tree-sitter ARM64 sur waza (§9). Échec → bascule extracteur | bloque P2 |
-| **P1** | modèle nœuds/arêtes + graphe Qdrant-derived (méta + `similar_to` recommend-by-id) + `graph_query` + **query log** + tests. **Tranche** : rôle `memory-graph` dédié vs extension worker (§8) | — |
+| **P1** | modèle nœuds/arêtes + graphe Qdrant-derived (méta + `similar_to` recommend-by-id) + `graph_query` + **query log** + tests | — |
 | **P2** | **`varflow_extract` Ansible/Jinja D'ABORD** (`defines_var`/`uses_var`), puis `ast_extract` code (`calls`/`imports`) | — |
 | **P3** | `graph_mcp` stdio waza + hook R0 (`get_neighbors`) + `save-result` + `rationale_extract` | — |
-| **P4** | **GATE DUR** : benchmark token/rappel multi-hop **vs** vecteur seul sur un jeu de questions relationnelles. **Critère de passage** : ≥+15 % de rappel sur questions multi-hop **OU** ≥30 % de tokens économisés vs lecture corpus, sans régression sur le rappel flou. Sinon P5-P6 ré-évalués | **bloque P5-P6** |
+| **P4** | **GATE DUR** : benchmark (méthode `benchmark.py` de graphify : tokens lecture corpus brut **vs** subgraph servi) sur un jeu de questions relationnelles. **Cible** : **−70 % de tokens** (référence annoncée graphify), **plancher d'acceptation ≥−50 %**, **ET** ≥+15 % de rappel multi-hop, **sans** régression du rappel flou. Sous le plancher → P5-P6 ré-évalués | **bloque P5-P6** |
 | **P5** | god-nodes/centralité + communautés (Leiden) → affine `topic` ; **affected** (`var→role→service`) ; benchmark token | conditionné P4 |
 | **P6** (option) | `pg_introspect` (schéma DB n8n, douleur R10) ; `mcp_ingest` (MCP orphelins) ; wiki/callflow Mermaid ; merge-driver union `graph.json` | conditionné P4 |
 

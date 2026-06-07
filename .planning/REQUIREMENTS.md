@@ -137,5 +137,40 @@
 - Unmapped: 0
 
 ---
+
+## v2026.4 Requirements — AI Ops (Observabilité Continue)
+
+*Defined: 2026-04-12 — exploration session + Advisor ULTRATHINK (3 passes)*
+
+> **Principes architecturaux validés :**
+> - Claude Code = Anthropic OAuth (Max) — pas LiteLLM. Ingestion = batch ETL depuis JSONL post-session.
+> - Déclencheur : hook `SessionStop` (ULTIMATE-CONFIG Couche 5) — pas inotify, pas cron.
+> - Stratégie : **Langfuse Cloud free tier d'abord** (0€, 50k traces/mois, validation immédiate) + stack maison en parallèle (NocoDB + VictoriaMetrics + Loki + LiteLLM juge). Nouveau serveur dédié uniquement si rétention 30j ou confidentialité deviennent bloquants.
+> - Timeline sessions : Loki (déjà dans la stack) via push HTTP structuré — pas Tempo, pas nouveau service.
+> - Arize Phoenix : hors scope (valeur marginale pour usage solo batch).
+> - LiteLLM : rôle = **juge qualité** (modèle cheap évalue la session après coup), pas capturer les appels.
+
+### Track A — Langfuse Cloud (démarrage immédiat, 0€)
+
+- [ ] **AIOPS-01**: `session-analyst` enhanced — parse JSONL complet, extrait métriques (tokens, coût, tool_calls, bash_évitables, modèle, durée, git_sha CLAUDE.md)
+- [ ] **AIOPS-02**: Hook `SessionStop` déclenche `session-analyst` → Langfuse Python SDK → Langfuse Cloud (free tier). Zéro nouveau serveur, rétention 30 jours.
+- [ ] **AIOPS-03**: Corrélation git ↔ traces — `session-analyst` lit `git log -1 --format=%h` sur CLAUDE.md/hooks au moment de la session, injecte le sha comme metadata Langfuse.
+
+### Track B — Stack maison (parallèle, 0€, long terme)
+
+- [ ] **AIOPS-04**: `session-analyst` → NocoDB (table `claude_sessions`) — stockage long terme structuré, remplace la limite rétention 30j de Langfuse Cloud.
+- [ ] **AIOPS-05**: `session-analyst` → VictoriaMetrics push (remote write) → Grafana dashboard — tokens/jour, coût/jour, bash_évitables/semaine, qualité score tendance.
+- [ ] **AIOPS-06**: Grafana Tempo ajouté au monitoring stack Sese-AI (service Docker dans `docker-compose-infra.yml`, ~300MB RAM). `session-analyst` envoie les traces OpenTelemetry (OTLP) → Alloy (déjà en place, receiver OTLP 4317) → Tempo → Grafana datasource. Timeline complète par session : spans par tool call avec durées + relations parent-child. Corrélation Loki↔Tempo via `trace_id`.
+- [ ] **AIOPS-07**: n8n workflow `session-quality-eval` — reçoit résumé session depuis `session-analyst`, appelle LiteLLM (deepseek-v3 ou qwen3-coder) comme juge qualité (score 1-10 : complétion tâche, outils inutiles, loops), écrit score dans NocoDB, alerte Telegram si score < 6.
+- [ ] **AIOPS-10**: `session-analyst` → Qdrant collection `sessions_v1` — embedding du résumé session (modèle via LiteLLM). Complète NocoDB : NocoDB pour requêtes SQL structurées, Qdrant pour recherche sémantique (*"sessions avec SSH polling loops"*, *"sessions similaires à celle-ci"*). Hook R0 SessionStart peut interroger `sessions_v1` en plus de `memory_v1`.
+- [ ] **AIOPS-11**: Gitea webhook (Seko-VPN) sur push CLAUDE.md / hooks → n8n → tag version dans NocoDB + Langfuse (sha court + fichiers modifiés). Corrélation git↔qualité event-driven, remplace le polling `git log` dans `session-analyst`.
+- [ ] **AIOPS-12**: OpenClaw skill `session-stats` — requêtes Telegram on-demand : *"qualité sessions cette semaine"*, *"coût IA aujourd'hui"*, *"sessions dégradées ce mois"* → query NocoDB/VictoriaMetrics → réponse formatée dans Telegram.
+
+### Track C — Optionnel, déclenché si besoin confirmé
+
+- [ ] **AIOPS-08**: Langfuse self-hosted (CX32 ou Oracle VM) — déclenché si : rétention 30j bloquante ET stack maison insuffisante, OU données trop sensibles pour Cloud. Prérequis : 4 semaines de données réelles pour décider.
+- [ ] **AIOPS-09**: Bac à sable recette apps — serveur permanent pour recette applicative. Décision indépendante de l'AI Ops, peut être un CX22 dédié ou l'Oracle VM si disponible.
+
+---
 *Requirements defined: 2026-03-17*
-*Last updated: 2026-03-17 after roadmap creation (all 36 requirements mapped to phases 5-7)*
+*Last updated: 2026-04-12 — réécriture complète AI Ops après Advisor ULTRATHINK : stack maison + Langfuse Cloud, zéro nouveau serveur obligatoire, Loki pour timeline, LiteLLM comme juge qualité*

@@ -1,5 +1,18 @@
 # Plan B / M1 — Refactorisation des répertoires de travail (`~/work/`)
 
+> ## ⏩ EXÉCUTION 2026-06-07 (session remote-control)
+> **Décisions actées** : VPAI déplacé pour de vrai (pas symlink) · tout déplacer (les 7 non-mémoire inclus) · **pas** de symlinks de compat.
+> **Phase 1 FAITE & vérifiée** (in-session) :
+> - 19 repos déplacés → `~/work/{saas,refdocs,tools}` (remotes intacts ; flash-infra & *-docs suivis nested ; mediahall/podpilot/DOCS = local-only).
+> - `~/work/tools/jarvis/.venv` sed-patché.
+> - 11 dirs mémoire Claude Code rekeyés (`-home-mobuone-projects-saas-*` → `-home-mobuone-work-*`) + contenus path-patchés.
+> - Configs maj : `sources.yml` (9 roots), `config.yml` (2 repos), `~/.claude/CLAUDE.md`, `~/.claude/mcp.json` (filesystem root → `~/work`), `~/.claude/settings.json` (perm /projects). JSON validés `jq`. Ripple résiduel = 0.
+> - Gate : 8/9 roots existent (VPAI seul MISS = attendu jusqu'à Phase 2).
+> **Phase 2 À LANCER** : `bash ~/reorg-phase2-vpai.sh` **depuis un shell SSH normal** (PAS la session Claude). Fait : mv VPAI→`~/work/infra/VPAI`, sed-patch `.venv` (62 fichiers, pas de rebuild), rekey mémoire VPAI, patch settings.json scp, audit. Puis **rouvrir Claude depuis `~/work/infra/VPAI`**.
+> **HORS-SCOPE à trancher** (restés dans `~/projects/`, hors MCP filesystem désormais) : `autofix/ mission-control-tui/ ops/ session-analyst/ writing/` + parasites `saas/{hawkeye-budibase-builder-task2.png, story-engine-specs-tmp/}`.
+> Scripts : `~/reorg-phase1.sh` (idempotent, rollback = mv inverse) · `~/reorg-phase2-vpai.sh`.
+
+
 > **Statut** : plan exécutable. À traiter dans une **session dédiée** (déplace 24 repos + met à jour des chemins absolus dans plusieurs configs — pas en fin de chat).
 > **Contexte** : différé du rebuild mémoire (cf `.planning/notes/2026-06-05-memory-rebuild-execution-checkpoint.md` §7 « Plan B à écrire »). Le manifeste **M5 existe déjà** : `docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md`.
 > **Sûr pour la mémoire** : `node_id`/`relative_path`/`repo` sont **path-indépendants** (relatifs au repo) → déplacer une racine ne change RIEN dans `memory_v2`. Seuls les **chemins absolus** des configs/outillage changent.

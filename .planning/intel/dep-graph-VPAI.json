@@ -1,0 +1,415 @@
+{
+  "generated_at": "2026-04-12T13:11:50.096996+00:00",
+  "repo": "VPAI",
+  "repo_root": "/home/mobuone/VPAI",
+  "graph": {
+    "roles/obsidian-collector/tasks/main.yml": [
+      "roles/obsidian-collector/templates/collector.py.j2"
+    ],
+    "roles/kitsu-provision/tasks/main.yml": [
+      "roles/kitsu-provision/templates/provision-kitsu.sh.j2"
+    ],
+    "roles/opencut/tasks/main.yml": [
+      "roles/opencut/templates/docker-compose-opencut.yml.j2"
+    ],
+    "roles/plane-provision/tasks/main.yml": [
+      "roles/plane-provision/templates/provision-minio.sh.j2",
+      "roles/plane-provision/templates/provision-plane.sh.j2"
+    ],
+    "roles/metube/tasks/main.yml": [
+      "roles/metube/templates/metube.env.j2"
+    ],
+    "roles/qdrant/tasks/main.yml": [
+      "roles/qdrant/templates/qdrant.env.j2",
+      "roles/qdrant/templates/config.yaml.j2"
+    ],
+    "roles/caddy/tasks/main.yml": [
+      "roles/caddy/templates/Caddyfile.j2",
+      "roles/caddy/templates/admin-landing.html.j2",
+      "roles/caddy/templates/restricted-zone.html.j2"
+    ],
+    "roles/claude-code/tasks/main.yml": [
+      "roles/claude-code/templates/CLAUDE.md.j2",
+      "roles/claude-code/templates/mcp.json.j2",
+      "roles/claude-code/templates/auto-compact.sh.j2",
+      "roles/claude-code/templates/pre-compact-save.sh.j2",
+      "roles/claude-code/templates/post-compact-restore.sh.j2",
+      "roles/claude-code/templates/stop-gate.sh.j2",
+      "roles/claude-code/templates/settings.json.j2",
+      "roles/claude-code/templates/gsd-defaults.json.j2",
+      "roles/claude-code/templates/claude-auto.sh.j2",
+      "roles/claude-code/templates/autofix.sh.j2"
+    ],
+    "roles/docker/tasks/main.yml": [
+      "roles/docker/templates/daemon.json.j2",
+      "roles/docker/templates/docker-cleanup.sh.j2"
+    ],
+    "roles/codex-cli/tasks/main.yml": [
+      "roles/codex-cli/templates/config.toml.j2"
+    ],
+    "roles/postgresql/tasks/main.yml": [
+      "roles/postgresql/templates/postgresql.env.j2",
+      "roles/postgresql/templates/init.sql.j2",
+      "roles/postgresql/templates/pg_hba.conf.j2",
+      "roles/postgresql/templates/postgresql.conf.j2"
+    ],
+    "roles/obsidian-collector-pi/tasks/main.yml": [
+      "roles/obsidian-collector-pi/templates/pi-collector.py.j2"
+    ],
+    "roles/backup-config/tasks/main.yml": [
+      "roles/backup-config/templates/pre-backup.sh.j2",
+      "roles/backup-config/templates/backup-cleanup.sh.j2"
+    ],
+    "roles/firefly/tasks/main.yml": [
+      "roles/firefly/templates/firefly.env.j2"
+    ],
+    "roles/llamaindex-memory-worker/tasks/main.yml": [
+      "roles/llamaindex-memory-worker/templates/requirements.txt.j2",
+      "roles/llamaindex-memory-worker/templates/memory-worker.env.j2",
+      "roles/llamaindex-memory-worker/templates/config.yml.j2",
+      "roles/llamaindex-memory-worker/templates/sources.yml.j2",
+      "roles/llamaindex-memory-worker/templates/index.py.j2",
+      "roles/llamaindex-memory-worker/templates/search_memory.py.j2",
+      "roles/llamaindex-memory-worker/templates/benchmark_memory.py.j2",
+      "roles/llamaindex-memory-worker/templates/inventory_collections.py.j2",
+      "roles/llamaindex-memory-worker/templates/benchmark-queries.yml.j2",
+      "roles/llamaindex-memory-worker/templates/run-and-report.sh.j2",
+      "roles/llamaindex-memory-worker/templates/memory-wait-calm.sh.j2",
+      "roles/llamaindex-memory-worker/templates/llamaindex-memory-worker.service.j2",
+      "roles/llamaindex-memory-worker/templates/llamaindex-memory-worker.timer.j2"
+    ],
+    "roles/redis/tasks/main.yml": [
+      "roles/redis/templates/redis.conf.j2"
+    ],
+    "roles/palais/files/app/src/lib/server/activity.ts": [
+      "roles/palais/files/app/src/lib/server/memory/ingest.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/costs/aggregator.ts": [
+      "roles/palais/files/app/src/lib/server/costs/../db/index.ts",
+      "roles/palais/files/app/src/lib/server/costs/../db/schema.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/mcp/router.ts": [
+      "roles/palais/files/app/src/lib/server/mcp/types.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/registry.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/executor.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/mcp/tools/fleet.ts": [
+      "roles/palais/files/app/src/lib/server/mcp/tools/../types.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/mcp/tools/executor.ts": [
+      "roles/palais/files/app/src/lib/server/mcp/tools/agents.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/memory.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/fleet.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/workspaces.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/services.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/costs.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/domains.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/mcp/tools/services.ts": [
+      "roles/palais/files/app/src/lib/server/mcp/tools/../types.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/mcp/tools/workspaces.ts": [
+      "roles/palais/files/app/src/lib/server/mcp/tools/../types.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/mcp/tools/memory.ts": [
+      "roles/palais/files/app/src/lib/server/mcp/tools/../types.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/mcp/tools/domains.ts": [
+      "roles/palais/files/app/src/lib/server/mcp/tools/../types.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/mcp/tools/costs.ts": [
+      "roles/palais/files/app/src/lib/server/mcp/tools/../types.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/mcp/tools/agents.ts": [
+      "roles/palais/files/app/src/lib/server/mcp/tools/../types.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/mcp/tools/registry.ts": [
+      "roles/palais/files/app/src/lib/server/mcp/tools/../types.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/agents.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/memory.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/fleet.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/workspaces.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/services.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/costs.ts",
+      "roles/palais/files/app/src/lib/server/mcp/tools/domains.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/memory/extract.ts": [
+      "roles/palais/files/app/src/lib/server/memory/embeddings.ts",
+      "roles/palais/files/app/src/lib/server/memory/qdrant.ts",
+      "roles/palais/files/app/src/lib/server/memory/enrich.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/memory/enrich.ts": [
+      "roles/palais/files/app/src/lib/server/memory/qdrant.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/memory/ingest.ts": [
+      "roles/palais/files/app/src/lib/server/memory/embeddings.ts",
+      "roles/palais/files/app/src/lib/server/memory/qdrant.ts",
+      "roles/palais/files/app/src/lib/server/memory/enrich.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/db/index.ts": [
+      "roles/palais/files/app/src/lib/server/db/schema.ts"
+    ],
+    "roles/palais/files/app/src/lib/server/db/seed.ts": [
+      "roles/palais/files/app/src/lib/server/db/index.ts",
+      "roles/palais/files/app/src/lib/server/db/schema.ts"
+    ],
+    "roles/palais/files/app/src/lib/components/icons/index.ts": [
+      "roles/palais/files/app/src/lib/components/icons/GyeNyame.svelte",
+      "roles/palais/files/app/src/lib/components/icons/Dwennimmen.svelte",
+      "roles/palais/files/app/src/lib/components/icons/Nkyinkyim.svelte",
+      "roles/palais/files/app/src/lib/components/icons/Sankofa.svelte",
+      "roles/palais/files/app/src/lib/components/icons/Aya.svelte",
+      "roles/palais/files/app/src/lib/components/icons/Akoma.svelte",
+      "roles/palais/files/app/src/lib/components/icons/Fawohodie.svelte",
+      "roles/palais/files/app/src/lib/components/icons/AnanseNtontan.svelte",
+      "roles/palais/files/app/src/lib/components/icons/Nyame.svelte",
+      "roles/palais/files/app/src/lib/components/icons/Bese.svelte"
+    ],
+    "roles/palais/tasks/main.yml": [
+      "roles/palais/templates/palais.env.j2",
+      "roles/palais/templates/claude-mcp-config.json.j2"
+    ],
+    "roles/monitoring/tasks/main.yml": [
+      "roles/monitoring/templates/loki-config.yaml.j2",
+      "roles/monitoring/templates/config.alloy.j2",
+      "roles/monitoring/templates/grafana/provisioning/datasources.yaml.j2",
+      "roles/monitoring/templates/grafana.env.j2",
+      "roles/monitoring/templates/grafana/provisioning/dashboards.yaml.j2",
+      "roles/monitoring/templates/grafana/provisioning/alerting.yaml.j2"
+    ],
+    "roles/workstation-common/tasks/main.yml": [
+      "roles/docker/templates/daemon.json.j2"
+    ],
+    "roles/mealie/tasks/main.yml": [
+      "roles/mealie/templates/mealie.env.j2"
+    ],
+    "roles/common/tasks/main.yml": [
+      "roles/common/templates/timesyncd.conf.j2",
+      "roles/common/templates/journald.conf.j2"
+    ],
+    "roles/docker-stack/tasks/main.yml": [
+      "roles/docker-stack/templates/Makefile.j2",
+      "roles/docker-stack/templates/menu.sh.j2",
+      "roles/docker-stack/templates/docker-compose-infra.yml.j2",
+      "roles/docker-stack/templates/provision-postgresql.sh.j2",
+      "templates/docker-compose.yml.j2"
+    ],
+    "roles/gemini-cli/tasks/main.yml": [
+      "roles/gemini-cli/templates/.env.j2",
+      "roles/claude-code/templates/settings.json.j2",
+      "roles/gemini-cli/templates/GEMINI.md.j2"
+    ],
+    "roles/opencode/tasks/main.yml": [
+      "roles/opencode/templates/opencode.json.j2",
+      "roles/opencode/templates/opencode.service.j2"
+    ],
+    "roles/nocodb/tasks/main.yml": [
+      "roles/nocodb/templates/nocodb.env.j2"
+    ],
+    "roles/obsidian/tasks/main.yml": [
+      "roles/obsidian/templates/docker-compose-couchdb.yml.j2",
+      "roles/obsidian/templates/couchdb-local.ini.j2",
+      "roles/obsidian/templates/init-couchdb.sh.j2",
+      "roles/obsidian/templates/dump-vault.py.j2"
+    ],
+    "roles/typebot/tasks/main.yml": [
+      "roles/typebot/templates/typebot.env.j2"
+    ],
+    "roles/content-factory-provision/tasks/main.yml": [
+      "roles/content-factory-provision/templates/provision-nocodb-tables.sh.j2",
+      "roles/content-factory-provision/templates/provision-qdrant.sh.j2"
+    ],
+    "roles/flash-suite/tasks/main.yml": [
+      "roles/flash-suite/templates/flash-suite.env.j2",
+      "roles/flash-suite/templates/suite-registry.yaml.j2",
+      "roles/caddy/templates/Caddyfile.j2",
+      "templates/docker-compose.yml.j2"
+    ],
+    "roles/zimboo/tasks/main.yml": [
+      "roles/zimboo/templates/zimboo.env.j2"
+    ],
+    "roles/app-factory-provision/tasks/main.yml": [
+      "roles/content-factory-provision/templates/provision-nocodb-tables.sh.j2",
+      "roles/content-factory-provision/templates/provision-qdrant.sh.j2"
+    ],
+    "roles/smoke-tests/tasks/main.yml": [
+      "roles/smoke-tests/templates/smoke-test.sh.j2"
+    ],
+    "roles/litellm/tasks/main.yml": [
+      "roles/litellm/templates/litellm_config.yaml.j2",
+      "roles/litellm/templates/litellm.env.j2"
+    ],
+    "roles/hardening/tasks/main.yml": [
+      "roles/hardening/templates/sshd_config.j2",
+      "roles/hardening/templates/caddy-auth.conf.j2",
+      "roles/hardening/templates/caddy-botsearch.conf.j2",
+      "roles/hardening/templates/jail.local.j2",
+      "roles/hardening/templates/50unattended-upgrades.j2",
+      "roles/hardening/templates/20auto-upgrades.j2",
+      "roles/hardening/templates/audit.rules.j2"
+    ],
+    "roles/n8n-provision/tasks/main.yml": [
+      "roles/n8n-provision/templates/workflows/creative-pipeline.json.j2",
+      "roles/n8n-provision/templates/workflows/plan-dispatch.json.j2",
+      "roles/n8n-provision/templates/workflows/cf-kitsu-sync.json.j2"
+    ],
+    "roles/kitsu/tasks/main.yml": [
+      "roles/kitsu/templates/kitsu.env.j2",
+      "roles/kitsu/templates/supervisord.conf.j2",
+      "roles/kitsu/templates/event_handler.py.j2",
+      "roles/kitsu/templates/gunicorn.py.j2"
+    ],
+    "roles/remotion/files/server/index.ts": [
+      "roles/remotion/files/server/render-queue.ts"
+    ],
+    "roles/remotion/files/remotion/index.ts": [
+      "roles/remotion/files/remotion/Root.tsx"
+    ],
+    "roles/remotion/files/remotion/Root.tsx": [
+      "roles/remotion/files/remotion/HelloWorld/HelloWorld.tsx",
+      "roles/remotion/files/remotion/ReelMotionText/ReelMotionText.tsx",
+      "roles/remotion/files/remotion/ReelMemeSkit/ReelMemeSkit.tsx",
+      "roles/remotion/files/remotion/ReelFeatureShowcase/ReelFeatureShowcase.tsx",
+      "roles/remotion/files/remotion/ReelTeaser/ReelTeaser.tsx",
+      "roles/remotion/files/remotion/Montage/index.ts"
+    ],
+    "roles/remotion/files/remotion/ReelMemeSkit/ReelMemeSkit.tsx": [
+      "roles/remotion/files/remotion/ReelMemeSkit/../types.ts"
+    ],
+    "roles/remotion/files/remotion/ReelTeaser/ReelTeaser.tsx": [
+      "roles/remotion/files/remotion/ReelTeaser/../types.ts"
+    ],
+    "roles/remotion/files/remotion/Montage/effects.tsx": [
+      "roles/remotion/files/remotion/Montage/types.ts"
+    ],
+    "roles/remotion/files/remotion/Montage/TitleCard.tsx": [
+      "roles/remotion/files/remotion/Montage/types.ts"
+    ],
+    "roles/remotion/files/remotion/Montage/Montage.tsx": [
+      "roles/remotion/files/remotion/Montage/types.ts",
+      "roles/remotion/files/remotion/Montage/Scene.tsx",
+      "roles/remotion/files/remotion/Montage/TitleCard.tsx",
+      "roles/remotion/files/remotion/Montage/Subtitles.tsx",
+      "roles/remotion/files/remotion/Montage/AudioMix.tsx",
+      "roles/remotion/files/remotion/Montage/effects.tsx"
+    ],
+    "roles/remotion/files/remotion/Montage/Scene.tsx": [
+      "roles/remotion/files/remotion/Montage/types.ts"
+    ],
+    "roles/remotion/files/remotion/Montage/AudioMix.tsx": [
+      "roles/remotion/files/remotion/Montage/types.ts"
+    ],
+    "roles/remotion/files/remotion/Montage/index.ts": [
+      "roles/remotion/files/remotion/Montage/Montage.tsx",
+      "roles/remotion/files/remotion/Montage/types.ts"
+    ],
+    "roles/remotion/files/remotion/Montage/Subtitles.tsx": [
+      "roles/remotion/files/remotion/Montage/types.ts"
+    ],
+    "roles/remotion/files/remotion/ReelFeatureShowcase/ReelFeatureShowcase.tsx": [
+      "roles/remotion/files/remotion/ReelFeatureShowcase/../types.ts"
+    ],
+    "roles/remotion/files/remotion/ReelMotionText/ReelMotionText.tsx": [
+      "roles/remotion/files/remotion/ReelMotionText/../types.ts"
+    ],
+    "roles/uptime-config/tasks/main.yml": [
+      "roles/uptime-config/templates/uptime-kuma-monitors.md.j2"
+    ],
+    "roles/comfyui/files/comfyui-cli/comfyui_cli/introspection.py": [
+      "roles/comfyui/files/comfyui-cli/comfyui_cli/main.py"
+    ],
+    "roles/comfyui/files/comfyui-cli/comfyui_cli/docs.py": [
+      "roles/comfyui/files/comfyui-cli/comfyui_cli/main.py"
+    ],
+    "roles/comfyui/files/comfyui-cli/comfyui_cli/versioning.py": [
+      "roles/comfyui/files/comfyui-cli/comfyui_cli/main.py",
+      "roles/comfyui/files/comfyui-cli/comfyui_cli/git_ops.py"
+    ],
+    "roles/comfyui/files/comfyui-cli/comfyui_cli/main.py": [
+      "roles/comfyui/files/comfyui-cli/comfyui_cli/config.py",
+      "roles/comfyui/files/comfyui-cli/comfyui_cli/api.py"
+    ],
+    "roles/comfyui/files/comfyui-cli/comfyui_cli/workflows.py": [
+      "roles/comfyui/files/comfyui-cli/comfyui_cli/main.py",
+      "roles/comfyui/files/comfyui-cli/comfyui_cli/git_ops.py"
+    ],
+    "roles/comfyui/files/comfyui-cli/comfyui_cli/execution.py": [
+      "roles/comfyui/files/comfyui-cli/comfyui_cli/main.py",
+      "roles/comfyui/files/comfyui-cli/comfyui_cli/converter.py"
+    ],
+    "roles/comfyui/tasks/main.yml": [
+      "roles/comfyui/templates/docker-compose-creative.yml.j2",
+      "roles/comfyui/templates/comfyui-cli.yaml.j2",
+      "roles/comfyui/templates/comfyui-watcher.sh.j2",
+      "roles/comfyui/templates/comfyui-watcher.service.j2"
+    ],
+    "roles/workstation-monitoring/tasks/main.yml": [
+      "roles/workstation-monitoring/templates/node_exporter.service.j2",
+      "roles/workstation-monitoring/templates/comfyui-metrics.py.j2"
+    ],
+    "roles/penpot/tasks/main.yml": [
+      "roles/penpot/templates/docker-compose-penpot.yml.j2",
+      "roles/penpot/templates/Caddyfile-penpot.j2",
+      "roles/penpot/templates/backup-penpot.sh.j2"
+    ],
+    "roles/workstation-caddy/tasks/main.yml": [
+      "roles/workstation-caddy/templates/Caddyfile-workstation.j2",
+      "roles/workstation-caddy/templates/caddy-workstation.service.j2"
+    ],
+    "roles/koodia/tasks/main.yml": [
+      "roles/koodia/templates/koodia.env.j2"
+    ],
+    "roles/app-scaffold/tasks/main.yml": [
+      "roles/app-scaffold/templates/docker-config.json.j2"
+    ],
+    "roles/openpencil/tasks/main.yml": [
+      "roles/openpencil/templates/openpencil.service.j2"
+    ],
+    "roles/grocy/tasks/main.yml": [
+      "roles/grocy/templates/grocy.env.j2"
+    ],
+    "roles/videoref-engine/tasks/main.yml": [
+      "roles/videoref-engine/templates/videoref.env.j2"
+    ],
+    "roles/diun/tasks/main.yml": [
+      "roles/diun/templates/diun.yml.j2"
+    ],
+    "roles/msg2md/tasks/main.yml": [
+      "roles/msg2md/templates/Dockerfile.j2",
+      "roles/msg2md/templates/app.py.j2"
+    ],
+    "roles/plane/tasks/main.yml": [
+      "roles/plane/templates/plane.env.j2",
+      "roles/plane/templates/plane-minio.env.j2"
+    ],
+    "roles/n8n/tasks/main.yml": [
+      "roles/n8n/templates/n8n.env.j2"
+    ],
+    "roles/mop-templates/tasks/main.yml": [
+      "roles/mop-templates/templates/alloc-and-append.sh.j2"
+    ],
+    "roles/webhook-relay/tasks/main.yml": [
+      "roles/webhook-relay/templates/Caddyfile-relay.j2"
+    ],
+    "roles/openclaw/tasks/main.yml": [
+      "roles/openclaw/templates/openclaw.json.j2",
+      "roles/openclaw/templates/SOUL.md.j2",
+      "roles/openclaw/templates/HEARTBEAT.md.j2",
+      "roles/openclaw/templates/openclaw.env.j2"
+    ],
+    "roles/story-engine/tasks/main.yml": [
+      "roles/story-engine/templates/story-engine-api.env.j2",
+      "roles/story-engine/templates/story-engine-collab.env.j2",
+      "roles/story-engine/templates/story-engine-web.env.j2",
+      "roles/caddy/templates/Caddyfile.j2",
+      "templates/docker-compose.yml.j2"
+    ],
+    "FS/flash-studio-complete/flash-infra/ansible/roles/sd-service-desk/tasks/main.yml": [
+      "templates/docker-compose.yml.j2",
+      "FS/flash-studio-complete/flash-infra/ansible/roles/sd-service-desk/templates/env.j2",
+      "roles/caddy/templates/Caddyfile.j2",
+      "FS/flash-studio-complete/flash-infra/ansible/roles/sd-service-desk/templates/init-databases.sh.j2",
+      "FS/flash-studio-complete/flash-infra/ansible/roles/sd-service-desk/templates/gatus-config.yaml.j2"
+    ]
+  }
+}

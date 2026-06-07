@@ -133,10 +133,29 @@ Plans:
 - [ ] 09-01-PLAN.md — Template/workflow fixes (event_handler variable, Remotion API fields, env vars, rough-cut action, STATUS_MAP locked) + vault credential update
 - [ ] 09-02-PLAN.md — Bot account provisioning + deploy to Sese-AI + E2E verification
 
+### Phase 10: AI Ops
+
+**Goal**: Cycle d'amélioration continue des sessions Claude Code opérationnel — zéro nouveau serveur obligatoire. Track A : Langfuse Cloud free tier branché sur le hook SessionStop (semaine 1). Track B : stack maison (NocoDB + VictoriaMetrics + Loki + LiteLLM juge qualité) en parallèle pour stockage long terme et scoring automatique. Nouveau serveur uniquement si Track C se déclenche (rétention ou confidentialité bloquants).
+
+**Depends on**: ULTIMATE-CONFIG Couche 5 (`session-memory-writer.sh` — SessionStop hook)
+
+**Milestone**: v2026.4 — AI Ops (Observabilité Continue)
+
+**Requirements**: AIOPS-01 à AIOPS-07 (Track A+B), AIOPS-08+09 optionnels (Track C)
+
+**Success criteria**:
+1. Après chaque session Claude Code : trace visible dans Langfuse Cloud sans intervention manuelle
+2. NocoDB table `claude_sessions` alimentée — rétention illimitée, searchable
+3. Grafana dashboard : tokens/jour + coût/jour + qualité score sur 30 jours glissants
+4. Grafana Explore (Loki) : timeline tool-call par tool-call pour n'importe quelle session
+5. Score qualité automatique via LiteLLM juge sur chaque session, alerte Telegram si score < 6
+
+**Plans**: TBD
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
+Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9 -> 10
 
 | Phase | Milestone | Plans Complete | Status | Completed |
 |-------|-----------|----------------|--------|-----------|
@@ -145,3 +164,4 @@ Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9
 | 7. Orchestration | 5/5 | Complete | 2026-03-17 | - |
 | 8. Data Layer Glue | 1/2 | In Progress|  | - |
 | 9. Integration Fixes | 2/2 | Complete   | 2026-03-18 | - |
+| 10. AI Ops | 0/TBD | Planned | - | - |

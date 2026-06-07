@@ -1,0 +1,451 @@
+{
+  "generated_at": "2026-04-12T13:12:16.487558+00:00",
+  "repo": "flash-studio",
+  "repo_root": "/home/mobuone/flash-studio",
+  "graph": {
+    "flash-admin/tests/revenue.test.tsx": [
+      "flash-admin/tests/../src/types/billing.ts"
+    ],
+    "flash-admin/tests/log-viewer.test.tsx": [
+      "flash-admin/tests/../src/types/infrastructure.ts"
+    ],
+    "flash-admin/tests/ai-ops.test.tsx": [
+      "flash-admin/tests/../src/types/ai-ops.ts"
+    ],
+    "flash-admin/tests/alert-feed.test.tsx": [
+      "flash-admin/tests/../src/types/command-center.ts"
+    ],
+    "flash-admin/tests/tenant-list.test.tsx": [
+      "flash-admin/tests/../src/types/tenant.ts"
+    ],
+    "flash-admin/tests/deployment.test.tsx": [
+      "flash-admin/tests/../src/types/infrastructure.ts"
+    ],
+    "flash-admin/tests/vm-list.test.tsx": [
+      "flash-admin/tests/../src/types/infrastructure.ts"
+    ],
+    "flash-admin/tests/vm-detail.test.tsx": [
+      "flash-admin/tests/../src/types/infrastructure.ts"
+    ],
+    "flash-admin/tests/backup.test.tsx": [
+      "flash-admin/tests/../src/types/infrastructure.ts"
+    ],
+    "flash-admin/tests/metrics.test.tsx": [
+      "flash-admin/tests/../src/types/command-center.ts"
+    ],
+    "flash-admin/tests/incident-timeline.test.tsx": [
+      "flash-admin/tests/../src/types/infrastructure.ts"
+    ],
+    "flash-admin/tests/tenant-detail.test.tsx": [
+      "flash-admin/tests/../src/types/tenant.ts"
+    ],
+    "flash-admin/tests/kpi-tiles.test.tsx": [
+      "flash-admin/tests/../src/types/command-center.ts"
+    ],
+    "flash-admin/tests/marketplace.test.tsx": [
+      "flash-admin/tests/../src/types/marketplace.ts"
+    ],
+    "flash-admin/tests/security.test.tsx": [
+      "flash-admin/tests/../src/types/security.ts"
+    ],
+    "flash-admin/src/components/observability/LogRow.tsx": [
+      "flash-admin/src/components/observability/LogRowDetail.tsx"
+    ],
+    "flash-admin/src/components/observability/LogViewer.tsx": [
+      "flash-admin/src/components/observability/LogRow.tsx"
+    ],
+    "flash-admin/src/components/observability/IncidentTimeline.tsx": [
+      "flash-admin/src/components/observability/IncidentEntry.tsx",
+      "flash-admin/src/components/observability/IncidentDetail.tsx"
+    ],
+    "flash-admin/src/components/revenue/InvoiceTable.tsx": [
+      "flash-admin/src/components/revenue/InvoiceColumns.tsx"
+    ],
+    "flash-admin/src/components/security/CrowdSecFeed.tsx": [
+      "flash-admin/src/components/security/CrowdSecItem.tsx"
+    ],
+    "flash-admin/src/components/security/AuditLog.tsx": [
+      "flash-admin/src/components/security/AuditLogColumns.tsx",
+      "flash-admin/src/components/security/AuditDiffView.tsx"
+    ],
+    "flash-admin/src/components/marketplace/ModuleCatalog.tsx": [
+      "flash-admin/src/components/marketplace/ModuleCard.tsx"
+    ],
+    "flash-admin/src/components/terminal/index.ts": [
+      "flash-admin/src/components/terminal/TerminalCard.tsx",
+      "flash-admin/src/components/terminal/TerminalButton.tsx",
+      "flash-admin/src/components/terminal/TerminalBadge.tsx",
+      "flash-admin/src/components/terminal/TerminalInput.tsx",
+      "flash-admin/src/components/terminal/TerminalSelect.tsx",
+      "flash-admin/src/components/terminal/TerminalTable.tsx",
+      "flash-admin/src/components/terminal/TerminalTabs.tsx",
+      "flash-admin/src/components/terminal/TerminalDialog.tsx",
+      "flash-admin/src/components/terminal/TerminalToast.tsx",
+      "flash-admin/src/components/terminal/GlowText.tsx",
+      "flash-admin/src/components/terminal/AsciiDivider.tsx",
+      "flash-admin/src/components/terminal/StatusDot.tsx"
+    ],
+    "flash-admin/src/components/command-center/AlertFeed.tsx": [
+      "flash-admin/src/components/command-center/AlertItem.tsx"
+    ],
+    "flash-admin/src/components/command-center/TopologyMap.tsx": [
+      "flash-admin/src/components/command-center/VMNode.tsx"
+    ],
+    "flash-admin/src/components/command-center/KPIGrid.tsx": [
+      "flash-admin/src/components/command-center/KPITile.tsx"
+    ],
+    "flash-admin/src/components/tenants/TenantDataTable.tsx": [
+      "flash-admin/src/components/tenants/TenantColumns.tsx",
+      "flash-admin/src/components/tenants/TenantFilters.tsx"
+    ],
+    "flash-admin/src/components/tenants/ResourceUsageGrid.tsx": [
+      "flash-admin/src/components/tenants/ResourceGauge.tsx"
+    ],
+    "flash-admin/src/components/tenants/ProvisioningWizard/index.tsx": [
+      "flash-admin/src/components/tenants/ProvisioningWizard/../WizardStepper.tsx",
+      "flash-admin/src/components/tenants/ProvisioningWizard/Step1VMSelection.tsx",
+      "flash-admin/src/components/tenants/ProvisioningWizard/Step2StackChoice.tsx",
+      "flash-admin/src/components/tenants/ProvisioningWizard/Step3DNSConfig.tsx",
+      "flash-admin/src/components/tenants/ProvisioningWizard/Step4Confirm.tsx"
+    ],
+    "flash-admin/src/components/tenants/ProvisioningWizard/Step4Confirm.tsx": [
+      "flash-admin/src/components/tenants/ProvisioningWizard/Step1VMSelection.tsx"
+    ],
+    "flash-admin/src/components/infrastructure/VMDataTable.tsx": [
+      "flash-admin/src/components/infrastructure/VMColumns.tsx"
+    ],
+    "flash-admin/src/components/infrastructure/DeploymentTable.tsx": [
+      "flash-admin/src/components/infrastructure/DeploymentColumns.tsx"
+    ],
+    "flash-admin/src/components/infrastructure/ContainerTable.tsx": [
+      "flash-admin/src/components/infrastructure/ContainerColumns.tsx"
+    ],
+    "flash-admin/src/components/ai-ops/AgentTable.tsx": [
+      "flash-admin/src/components/ai-ops/AgentColumns.tsx"
+    ],
+    "flash-admin/src/components/ai-ops/KBTable.tsx": [
+      "flash-admin/src/components/ai-ops/KBColumns.tsx"
+    ],
+    "flash-admin/src/components/ai-ops/AgentColumns.tsx": [
+      "flash-admin/src/components/ai-ops/HealthScore.tsx"
+    ],
+    "flash-admin/src/components/ai-ops/AgentDetailPanel.tsx": [
+      "flash-admin/src/components/ai-ops/HealthScore.tsx"
+    ],
+    "flash-admin/src/app/layout.tsx": [
+      "flash-admin/src/app/fonts.ts"
+    ],
+    "flash-infra/ansible/roles/work-compose/tasks/main.yml": [
+      "flash-infra/ansible/roles/work-compose/templates/env.j2"
+    ],
+    "flash-infra/ansible/roles/caddy/tasks/configure.yml": [
+      "flash-infra/ansible/roles/caddy/templates/caddy.env.j2",
+      "flash-infra/ansible/roles/caddy/templates/caddy-override.conf.j2",
+      "flash-infra/ansible/roles/caddy/templates/Caddyfile.j2"
+    ],
+    "flash-infra/ansible/roles/docker/tasks/configure.yml": [
+      "flash-infra/ansible/roles/docker/templates/daemon.json.j2"
+    ],
+    "flash-infra/ansible/roles/crowdsec/tasks/firewall-bouncer.yml": [
+      "flash-infra/ansible/roles/crowdsec/templates/crowdsec-firewall-bouncer.yaml.j2"
+    ],
+    "flash-infra/ansible/roles/observability/tasks/secrets.yml": [
+      "flash-infra/ansible/roles/observability/templates/grafana-contact-points.yaml.j2"
+    ],
+    "flash-infra/ansible/roles/observability/tasks/monitoring-configs.yml": [
+      "flash-infra/ansible/roles/observability/templates/vm-scrape.yml.j2",
+      "flash-infra/ansible/roles/observability/templates/loki-config.yaml.j2"
+    ],
+    "flash-infra/ansible/roles/observability/tasks/grafana-provisioning.yml": [
+      "flash-infra/ansible/roles/observability/templates/grafana-alert-rules.yaml.j2"
+    ],
+    "flash-infra/ansible/roles/core-compose/tasks/configure.yml": [
+      "flash-infra/ansible/roles/work-compose/templates/env.j2"
+    ],
+    "flash-infra/ansible/roles/common/tasks/ssh.yml": [
+      "flash-infra/ansible/roles/common/templates/sshd_config.j2"
+    ],
+    "flash-infra/ansible/roles/common/tasks/hardening.yml": [
+      "flash-infra/ansible/roles/common/templates/modprobe-hardening.conf.j2",
+      "flash-infra/ansible/roles/common/templates/login-defs-hardening.conf.j2",
+      "flash-infra/ansible/roles/common/templates/banner.j2"
+    ],
+    "flash-infra/ansible/roles/common/tasks/firewall.yml": [
+      "flash-infra/ansible/roles/common/templates/jail.local.j2"
+    ],
+    "flash-infra/ansible/roles/common/tasks/system.yml": [
+      "flash-infra/ansible/roles/common/templates/sysctl-flash.conf.j2",
+      "flash-infra/ansible/roles/common/templates/50unattended-upgrades.j2",
+      "flash-infra/ansible/roles/common/templates/20auto-upgrades.j2"
+    ],
+    "flash-infra/ansible/roles/forge/tasks/configure.yml": [
+      "flash-infra/ansible/roles/work-compose/templates/env.j2",
+      "flash-infra/ansible/roles/caddy/templates/Caddyfile.j2",
+      "flash-infra/ansible/roles/forge/templates/gitea-app.ini.j2"
+    ],
+    "flash-infra/ansible/roles/backup/tasks/cron.yml": [
+      "flash-infra/ansible/roles/backup/templates/flash-backup-cron.j2"
+    ],
+    "flash-infra/ansible/roles/backup/tasks/configure.yml": [
+      "flash-infra/ansible/roles/backup/templates/flash-backup.env.j2",
+      "flash-infra/ansible/roles/backup/templates/flash-backup.sh.j2",
+      "flash-infra/ansible/roles/backup/templates/flash-restore.sh.j2"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/layout/Sidebar.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/layout/../ui/StatusDot.tsx"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/marketplace/AppCard.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/marketplace/../ui/BrutalCard.tsx",
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/marketplace/../ui/BrutalTag.tsx",
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/marketplace/../../lib/api.ts"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/marketplace/PackCard.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/marketplace/../ui/BrutalCard.tsx",
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/marketplace/../ui/BrutalTag.tsx",
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/marketplace/../../lib/api.ts"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/work/ServiceGrid.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/work/../ui/StatusDot.tsx"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/work/BackupPanel.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/work/../ui/BrutalButton.tsx"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/work/ResourceGauges.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/work/../ui/ProgressBar.tsx"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/features/FeatureBoard.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/features/../ui/BrutalCard.tsx",
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/features/../ui/BrutalTag.tsx",
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/features/../../lib/api.ts"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/features/FeatureRequestForm.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/features/../ui/BrutalButton.tsx",
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/features/../ui/BrutalInput.tsx"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/ui/EmptyState.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/ui/BrutalButton.tsx"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/dashboard/WelcomeHeader.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/dashboard/../ui/StatCard.tsx"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/dashboard/TopFeatures.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/dashboard/../../lib/api.ts"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/dashboard/Recommendations.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/dashboard/../marketplace/AppCard.tsx",
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/dashboard/../../lib/api.ts"
+    ],
+    "flash-infra/ansible/roles/portal-compose/files/portail/src/components/dashboard/InstalledAppsStrip.tsx": [
+      "flash-infra/ansible/roles/portal-compose/files/portail/src/components/dashboard/../../lib/api.ts"
+    ],
+    "flash-infra/ansible/roles/portal-compose/tasks/main.yml": [
+      "flash-infra/ansible/roles/portal-compose/templates/docker-compose.yml.j2",
+      "flash-infra/ansible/roles/work-compose/templates/env.j2",
+      "flash-infra/ansible/roles/caddy/templates/Caddyfile.j2",
+      "flash-infra/ansible/roles/portal-compose/templates/init-databases.sh.j2",
+      "flash-infra/ansible/roles/portal-compose/templates/gatus-config.yaml.j2"
+    ],
+    "flash-infra/ansible/roles/flash-agent/tasks/install.yml": [
+      "flash-infra/ansible/roles/flash-agent/templates/flash-agent.env.j2"
+    ],
+    "flash-infra/ansible/roles/flash-agent/tasks/systemd.yml": [
+      "flash-infra/ansible/roles/flash-agent/templates/flash-agent.service.j2"
+    ],
+    "flash-infra/ansible/roles/control-compose/tasks/configure-templates.yml": [
+      "flash-infra/ansible/roles/control-compose/templates/management.json.j2",
+      "flash-infra/ansible/roles/control-compose/templates/turnserver.conf.j2",
+      "flash-infra/ansible/roles/control-compose/templates/crowdsec-config.yaml.j2",
+      "flash-infra/ansible/roles/control-compose/templates/zitadel-steps.yaml.j2",
+      "flash-infra/ansible/roles/control-compose/templates/Corefile.j2"
+    ],
+    "flash-infra/ansible/roles/control-compose/tasks/configure.yml": [
+      "flash-infra/ansible/roles/work-compose/templates/env.j2",
+      "flash-infra/ansible/roles/control-compose/templates/management.json.j2",
+      "flash-infra/ansible/roles/control-compose/templates/turnserver.conf.j2",
+      "flash-infra/ansible/roles/control-compose/templates/crowdsec-config.yaml.j2",
+      "flash-infra/ansible/roles/control-compose/templates/zitadel-steps.yaml.j2"
+    ],
+    "flash-infra/ansible/roles/control-compose/tasks/bootstrap.yml": [
+      "flash-infra/ansible/roles/control-compose/templates/management.json.j2",
+      "flash-infra/ansible/roles/work-compose/templates/env.j2"
+    ],
+    "flash-infra/ansible/roles/control-compose/tasks/restic.yml": [
+      "flash-infra/ansible/roles/control-compose/templates/restic-backup.sh.j2"
+    ],
+    "flash-infra/ansible/roles/litellm/tasks/configure.yml": [
+      "flash-infra/ansible/roles/litellm/templates/config.yaml.j2"
+    ],
+    "flash-infra/ansible/roles/vaultwarden/tasks/backup.yml": [
+      "flash-infra/ansible/roles/vaultwarden/templates/vaultwarden-backup.sh.j2"
+    ],
+    "flash-infra/ansible/roles/maintenance/tasks/main.yml": [
+      "flash-infra/ansible/roles/maintenance/templates/flash-maintenance-cron.j2"
+    ],
+    "flash-infra/ansible/roles/maintenance/tasks/disk-alert.yml": [
+      "flash-infra/ansible/roles/maintenance/templates/flash-disk-alert.sh.j2"
+    ],
+    "flash-infra/ansible/roles/maintenance/tasks/restic-forget.yml": [
+      "flash-infra/ansible/roles/maintenance/templates/flash-restic-forget.sh.j2"
+    ],
+    "flash-infra/ansible/roles/maintenance/tasks/docker-prune.yml": [
+      "flash-infra/ansible/roles/maintenance/templates/flash-docker-prune.sh.j2"
+    ],
+    "flash-infra/ansible/roles/maintenance/tasks/logrotate.yml": [
+      "flash-infra/ansible/roles/maintenance/templates/logrotate-crowdsec-bouncer.j2",
+      "flash-infra/ansible/roles/maintenance/templates/logrotate-caddy.j2"
+    ],
+    "flash-infra/ansible/roles/unbound/tasks/main.yml": [
+      "flash-infra/ansible/roles/unbound/templates/unbound-flash.conf.j2"
+    ],
+    "flash-infra/ansible/roles/edge/tasks/configure.yml": [
+      "flash-infra/ansible/roles/work-compose/templates/env.j2",
+      "flash-infra/ansible/roles/caddy/templates/Caddyfile.j2"
+    ],
+    "flash-infra/ansible/roles/edge/tasks/caddy-update.yml": [
+      "flash-infra/ansible/roles/caddy/templates/Caddyfile.j2"
+    ],
+    "flash-infra/ansible/roles/postgres/tasks/configure.yml": [
+      "flash-infra/ansible/roles/postgres/templates/pg_hba.conf.j2",
+      "flash-infra/ansible/roles/postgres/templates/flash-tuning.conf.j2"
+    ],
+    "flash-infra/docker/control/admin-api/next.config.ts": [
+      "flash-infra/docker/control/admin-api/package.json"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/observability/LogRow.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/observability/LogRowDetail.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/observability/LogViewer.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/observability/LogRow.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/observability/IncidentTimeline.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/observability/IncidentEntry.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/observability/IncidentDetail.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/revenue/InvoiceTable.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/revenue/InvoiceColumns.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/security/CrowdSecFeed.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/security/CrowdSecItem.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/security/AuditLog.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/security/AuditLogColumns.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/security/AuditDiffView.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/marketplace/ModuleCatalog.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/marketplace/ModuleCard.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/marketplace/ModuleEditModal.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/terminal/index.ts": [
+      "flash-infra/docker/control/flash-admin/src/components/terminal/TerminalCard.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/terminal/TerminalButton.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/terminal/TerminalBadge.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/terminal/TerminalInput.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/terminal/TerminalSelect.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/terminal/TerminalTable.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/terminal/TerminalTabs.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/terminal/TerminalDialog.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/terminal/TerminalToast.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/terminal/GlowText.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/terminal/AsciiDivider.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/terminal/StatusDot.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/command-center/AlertFeed.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/command-center/AlertItem.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/command-center/TopologyMap.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/command-center/VMNode.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/command-center/KPIGrid.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/command-center/KPITile.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/tenants/TenantDataTable.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/tenants/TenantColumns.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/tenants/TenantFilters.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/tenants/ResourceUsageGrid.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/tenants/ResourceGauge.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/tenants/ProvisioningWizard/index.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/tenants/ProvisioningWizard/../WizardStepper.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/tenants/ProvisioningWizard/Step1TierSelection.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/tenants/ProvisioningWizard/Step2TenantDetails.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/tenants/ProvisioningWizard/Step3DNSConfig.tsx",
+      "flash-infra/docker/control/flash-admin/src/components/tenants/ProvisioningWizard/Step4Confirm.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/infrastructure/VMDataTable.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/infrastructure/VMColumns.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/infrastructure/DeploymentTable.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/infrastructure/DeploymentColumns.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/infrastructure/ContainerTable.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/infrastructure/ContainerColumns.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/ai-ops/AgentTable.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/ai-ops/AgentColumns.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/ai-ops/KBTable.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/ai-ops/KBColumns.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/ai-ops/AgentColumns.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/ai-ops/HealthScore.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/components/ai-ops/AgentDetailPanel.tsx": [
+      "flash-infra/docker/control/flash-admin/src/components/ai-ops/HealthScore.tsx"
+    ],
+    "flash-infra/docker/control/flash-admin/src/app/layout.tsx": [
+      "flash-infra/docker/control/flash-admin/src/app/fonts.ts"
+    ],
+    "flash-infra/docker/archive/flash-public/src/components/terminal/index.ts": [
+      "flash-infra/docker/archive/flash-public/src/components/terminal/TerminalCard.tsx",
+      "flash-infra/docker/archive/flash-public/src/components/terminal/TerminalButton.tsx",
+      "flash-infra/docker/archive/flash-public/src/components/terminal/TerminalBadge.tsx",
+      "flash-infra/docker/archive/flash-public/src/components/terminal/TerminalInput.tsx",
+      "flash-infra/docker/archive/flash-public/src/components/terminal/TerminalSelect.tsx",
+      "flash-infra/docker/archive/flash-public/src/components/terminal/TerminalTable.tsx",
+      "flash-infra/docker/archive/flash-public/src/components/terminal/TerminalTabs.tsx",
+      "flash-infra/docker/archive/flash-public/src/components/terminal/TerminalDialog.tsx",
+      "flash-infra/docker/archive/flash-public/src/components/terminal/TerminalToast.tsx",
+      "flash-infra/docker/archive/flash-public/src/components/terminal/GlowText.tsx",
+      "flash-infra/docker/archive/flash-public/src/components/terminal/AsciiDivider.tsx",
+      "flash-infra/docker/archive/flash-public/src/components/terminal/StatusDot.tsx"
+    ],
+    "flash-infra/docker/archive/flash-public/src/app/layout.tsx": [
+      "flash-infra/docker/archive/flash-public/src/app/fonts.ts"
+    ],
+    "flash-infra/docker/edge/vitrine/src/lib/control-api.ts": [
+      "flash-infra/docker/edge/vitrine/src/lib/session.ts"
+    ],
+    "flash-infra/docker/edge/vitrine/src/components/zero-ui/ThinkingState.tsx": [
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/BuddyAvatar.tsx"
+    ],
+    "flash-infra/docker/edge/vitrine/src/components/zero-ui/ZeroUIShell.tsx": [
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/PromptDock.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/ContentZone.tsx"
+    ],
+    "flash-infra/docker/edge/vitrine/src/components/zero-ui/ContentZone.tsx": [
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/ThinkingState.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/HeroWelcome.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/PlanRecommendation.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/PricingGrid.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/FeatureShowcase.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/Conversation.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/FaqFiltered.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/PlanDetail.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/PlanComparison.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/Testimonials.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/Checkout.tsx"
+    ],
+    "flash-infra/docker/edge/vitrine/src/components/zero-ui/PromptDock.tsx": [
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/BuddyAvatar.tsx"
+    ],
+    "flash-infra/docker/edge/vitrine/src/components/zero-ui/DashboardDock.tsx": [
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/BuddyAvatar.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/DashboardOverview.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/ServiceStatus.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/UsageReport.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/BillingDetail.tsx",
+      "flash-infra/docker/edge/vitrine/src/components/zero-ui/blocks/Conversation.tsx"
+    ]
+  }
+}

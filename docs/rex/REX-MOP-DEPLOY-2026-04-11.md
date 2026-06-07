@@ -197,11 +197,29 @@ Les discriminateurs Zod pour les blocs Typebot v3.16.1 (schéma v6.1) ne sont pa
 | Integration | `"Webhook"` | HTTP Request block (`IntegrationBlockType.HTTP_REQUEST`) — options: `webhook.{url,method,body,headers}` + `responseVariableMapping` |
 | Logic | `"Set variable"` | Set Variable (capital S+V) |
 | Logic | `"Condition"` | Condition block (capital C) |
+| Logic | `"Jump"` | Jump block (capital J) — options: `{groupId, blockId}` |
 | Logic | `"webhook"` | Webhook logic block (lowercase — différent de l'HTTP Request) |
 
 **optionBaseSchema** (module 938666) : `variableId: string optional` est au niveau de `options` directement pour tous les blocs input.
 
 **Edges** : `{id, from: {blockId|eventId}, to: {groupId}}` — les items de `choice input` portent leur propre `outgoingEdgeId`.
+
+---
+
+## Typebot — API Deploy Flow (confirmé docs.typebot.com 2026-04-13)
+
+**Source** : `docs.typebot.com/api-reference/typebot/update.md` + `publish.md`
+
+Le PATCH seul ne suffit pas — il met à jour le **draft** uniquement :
+
+| Étape | Endpoint | Effet |
+|---|---|---|
+| 1 | `PATCH /api/v1/typebots/:id` body: `{typebot: {...}}` | Update draft (non-live) |
+| 2 | `POST /api/v1/typebots/:id/publish` | Publie le draft → live |
+
+**Pitfall** : omettre le `POST /publish` laisse le viewer sur l'ancienne version publiée. Symptôme : l'éditeur montre le nouveau flow, mais le viewer retourne l'ancien.
+
+**Set variable modes** (official doc) : `Custom` / `Empty` / `Append value(s)` / `Random ID` / `Now` / `Yesterday` / `Tomorrow` / `Transcript` / `Result ID` / `Map item with same index` / `Pop` / `Shift` / `Environment name` / `Device type` / `Moment of the day`.
 
 ---
 

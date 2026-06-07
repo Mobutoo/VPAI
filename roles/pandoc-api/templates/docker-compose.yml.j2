@@ -1,0 +1,43 @@
+---
+# roles/pandoc-api/templates/docker-compose.yml.j2
+# Pandoc HTTP microservice — HTML → DOCX conversion
+# Build local : pandoc/core:3.6 + Node.js Express wrapper
+
+services:
+  pandoc_api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: "pandoc-api:local"
+    container_name: "{{ pandoc_api_container_name }}"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m
+      - /app/node_modules/.cache:size=32m
+    networks:
+      - {{ pandoc_api_network }}
+    deploy:
+      resources:
+        limits:
+          memory: {{ pandoc_api_memory_limit }}
+          cpus: "{{ pandoc_api_cpu_limit }}"
+        reservations:
+          memory: {{ pandoc_api_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  {{ pandoc_api_network }}:
+    external: true

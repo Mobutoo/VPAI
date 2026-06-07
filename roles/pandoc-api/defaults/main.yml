@@ -1,0 +1,9 @@
+---
+# roles/pandoc-api/defaults/main.yml — Pandoc HTTP microservice (HTML → DOCX)
+pandoc_api_port: 3001
+pandoc_api_docker_dir: "/opt/{{ project_name }}/docker/pandoc-api"
+pandoc_api_container_name: "{{ project_name }}_pandoc_api"
+pandoc_api_network: "{{ project_name }}_backend"
+pandoc_api_memory_limit: "512m"
+pandoc_api_memory_reservation: "128m"
+pandoc_api_cpu_limit: "0.5"

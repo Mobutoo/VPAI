@@ -1,0 +1,82 @@
+---
+# roles/pandoc-api/tasks/main.yml — Pandoc HTTP microservice provisioning
+
+- name: "Pandoc-api | Create docker dir"
+  ansible.builtin.file:
+    path: "{{ pandoc_api_docker_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [pandoc-api, phase3, apps]
+
+- name: "Pandoc-api | Copy Dockerfile"
+  ansible.builtin.copy:
+    src: "Dockerfile"
+    dest: "{{ pandoc_api_docker_dir }}/Dockerfile"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  tags: [pandoc-api, phase3, apps]
+
+- name: "Pandoc-api | Copy server.js"
+  ansible.builtin.copy:
+    src: "server.js"
+    dest: "{{ pandoc_api_docker_dir }}/server.js"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  tags: [pandoc-api, phase3, apps]
+
+- name: "Pandoc-api | Copy package.json"
+  ansible.builtin.copy:
+    src: "package.json"
+    dest: "{{ pandoc_api_docker_dir }}/package.json"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  tags: [pandoc-api, phase3, apps]
+
+- name: "Pandoc-api | Create reference dir"
+  ansible.builtin.file:
+    path: "{{ pandoc_api_docker_dir }}/reference"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [pandoc-api, phase3, apps]
+
+- name: "Pandoc-api | Copy reference templates"
+  ansible.builtin.copy:
+    src: "reference/"
+    dest: "{{ pandoc_api_docker_dir }}/reference/"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  tags: [pandoc-api, phase3, apps]
+
+- name: "Pandoc-api | Deploy docker-compose"
+  ansible.builtin.template:
+    src: "docker-compose.yml.j2"
+    dest: "{{ pandoc_api_docker_dir }}/docker-compose.yml"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  tags: [pandoc-api, phase3, apps]
+
+- name: "Pandoc-api | Build and start container"
+  community.docker.docker_compose_v2:
+    project_src: "{{ pandoc_api_docker_dir }}"
+    state: present
+    recreate: always
+    build: always
+  become: true
+  changed_when: false
+  tags: [pandoc-api, phase3, apps]

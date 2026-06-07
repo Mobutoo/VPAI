@@ -1,0 +1,7 @@
+---
+galaxy_info:
+  author: mobuone
+  description: Pandoc HTTP microservice — HTML to DOCX conversion
+  license: MIT
+  min_ansible_version: "2.14"
+dependencies: []

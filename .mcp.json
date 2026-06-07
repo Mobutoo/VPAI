@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "docker-waza": {
+      "type": "stdio",
+      "command": "/home/mobuone/.local/bin/uvx",
+      "args": ["docker-mcp"],
+      "env": { "DOCKER_CONTEXT": "local" }
+    },
+    "docker-sese": {
+      "type": "stdio",
+      "command": "/home/mobuone/.local/bin/uvx",
+      "args": ["docker-mcp"],
+      "env": { "DOCKER_CONTEXT": "sese-ai" }
+    }
+  }
+}

@@ -32,6 +32,7 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 from memory_core import (
     EmbeddingGemmaEncoder,
     build_chunks,
+    build_wing_lookup,
     classify_doc_kind,
     classify_room,
     extract_structural_meta,
@@ -39,6 +40,7 @@ from memory_core import (
     git_commit_sha,
     load_wing_room_lookup,
     ref_doc_id,
+    resolve_effective_sources,
     resolve_source,
     sha256_file,
     sha256_text,
@@ -246,10 +248,24 @@ def merge_source_roots(config: dict[str, Any], sources_path: str | None) -> list
 
 
 def apply_sources_config(config: dict[str, Any], args: argparse.Namespace) -> None:
+    # Autorite unique (memory_core.resolve_effective_sources) : discovery ON ->
+    # auto-decouverte wing-keyee + merge sources_manual ; OFF -> fichier sources.
+    # `--sources <fichier>` force le mode fichier (override explicite, ignore discovery).
     configured_path = config.get("paths", {}).get("sources_file")
-    sources_path = args.sources or configured_path
-    config["repos"] = merge_source_roots(config, sources_path)
-    config["sources_file"] = sources_path or ""
+    if args.sources:
+        config["sources_file"] = args.sources
+        sources = resolve_effective_sources(
+            {**config, "discovery": None, "sources_file": args.sources}
+        )
+    else:
+        config["sources_file"] = configured_path or ""
+        sources = resolve_effective_sources(config)
+    config["_effective_sources"] = sources
+    if sources:
+        config["repos"] = [s["root"] for s in sources]
+    else:
+        # Ni discovery ni fichier sources -> fallback legacy config.yml `repos:`.
+        config["repos"] = merge_source_roots(config, config.get("sources_file"))
 
 
 def list_repo_roots(config: dict[str, Any]) -> list[Path]:
@@ -340,6 +356,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gc", action="store_true", help="Delete state entries whose files disappeared.")
     parser.add_argument("--dry-run", action="store_true", help="Show planned actions without touching Qdrant.")
     parser.add_argument("--preflight-only", action="store_true", help="Run connectivity and environment checks only.")
+    parser.add_argument("--list-sources", action="store_true", help="Print the effective source set (discovery + manual) and exit. No model, no Qdrant.")
     parser.add_argument("--repo", action="append", default=[], help="Restrict processing to a configured repo name.")
     parser.add_argument("--path", action="append", default=[], help="Restrict processing to one file or subdirectory.")
     parser.add_argument("--max-files", type=int, default=0, help="Maximum number of candidate files to process.")
@@ -403,6 +420,24 @@ def main() -> int:
     args = parse_args()
     config = load_yaml(Path(args.config))
     apply_sources_config(config, args)
+    if args.list_sources:
+        sources = config.get("_effective_sources") or []
+        disc = config.get("discovery") or {}
+        mode = "discovery" if disc.get("enabled") else "file"
+        print(json.dumps({
+            "mode": mode,
+            "count": len(sources),
+            "workspace_root": disc.get("workspace_root"),
+            "wings": disc.get("wings"),
+            "max_repos": disc.get("max_repos"),
+            "sources": [
+                {"name": s.get("name"), "wing": s.get("wing"),
+                 "root": s.get("root"), "tags": s.get("tags", []),
+                 "exists": Path(str(s.get("root"))).expanduser().exists()}
+                for s in sources
+            ],
+        }, ensure_ascii=False, indent=2))
+        return 0
     configure_logging(Path(config["paths"]["log_dir"]))
     started_dt = datetime.now(timezone.utc)
     run_id = f"{started_dt.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
@@ -461,9 +496,9 @@ def main() -> int:
         processed_keys: set[str] = set()
         had_errors = False
 
-        # Lookup wing/room (autorite unique partagee avec le pod). Charge depuis
-        # le sources.yml rendu (emet desormais `wing` par source).
-        wing_lookup = load_wing_room_lookup(config["sources_file"])
+        # Lookup wing/room derive des sources EFFECTIVES (auto-decouverte ou
+        # fichier) — meme set que config["repos"], zero double-lecture/derive.
+        wing_lookup = build_wing_lookup(config.get("_effective_sources") or [])
 
         pending_spool = load_spool(spool_dir)
         if pending_spool:

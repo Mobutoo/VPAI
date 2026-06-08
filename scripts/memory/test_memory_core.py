@@ -19,12 +19,28 @@ from memory_core import (
     CHUNKING_STRATEGY_VERSION,
     SCHEMA_VERSION,
     build_payload,
+    build_wing_lookup,
     classify_doc_kind,
     classify_room,
+    discover_sources,
     extract_structural_meta,
     load_wing_room_lookup,
+    resolve_effective_sources,
     resolve_source,
 )
+
+
+# Helper : crée un faux workspace ~/work/<wing>/<name>[/.git]
+def _make_workspace(base: Path, layout: dict[str, list[tuple[str, bool]]]) -> Path:
+    """layout = {wing: [(repo_name, has_git), ...]}. Retourne base."""
+    for wing, repos in layout.items():
+        for name, has_git in repos:
+            repo = base / wing / name
+            repo.mkdir(parents=True, exist_ok=True)
+            if has_git:
+                (repo / ".git").mkdir()
+            (repo / "README.md").write_text("# x", encoding="utf-8")
+    return base
 
 
 # ===========================================================================
@@ -517,3 +533,152 @@ class TestExtractStructuralMeta:
     def test_unknown_suffix_empty(self):
         meta = extract_structural_meta(Path("a.md"), "# hi")
         assert all(v == [] for v in meta.values())
+
+
+# ===========================================================================
+# discover_sources — auto-découverte wing-keyée (MANIFESTE-CREATION-PROJET)
+# ===========================================================================
+WINGS = ["infra", "saas", "tools", "refdocs"]
+
+
+class TestDiscoverSources:
+    def test_wing_derived_from_parent_dir(self, tmp_path):
+        _make_workspace(tmp_path, {"infra": [("VPAI", True)],
+                                   "saas": [("flash-studio", True)]})
+        src = discover_sources(tmp_path, WINGS)
+        by_name = {s["name"]: s for s in src}
+        assert by_name["VPAI"]["wing"] == "infra"
+        assert by_name["flash-studio"]["wing"] == "saas"
+        assert by_name["VPAI"]["root"] == str(tmp_path / "infra" / "VPAI")
+        assert by_name["VPAI"]["kind"] == "git_repo"
+
+    def test_require_git_skips_non_git_dirs(self, tmp_path):
+        _make_workspace(tmp_path, {"tools": [("jarvis", True),
+                                             ("mission-control-tui", False)]})
+        names = {s["name"] for s in discover_sources(tmp_path, WINGS)}
+        assert "jarvis" in names
+        assert "mission-control-tui" not in names  # pas de .git → ignoré
+
+    def test_immediate_children_only_nested_git_not_a_source(self, tmp_path):
+        # DOCS contient un repo imbriqué n8n-docs/.git : ne doit PAS devenir source.
+        _make_workspace(tmp_path, {"refdocs": [("DOCS", True)]})
+        nested = tmp_path / "refdocs" / "DOCS" / "n8n-docs"
+        nested.mkdir(parents=True)
+        (nested / ".git").mkdir()
+        names = {s["name"] for s in discover_sources(tmp_path, WINGS)}
+        assert names == {"DOCS"}  # n8n-docs reste sous-dossier de DOCS
+
+    def test_refdocs_gets_official_docs_tag(self, tmp_path):
+        _make_workspace(tmp_path, {"refdocs": [("typebot-docs", True)],
+                                   "saas": [("hawkeye", True)]})
+        by_name = {s["name"]: s for s in discover_sources(tmp_path, WINGS)}
+        assert "kind:official-docs" in by_name["typebot-docs"]["tags"]
+        assert "scope:typebot-docs" in by_name["typebot-docs"]["tags"]
+        assert "kind:official-docs" not in by_name["hawkeye"]["tags"]
+
+    def test_exclude_names(self, tmp_path):
+        _make_workspace(tmp_path, {"saas": [("hawkeye", True), ("zimboo", True)]})
+        names = {s["name"] for s in
+                 discover_sources(tmp_path, WINGS, exclude_names={"zimboo"})}
+        assert names == {"hawkeye"}
+
+    def test_exclude_globs(self, tmp_path):
+        _make_workspace(tmp_path, {"saas": [("hawkeye", True), ("vps", True)]})
+        names = {s["name"] for s in
+                 discover_sources(tmp_path, WINGS, exclude_globs=["*/saas/vps"])}
+        assert names == {"hawkeye"}
+
+    def test_max_repos_aborts_no_silent_truncation(self, tmp_path):
+        _make_workspace(tmp_path, {"saas": [("a", True), ("b", True), ("c", True)]})
+        with pytest.raises(RuntimeError, match="max_repos"):
+            discover_sources(tmp_path, WINGS, max_repos=2)
+
+    def test_collision_cross_wing_first_wins(self, tmp_path):
+        # même basename dans deux wings (ordre WINGS : infra avant saas)
+        _make_workspace(tmp_path, {"infra": [("vps", True)], "saas": [("vps", True)]})
+        src = discover_sources(tmp_path, WINGS)
+        vps = [s for s in src if s["name"] == "vps"]
+        assert len(vps) == 1 and vps[0]["wing"] == "infra"
+
+    def test_missing_wing_root_skipped(self, tmp_path):
+        _make_workspace(tmp_path, {"saas": [("hawkeye", True)]})
+        # tools/refdocs/infra absents → pas d'erreur, juste saas
+        src = discover_sources(tmp_path, WINGS)
+        assert {s["name"] for s in src} == {"hawkeye"}
+
+    def test_sorted_deterministic(self, tmp_path):
+        _make_workspace(tmp_path, {"saas": [("zimboo", True), ("ase", True)],
+                                   "infra": [("VPAI", True)]})
+        src = discover_sources(tmp_path, WINGS)
+        keys = [(s["wing"], s["name"]) for s in src]
+        assert keys == sorted(keys)
+
+
+# ===========================================================================
+# resolve_effective_sources — discovery ON/OFF + merge sources_manual
+# ===========================================================================
+class TestResolveEffectiveSources:
+    def _disc_config(self, base, **over):
+        cfg = {"discovery": {"enabled": True, "workspace_root": str(base),
+                             "wings": WINGS, "max_repos": 30}}
+        cfg["discovery"].update(over)
+        return cfg
+
+    def test_discovery_on_returns_discovered(self, tmp_path):
+        _make_workspace(tmp_path, {"infra": [("VPAI", True)],
+                                   "saas": [("hawkeye", True)]})
+        src = resolve_effective_sources(self._disc_config(tmp_path))
+        assert {s["name"] for s in src} == {"VPAI", "hawkeye"}
+
+    def test_manual_overrides_by_name(self, tmp_path):
+        _make_workspace(tmp_path, {"refdocs": [("DOCS", True)]})
+        cfg = self._disc_config(tmp_path)
+        cfg["sources_manual"] = [
+            {"name": "DOCS", "wing": "refdocs", "kind": "git_repo",
+             "root": str(tmp_path / "refdocs" / "DOCS"),
+             "tags": ["kind:official-docs", "scope:wiki"]}]
+        src = resolve_effective_sources(cfg)
+        docs = next(s for s in src if s["name"] == "DOCS")
+        assert "scope:wiki" in docs["tags"]  # override gagne sur scope:DOCS
+
+    def test_manual_adds_out_of_tree_source(self, tmp_path):
+        _make_workspace(tmp_path, {"saas": [("hawkeye", True)]})
+        cfg = self._disc_config(tmp_path)
+        cfg["sources_manual"] = [
+            {"name": "extra", "wing": "tools", "kind": "git_repo",
+             "root": "/somewhere/extra", "tags": ["scope:extra"]}]
+        names = {s["name"] for s in resolve_effective_sources(cfg)}
+        assert names == {"hawkeye", "extra"}
+
+    def test_discovery_off_reads_file(self, tmp_path):
+        sources_file = tmp_path / "sources.yml"
+        sources_file.write_text(yaml.safe_dump({"sources": [
+            {"name": "VPAI", "wing": "infra", "kind": "git_repo",
+             "root": "/home/x/work/infra/VPAI", "tags": ["scope:vpai"]}]}),
+            encoding="utf-8")
+        cfg = {"discovery": {"enabled": False}, "sources_file": str(sources_file)}
+        src = resolve_effective_sources(cfg)
+        assert len(src) == 1 and src[0]["name"] == "VPAI"
+
+    def test_no_discovery_no_file_returns_empty(self):
+        assert resolve_effective_sources({}) == []
+
+
+# ===========================================================================
+# build_wing_lookup — alimente resolve_source depuis sources effectives
+# ===========================================================================
+class TestBuildWingLookup:
+    def test_builds_resolved_path_keys(self, tmp_path):
+        repo = tmp_path / "saas" / "hawkeye"
+        repo.mkdir(parents=True)
+        sources = [{"name": "hawkeye", "wing": "saas", "root": str(repo)}]
+        lookup = build_wing_lookup(sources)
+        assert lookup[repo.resolve()] == {"wing": "saas", "name": "hawkeye"}
+
+    def test_discovered_sources_resolve_correctly(self, tmp_path):
+        _make_workspace(tmp_path, {"saas": [("hawkeye", True)]})
+        src = discover_sources(tmp_path, WINGS)
+        lookup = build_wing_lookup(src)
+        target = tmp_path / "saas" / "hawkeye" / "docs" / "x.md"
+        repo, wing, rel = resolve_source(target, lookup)
+        assert (repo, wing, rel) == ("hawkeye", "saas", "docs/x.md")

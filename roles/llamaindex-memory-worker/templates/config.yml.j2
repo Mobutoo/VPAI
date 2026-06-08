@@ -32,6 +32,41 @@ repos:
   - "{{ repo_root }}"
 {% endfor %}
 
+# Auto-decouverte wing-keyee (MANIFESTE-CREATION-PROJET). enabled -> resolve_effective_sources
+# decouvre workspace_root/<wing>/<name> ; OFF -> fichier sources.yml. Le pod n'utilise PAS ce bloc.
+discovery:
+  enabled: {{ 'true' if memory_worker_discovery.enabled | bool else 'false' }}
+  workspace_root: "{{ memory_worker_discovery.workspace_root }}"
+  wings:
+{% for wing in memory_worker_discovery.wings %}
+    - "{{ wing }}"
+{% endfor %}
+  require_git: {{ 'true' if memory_worker_discovery.require_git | bool else 'false' }}
+  exclude_names:
+{% for name in memory_worker_discovery.exclude_names %}
+    - "{{ name }}"
+{% endfor %}
+  exclude_globs:
+{% for glob in memory_worker_discovery.exclude_globs %}
+    - "{{ glob }}"
+{% endfor %}
+  max_repos: {{ memory_worker_discovery.max_repos }}
+
+# Overrides manuels (priorite sur la decouverte par `name`). Vide = decouverte pure.
+sources_manual:
+{% for source in memory_worker_sources_manual %}
+  - name: "{{ source.name }}"
+    wing: "{{ source.wing }}"
+    kind: "{{ source.kind | default('git_repo') }}"
+    root: "{{ source.root }}"
+{% if source.tags is defined and source.tags %}
+    tags:
+{% for tag in source.tags %}
+      - "{{ tag }}"
+{% endfor %}
+{% endif %}
+{% endfor %}
+
 filters:
   include_extensions:
 {% for extension in memory_worker_include_extensions %}

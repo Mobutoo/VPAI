@@ -14,6 +14,7 @@ build_payload) ne dépendent que de stdlib + pyyaml.
 from __future__ import annotations
 
 import ast as _ast
+import fnmatch
 import hashlib
 import re
 import subprocess
@@ -183,10 +184,32 @@ def classify_room(wing: str, relative_path: str) -> str:
 # ---------------------------------------------------------------------------
 # 3. load_wing_room_lookup — charge sources.yml, retourne mapping path→{wing,name}
 # ---------------------------------------------------------------------------
+def build_wing_lookup(sources: list[dict[str, Any]]) -> dict[Path, dict[str, str]]:
+    """Construit {Path(root).resolve(): {wing, name}} depuis une liste de sources.
+
+    Logique unique partagée par le chemin fichier (load_wing_room_lookup) et le
+    chemin auto-découverte (resolve_effective_sources). Room est dérivé par
+    fichier (classify_room), pas stocké ici.
+    """
+    lookup: dict[Path, dict[str, str]] = {}
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        root_raw = source.get("root")
+        if not root_raw:
+            continue
+        resolved = Path(root_raw).expanduser().resolve()
+        lookup[resolved] = {
+            "wing": source.get("wing", ""),
+            "name": source.get("name", ""),
+        }
+    return lookup
+
+
 def load_wing_room_lookup(sources_path: str | Path) -> dict[Path, dict[str, str]]:
     """Charge sources.yml et retourne {Path(root).expanduser().resolve(): {wing, name}}.
 
-    Room est dérivé par fichier (classify_room), pas stocké ici.
+    Conservé pour le chemin fichier (pod via sources.pod.yml, worker legacy).
     """
     import yaml  # stdlib-safe, lazy import en cas de venv minimal
 
@@ -195,19 +218,7 @@ def load_wing_room_lookup(sources_path: str | Path) -> dict[Path, dict[str, str]
         return {}
     with path.open("r", encoding="utf-8") as fh:
         payload = yaml.safe_load(fh) or {}
-
-    lookup: dict[Path, dict[str, str]] = {}
-    for source in payload.get("sources", []):
-        if not isinstance(source, dict):
-            continue
-        root_raw = source.get("root")
-        name = source.get("name", "")
-        wing = source.get("wing", "")
-        if not root_raw:
-            continue
-        resolved = Path(root_raw).expanduser().resolve()
-        lookup[resolved] = {"wing": wing, "name": name}
-    return lookup
+    return build_wing_lookup(payload.get("sources", []) or [])
 
 
 def resolve_source(
@@ -241,6 +252,112 @@ def resolve_source(
     repo = best_meta.get("name") or best_root.name
     wing = best_meta.get("wing", "")
     return repo, wing, best_rel.as_posix()
+
+
+# ---------------------------------------------------------------------------
+# 3-bis. Auto-découverte des sources (nomenclature MANIFESTE-CREATION-PROJET)
+# ---------------------------------------------------------------------------
+def discover_sources(
+    workspace_root: str | Path,
+    wings: list[str],
+    *,
+    require_git: bool = True,
+    exclude_names: set[str] | None = None,
+    exclude_globs: list[str] | None = None,
+    max_repos: int = 30,
+) -> list[dict[str, Any]]:
+    """Découvre les repos sous `workspace_root/<wing>/<name>` (enfants DIRECTS).
+
+    Nomenclature (docs/runbooks/MANIFESTE-CREATION-PROJET.md) : un repo vit à
+    `~/work/<wing>/<name>`. `wing` est dérivé du dossier parent (déterministe),
+    `name` = basename. Seuls les enfants directs de chaque wing root sont
+    candidats → `prune_nested` IMPLICITE : un `.git` imbriqué (ex. DOCS/n8n-docs)
+    devient un sous-dossier de sa source parente, jamais une source autonome —
+    respecte le contrat resolve_source (repo = racine de plus haut niveau).
+
+    Retourne une liste TRIÉE (wing, name) de sources {name, wing, kind, root, tags}.
+    Tags : `scope:{name}` (+ `kind:official-docs` si wing refdocs).
+    Collision de `name` cross-wing : premier gagne (ordre wings → enfants triés).
+    Lève RuntimeError si total > max_repos (garde-fou coût, LOI no-silent-caps).
+    """
+    excl_names = exclude_names or set()
+    excl_globs = exclude_globs or []
+    base = Path(workspace_root).expanduser()
+    discovered: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    for wing in wings:
+        wing_root = base / wing
+        if not wing_root.is_dir():
+            continue
+        for child in sorted(wing_root.iterdir(), key=lambda p: p.name):
+            if not child.is_dir():
+                continue
+            name = child.name
+            if name in excl_names:
+                continue
+            abs_str = str(child.resolve())
+            if any(fnmatch.fnmatch(abs_str, pat) for pat in excl_globs):
+                continue
+            if require_git and not (child / ".git").exists():
+                continue
+            if name in seen_names:  # collision cross-wing : premier gagne
+                continue
+            seen_names.add(name)
+            tags = [f"scope:{name}"]
+            if wing == "refdocs":
+                tags.append("kind:official-docs")
+            discovered.append(
+                {"name": name, "wing": wing, "kind": "git_repo",
+                 "root": str(child), "tags": tags}
+            )
+    if len(discovered) > max_repos:
+        raise RuntimeError(
+            f"discover_sources: {len(discovered)} repos > max_repos={max_repos} "
+            "(garde-fou coût). Augmenter max_repos ou étendre exclude_names/globs."
+        )
+    return discovered
+
+
+def resolve_effective_sources(config: dict[str, Any]) -> list[dict[str, Any]]:
+    """Autorité UNIQUE des sources effectives du worker.
+
+    Si `config['discovery']['enabled']` → discover_sources + merge
+    `config['sources_manual']` (manual gagne par `name`, pour overrides de tags
+    ou roots hors arborescence wing). Sinon → lit le fichier `sources_file`
+    (comportement historique). `config['repos']` ET le wing_lookup en dérivent
+    → zéro double-lecture, zéro dérive defaults↔live.
+
+    Le pod (pod_ingest.py) n'appelle JAMAIS cette fonction : il lit sources.pod.yml
+    via load_wing_room_lookup. discovery.enabled doit rester off côté pod.
+    """
+    discovery = config.get("discovery") or {}
+    if discovery.get("enabled"):
+        discovered = discover_sources(
+            discovery["workspace_root"],
+            discovery.get("wings", []) or [],
+            require_git=bool(discovery.get("require_git", True)),
+            exclude_names=set(discovery.get("exclude_names", []) or []),
+            exclude_globs=list(discovery.get("exclude_globs", []) or []),
+            max_repos=int(discovery.get("max_repos", 30)),
+        )
+        by_name = {s["name"]: s for s in discovered}
+        for manual in config.get("sources_manual") or []:
+            if isinstance(manual, dict) and manual.get("name"):
+                by_name[manual["name"]] = manual  # manual l'emporte
+        return sorted(by_name.values(), key=lambda s: (s.get("wing", ""), s["name"]))
+
+    # Fallback fichier (discovery off)
+    import yaml
+
+    sources_path = config.get("sources_file") or config.get("paths", {}).get("sources_file")
+    if not sources_path:
+        return []
+    path = Path(sources_path).expanduser()
+    if not path.exists():
+        return []
+    with path.open("r", encoding="utf-8") as fh:
+        payload = yaml.safe_load(fh) or {}
+    return payload.get("sources", []) or []
 
 
 # ---------------------------------------------------------------------------

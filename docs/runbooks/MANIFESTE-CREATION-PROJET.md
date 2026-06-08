@@ -5,7 +5,7 @@
 **Portée** : OÙ ranger le repo, COMMENT le nommer, COMMENT le déclarer pour qu'il soit ingéré. La taxonomie (wing/room/doc_kind, dérivation) reste dans `MEMORY-TAXONOMY-MANIFEST.md` — ce manifeste la référence, ne la duplique pas.
 **Appliqué par Claude** : au moment de la création d'un nouveau projet (`gsd-new-project` Intake, App Factory étape « repo GitHub », ou scaffold manuel). Étape obligatoire AVANT le premier commit du nouveau repo.
 
-> **Règle d'or** : le **placement physique** `~/work/<wing>/<name>/` est l'invariant durable. Quand l'auto-découverte sera shippée (spec `docs/superpowers/specs/2026-06-05-memory-worker-repo-autodiscovery-design.md`, **non déployée à ce jour**), le `wing` se dérivera du dossier parent et la déclaration manuelle disparaîtra. Bien placer le repo aujourd'hui = ingestion correcte aujourd'hui (déclaration manuelle) ET demain (auto-découverte sans effort).
+> **Règle d'or** : le **placement physique** `~/work/<wing>/<name>/` est le SEUL geste requis. L'auto-découverte est **LIVE depuis 2026-06-08** (déployée sur waza, `discovery.enabled: true`) : le worker scanne `~/work/{infra,saas,tools,refdocs}/*`, dérive `wing` du dossier parent et `name`=basename, et indexe tout repo git — **sans aucune déclaration manuelle**. Poser le repo au bon endroit + `git init` suffit.
 
 ---
 
@@ -45,34 +45,31 @@ ls -1d /home/mobuone/work/{infra,saas,tools,refdocs}/* | xargs -n1 basename | so
 
 ## 3. git init obligatoire
 
-L'ingestion ne prend que des **dépôts git** (`kind: git_repo`, `require_git`). Un dossier sans `.git` n'est jamais une source. → `git init` (puis remote `git@github-seko:Mobutoo/<name>.git` si publié) avant déclaration.
+L'ingestion ne prend que des **dépôts git** (`require_git`). Un dossier sans `.git` n'est **jamais** indexé. → `git init` (puis remote `git@github-seko:Mobutoo/<name>.git` si publié). C'est le seul acte requis en plus du placement : dès que `~/work/<wing>/<name>/.git` existe, l'auto-découverte l'indexe au prochain run du worker.
 
-## 4. Déclaration pour l'ingestion (auto-découverte NON shippée → manuelle obligatoire)
+## 4. Ingestion = AUTOMATIQUE (auto-découverte LIVE depuis 2026-06-08)
 
-L'auto-découverte n'est pas déployée (`roles/llamaindex-memory-worker/defaults/main.yml` n'a que `memory_worker_sources` statique, aucun bloc `discovery`). **Tant qu'elle ne l'est pas, déclarer le repo à la main.**
+**Aucune déclaration manuelle.** Le worker (`discovery.enabled: true` dans `config.yml`) dérive les sources de l'arborescence : `memory_core.discover_sources()` scanne `~/work/{infra,saas,tools,refdocs}/*`, prend tout enfant direct avec `.git`, dérive `wing`=dossier parent + `name`=basename, tags `scope:{name}` (+`kind:official-docs` si refdocs). Vérifier ce que le worker voit :
 
-### 4.1 Source de vérité unique = Ansible defaults
-
-Déclarer dans **`roles/llamaindex-memory-worker/defaults/main.yml`** → liste `memory_worker_sources`. Le redeploy rend `sources.yml`. **Champs obligatoires** :
-
-```yaml
-  - name: "<name>"          # = basename = payload repo (cf §2)
-    wing: "<wing>"          # OBLIGATOIRE — infra|saas|tools|refdocs
-    kind: "git_repo"
-    root: "{{ workstation_projects_dir }}/<wing>/<name>"
-    tags:
-      - "scope:<name>"      # + "kind:official-docs" si refdocs
+```bash
+cd /opt/workstation/ai-memory-worker
+.venv/bin/python index.py --config /opt/workstation/configs/ai-memory-worker/config.yml --list-sources
+# imprime le set effectif (mode discovery, count, wings) SANS indexer — ni modèle ni Qdrant
 ```
 
-> **`wing` n'est jamais facultatif.** Le worker déployé (`index.py.j2` → `memory_core.build_payload`) fait `assert wing, "wing ne peut pas être nul"`. Une source sans `wing` **fait crasher l'ingestion** de tout le repo.
+### 4.1 Exclure ou surcharger (rare)
+
+- **Ne PAS indexer un repo** présent sous un wing : ajouter son basename à `memory_worker_discovery.exclude_names` (ou un glob dans `exclude_globs`) dans `roles/llamaindex-memory-worker/defaults/main.yml`, puis redeploy (`make deploy-memory-worker`).
+- **Tags non-standards / root hors arborescence** : `memory_worker_sources_manual` (prioritaire sur la découverte par `name`).
+- **Garde-fou coût** : `max_repos: 30` (abort si dépassé, pas de troncature silencieuse). 20 repos au 2026-06-08.
 
 ### 4.2 Interdit absolu : hand-edit du live
 
-**NE JAMAIS** éditer à la main `/opt/workstation/configs/ai-memory-worker/sources.yml`. C'est un fichier **rendu** par Ansible. L'éditer à la main crée la dérive defaults↔live (et c'est précisément ainsi que le `wing` a disparu de la live, cassant l'invariant §4.1). Toujours : éditer `defaults/main.yml` → redeploy → la live est régénérée.
+**NE JAMAIS** éditer à la main `/opt/workstation/configs/ai-memory-worker/{config.yml,sources.yml}` — fichiers **rendus** par Ansible. Tout passe par `defaults/main.yml` → `make deploy-memory-worker`. Le hand-edit = la dérive defaults↔live (cause historique de la disparition du champ `wing`).
 
 ### 4.3 Parité rebuild GPU (si remote git-clonable)
 
-Si le repo a un remote git clonable et doit être inclus au prochain rebuild bulk GPU, l'ajouter aussi à **`scripts/memory/gpu_ingest/sources.pod.yml`** avec **`name` + `wing` identiques** (le `root` y est le chemin de staging `/staging/<name>`). Parité stricte name/wing exigée : un décalage fait diverger `relative_path` → `node_id` → doublons dans Qdrant. Repos local-only (pas de remote) → indexés en incrémental par le worker Waza uniquement, **pas** dans `sources.pod.yml`.
+L'auto-découverte concerne le worker incrémental waza. Pour inclure un repo au prochain **rebuild bulk GPU**, l'ajouter à **`scripts/memory/gpu_ingest/sources.pod.yml`** avec `name` + `wing` identiques (root = `/staging/<name>`). Décalage name/wing → `relative_path`→`node_id` divergent → doublons Qdrant. Repos local-only (sans remote) : worker waza uniquement, **pas** dans `sources.pod.yml`.
 
 ## 5. Conventions intra-repo (pour une dérivation `room`/`doc_kind` correcte)
 
@@ -94,20 +91,18 @@ Le `room` et le `doc_kind` se **dérivent du chemin** (`classify_room` / `classi
 
 ## 6. Checklist exécutable (Claude, à la création)
 
-- [ ] **Wing choisi** selon §1 (ingestion voulue ⇒ infra|saas|tools|refdocs)
-- [ ] **Nom validé unique** via le `ls | grep -ix` du §2
-- [ ] **Dossier créé** : `mkdir -p /home/mobuone/work/<wing>/<name>` + `git init`
-- [ ] **Déclaré** dans `roles/llamaindex-memory-worker/defaults/main.yml` (`name`, `wing`, `kind: git_repo`, `root`, `tags`) — §4.1
-- [ ] **`wing` non nul** vérifié — §4.1
-- [ ] **`sources.pod.yml`** mis à jour SI remote git-clonable, parité name+wing — §4.3
+- [ ] **Wing choisi** selon §1 (ingestion voulue ⇒ infra|saas|tools|refdocs ; jamais ops/writing)
+- [ ] **Nom validé unique** via le `ls | grep -ix` du §2 (collision cross-wing = shadow muet)
+- [ ] **Dossier créé** : `mkdir -p /home/mobuone/work/<wing>/<name>` + **`git init`** (sans `.git`, jamais indexé)
+- [ ] **Arbo docs/** conforme §5 pour les premiers fichiers (dérivation room/doc_kind)
+- [ ] (rien à déclarer) — l'auto-découverte indexe au prochain run du worker. Vérifier via `index.py --list-sources` (§4)
+- [ ] **`sources.pod.yml`** mis à jour SEULEMENT si remote git-clonable + inclusion rebuild GPU voulue — §4.3
 - [ ] **Live JAMAIS hand-edité** — §4.2
-- [ ] **Arbo docs/** conforme §5 pour les premiers fichiers
-- [ ] Redeploy worker (gate humain) → la live `sources.yml` régénérée inclut la nouvelle source
 
 ## 7. Liens
 
 - `docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md` — modèle wing/room/doc_kind + dérivation (référencé, non dupliqué)
-- `docs/superpowers/specs/2026-06-05-memory-worker-repo-autodiscovery-design.md` — auto-découverte (future ; rendra §4 obsolète)
+- `docs/superpowers/specs/2026-06-05-memory-worker-repo-autodiscovery-design.md` — spec auto-découverte (implémentée + LIVE 2026-06-08, raffinée wing-keyée)
 - `docs/standards/AI-PLATFORM-STARTER-KIT.md` — structure INTERNE d'un repo (orthogonal : ce manifeste = placement EXTERNE dans `~/work/`)
-- `scripts/memory/memory_core.py` — `resolve_source` / `build_payload` (autorité du contrat repo/wing/relative_path)
-- `roles/llamaindex-memory-worker/defaults/main.yml` — `memory_worker_sources` (source de vérité déclaration)
+- `scripts/memory/memory_core.py` — `discover_sources` / `resolve_effective_sources` / `resolve_source` / `build_payload` (autorité du contrat repo/wing/relative_path)
+- `roles/llamaindex-memory-worker/defaults/main.yml` — `memory_worker_discovery` (workspace_root, wings, exclude_names, max_repos) + `memory_worker_sources_manual`

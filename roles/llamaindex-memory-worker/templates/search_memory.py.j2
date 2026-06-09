@@ -1,17 +1,35 @@
 #!/usr/bin/env python3
-"""Search helper for memory_v1."""
+"""Search helper mémoire — hybrid RRF par défaut sur collection à vecteurs nommés.
+
+Contrat : docs/superpowers/specs/2026-06-10-rag-v3-contracts.md §Recherche.
+  - Détection auto du schéma : named (v3 dense+bm25) -> hybrid RRF (Query API
+    query_points + prefetch dense/sparse) ; unnamed (v2) -> dense legacy (rétro-compat).
+  - --mode dense|hybrid (hybrid auto-dégradé en dense sur collection unnamed).
+  - --min-score (défaut 0.50, sur le score dense COSINE) -> sous le floor: `not found`.
+  - Format compact : `score | repo/relative_path | section | snippet 1 ligne`.
+  - --boost-usage : formula query Qdrant score×(1+ln(1+use_count))×récence(valid_from).
+  - --rerank : rerank.py (bge-reranker-v2-m3 ONNX, lazy — skip+warning si absent du cache HF).
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest
 from sentence_transformers import SentenceTransformer
+
+DENSE_VECTOR_NAME = "dense"
+SPARSE_VECTOR_NAME = "bm25"
+PREFETCH_LIMIT = 30
+DEFAULT_MIN_SCORE = 0.50
+RECENCY_SCALE_SECONDS = 180 * 86400  # demi-décroissance ~6 mois
 
 
 def load_config(path: Path) -> dict:
@@ -20,33 +38,33 @@ def load_config(path: Path) -> dict:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Search memory_v1.")
+    parser = argparse.ArgumentParser(description="Search memory (hybrid RRF / dense legacy).")
     parser.add_argument("--config", required=True)
     parser.add_argument("--query", required=True)
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--repo")
     parser.add_argument("--doc-kind")
     parser.add_argument("--topic")
+    parser.add_argument("--mode", choices=["dense", "hybrid"], default="hybrid",
+                        help="hybrid = défaut (auto-dégradé en dense sur collection unnamed v2).")
+    parser.add_argument("--min-score", type=float, default=DEFAULT_MIN_SCORE,
+                        help="floor sur le score dense cosine ; sous le floor -> 'not found'.")
+    parser.add_argument("--boost-usage", action="store_true",
+                        help="rescoring formula score×(1+ln(1+use_count))×récence(valid_from).")
+    parser.add_argument("--rerank", action="store_true",
+                        help="rerank top-30 via bge-reranker-v2-m3 ONNX (lazy, skip si absent).")
+    parser.add_argument("--json", action="store_true",
+                        help="sortie JSON-lines (un hit/ligne) au lieu du format compact.")
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
-    config = load_config(Path(args.config))
-    client = QdrantClient(
-        url=os.getenv("QDRANT_URL", config["qdrant_url"]),
-        api_key=os.getenv("QDRANT_API_KEY"),
-        timeout=int(os.getenv("QDRANT_TIMEOUT", config["qdrant_timeout"])),
-        verify=str(os.getenv("QDRANT_VERIFY_TLS", config.get("qdrant_verify_tls", True))).lower() == "true",
-    )
-    model = SentenceTransformer(config["embedding"]["model_name"])
-    vector = model.encode(
-        args.query,
-        prompt_name=config["embedding"]["query_prompt_name"],
-        normalize_embeddings=bool(config["embedding"]["normalize_embeddings"]),
-        show_progress_bar=False,
-    ).tolist()
+def detect_named_vectors(client: QdrantClient, collection: str) -> bool:
+    """True si la collection expose des vecteurs nommés (schéma v3 dense+bm25)."""
+    info = client.get_collection(collection)
+    return isinstance(info.config.params.vectors, dict)
 
+
+def build_filter(args: argparse.Namespace) -> rest.Filter | None:
     conditions = []
     if args.repo:
         conditions.append(rest.FieldCondition(key="repo", match=rest.MatchValue(value=args.repo)))
@@ -54,29 +72,200 @@ def main() -> int:
         conditions.append(rest.FieldCondition(key="doc_kind", match=rest.MatchValue(value=args.doc_kind)))
     if args.topic:
         conditions.append(rest.FieldCondition(key="topic", match=rest.MatchValue(value=args.topic)))
-    query_filter = rest.Filter(must=conditions) if conditions else None
+    return rest.Filter(must=conditions) if conditions else None
 
-    response = client.query_points(
-        collection_name=config["collection_name"],
-        query=vector,
-        query_filter=query_filter,
-        limit=args.limit,
-        with_payload=True,
-        with_vectors=False,
+
+def build_boost_formula() -> rest.FormulaQuery:
+    """Boost usage/récence (contrat §Recherche) : score × (1 + ln(1+use_count)) × récence.
+
+    Récence = 0.5 + 0.5×exp_decay(valid_from -> now, scale 180j) : plancher 0.5 pour
+    ne jamais annuler un hit ancien mais très pertinent. defaults couvrent les points
+    legacy sans use_count/valid_from (jamais d'erreur formula sur payload manquant).
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    usage_term = rest.SumExpression(
+        sum=[1.0, rest.LnExpression(ln=rest.SumExpression(sum=[1.0, "use_count"]))]
+    )
+    recency_term = rest.SumExpression(sum=[
+        0.5,
+        rest.MultExpression(mult=[
+            0.5,
+            rest.ExpDecayExpression(exp_decay=rest.DecayParamsExpression(
+                x=rest.DatetimeKeyExpression(datetime_key="valid_from"),
+                target=rest.DatetimeExpression(datetime=now_iso),
+                scale=RECENCY_SCALE_SECONDS,
+                midpoint=0.5,
+            )),
+        ]),
+    ])
+    return rest.FormulaQuery(
+        formula=rest.MultExpression(mult=["$score", usage_term, recency_term]),
+        defaults={"use_count": 0, "valid_from": now_iso},
     )
 
-    for item in response.points:
-        payload = item.payload or {}
-        summary = {
-            "score": item.score,
-            "repo": payload.get("repo"),
-            "doc_kind": payload.get("doc_kind"),
-            "relative_path": payload.get("relative_path"),
-            "title": payload.get("title"),
-            "section": payload.get("section"),
-            "topic": payload.get("topic"),
-        }
-        print(json.dumps(summary, ensure_ascii=True))
+
+def dense_cosine(query_vector: list[float], point_vector) -> float | None:
+    """Cosinus client-side (vecteurs normalisés -> produit scalaire). 768d, négligeable."""
+    if point_vector is None:
+        return None
+    vec = point_vector.get(DENSE_VECTOR_NAME) if isinstance(point_vector, dict) else point_vector
+    if vec is None:
+        return None
+    return float(sum(a * b for a, b in zip(query_vector, vec)))
+
+
+def snippet_of(payload: dict) -> str:
+    """Snippet 1 ligne : payload['text'] (v3 direct) ou _node_content (v2 llama-index)."""
+    text = payload.get("text")
+    if not text:
+        node_content = payload.get("_node_content")
+        if node_content:
+            try:
+                text = json.loads(node_content).get("text", "")
+            except (json.JSONDecodeError, AttributeError):
+                text = ""
+    text = " ".join(str(text or payload.get("title") or "").split())
+    return text[:160]
+
+
+def search(args: argparse.Namespace, config: dict) -> list[dict]:
+    client = QdrantClient(
+        url=os.getenv("QDRANT_URL", config["qdrant_url"]),
+        api_key=os.getenv("QDRANT_API_KEY"),
+        timeout=int(os.getenv("QDRANT_TIMEOUT", config["qdrant_timeout"])),
+        verify=str(os.getenv("QDRANT_VERIFY_TLS", config.get("qdrant_verify_tls", True))).lower() == "true",
+    )
+    collection = config["collection_name"]
+    named = detect_named_vectors(client, collection)
+    mode = args.mode
+    if mode == "hybrid" and not named:
+        print(f"INFO collection {collection} unnamed (v2) -> mode dense legacy", file=sys.stderr)
+        mode = "dense"
+
+    model = SentenceTransformer(config["embedding"]["model_name"])
+    query_vector = model.encode(
+        args.query,
+        prompt_name=config["embedding"]["query_prompt_name"],
+        normalize_embeddings=bool(config["embedding"]["normalize_embeddings"]),
+        show_progress_bar=False,
+    ).tolist()
+    query_filter = build_filter(args)
+    fetch_limit = max(args.limit, PREFETCH_LIMIT if args.rerank else args.limit)
+
+    if mode == "hybrid":
+        # Sparse BM25 : MÊME wrapper que l'ingestion (memory_core, lazy fastembed).
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from memory_core import Bm25SparseEncoder
+
+        sparse_indices, sparse_values = Bm25SparseEncoder().encode_query(args.query)
+        prefetch = [
+            rest.Prefetch(query=query_vector, using=DENSE_VECTOR_NAME,
+                          limit=PREFETCH_LIMIT, filter=query_filter),
+            rest.Prefetch(query=rest.SparseVector(indices=sparse_indices, values=sparse_values),
+                          using=SPARSE_VECTOR_NAME, limit=PREFETCH_LIMIT, filter=query_filter),
+        ]
+        if args.boost_usage:
+            # RRF dans un prefetch imbriqué, formula de boost par-dessus.
+            prefetch = [rest.Prefetch(prefetch=prefetch,
+                                      query=rest.FusionQuery(fusion=rest.Fusion.RRF),
+                                      limit=PREFETCH_LIMIT)]
+            query: object = build_boost_formula()
+        else:
+            query = rest.FusionQuery(fusion=rest.Fusion.RRF)
+        response = client.query_points(
+            collection_name=collection,
+            prefetch=prefetch,
+            query=query,
+            limit=fetch_limit,
+            with_payload=True,
+            with_vectors=[DENSE_VECTOR_NAME],
+        )
+    else:
+        if args.boost_usage and named:
+            prefetch = [rest.Prefetch(query=query_vector, using=DENSE_VECTOR_NAME,
+                                      limit=PREFETCH_LIMIT, filter=query_filter)]
+            response = client.query_points(
+                collection_name=collection,
+                prefetch=prefetch,
+                query=build_boost_formula(),
+                limit=fetch_limit,
+                with_payload=True,
+                with_vectors=[DENSE_VECTOR_NAME],
+            )
+        else:
+            response = client.query_points(
+                collection_name=collection,
+                query=query_vector,
+                using=DENSE_VECTOR_NAME if named else None,
+                query_filter=query_filter,
+                limit=fetch_limit,
+                with_payload=True,
+                with_vectors=[DENSE_VECTOR_NAME] if named else False,
+            )
+
+    hits: list[dict] = []
+    for point in response.points:
+        payload = point.payload or {}
+        if named:
+            cos = dense_cosine(query_vector, getattr(point, "vector", None))
+        else:
+            cos = float(point.score)  # unnamed dense : score = cosinus directement
+        hits.append({
+            "score": float(point.score),
+            "dense_score": cos,
+            "payload": payload,
+        })
+
+    # Floor sur le score dense cosine (contrat : sous le floor -> not found).
+    kept = [h for h in hits if h["dense_score"] is not None and h["dense_score"] >= args.min_score]
+    if not kept:
+        best = max((h["dense_score"] or 0.0 for h in hits), default=0.0)
+        print(f"INFO best dense score {best:.3f} < floor {args.min_score}", file=sys.stderr)
+        return []
+
+    if args.rerank:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from rerank import rerank as rerank_fn
+
+            documents = [snippet_of(h["payload"]) or h["payload"].get("title", "") for h in kept]
+            order = rerank_fn(args.query, documents, top_k=args.limit)
+            if order is None:
+                print("WARN rerank indisponible (modèle absent du cache HF) — ordre conservé",
+                      file=sys.stderr)
+            else:
+                kept = [dict(kept[i], rerank_score=s) for i, s in order]
+        except Exception as exc:  # noqa: BLE001 — rerank est best-effort, jamais bloquant
+            print(f"WARN rerank échoué ({exc.__class__.__name__}: {exc}) — ordre conservé",
+                  file=sys.stderr)
+
+    return kept[:args.limit]
+
+
+def main() -> int:
+    args = parse_args()
+    config = load_config(Path(args.config))
+    hits = search(args, config)
+    if not hits:
+        print("not found")
+        return 0
+    for hit in hits:
+        payload = hit["payload"]
+        if args.json:
+            print(json.dumps({
+                "score": hit["score"],
+                "dense_score": hit["dense_score"],
+                "repo": payload.get("repo"),
+                "doc_kind": payload.get("doc_kind"),
+                "relative_path": payload.get("relative_path"),
+                "section": payload.get("section"),
+                "topic": payload.get("topic"),
+            }, ensure_ascii=True))
+            continue
+        score = hit["dense_score"] if hit["dense_score"] is not None else hit["score"]
+        repo_path = f"{payload.get('repo', '?')}/{payload.get('relative_path', '?')}"
+        section = payload.get("section") or "-"
+        print(f"{score:.2f} | {repo_path} | {section} | {snippet_of(payload)}")
     return 0
 
 

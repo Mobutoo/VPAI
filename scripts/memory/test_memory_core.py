@@ -17,14 +17,20 @@ from memory_core import (
     CHUNK_OVERLAP,
     CHUNK_SIZE,
     CHUNKING_STRATEGY_VERSION,
+    PROMPT_VERSION,
     SCHEMA_VERSION,
+    build_doc_prompt,
     build_payload,
+    build_sparse_text,
     build_wing_lookup,
     classify_doc_kind,
     classify_room,
     discover_sources,
     extract_structural_meta,
+    get_truncation_events,
     load_wing_room_lookup,
+    record_truncation,
+    reset_truncation_events,
     resolve_effective_sources,
     resolve_source,
 )
@@ -262,7 +268,8 @@ REQUIRED_FIELDS = {
     "schema_version", "embedding_model", "embedding_dim",
     "chunking_strategy_version", "ref_doc_id", "namespace",
     "host_origin", "source_kind", "filename",
-    "severity", "category", "phase",
+    # contrat v3
+    "prompt_version", "use_count", "last_used_at",
     # champs chunk
     "language", "chunk_index", "chunk_count", "chunking_kind",
     "section", "title", "content_hash", "git_commit_sha", "indexed_at",
@@ -355,11 +362,91 @@ class TestBuildPayload:
         assert p["functions"] == []
         assert p["classes"] == []
 
-    def test_legacy_empty_strings(self):
+    def test_legacy_severity_category_phase_dropped(self):
+        # contrat v3 2026-06-10 : severity/category/phase SUPPRIMÉS du payload
         p = _make_payload()
-        assert p["severity"] == ""
-        assert p["category"] == ""
-        assert p["phase"] == ""
+        assert "severity" not in p
+        assert "category" not in p
+        assert "phase" not in p
+
+    def test_prompt_version_default(self):
+        p = _make_payload()
+        assert p["prompt_version"] == PROMPT_VERSION
+
+    def test_prompt_version_override_v1(self):
+        p = _make_payload(prompt_version="v1")
+        assert p["prompt_version"] == "v1"
+
+    def test_use_count_and_last_used_at_defaults(self):
+        p = _make_payload()
+        assert p["use_count"] == 0
+        assert p["last_used_at"] is None
+
+
+# ===========================================================================
+# build_doc_prompt / build_sparse_text — contrats d'encodage v3 (2026-06-10)
+# ===========================================================================
+class TestEncodingContractsV3:
+    META = {
+        "wing": "infra",
+        "repo": "VPAI",
+        "relative_path": "docs/TROUBLESHOOTING.md",
+        "section": "",
+    }
+
+    def test_doc_prompt_without_section(self):
+        prompt = build_doc_prompt(self.META, "contenu du chunk")
+        assert prompt == "title: infra/VPAI/docs/TROUBLESHOOTING.md | text: contenu du chunk"
+
+    def test_doc_prompt_with_section(self):
+        meta = {**self.META, "section": "12.7 handle_errors"}
+        prompt = build_doc_prompt(meta, "x")
+        assert prompt == (
+            "title: infra/VPAI/docs/TROUBLESHOOTING.md > 12.7 handle_errors | text: x"
+        )
+
+    def test_doc_prompt_section_none(self):
+        meta = {**self.META, "section": None}
+        assert ">" not in build_doc_prompt(meta, "x").split("| text:")[0]
+
+    def test_chunk_text_never_mutated_into_prompt_title(self):
+        # invariant #1 : chunk_text reste BRUT, le prefix est dans le prompt seulement
+        prompt = build_doc_prompt(self.META, "raw chunk")
+        assert prompt.endswith("| text: raw chunk")
+
+    def test_sparse_text_contract(self):
+        meta = {**self.META, "section": "12.7"}
+        assert build_sparse_text(meta, "chunk") == "docs/TROUBLESHOOTING.md 12.7 chunk"
+
+    def test_sparse_text_empty_section(self):
+        assert build_sparse_text(self.META, "chunk") == "docs/TROUBLESHOOTING.md  chunk"
+
+    def test_prompt_version_constant(self):
+        assert PROMPT_VERSION == "v2-2026-06-10"
+
+
+# ===========================================================================
+# Compteur de troncatures MAX_CHUNKS_PER_FILE (contrat v3 : plus de cap muet)
+# ===========================================================================
+class TestTruncationCounter:
+    def test_record_and_get(self):
+        reset_truncation_events()
+        record_truncation("docs/huge.md", 250, 200)
+        events = get_truncation_events()
+        assert events == [{"path": "docs/huge.md", "raw_chunks": 250, "kept_chunks": 200}]
+
+    def test_reset(self):
+        record_truncation("a.md", 300, 200)
+        reset_truncation_events()
+        assert get_truncation_events() == []
+
+    def test_get_returns_copy(self):
+        reset_truncation_events()
+        record_truncation("b.md", 201, 200)
+        events = get_truncation_events()
+        events.clear()
+        assert len(get_truncation_events()) == 1
+        reset_truncation_events()
 
 
 # ===========================================================================

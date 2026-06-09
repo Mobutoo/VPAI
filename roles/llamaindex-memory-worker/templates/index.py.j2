@@ -14,6 +14,7 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -30,16 +31,23 @@ from llama_index.vector_stores.qdrant import QdrantVectorStore
 # --- Source unique de vérité partagée worker <-> batch pod (parité) ----------
 # (schema_version / chunking_strategy_version sont posés par build_payload.)
 from memory_core import (
+    PROMPT_VERSION,
+    PROMPT_VERSION_V1,
+    Bm25SparseEncoder,
     EmbeddingGemmaEncoder,
     build_chunks,
+    build_doc_prompt,
+    build_sparse_text,
     build_wing_lookup,
     classify_doc_kind,
     classify_room,
     extract_structural_meta,
     extract_topic,
+    get_truncation_events,
     git_commit_sha,
     load_wing_room_lookup,
     ref_doc_id,
+    reset_truncation_events,
     resolve_effective_sources,
     resolve_source,
     sha256_file,
@@ -202,6 +210,81 @@ def build_qdrant_client(config: dict[str, Any]) -> QdrantClient:
     )
 
 
+def collection_uses_named_vectors(client: QdrantClient, collection_name: str) -> bool:
+    """Détection auto du schéma collection : named (v3 dense+bm25) vs unnamed (v2).
+
+    Collection absente -> False (chemin legacy QdrantVectorStore, qui la crée
+    unnamed comme aujourd'hui). memory_v3 doit être bootstrappée AVANT
+    (scripts/memory/qdrant_bootstrap_v3.py) — le worker ne crée jamais le schéma v3.
+    """
+    try:
+        info = client.get_collection(collection_name)
+    except Exception:  # noqa: BLE001 — collection absente ou injoignable: legacy
+        return False
+    return isinstance(info.config.params.vectors, dict)
+
+
+class NamedVectorQdrantStore:
+    """Upsert bi-vecteur direct qdrant_client pour les collections à vecteurs nommés.
+
+    QdrantVectorStore (llama-index 0.12) n'écrit qu'un vecteur unnamed (ou ses
+    propres noms hybrides "text-dense"/"text-sparse") — incompatible avec le schéma
+    memory_v3 du contrat 2026-06-10 ("dense"/"bm25"). On passe donc par
+    qdrant_client.upsert en conservant EXACTEMENT node_id (TextNode.id_) et le
+    payload canonique build_payload (+ payload["text"] = chunk brut, lisible par
+    la recherche sans _node_content). Interface .add/.delete = signature
+    QdrantVectorStore -> le reste du worker (spool, gc) est agnostique du schéma.
+    """
+
+    def __init__(
+        self,
+        client: QdrantClient,
+        collection_name: str,
+        sparse_encoder: Bm25SparseEncoder,
+        upsert_batch: int = 128,
+    ) -> None:
+        self.client = client
+        self.collection_name = collection_name
+        self.sparse_encoder = sparse_encoder
+        self.upsert_batch = upsert_batch
+
+    def add(self, nodes: list[TextNode]) -> None:
+        sparse_texts = [build_sparse_text(node.metadata, node.text) for node in nodes]
+        sparse_vectors = self.sparse_encoder.encode_documents(sparse_texts)
+        points = [
+            rest.PointStruct(
+                id=node.id_,
+                vector={
+                    "dense": node.embedding,
+                    "bm25": rest.SparseVector(indices=indices, values=values),
+                },
+                payload={**node.metadata, "text": node.text},
+            )
+            for node, (indices, values) in zip(nodes, sparse_vectors, strict=True)
+        ]
+        for start in range(0, len(points), self.upsert_batch):
+            self.client.upsert(
+                collection_name=self.collection_name,
+                points=points[start:start + self.upsert_batch],
+                wait=True,
+            )
+
+    def delete(self, ref_doc_id_value: str) -> None:
+        self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=rest.FilterSelector(
+                filter=rest.Filter(
+                    must=[
+                        rest.FieldCondition(
+                            key="ref_doc_id", match=rest.MatchValue(value=ref_doc_id_value)
+                        )
+                    ]
+                )
+            ),
+            wait=True,
+        )
+
+
 def build_vector_store(client: QdrantClient, config: dict[str, Any]) -> QdrantVectorStore:
     schema_map = {
         "keyword": rest.PayloadSchemaType.KEYWORD,
@@ -322,6 +405,17 @@ def count_spool_entries(spool_dir: Path) -> int:
     return sum(1 for _ in spool_dir.glob("*.json"))
 
 
+def backup_state_file(state_path: Path) -> None:
+    """Backup rotatif memory_state.json -> memory_state.json.bak AVANT réécriture.
+
+    Une seule génération (.bak écrasé à chaque run) : suffit pour récupérer d'une
+    écriture corrompue/interrompue ; le state complet se ré-ensemence sinon via
+    --mode full --dry-run (seed model-free).
+    """
+    if state_path.exists():
+        shutil.copy2(state_path, state_path.with_name(state_path.name + ".bak"))
+
+
 def emit_run_report(report: dict[str, Any], report_path: str | None) -> None:
     rendered = json.dumps(report, ensure_ascii=False, sort_keys=True)
     if report_path:
@@ -358,10 +452,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--preflight-only", action="store_true", help="Run connectivity and environment checks only.")
     parser.add_argument("--list-sources", action="store_true", help="Print the effective source set (discovery + manual) and exit. No model, no Qdrant.")
     parser.add_argument("--repo", action="append", default=[], help="Restrict processing to a configured repo name.")
+    parser.add_argument("--repos", help="Comma-separated repo names (équivalent à N --repo ; ex: --repos VPAI,hawkeye).")
     parser.add_argument("--path", action="append", default=[], help="Restrict processing to one file or subdirectory.")
     parser.add_argument("--max-files", type=int, default=0, help="Maximum number of candidate files to process.")
     parser.add_argument("--report-path", help="Write a machine-readable JSON report to this path.")
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.repos:
+        args.repo.extend(name.strip() for name in args.repos.split(",") if name.strip())
+    return args
 
 
 def configure_logging(log_dir: Path) -> None:
@@ -456,6 +554,7 @@ def main() -> int:
     report_repo: str | None = None
     report_repos: list[str] = []
     acquired = False
+    named_vectors = False
 
     try:
         ensure_lock(lock_path)
@@ -492,7 +591,24 @@ def main() -> int:
         )
 
         client = None if args.dry_run else build_qdrant_client(config)
-        vector_store = None if args.dry_run else build_vector_store(client, config)
+        # Détection auto du schéma collection : named (v3) -> upsert bi-vecteur direct
+        # + prompt v2 ; unnamed (v2) -> chemin QdrantVectorStore legacy inchangé.
+        named_vectors = (
+            False if args.dry_run
+            else collection_uses_named_vectors(client, config["collection_name"])
+        )
+        if named_vectors:
+            vector_store = NamedVectorQdrantStore(
+                client=client,
+                collection_name=config["collection_name"],
+                sparse_encoder=Bm25SparseEncoder(),
+                upsert_batch=int(config["limits"]["batch_size"]) * 16,
+            )
+            LOG.info("collection %s: vecteurs nommés (hybrid dense+bm25, prompt %s)",
+                     config["collection_name"], PROMPT_VERSION)
+        else:
+            vector_store = None if args.dry_run else build_vector_store(client, config)
+        reset_truncation_events()
         processed_keys: set[str] = set()
         had_errors = False
 
@@ -526,6 +642,7 @@ def main() -> int:
                     processed_keys=processed_keys,
                     spool_dir=spool_dir,
                     wing_lookup=wing_lookup,
+                    named_vectors=named_vectors,
                 )
             except Exception as exc:  # noqa: BLE001
                 had_errors = True
@@ -586,6 +703,7 @@ def main() -> int:
                     processed_keys=processed_keys,
                     spool_dir=spool_dir,
                     wing_lookup=wing_lookup,
+                    named_vectors=named_vectors,
                 )
             except Exception as exc:  # noqa: BLE001
                 had_errors = True
@@ -602,6 +720,7 @@ def main() -> int:
         if args.gc:
             gc_missing_entries(args, state, vector_store, repo_roots)
 
+        backup_state_file(state_path)
         dump_json(state_path, state)
         LOG.info(
             "memory worker completed attempted_files=%s indexed_files=%s indexed_chunks=%s skipped=%s errors=%s",
@@ -627,6 +746,16 @@ def main() -> int:
             loadavg_1min = os.getloadavg()[0]
         except (OSError, AttributeError):
             loadavg_1min = None
+        # Troncatures MAX_CHUNKS_PER_FILE (contrat v3 : plus de cap muet) — loggées
+        # par memory_core.build_chunks, remontées dans le report (champs additifs,
+        # le workflow memory-run-report-ingest tolère les clés en plus).
+        truncations = get_truncation_events()
+        if truncations:
+            LOG.warning(
+                "%s fichier(s) tronqué(s) à MAX_CHUNKS_PER_FILE ce run: %s",
+                len(truncations),
+                ", ".join(t["path"] for t in truncations[:10]),
+            )
         report = {
             "report_schema_version": REPORT_SCHEMA_VERSION,
             "run_id": run_id,
@@ -651,6 +780,10 @@ def main() -> int:
             "host_origin": "{{ memory_worker_host_origin }}",
             "indexed_points": indexed_chunks,
             "loadavg_1min": round(loadavg_1min, 2) if loadavg_1min is not None else None,
+            "named_vectors": named_vectors,
+            "prompt_version": PROMPT_VERSION if named_vectors else PROMPT_VERSION_V1,
+            "truncated_files": len(truncations),
+            "truncations": truncations[:20],
         }
         emit_run_report(report, args.report_path)
 
@@ -666,6 +799,7 @@ def process_file(
     processed_keys: set[str],
     spool_dir: Path,
     wing_lookup: dict[Path, dict[str, str]],
+    named_vectors: bool = False,
 ) -> int:
     # (repo, wing, relative_path) via l'autorite unique memory_core.resolve_source
     # (contrat canonique partage avec le pod). repo_root reste l'ancre git/state.
@@ -713,6 +847,7 @@ def process_file(
         embedding_model="{{ memory_worker_embedding_model }}",
         embedding_dim={{ memory_worker_embedding_dim }},
         host_origin="{{ memory_worker_host_origin }}",
+        prompt_version=PROMPT_VERSION if named_vectors else PROMPT_VERSION_V1,
     )
     batch_size = int(config["limits"]["batch_size"])
     stat = path.stat()
@@ -737,7 +872,15 @@ def process_file(
 
     prepared_nodes: list[TextNode] = []
     for node_batch in batched(nodes, batch_size):
-        embeddings = encoder.encode_documents([(node.metadata["title"], node.text) for node in node_batch])
+        if named_vectors:
+            # Prompt document v2 (contrat 2026-06-10) : prefix contextuel
+            # wing/repo/relative_path[> section] dans le PROMPT seulement.
+            prompts = [build_doc_prompt(node.metadata, node.text) for node in node_batch]
+            embeddings = encoder.encode_prompts(prompts)
+        else:
+            embeddings = encoder.encode_documents(
+                [(node.metadata["title"], node.text) for node in node_batch]
+            )
         for node, embedding in zip(node_batch, embeddings, strict=True):
             node.embedding = embedding
             prepared_nodes.append(node)

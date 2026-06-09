@@ -43,13 +43,19 @@ from memory_core import (  # noqa: E402
     CHUNK_OVERLAP,
     CHUNK_SIZE,
     MAX_CHUNKS_PER_FILE,
+    PROMPT_VERSION,
+    PROMPT_VERSION_V1,
+    Bm25SparseEncoder,
     EmbeddingGemmaEncoder,
     build_chunks,
+    build_doc_prompt,
     build_repo_git_shas,
+    build_sparse_text,
     classify_doc_kind,
     classify_room,
     extract_structural_meta,
     extract_topic,
+    get_truncation_events,
     git_commit_sha,
     load_wing_room_lookup,
     ref_doc_id,
@@ -62,11 +68,17 @@ EMBEDDING_MODEL = "google/embeddinggemma-300m"
 EMBEDDING_DIM = 768
 NORMALIZE = True
 HOST_ORIGIN = "waza"  # PARITÉ : doit rester "waza" (ref_doc_id/tags/node_id en dépendent)
+# Collection cible pilotée par env (contrat v3) : memory_v2 = legacy unnamed,
+# memory_v3 = vecteurs nommés dense+bm25 (bootstrappée par qdrant_bootstrap_v3.py
+# AVANT le bulk — gate G5 de bootstrap.sh ; le pod ne crée jamais le schéma v3).
+DEFAULT_COLLECTION = os.getenv("MEMORY_COLLECTION", "memory_v2")
 
-# Miroir de config.yml.j2 payload_indexes (ordre indifférent).
+# Miroir de config.yml.j2 payload_indexes (ordre indifférent). DROP legacy
+# severity/category/phase (contrat 2026-06-10) — n'est utilisé que sur le chemin
+# unnamed legacy (QdrantVectorStore) ; memory_v2 a déjà ses index, create = no-op.
 PAYLOAD_INDEX_FIELDS = [
     "wing", "room", "doc_kind", "repo", "host_origin", "source_kind",
-    "severity", "category", "phase", "topic", "tags",
+    "topic", "tags",
     "functions", "classes", "imports", "exports", "variables",
 ]
 
@@ -108,12 +120,51 @@ def build_vector_store(client, collection: str):
     )
 
 
-def process_one(file_abs: Path, lookup, encoder, host_origin: str, git_shas_by_root=None):
+def collection_uses_named_vectors(client, collection: str) -> bool:
+    """Détection auto du schéma : named (v3 dense+bm25) vs unnamed (v2 legacy).
+
+    Collection ABSENTE -> lève (fail-fast) : le bulk ne doit jamais créer le schéma
+    (v2 existe déjà ; v3 vient de qdrant_bootstrap_v3.py au gate G5 de bootstrap.sh).
+    """
+    info = client.get_collection(collection)
+    return isinstance(info.config.params.vectors, dict)
+
+
+def upsert_named(client, collection: str, sparse_encoder, nodes, batch: int = 256) -> None:
+    """Upsert bi-vecteur direct (vecteurs nommés dense+bm25) — parité worker.
+
+    Même contrat que NamedVectorQdrantStore du worker (index.py.j2) : node_id =
+    TextNode.id_, payload = build_payload canonique + payload["text"] = chunk brut.
+    """
+    from qdrant_client.http import models as rest
+
+    sparse_vectors = sparse_encoder.encode_documents(
+        [build_sparse_text(n.metadata, n.text) for n in nodes]
+    )
+    points = [
+        rest.PointStruct(
+            id=n.id_,
+            vector={
+                "dense": n.embedding,
+                "bm25": rest.SparseVector(indices=indices, values=values),
+            },
+            payload={**n.metadata, "text": n.text},
+        )
+        for n, (indices, values) in zip(nodes, sparse_vectors, strict=True)
+    ]
+    for start in range(0, len(points), batch):
+        client.upsert(collection_name=collection, points=points[start:start + batch], wait=True)
+
+
+def process_one(file_abs: Path, lookup, encoder, host_origin: str, git_shas_by_root=None,
+                prompt_version: str = PROMPT_VERSION_V1):
     """Construit les TextNode pour un fichier (embeddings inclus si encoder!=None).
 
     git_shas_by_root : dict {root: {rel: sha}} précalculé (1 traversée git/repo, cf
-    build_repo_git_shas) — évite ~1 subprocess git/fichier (66% du temps bulk mesuré).
+    build_repo_git_shas) — économise ~1 subprocess git/fichier (66% du temps bulk mesuré).
     None -> fallback git_commit_sha par-fichier (verify-sample/benchmark, parité testée).
+    prompt_version : "v1" legacy (unnamed) ou PROMPT_VERSION (named v3) — payload only,
+    node_id inchangé (invariant #1).
     """
     resolved = resolve_source(file_abs, lookup)
     if resolved is None:
@@ -153,10 +204,14 @@ def process_one(file_abs: Path, lookup, encoder, host_origin: str, git_shas_by_r
         embedding_model=EMBEDDING_MODEL,
         embedding_dim=EMBEDDING_DIM,
         host_origin=host_origin,
+        prompt_version=prompt_version,
     )
     # Embeddings par batch (mêmes prompts que le worker via encoder partagé).
     if encoder is not None:
-        embeddings = encoder.encode_documents([(n.metadata["title"], n.text) for n in nodes])
+        if prompt_version == PROMPT_VERSION_V1:
+            embeddings = encoder.encode_documents([(n.metadata["title"], n.text) for n in nodes])
+        else:
+            embeddings = encoder.encode_prompts([build_doc_prompt(n.metadata, n.text) for n in nodes])
         for n, emb in zip(nodes, embeddings, strict=True):
             n.embedding = emb
     return repo, wing, room, rel, nodes
@@ -309,10 +364,22 @@ def cmd_benchmark(args, lookup) -> int:
 def cmd_ingest(args, lookup) -> int:
     encoder = None if args.dry_run else EmbeddingGemmaEncoder(EMBEDDING_MODEL, NORMALIZE)
     vector_store = None
+    client = None
+    named = False
+    sparse_encoder = None
     if not args.dry_run:
         client = build_client()
-        vector_store = build_vector_store(client, args.collection)
-        log(f"qdrant connected -> collection={args.collection}")
+        # Détection auto du schéma : named (v3) -> upsert bi-vecteur direct + prompt v2 ;
+        # unnamed (v2) -> chemin QdrantVectorStore legacy INCHANGÉ (rétro-compat).
+        named = collection_uses_named_vectors(client, args.collection)
+        if named:
+            sparse_encoder = Bm25SparseEncoder()
+            log(f"qdrant connected -> collection={args.collection} "
+                f"(vecteurs nommés, hybrid dense+bm25, prompt {PROMPT_VERSION})")
+        else:
+            vector_store = build_vector_store(client, args.collection)
+            log(f"qdrant connected -> collection={args.collection} (unnamed legacy, prompt v1)")
+    prompt_version = PROMPT_VERSION if named else PROMPT_VERSION_V1
 
     from memory_core import iter_source_files
 
@@ -343,16 +410,26 @@ def cmd_ingest(args, lookup) -> int:
             return
         if encoder is not None:
             s = time.monotonic()
-            prompts_b = [(n.metadata["title"], n.text) for n in pending]
+            if named:
+                # Prompt document v2 (contrat 2026-06-10) — prefix contextuel
+                # wing/repo/relative_path[> section] dans le PROMPT seulement.
+                prompts_b = [build_doc_prompt(n.metadata, n.text) for n in pending]
+                encode = lambda: encoder.encode_prompts(prompts_b, batch_size=args.encode_batch)
+            else:
+                docs_b = [(n.metadata["title"], n.text) for n in pending]
+                encode = lambda: encoder.encode_documents(docs_b, batch_size=args.encode_batch)
             if autocast_cm is not None:
                 with autocast_cm():
-                    embs = encoder.encode_documents(prompts_b, batch_size=args.encode_batch)
+                    embs = encode()
             else:
-                embs = encoder.encode_documents(prompts_b, batch_size=args.encode_batch)
+                embs = encode()
             for n, e in zip(pending, embs, strict=True):
                 n.embedding = e
             t_gpu += time.monotonic() - s
-        if vector_store is not None:
+        if named and client is not None:
+            # sparse BM25 = CPU pur (fastembed/onnx), hors autocast cuda.
+            upsert_named(client, args.collection, sparse_encoder, pending)
+        elif vector_store is not None:
             vector_store.add(pending)
         pending = []
 
@@ -367,7 +444,8 @@ def cmd_ingest(args, lookup) -> int:
             try:
                 # encoder=None -> build SANS embedding (encode batché au flush)
                 s = time.monotonic()
-                res = process_one(file_abs, lookup, None, args.host_origin, git_shas_by_root)
+                res = process_one(file_abs, lookup, None, args.host_origin, git_shas_by_root,
+                                  prompt_version=prompt_version)
                 t_cpu += time.monotonic() - s
             except Exception as exc:  # noqa: BLE001
                 errors += 1
@@ -394,19 +472,27 @@ def cmd_ingest(args, lookup) -> int:
             break
     flush()
     dur = time.monotonic() - t0
+    # Troncatures MAX_CHUNKS_PER_FILE (contrat v3 : plus de cap muet) — loggées par
+    # memory_core.build_chunks, comptées ici dans la ligne DONE (lisible logs pod).
+    truncations = get_truncation_events()
+    if truncations:
+        log(f"WARN {len(truncations)} fichier(s) tronqué(s) à MAX_CHUNKS_PER_FILE: "
+            + ", ".join(t["path"] for t in truncations[:10]))
     log(
         f"DONE seen={seen} indexed_files={indexed_files} indexed_chunks={indexed_chunks} "
-        f"skipped={skipped} errors={errors} dur={dur:.0f}s "
+        f"skipped={skipped} errors={errors} truncated={len(truncations)} dur={dur:.0f}s "
         f"cpu_build={t_cpu:.0f}s gpu_encode={t_gpu:.0f}s bf16={args.bf16} "
+        f"collection={args.collection} prompt={prompt_version} "
         f"({indexed_chunks/max(1e-6,dur):.1f} ch/s) dry_run={args.dry_run}"
     )
     return 1 if errors else 0
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Bulk memory ingestion pod -> Qdrant memory_v2.")
+    p = argparse.ArgumentParser(description="Bulk memory ingestion pod -> Qdrant (memory_v2/v3).")
     p.add_argument("--sources", required=True, help="sources.pod.yml (mapping root->wing/name).")
-    p.add_argument("--collection", default="memory_v2")
+    p.add_argument("--collection", default=DEFAULT_COLLECTION,
+                   help="collection cible (défaut: env MEMORY_COLLECTION, sinon memory_v2).")
     p.add_argument("--batch-size", type=int, default=128, help="(déprécié) points par upsert — voir --flush-chunks.")
     p.add_argument("--flush-chunks", type=int, default=1024, help="chunks accumulés avant encode batché + upsert.")
     p.add_argument("--encode-batch", type=int, default=64, help="batch_size GPU (256 OOM sur L4 24GB avec seq 2048 ; 64 = 1/4 footprint, sûr).")

@@ -7,10 +7,13 @@
 # Stage-gates DURS (chaque gate échoue -> report + self-stop, jamais de bulk douteux) :
 #   G1 deps + Tailscale (TUN sinon userspace+proxy) + /etc/hosts qd->Sese
 #   G2 Qdrant joignable (curl healthz via mesh)         [PROBE_ONLY s'arrête ici]
-#   G0 sentinelle 'ingest_done' déjà présente ? -> rien à faire, self-stop
+#   G0 sentinelle ingest_done déjà présente ? -> rien à faire, self-stop
+#      (nom suffixé par collection si != memory_v2 : ingest_done_memory_v3)
 #   G3 clone des 7 sources git (PAT read-only) -> /staging/<name>
 #   G4 venv 3.12 + requirements.lock + punkt nltk
-#   G5 collection memory_v2 existe
+#   G5 collection cible (env MEMORY_COLLECTION, défaut memory_v2) :
+#      memory_v2 -> existe ; sinon -> bootstrap idempotent qdrant_bootstrap_v3.py
+#      (vecteurs nommés dense+bm25) AVANT bulk — gate dédié, jamais créé par le bulk
 #   G6 preflight (counts fichiers sains)
 #   G7 self-check node_id (1 fichier/wing) vs reference_nodeids.json -> ABORT si !=
 #   G8 bulk ingest
@@ -28,6 +31,13 @@ say() { echo "[bootstrap $(date -u +%H:%M:%S)] $*"; }
 
 SESE_TAILNET_IP="${SESE_TAILNET_IP:-100.64.0.14}"
 GIT_OWNER="${GIT_OWNER:-Mobutoo}"
+# Collection cible (contrat v3) : memory_v2 legacy unnamed, memory_v3 named hybrid.
+# Propagée par provision_pod.sh ; pod_ingest.py la lit aussi via env (défaut --collection).
+MEMORY_COLLECTION="${MEMORY_COLLECTION:-memory_v2}"
+export MEMORY_COLLECTION
+# Sentinelle anti re-bulk PAR collection (back-compat : nom historique pour memory_v2).
+SENTINEL="ingest_done"
+[ "$MEMORY_COLLECTION" != "memory_v2" ] && SENTINEL="ingest_done_${MEMORY_COLLECTION}"
 STAGING="${STAGING:-/staging}"
 CODE_DIR="$STAGING/VPAI/scripts/memory"
 GPU_DIR="$CODE_DIR/gpu_ingest"
@@ -186,13 +196,13 @@ if [ "${PROBE_ONLY:-0}" = "1" ]; then
   self_stop "probe ok" 0
 fi
 
-say "=== G0 sentinelle ==="
-code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "${QHDR[@]}" "$QBASE/collections/ingest_done" || echo 000)
+say "=== G0 sentinelle ($SENTINEL) ==="
+code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "${QHDR[@]}" "$QBASE/collections/$SENTINEL" || echo 000)
 if [ "$code" = "200" ]; then
-  say "sentinelle 'ingest_done' présente -> rien à refaire (anti re-bulk)."
+  say "sentinelle '$SENTINEL' présente -> rien à refaire (anti re-bulk)."
   self_stop "already done" 0
 fi
-say "pas de sentinelle (code=$code) -> ingestion"
+say "pas de sentinelle (code=$code) -> ingestion vers $MEMORY_COLLECTION"
 
 say "=== G3 clone 7 sources git ==="
 mkdir -p "$STAGING"
@@ -312,11 +322,44 @@ $mw_out"
 fi
 beacon g4_model_warm
 
-say "=== G5 memory_v2 existe ==="
-"${CURL[@]}" "${QHDR[@]}" "$QBASE/collections/memory_v2" >/dev/null || fail "collection memory_v2 absente"
+# Warm-up sparse BM25 (fastembed Qdrant/bm25, petit download HF) — seulement si la
+# cible est une collection hybrid (v3). Échec localisé ici, pas en plein G8.
+if [ "$MEMORY_COLLECTION" != "memory_v2" ]; then
+  say "=== G4c warm-up sparse BM25 (fastembed) ==="
+  sw_out=$(timeout 300 python -c "import sys; sys.path.insert(0,'$CODE_DIR'); from memory_core import Bm25SparseEncoder; e=Bm25SparseEncoder(); idx,val=e.encode_query('warmup caddy 502'); print('sparse warm OK nnz=', len(idx))" 2>&1)
+  sw_rc=$?
+  echo "$sw_out"
+  if [ $sw_rc -ne 0 ]; then
+    report_diag sparse_warm "rc=$sw_rc
+$sw_out"
+    fail "warm-up sparse BM25 rc=$sw_rc (fastembed manquant du lock ? trace -> diag_sparse_warm)"
+  fi
+  beacon g4c_sparse_warm
+fi
 
 export QDRANT_URL QDRANT_API_KEY
-PI=("$GPU_DIR/pod_ingest.py" --sources "$GPU_DIR/sources.pod.yml")
+
+say "=== G5 collection cible ($MEMORY_COLLECTION) ==="
+if [ "$MEMORY_COLLECTION" = "memory_v2" ]; then
+  "${CURL[@]}" "${QHDR[@]}" "$QBASE/collections/memory_v2" >/dev/null || fail "collection memory_v2 absente"
+else
+  # Gate DÉDIÉ bootstrap v3 (contrat 2026-06-10) : création idempotente AVANT bulk
+  # (vecteurs nommés dense 768 cosine + bm25 sparse idf + index payload). memory_v2
+  # n'est JAMAIS touchée. Schéma non conforme -> rc!=0 -> fail+self-stop.
+  g5_out=$(timeout 300 python "$CODE_DIR/qdrant_bootstrap_v3.py" --collection "$MEMORY_COLLECTION" 2>&1)
+  g5_rc=$?
+  echo "$g5_out"
+  if [ $g5_rc -ne 0 ]; then
+    report_diag bootstrap_v3 "rc=$g5_rc
+$g5_out"
+    fail "bootstrap collection $MEMORY_COLLECTION rc=$g5_rc (trace -> diag_bootstrap_v3)"
+  fi
+  "${CURL[@]}" "${QHDR[@]}" "$QBASE/collections/$MEMORY_COLLECTION" >/dev/null \
+    || fail "collection $MEMORY_COLLECTION absente après bootstrap"
+fi
+beacon g5_collection_ok
+
+PI=("$GPU_DIR/pod_ingest.py" --sources "$GPU_DIR/sources.pod.yml" --collection "$MEMORY_COLLECTION")
 
 say "=== G6 preflight ==="
 timeout 600 python "${PI[@]}" --preflight || fail "preflight (timeout 600s)"
@@ -371,9 +414,9 @@ python "${PI[@]}" "${BULK_ARGS[@]}" 2>&1 | tee -a "$LOG"
 rc=${PIPESTATUS[0]}
 [ "$rc" = "0" ] || { report_diag bulk "bulk rc=$rc — $(tail -c 1200 "$LOG")"; fail "bulk rc=$rc (trace -> diag_bulk)"; }
 
-say "=== G9 sentinelle + report ==="
-curl -sS -X PUT "$QBASE/collections/ingest_done" "${QHDR[@]}" -H 'Content-Type: application/json' \
+say "=== G9 sentinelle ($SENTINEL) + report ==="
+curl -sS -X PUT "$QBASE/collections/$SENTINEL" "${QHDR[@]}" -H 'Content-Type: application/json' \
   -d '{"vectors":{"size":1,"distance":"Cosine"}}' -w '\n[sentinel] HTTP %{http_code}\n' || say "WARN sentinelle PUT"
-say "INGESTION TERMINÉE OK"
+say "INGESTION TERMINÉE OK (collection=$MEMORY_COLLECTION)"
 
 self_stop "done" 0

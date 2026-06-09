@@ -16,6 +16,7 @@ from __future__ import annotations
 import ast as _ast
 import fnmatch
 import hashlib
+import logging
 import re
 import subprocess
 import uuid
@@ -23,6 +24,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+LOG = logging.getLogger("memory_core")
 
 # ---------------------------------------------------------------------------
 # Constantes module-level (importables par worker et batch pod)
@@ -32,6 +35,17 @@ CHUNKING_STRATEGY_VERSION = "2026-04-09"
 CHUNK_SIZE = 1600
 CHUNK_OVERLAP = 200
 MAX_CHUNKS_PER_FILE = 200
+
+# --- Contrats d'encodage v3 (spec 2026-06-10-rag-v3-contracts.md) ----------
+# Prompt document v2 (dense) : versionné en payload `prompt_version`.
+# "v1" = ancien prompt `title: {chunk_title} | text: {chunk}` (memory_v2 legacy).
+PROMPT_VERSION = "v2-2026-06-10"
+PROMPT_VERSION_V1 = "v1"
+# Vecteurs nommés de la collection memory_v3.
+DENSE_VECTOR_NAME = "dense"
+SPARSE_VECTOR_NAME = "bm25"
+# Modèle sparse FastEmbed (BM25, modifier idf côté collection).
+SPARSE_MODEL_NAME = "Qdrant/bm25"
 
 # Filtres de selection de fichiers — MIROIR de
 # roles/llamaindex-memory-worker/defaults/main.yml (include_extensions /
@@ -528,6 +542,56 @@ def extract_topic(repo: str, path: Path, text: str, doc_kind: str) -> str:
     return normalize_topic(repo)
 
 
+def build_doc_prompt(meta: dict[str, Any], chunk_text: str) -> str:
+    """Prompt document v2 (dense) — contrat 2026-06-10.
+
+    `title: {wing}/{repo}/{relative_path}{ > header_path si section} | text: {chunk_text}`
+    Le prefix contextuel vit dans le PROMPT d'embedding UNIQUEMENT — jamais dans
+    chunk_text (node_id = sha(chunk brut), invariant #1). meta = payload canonique
+    (build_payload) ou tout dict portant wing/repo/relative_path/section.
+    """
+    title = f"{meta.get('wing', '')}/{meta.get('repo', '')}/{meta.get('relative_path', '')}"
+    section = meta.get("section") or ""
+    if section:
+        title = f"{title} > {section}"
+    return f"title: {title} | text: {chunk_text}"
+
+
+def build_sparse_text(meta: dict[str, Any], chunk_text: str) -> str:
+    """Texte sparse BM25 — contrat 2026-06-10 : f"{relative_path} {section} {chunk_text}".
+
+    MÊME fonction côté worker, pod et requête (parité lexicale stricte).
+    """
+    relative_path = meta.get("relative_path", "")
+    section = meta.get("section") or ""
+    return f"{relative_path} {section} {chunk_text}"
+
+
+class Bm25SparseEncoder:
+    """Encodeur sparse BM25 (FastEmbed `Qdrant/bm25`) — lazy import.
+
+    fastembed est importé dans __init__ (pas en tête de module) : le venv worker
+    peut ne pas l'avoir encore — l'import de memory_core reste possible partout
+    (tests purs, worker pré-upgrade). Documents → bm25 pondéré idf côté collection ;
+    requêtes → query_embed (poids 1.0, schéma BM25 standard).
+    """
+
+    def __init__(self, model_name: str = SPARSE_MODEL_NAME) -> None:
+        from fastembed import SparseTextEmbedding  # type: ignore[import]
+
+        self.model = SparseTextEmbedding(model_name=model_name)
+
+    def encode_documents(self, texts: list[str]) -> list[tuple[list[int], list[float]]]:
+        return [
+            (emb.indices.tolist(), emb.values.tolist())
+            for emb in self.model.embed(texts)
+        ]
+
+    def encode_query(self, text: str) -> tuple[list[int], list[float]]:
+        emb = next(iter(self.model.query_embed(text)))
+        return emb.indices.tolist(), emb.values.tolist()
+
+
 def source_kind_for(doc_kind: str) -> str:
     if doc_kind == "code":
         return "repo"
@@ -590,11 +654,14 @@ def build_payload(
     host_origin: str = "waza",
     valid_from: str | None = None,
     valid_to: str | None = None,
+    prompt_version: str = PROMPT_VERSION,
 ) -> dict[str, Any]:
-    """Assemble le payload complet du drawer (manifeste §1).
+    """Assemble le payload complet du drawer (manifeste §1 + contrat v3 2026-06-10).
 
     wing et room NE PEUVENT PAS être nuls (assertion runtime).
     valid_to=None = drawer vivant.
+    v3 : + prompt_version / use_count / last_used_at ; severity/category/phase SUPPRIMÉS
+    (legacy toujours vides, jamais requêtés — contrat §Payload ajouts).
     """
     assert wing, "wing ne peut pas être nul (manifeste §5)"
     assert room, "room ne peut pas être nul (manifeste §5)"
@@ -627,9 +694,10 @@ def build_payload(
         "host_origin": host_origin,
         "source_kind": source_kind,
         "filename": path.name,
-        "severity": "",
-        "category": "",
-        "phase": "",
+        # --- contrat encodage v3 (prompt versionné + feedback loop) ---
+        "prompt_version": prompt_version,
+        "use_count": 0,
+        "last_used_at": None,
         # --- champs chunk ---
         "language": language,
         "chunk_index": chunk_index,
@@ -756,6 +824,30 @@ def llama_markdown_chunks(
     return chunks or llama_sentence_chunks(text, chunk_size, overlap)
 
 
+# --- Compteur de troncatures MAX_CHUNKS_PER_FILE (contrat v3 : plus de cap muet) ---
+# build_chunks tronquait silencieusement à max_chunks. Désormais chaque troncature
+# est loggée (warning) ET enregistrée ici — le worker/pod la remonte dans son report.
+_TRUNCATION_EVENTS: list[dict[str, Any]] = []
+
+
+def record_truncation(path: str, raw_count: int, max_chunks: int) -> None:
+    LOG.warning(
+        "MAX_CHUNKS_PER_FILE atteint: %s tronqué %s -> %s chunks", path, raw_count, max_chunks
+    )
+    _TRUNCATION_EVENTS.append(
+        {"path": path, "raw_chunks": raw_count, "kept_chunks": max_chunks}
+    )
+
+
+def get_truncation_events() -> list[dict[str, Any]]:
+    """Troncatures enregistrées depuis le dernier reset (copie défensive)."""
+    return list(_TRUNCATION_EVENTS)
+
+
+def reset_truncation_events() -> None:
+    _TRUNCATION_EVENTS.clear()
+
+
 def build_chunks(
     path: Path,
     text: str,
@@ -773,6 +865,8 @@ def build_chunks(
         raw_chunks = llama_sentence_chunks(text, chunk_size, overlap)
         chunk_kind = "llama-sentence"
 
+    if len(raw_chunks) > max_chunks:
+        record_truncation(path.as_posix(), len(raw_chunks), max_chunks)
     limited = raw_chunks[:max_chunks]
     chunk_count = len(limited)
     result: list[Chunk] = []
@@ -819,14 +913,23 @@ class EmbeddingGemmaEncoder:
     def encode_documents(
         self, documents: list[tuple[str, str]], batch_size: int | None = None
     ) -> list[list[float]]:
+        """Prompt v1 legacy (`title: {chunk_title} | text: ...`) — memory_v2 unnamed."""
         prompts = []
         for title, text in documents:
             safe_title = title.strip() if title.strip() else "none"
             prompts.append(f"title: {safe_title} | text: {text}")
-        # batch_size : ST défaut=32. Sur GPU, un batch plus grand (256+) = matmuls plus
-        # gros -> meilleure occupation SM. Vecteurs équivalents à tolérance fp près
-        # (padding/réduction du batch décale ~1e-6, < divergence ARM/x86 déjà acceptée ;
-        # node_id=texte inchangé). None -> défaut ST (parité stricte worker).
+        return self.encode_prompts(prompts, batch_size=batch_size)
+
+    def encode_prompts(
+        self, prompts: list[str], batch_size: int | None = None
+    ) -> list[list[float]]:
+        """Encode des prompts d'embedding DÉJÀ construits (ex. build_doc_prompt v2).
+
+        batch_size : ST défaut=32. Sur GPU, un batch plus grand (256+) = matmuls plus
+        gros -> meilleure occupation SM. Vecteurs équivalents à tolérance fp près
+        (padding/réduction du batch décale ~1e-6, < divergence ARM/x86 déjà acceptée ;
+        node_id=texte inchangé). None -> défaut ST (parité stricte worker).
+        """
         kwargs: dict[str, Any] = {
             "normalize_embeddings": self.normalize_embeddings,
             "show_progress_bar": False,
@@ -898,6 +1001,7 @@ def to_text_nodes(
     embedding_dim: int = 768,
     host_origin: str = "waza",
     valid_from: str | None = None,
+    prompt_version: str = PROMPT_VERSION,
 ):
     """Construit les TextNode (id_ déterministe + payload complet) pour un fichier.
 
@@ -936,6 +1040,7 @@ def to_text_nodes(
             embedding_dim=embedding_dim,
             host_origin=host_origin,
             valid_from=now,
+            prompt_version=prompt_version,
         )
         node_id = make_node_id(ref_id, chunk.chunk_index, chunk.text)
         nodes.append(TextNode(id_=node_id, text=chunk.text, metadata=metadata))

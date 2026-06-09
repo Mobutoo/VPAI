@@ -108,6 +108,71 @@
     mode: "0755"
   become: true
 
+- name: Deploy MCP search server (source of truth = files/mcp_search.py, copié de /opt 2026-06-10)
+  ansible.builtin.copy:
+    src: mcp_search.py
+    dest: "{{ memory_worker_install_dir }}/mcp_search.py"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Deploy rerank module (lazy bge-reranker ONNX — consommé par search_memory.py --rerank)
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../scripts/memory/rerank.py"
+    dest: "{{ memory_worker_install_dir }}/rerank.py"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0644"
+  become: true
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Deploy qdrant_bootstrap_v3 helper (création idempotente collection hybrid v3)
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../scripts/memory/qdrant_bootstrap_v3.py"
+    dest: "{{ memory_worker_install_dir }}/qdrant_bootstrap_v3.py"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Ensure eval harness directory
+  ansible.builtin.file:
+    path: "{{ memory_worker_eval_dir }}"
+    state: directory
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Deploy eval harness (golden.yml + run_eval.py — contrat RAG v3, lecture seule Qdrant)
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../scripts/memory/eval/{{ item.name }}"
+    dest: "{{ memory_worker_eval_dir }}/{{ item.name }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "{{ item.mode }}"
+  become: true
+  loop:
+    - { name: "golden.yml", mode: "0644" }
+    - { name: "run_eval.py", mode: "0755" }
+  loop_control:
+    label: "{{ item.name }}"
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Deploy REX consolidation script (synthèses hebdo via LiteLLM, contrat RAG v3)
+  ansible.builtin.copy:
+    src: "{{ role_path }}/../../scripts/memory/consolidate_rex.py"
+    dest: "{{ memory_worker_consolidate_script }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+  tags: [llamaindex-memory-worker, memory_remote]
+
 - name: Deploy memory worker benchmark script
   ansible.builtin.template:
     src: benchmark_memory.py.j2
@@ -228,6 +293,20 @@
   notify: Reload systemd (user)
   tags: [llamaindex-memory-worker, memory_remote]
 
+- name: Deploy REX consolidation USER units (oneshot + timer hebdo)
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ memory_worker_user_unit_dir }}/{{ item.dest }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0644"
+  become: true
+  loop:
+    - { src: "memory-consolidate-rex.service.user.j2", dest: "{{ memory_worker_consolidate_service_name }}.service" }
+    - { src: "memory-consolidate-rex.timer.user.j2", dest: "{{ memory_worker_consolidate_service_name }}.timer" }
+  notify: Reload systemd (user)
+  tags: [llamaindex-memory-worker, memory_remote]
+
 - name: Deploy memctl.sh + memctl-remote.sh
   ansible.builtin.copy:
     src: "{{ item }}"
@@ -265,6 +344,20 @@
     DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_uid }}/bus"
   tags: [llamaindex-memory-worker, memory_remote]
 
+- name: Enable + start REX consolidation USER timer (hebdo — désactivable via memory_worker_consolidate_enabled)
+  ansible.builtin.systemd:
+    name: "{{ memory_worker_consolidate_service_name }}.timer"
+    scope: user
+    enabled: "{{ memory_worker_consolidate_enabled | bool }}"
+    state: "{{ 'started' if memory_worker_consolidate_enabled | bool else 'stopped' }}"
+    daemon_reload: true
+  become: true
+  become_user: "{{ memory_worker_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ memory_worker_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_uid }}/bus"
+  tags: [llamaindex-memory-worker, memory_remote]
+
 - name: Install n8n-memctl forced-command SSH key
   ansible.posix.authorized_key:
     user: "{{ memory_worker_user }}"
@@ -280,10 +373,16 @@
   ansible.builtin.command:
     cmd: "{{ memory_worker_venv_dir }}/bin/python -m py_compile {{ item }}"
   loop:
+    - "{{ memory_worker_install_dir }}/memory_core.py"
     - "{{ memory_worker_index_script }}"
     - "{{ memory_worker_search_script }}"
     - "{{ memory_worker_benchmark_script }}"
     - "{{ memory_worker_inventory_collections_script }}"
+    - "{{ memory_worker_install_dir }}/mcp_search.py"
+    - "{{ memory_worker_install_dir }}/rerank.py"
+    - "{{ memory_worker_install_dir }}/qdrant_bootstrap_v3.py"
+    - "{{ memory_worker_eval_dir }}/run_eval.py"
+    - "{{ memory_worker_consolidate_script }}"
   changed_when: false
   become: true
   tags: [llamaindex-memory-worker, memory_remote]

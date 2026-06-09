@@ -44,8 +44,14 @@ memory_worker_python_packages:
   - "qdrant-client>=1.16,<1.17"
   - "sentence-transformers>=5.1,<5.2"
   - "pyyaml>=6,<7"
+  # Sparse BM25 (contrat v3 2026-06-10). Pin exact validé par sibling test R4
+  # 2026-06-10 sur ARM64 waza (venv /tmp : encode doc+query OK, onnxruntime 1.26.0).
+  - "fastembed==0.8.0"
 
-memory_worker_collection_name: "memory_v2"
+# Collection cible (contrat RAG v3 2026-06-10) : la bascule memory_v2 -> memory_v3
+# = override de `memory_collection_name` en inventory APRÈS validation éval — zéro code.
+memory_collection_name: "memory_v2"
+memory_worker_collection_name: "{{ memory_collection_name }}"
 memory_worker_qdrant_url: "https://{{ qdrant_subdomain }}.{{ domain_name }}:443"
 memory_worker_qdrant_api_key: "{{ qdrant_api_key }}"
 memory_worker_qdrant_timeout: 30
@@ -223,3 +229,26 @@ memory_worker_cpu_threads: 2
 memory_worker_uid: 1000                                   # uid of mobuone (XDG_RUNTIME_DIR)
 memory_worker_user_unit_dir: "/home/{{ memory_worker_user }}/.config/systemd/user"
 memory_worker_ssh_pubkey: "{{ memory_worker_ssh_pubkey_value | default('') }}"  # n8n-memctl public key; empty = skip authorized_key
+
+# === HARNESS D'ÉVAL (contrat RAG v3 2026-06-10) ===
+# golden.yml + run_eval.py déployés depuis scripts/memory/eval/ — tournent sur le
+# venv worker (lecture seule Qdrant). Sortie JSON: .planning/eval/ côté repo.
+memory_worker_eval_dir: "{{ memory_worker_install_dir }}/eval"
+
+# === CONSOLIDATION REX (contrat RAG v3 2026-06-10) ===
+# consolidate_rex.py lit docs/rex/*.md modifiés < N jours, groupe par topic et
+# produit une synthèse 5-10 lignes par topic via LiteLLM (modèle économique,
+# gardé par le cap budget LiteLLM existant). Sortie: docs/memory-consolidated/
+# (indexée ensuite par le worker, doc_kind auto `doc`). 1 run/semaine (timer user).
+memory_worker_consolidate_enabled: true
+memory_worker_consolidate_service_name: "memory-consolidate-rex"
+memory_worker_consolidate_script: "{{ memory_worker_install_dir }}/consolidate_rex.py"
+memory_worker_consolidate_rex_dir: "{{ memory_worker_workspace_root }}/infra/VPAI/docs/rex"
+memory_worker_consolidate_out_dir: "{{ memory_worker_workspace_root }}/infra/VPAI/docs/memory-consolidated"
+memory_worker_consolidate_max_age_days: 14
+memory_worker_consolidate_model: "claude-haiku"   # modèle économique LiteLLM (configurable)
+memory_worker_consolidate_on_calendar: "Sun *-*-* 04:30:00"   # hebdo, fenêtre calme
+# LiteLLM proxy (OpenAI-compatible /v1/chat/completions, cf DOCS/litellm-docs).
+# La clé est injectée dans memory-worker.env (0600) — jamais en clair dans une unit.
+memory_worker_litellm_base_url: "https://{{ litellm_subdomain | default('llm') }}.{{ domain_name }}/v1"
+memory_worker_litellm_api_key: "{{ litellm_master_key | default('') }}"

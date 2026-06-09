@@ -17,5 +17,12 @@ ExecStart={{ memory_worker_run_report_script }} --mode {{ memory_worker_index_mo
 Nice=19
 IOSchedulingClass=idle
 
+# Resource control (cgroup) — REX 2026-06-05 panne SSH waza (parité avec l'unit
+# user memory-worker.service.user.j2 — caps D14, contrat RAG v3 2026-06-10).
+MemoryHigh={{ memory_worker_memory_high }}
+MemoryMax={{ memory_worker_memory_max }}
+MemorySwapMax={{ memory_worker_memory_swap_max }}
+OOMScoreAdjust={{ memory_worker_oom_score_adjust }}
+
 [Install]
 WantedBy=multi-user.target

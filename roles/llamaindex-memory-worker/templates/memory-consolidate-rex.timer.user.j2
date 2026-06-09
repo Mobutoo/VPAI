@@ -1,0 +1,10 @@
+[Unit]
+Description=Timer hebdo — consolidation des REX via LiteLLM (1 run/semaine, cap budget)
+
+[Timer]
+OnCalendar={{ memory_worker_consolidate_on_calendar }}
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

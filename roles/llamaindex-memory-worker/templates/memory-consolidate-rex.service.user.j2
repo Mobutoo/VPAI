@@ -1,0 +1,22 @@
+[Unit]
+Description=Consolidation hebdo des REX via LiteLLM (memory consolidation, user)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory={{ memory_worker_install_dir }}
+# LITELLM_BASE_URL / LITELLM_API_KEY / LITELLM_MODEL (fichier 0600 — clé jamais dans ps).
+EnvironmentFile={{ memory_worker_env_file }}
+ExecStart={{ memory_worker_venv_dir }}/bin/python {{ memory_worker_consolidate_script }} \
+    --rex-dir {{ memory_worker_consolidate_rex_dir }} \
+    --out-dir {{ memory_worker_consolidate_out_dir }} \
+    --max-age-days {{ memory_worker_consolidate_max_age_days }}
+Nice=19
+IOSchedulingClass=idle
+# Appels HTTP uniquement (pas d'embed) — cap modeste, même doctrine que le worker
+# (REX 2026-06-05: tout job batch sur waza est borné, OOM-kill le job avant le réseau).
+MemoryMax=1G
+OOMScoreAdjust={{ memory_worker_oom_score_adjust }}
+
+# No [Install] section: timer-triggered Type=oneshot (cf memory-worker.service.user.j2).

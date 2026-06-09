@@ -1,0 +1,361 @@
+# golden.yml — Golden-set d'évaluation retrieval mémoire (contrat RAG v3 2026-06-10)
+#
+# Chaque entrée : {query, expected_paths: [repo:relative_path...], doc_kind, note}.
+# Match (run_eval.py) : AU MOINS UN expected_path présent dans le top-k
+# (comparaison payload Qdrant `repo` + `relative_path`).
+# Sources : docs/rex/, docs/runbooks/, docs/TROUBLESHOOTING.md, docs/guides/.
+# Mix exact-match (variables Ansible, commandes, tags d'images, ports) et
+# sémantique (symptômes d'incidents -> REX). FR/EN mélangés volontairement.
+#
+# Vérification d'existence : tous les chemins VPAI:<p> existent sous
+# /home/mobuone/work/infra/VPAI/<p> (vérifié 2026-06-10).
+
+questions:
+  # ---------------------------------------------------------------
+  # TROUBLESHOOTING.md — exact-match (variables, commandes, valeurs)
+  # ---------------------------------------------------------------
+  - query: "Quelle variable d'environnement n8n autorise require() des modules builtin fs path crypto dans les Code nodes ?"
+    expected_paths:
+      - "VPAI:docs/TROUBLESHOOTING.md"
+      - "DOCS:n8n-docs/docs/hosting/configuration/configuration-examples/modules-in-code-node.md"
+      - "DOCS:n8n-docs/docs/hosting/configuration/environment-variables/nodes.md"
+    doc_kind: doc
+    note: "exact — NODE_FUNCTION_ALLOW_BUILTIN=fs,path,crypto (§9.2 ; doc officielle n8n acceptée)"
+  - query: "Which volume mount path does PostgreSQL 18 use in Docker compared to PG 17?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — /var/lib/postgresql vs /var/lib/postgresql/data (§3.1)"
+  - query: "ROUND on double precision PostgreSQL function does not exist — how to fix the SQL?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — cast ::numeric avant ROUND() (§3.4)"
+  - query: "Redis 8 crash au démarrage avec rename-command FLUSHDB dans redis.conf"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — rename-command supprimé, utiliser ACL (§4.1)"
+  - query: "Healthcheck Qdrant sans wget ni curl dans l'image Docker"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — bash -c ':> /dev/tcp/localhost/6333' (§5.1)"
+  - query: "Quelle variable d'environnement passer pour l'API key Qdrant au lieu du YAML ?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — QDRANT__SERVICE__API_KEY (§5.1)"
+  - query: "Caddy crash loop unrecognized directive: 200 after heredoc respond"
+    expected_paths:
+      - "VPAI:docs/TROUBLESHOOTING.md"
+      - "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+    doc_kind: doc
+    note: "exact — code HTTP sur la même ligne que le marqueur heredoc (§6.2.1)"
+  - query: "Why do Tailscale HTTP/3 QUIC connections show client_ip 172.20.1.1 and get blocked by the Caddy VPN ACL?"
+    expected_paths:
+      - "VPAI:docs/TROUBLESHOOTING.md"
+      - "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+    doc_kind: doc
+    note: "exact — caddy_docker_frontend_cidr 172.20.1.0/24 obligatoire (§6.2)"
+  - query: "n8n webhook returns HTTP 200 with empty body responseMode responseNode no visible error"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "sémantique — échec silencieux task runner sandbox (§9.2)"
+  - query: "Pourquoi n8n exige un sous-domaine dédié et ne supporte pas le sub-path ?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — GitHub issue #19635, variable n8n_subdomain (§9.1)"
+  - query: "LiteLLM health checks cost $11 in 16 hours on Perplexity — which setting disables them?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — health_check_interval: 0 (§10.4)"
+  - query: "Erreur 402 not enough credits OpenRouter à cause de la réservation max_tokens"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — max_tokens: 4096 dans litellm_params (§10.5)"
+  - query: "ERR_ERL_UNEXPECTED_X_FORWARDED_FOR error in n8n logs behind Caddy"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — N8N_PROXY_HOPS=1 (§10.6)"
+  - query: "Pourquoi utiliser 127.0.0.1 et pas localhost dans les healthchecks Docker Alpine ?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — Alpine résout localhost en IPv6 [::1] (§2.1)"
+  - query: "Which Docker capabilities are required for a container writing to root-owned mounted volumes?"
+    expected_paths:
+      - "VPAI:docs/TROUBLESHOOTING.md"
+      - "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md"
+    doc_kind: doc
+    note: "exact — DAC_OVERRIDE + FOWNER (§2.3)"
+  - query: "dig n'est pas installé sur les images Debian minimales, quelle alternative pour résoudre un domaine dans un script ?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — getent hosts | awk (§2.4)"
+  - query: "n8n import:workflow does not update workflow_entity.nodes, code stays old after restart"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — UPDATE workflow_entity SET nodes via PostgreSQL (§9.4)"
+  - query: "Quel champ utiliser pour le login API n8n 2.7 à la place de email ?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — emailOrLdapLoginId (§9.4)"
+  - query: "n8n workflow DELETE returns 400 — what is the required deletion sequence in 2.7+?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — Deactivate -> Archive -> Delete (§9.4)"
+  - query: "Locale ICU PostgreSQL 18 Docker fr-FR initdb options"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — --locale-provider=icu --icu-locale=fr-FR --locale=C (§3.1)"
+  - query: "Grafana datasource PostgreSQL provisioning format piège datasources.yaml"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — format correct datasources.yaml.j2 (§8.5)"
+  - query: "yamllint UnicodeDecodeError utf-8 codec can't decode byte 0x97 — quelle est la cause ?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — em dash U+2014 encodé Windows-1252 (§1.1)"
+  - query: "ansible-lint schema meta role_name regex underscores"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — ^[a-z][a-z0-9_]+$ (§1.2)"
+  - query: "Comment déployer sur un VPS neuf encore en port SSH 22 alors que l'inventaire est en 804 ?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — make deploy-prod EXTRA_VARS=\"ansible_port_override=22\" (§1.5)"
+  - query: "Caddy healthcheck: the admin API on port 2019 does not answer in Docker, what command to use?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — caddy version (§6.1)"
+  - query: "Page d'erreur quand le backend est down : handle_response ou handle_errors dans Caddy ?"
+    expected_paths:
+      - "VPAI:docs/TROUBLESHOOTING.md"
+      - "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+    doc_kind: doc
+    note: "exact — handle_errors capture backend unreachable (§12.7)"
+  - query: "DNS-01 ACME fails with NOTIMP on the Pi ARM64 Caddy — fix?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — resolvers 8.8.8.8 1.1.1.1 dans le bloc tls (§12.5)"
+  - query: "OpenClaw WebSocket upgrade cassé derrière Caddy HTTP/2, réponse 200 au lieu de 101"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — transport http { versions 1.1 } (§11.2b)"
+  - query: "OpenClaw plugin telegram shows disabled bundled by default after upgrade"
+    expected_paths:
+      - "VPAI:docs/TROUBLESHOOTING.md"
+      - "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md"
+    doc_kind: doc
+    note: "exact — activation plugins obligatoire depuis v2026.2.22 (§11.10)"
+  - query: "Ansible handler state restarted ne relit pas le env_file du container"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — state: present + recreate: always (§11.18)"
+  - query: "OpenClaw subagent error spawn docker EACCES in the sandbox"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — ajouter le GID du groupe docker au container (§11.13)"
+  - query: "Headscale preauth key réutilisable ou usage unique ?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — usage unique, régénérer via compose exec (§0.7)"
+  - query: "tailscale up hangs when the Headscale server is down"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "sémantique (§0.6)"
+  - query: "Split DNS Headscale : quelles clés de config pour résoudre les sous-domaines admin vers l'IP Tailscale ?"
+    expected_paths:
+      - "VPAI:docs/TROUBLESHOOTING.md"
+      - "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+    doc_kind: doc
+    note: "exact — dns.extra_records + override_local_dns: true (§12.2)"
+  - query: "Dans quelle base PostgreSQL vit la table model_scores et qui la crée ?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — base n8n, provision-postgresql.sh (§3.3)"
+  - query: "Formula of the ai-model-scoring score with likeRatio successRate costEfficiency speedScore"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — (likeRatio*40)+(successRate*30)+(costEfficiency*20)+(speedScore*10) (§9.5)"
+  - query: "Comment accéder au body d'un webhook n8n v2 dans un Code node ?"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — $input.first().json.body (§9.3)"
+  - query: "Mission Control next start vs output standalone next.config.mjs missing file"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "sémantique (§0.2)"
+  - query: "rate_limit plugin manquant dans l'image caddy alpine"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — plugin non inclus dans caddy:alpine (§6.1)"
+  - query: "LiteLLM fallbacks config syntax list of dicts model_name"
+    expected_paths: ["VPAI:docs/TROUBLESHOOTING.md"]
+    doc_kind: doc
+    note: "exact — [{\"model_name\": [\"fallback_model\"]}] (§10.1)"
+
+  # ---------------------------------------------------------------
+  # REX — sémantique (symptômes d'incidents -> REX)
+  # ---------------------------------------------------------------
+  - query: "Disque à 100% mais docker system df sous-estime, /var/lib/containerd fait 18G"
+    expected_paths:
+      - "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md"
+      - "VPAI:docs/TROUBLESHOOTING.md"
+    doc_kind: rex
+    note: "sémantique — image-store containerd mort invisible à docker system df"
+  - query: "containerd snapshots not garbage collected, pinned by orphan leases — how to free space without restart?"
+    expected_paths: ["VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md"]
+    doc_kind: rex
+    note: "exact — ctr -n moby leases delete --sync"
+  - query: "Pourquoi ne faut-il jamais redémarrer containerd sur un hôte Docker en production ?"
+    expected_paths: ["VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md"]
+    doc_kind: rex
+    note: "sémantique — restart rebooterait tous les containerd-shim (55 conteneurs)"
+  - query: "make deploy-role timeout ssh connect to host 137.74.114.167 port 804 depuis waza"
+    expected_paths:
+      - "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md"
+      - "VPAI:docs/TROUBLESHOOTING.md"
+    doc_kind: rex
+    note: "exact — deploy local via EXTRA_ARGS -e prod_ip=100.64.0.14"
+  - query: "The GPU pod cloned stale code from GitHub even though the commit existed locally"
+    expected_paths: ["VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"]
+    doc_kind: rex
+    note: "sémantique — commit local jamais poussé, git ls-remote origin avant launch"
+  - query: "torch cu13 du lock inutilisé : cuda.is_available False, SentenceTransformer retombe sur CPU"
+    expected_paths: ["VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"]
+    doc_kind: rex
+    note: "sémantique — détection CUDA driver via nvidia-smi + réinstall torch cuXY"
+  - query: "OOM CUDA on L4 24GB when encoding with batch size 256 — which batch size is safe?"
+    expected_paths: ["VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"]
+    doc_kind: rex
+    note: "exact — encode_batch=64, bf16"
+  - query: "Quel gain de débit a donné bf16 autocast sur l'ingestion embeddings GPU et quelle dérive ?"
+    expected_paths: ["VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"]
+    doc_kind: rex
+    note: "exact — 1.64x vs fp32, dérive 0.99992"
+  - query: "Perte SSH waza pendant 6 heures, Pi pas crashé, autre machine de la même box encore en ligne"
+    expected_paths:
+      - "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+      - "VPAI:docs/TROUBLESHOOTING.md"
+    doc_kind: rex
+    note: "sémantique — OOM worker -> bail DHCP eth0 perdu -> tailscale down"
+  - query: "memory worker 3.2 GB RSS triggers global OOM and starves systemd-networkd"
+    expected_paths: ["VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"]
+    doc_kind: rex
+    note: "sémantique — worker non-borné, caps cgroup"
+  - query: "Quelles limites systemd ont été posées sur le worker mémoire après l'incident OOM ?"
+    expected_paths: ["VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"]
+    doc_kind: rex
+    note: "exact — MemoryHigh=3G MemoryMax=4G MemorySwapMax=512M OOMScoreAdjust=1000"
+  - query: "network is unreachable ENETUNREACH from tailscaled — is it the ISP or the host?"
+    expected_paths:
+      - "VPAI:docs/TROUBLESHOOTING.md"
+      - "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+    doc_kind: rex
+    note: "sémantique — route locale perdue sur l'hôte, pas panne amont (§12.9)"
+  - query: "watchdog passerelle réseau : que fait net-watchdog.sh quand la gateway est injoignable ?"
+    expected_paths: ["VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"]
+    doc_kind: rex
+    note: "exact — networkctl reconfigure eth0 puis restart tailscaled"
+  - query: "Session de debug de 11 heures avec 806 appels Bash et zéro appel MCP — quel audit ?"
+    expected_paths:
+      - "VPAI:docs/rex/REX-MOP-AUDIT-2026-04-11.md"
+      - "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"
+    doc_kind: rex
+    note: "sémantique — origine de la LOI OPÉRATIONNELLE"
+  - query: "What protects systemd-networkd and tailscaled from being killed first by the OOM killer?"
+    expected_paths: ["VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"]
+    doc_kind: rex
+    note: "exact — OOMScoreAdjust=-900 drop-in 10-oom-protect.conf"
+  - query: "benchmark embeddings mensonger 137 chunks par seconde, cause et fix"
+    expected_paths: ["VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"]
+    doc_kind: rex
+    note: "sémantique — bench sur 512 strings identiques, refait sur vrais fichiers"
+
+  # ---------------------------------------------------------------
+  # Runbooks — exact + sémantique
+  # ---------------------------------------------------------------
+  - query: "Qui a le droit d'écrire dans la collection mémoire Qdrant, les agents ou le worker ?"
+    expected_paths: ["VPAI:docs/runbooks/AI-MEMORY-AGENT-PROTOCOL.md"]
+    doc_kind: doc
+    note: "sémantique — seul le worker écrit, les agents produisent des fichiers indexables"
+  - query: "search_memory.py available filter flags repo doc-kind topic"
+    expected_paths: ["VPAI:docs/runbooks/AI-MEMORY-AGENT-PROTOCOL.md"]
+    doc_kind: doc
+    note: "exact — --repo --doc-kind --topic --limit"
+  - query: "Quelle variable Ansible et quelle clé Vault portent le token Hugging Face du worker mémoire ?"
+    expected_paths: ["VPAI:docs/runbooks/HUGGINGFACE-TOKEN-BOOTSTRAP.md"]
+    doc_kind: doc
+    note: "exact — huggingface_token / vault_huggingface_token"
+  - query: "Where is the embeddinggemma model cached locally on waza?"
+    expected_paths: ["VPAI:docs/runbooks/HUGGINGFACE-TOKEN-BOOTSTRAP.md"]
+    doc_kind: doc
+    note: "exact — /opt/workstation/data/ai-memory-worker/hf-cache"
+  - query: "Quels sont les trois axes orthogonaux de la taxonomie mémoire et qui les assigne ?"
+    expected_paths: ["VPAI:docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md"]
+    doc_kind: doc
+    note: "sémantique — wing (config) / room (dérivé) / doc_kind (dérivé)"
+  - query: "Which payload fields have a Qdrant keyword index in the memory collection?"
+    expected_paths: ["VPAI:docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md"]
+    doc_kind: doc
+    note: "exact — wing, room, doc_kind, repo, topic, tags"
+  - query: "Où placer physiquement un nouveau repo projet sur waza pour qu'il soit auto-indexé ?"
+    expected_paths: ["VPAI:docs/runbooks/MANIFESTE-CREATION-PROJET.md"]
+    doc_kind: doc
+    note: "exact — ~/work/<wing>/<name> + git init"
+  - query: "Am I allowed to hand-edit the live sources.yml to register a new repo for memory ingestion?"
+    expected_paths: ["VPAI:docs/runbooks/MANIFESTE-CREATION-PROJET.md"]
+    doc_kind: doc
+    note: "sémantique — interdit absolu, auto-découverte LIVE"
+  - query: "Règle R0 de la loi opérationnelle : que faut-il faire avant tout travail sur un sujet connu ?"
+    expected_paths:
+      - "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"
+      - "VPAI:docs/rex/REX-MOP-AUDIT-2026-04-11.md"
+    doc_kind: doc
+    note: "sémantique — memory search first (search_memory.py + qdrant-find)"
+  - query: "n8n IF node typeVersion 2 crashes on all conditions — which typeVersion and schema to use?"
+    expected_paths: ["VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"]
+    doc_kind: doc
+    note: "exact — R9: typeVersion: 1 + fixedCollection"
+  - query: "Quel outil MCP est obligatoire avant tout n8n import:workflow ?"
+    expected_paths: ["VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"]
+    doc_kind: doc
+    note: "exact — R1: mcp__n8n-docs__validate_workflow"
+  - query: "What is the primary n8n workflow deploy method according to rule R11?"
+    expected_paths: ["VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"]
+    doc_kind: doc
+    note: "exact — REST API PUT /api/v1/workflows/:id + scripts/deploy-workflow.sh"
+
+  # ---------------------------------------------------------------
+  # Guides — exact + sémantique
+  # ---------------------------------------------------------------
+  - query: "Quels deux CIDRs doivent figurer dans le snippet vpn_only de Caddy et pourquoi ?"
+    expected_paths:
+      - "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+      - "VPAI:docs/TROUBLESHOOTING.md"
+    doc_kind: doc
+    note: "exact — caddy_vpn_cidr + caddy_docker_frontend_cidr"
+  - query: "Why is trusted_proxies mandatory in the Caddy VPN-only setup?"
+    expected_paths: ["VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"]
+    doc_kind: doc
+    note: "sémantique — §5 du guide"
+  - query: "Checklist avant montée de version OpenClaw : que sauvegarder et vérifier avant l'upgrade ?"
+    expected_paths: ["VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md"]
+    doc_kind: doc
+    note: "sémantique — snapshot config, état bot, plugins, agents"
+  - query: "NC_API_TOKEN static token to automate NocoDB API token provisioning"
+    expected_paths: ["VPAI:docs/guides/GUIDE-NOCODB-TOKEN-AUTOMATION.md"]
+    doc_kind: doc
+    note: "exact — NC_API_TOKEN env var, vault_nocodb_api_token"
+  - query: "Container crashes with Operation not permitted after cap_drop ALL — how to find the missing capability?"
+    expected_paths: ["VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md"]
+    doc_kind: doc
+    note: "sémantique — ajouter une par une, strace/logs"
+  - query: "Quel user UID utiliser pour VictoriaMetrics ou Prometheus en non-root dans compose ?"
+    expected_paths: ["VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md"]
+    doc_kind: doc
+    note: "exact — 65534:65534 nobody"
+  - query: "How do I check the actual MagicDNS resolution from a VPN client before blaming Caddy?"
+    expected_paths: ["VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"]
+    doc_kind: doc
+    note: "exact — resolver 100.100.100.100, Use Tailscale DNS = ON"
+  - query: "Où vérifier le tag de la nouvelle image OpenClaw avant de modifier versions.yml ?"
+    expected_paths: ["VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md"]
+    doc_kind: doc
+    note: "exact — skopeo ou GitHub Container Registry pkgs/container/openclaw"

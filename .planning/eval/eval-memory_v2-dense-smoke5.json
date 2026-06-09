@@ -1,0 +1,124 @@
+{
+  "schema_version": "eval-v1",
+  "collection": "memory_v2",
+  "mode": "dense",
+  "limit": 10,
+  "golden": "/home/mobuone/work/infra/VPAI/scripts/memory/eval/golden.yml",
+  "questions": 5,
+  "ran_at": "2026-06-09T22:29:56.071426+00:00",
+  "timings": {
+    "encode_s": 7.07,
+    "search_s": 0.33
+  },
+  "metrics": {
+    "n": 5,
+    "recall@1": 0.6,
+    "recall@5": 1.0,
+    "mrr@10": 0.7667
+  },
+  "by_doc_kind": {
+    "doc": {
+      "n": 5,
+      "recall@1": 0.6,
+      "recall@5": 1.0,
+      "mrr@10": 0.7667
+    }
+  },
+  "misses": [],
+  "details": [
+    {
+      "query": "Quelle variable d'environnement n8n autorise require() des modules builtin fs path crypto dans les Code nodes ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "DOCS:n8n-docs/docs/hosting/configuration/configuration-examples/modules-in-code-node.md",
+        "DOCS:n8n-docs/docs/hosting/configuration/environment-variables/nodes.md",
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "DOCS:n8n-docs/docs/hosting/configuration/configuration-examples/modules-in-code-node.md",
+        "DOCS:n8n-docs/_snippets/integrations/builtin/core-nodes/code-node.md",
+        "DOCS:n8n-docs/docs/integrations/builtin/core-nodes/n8n-nodes-base.code/common-issues.md",
+        "DOCS:n8n-docs/docs/hosting/configuration/environment-variables/nodes.md",
+        "DOCS:n8n-docs/docs/hosting/configuration/environment-variables/security.md",
+        "DOCS:n8n-docs/docs/2-0-breaking-changes.md",
+        "DOCS:n8n-docs/docs/hosting/configuration/environment-variables/task-runners.md"
+      ],
+      "note": "exact — NODE_FUNCTION_ALLOW_BUILTIN=fs,path,crypto (§9.2 ; doc officielle n8n acceptée)"
+    },
+    {
+      "query": "Which volume mount path does PostgreSQL 18 use in Docker compared to PG 17?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "DOCS:n8n-docs/docs/hosting/installation/docker.md",
+        "VPAI:CLAUDE.md",
+        "VPAI:roles/postgresql/README.md",
+        "story-engine:docs/superpowers/specs/2026-04-03-search-indexing-design.md",
+        "hawkeye:.planning/research/STACK.md",
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "DOCS:n8n-docs/docs/hosting/installation/server-setups/google-kubernetes-engine.md"
+      ],
+      "note": "exact — /var/lib/postgresql vs /var/lib/postgresql/data (§3.1)"
+    },
+    {
+      "query": "ROUND on double precision PostgreSQL function does not exist — how to fix the SQL?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "DOCS:n8n-docs/docs/integrations/builtin/app-nodes/n8n-nodes-base.postgres/common-issues.md",
+        "hawkeye:CLAUDE.md",
+        "hawkeye:docs/hawkeye-prd.md",
+        "DOCS:n8n-docs/docs/integrations/builtin/app-nodes/n8n-nodes-base.postgres/index.md",
+        "hawkeye:.planning/phases/01-schema-core-score-engine/01-01-SUMMARY.md"
+      ],
+      "note": "exact — cast ::numeric avant ROUND() (§3.4)"
+    },
+    {
+      "query": "Redis 8 crash au démarrage avec rename-command FLUSHDB dans redis.conf",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "VPAI:roles/redis/templates/redis.conf.j2",
+        "VPAI:.planning/phases/01-plane-deployment/01-RESEARCH.md",
+        "DOCS:n8n-docs/docs/hosting/scaling/queue-mode.md",
+        "VPAI:roles/redis/README.md",
+        "VPAI:docs/RUNBOOK.md"
+      ],
+      "note": "exact — rename-command supprimé, utiliser ACL (§4.1)"
+    },
+    {
+      "query": "Healthcheck Qdrant sans wget ni curl dans l'image Docker",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 3,
+      "top_files": [
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md",
+        "VPAI:TECHNICAL-SPEC.md",
+        "VPAI:docs/standards/ANSIBLE-ROLE-CHECKLIST.md",
+        "riposte:.planning/milestones/v1.1-phases/04-compose-secure-by-default-dep/04-RESEARCH.md",
+        "VPAI:docs/plans/2026-03-02-openclaw-v2026.3.1-upgrade-design.md"
+      ],
+      "note": "exact — bash -c ':> /dev/tcp/localhost/6333' (§5.1)"
+    }
+  ]
+}

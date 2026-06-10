@@ -7,6 +7,38 @@
 
 ---
 
+## Décisions actées (2026-06-10, humain)
+
+| Décision | Conséquence |
+|---|---|
+| **Démarrage par V-ECO** (écosystème applicatif) | ordre d'exécution : V-ECO → V0 → V1 → V2 → V3 → V4 → V5 |
+| **PM : Plane retenu, Palais décommissionné** | retirer `role: palais` de `site.yml`, archiver `roles/palais/` (attic), NocoDB reste la data-layer. Le PRD-PALAIS.md est gelé, pas supprimé |
+| **Vaultwarden (Seko-VPN, existant) = coffre-fort général piloté par agent IA** | devient la source runtime des secrets agents (HF, RunPod, Qdrant, PAT…) — voir VE.6/VE.7 |
+
+---
+
+## V-ECO — Écosystème applicatif (2-3 sessions) — **VAGUE DE DÉMARRAGE**
+
+Constat source : audit §C5 + analyse stack 2026-06-10 (PM ×4, doc-gen ×3 always-on, 3 PostgreSQL sur Sese, mailhog abandonné, zéro SSO, zéro tiering RAM).
+
+| # | Tâche | Done quand |
+|---|---|---|
+| VE.1 | **Décommission Palais** — pré-check obligatoire (R0) : lire `docs/rex/REX-PALAIS-DEPLOIEMENT-PHASE1.md` (Phase 1 a été déployée), vérifier conteneur runtime Sese, et statuer sur le module budget implémenté (`roles/palais/files/app/src/lib/server/budget/litellm.ts`) — rapatrier la fonctionnalité vers Grafana/portail si utilisée. Puis : retirer de `playbooks/stacks/site.yml` (phase3), archiver `roles/palais/` vers branche `attic`, retirer vars/images, geler `docs/PRD-PALAIS.md` (bandeau "gelé — décision 2026-06-10") | site.yml sans palais, conteneur absent de Sese, fonction budget non perdue |
+| VE.2 | **SSO Pocket ID** : rôle Ansible (image pinnée versions.yml, OIDC + passkeys, VPN-only) + `forward_auth` Caddy ; brancher en OIDC : Grafana, n8n, NocoDB, Plane (Kitsu plus tard). R8 : vérifier doc officielle de chaque app avant branchement, R4 : une app à la fois (Grafana en premier, sibling test) | login passkey unique sur ≥3 apps, auth locale désactivée où supporté |
+| VE.3 | **Tiering scale-to-zero Sablier** : plugin Caddy (xcaddy build ARM64/amd64 — R8 doc Sablier) ; passer en on-demand : carbone, pandoc-api, typebot-builder, grapesjs. Gotenberg reste always-on | RAM Sese libérée mesurable (Grafana avant/après), cold-start <30s acceptable |
+| VE.4 | **Portail Glance** (VPN-only, derrière SSO) : page d'entrée écosystème — liens + statut live services + budget IA du jour | portail accessible, statut temps réel |
+| VE.5 | **mailhog → Mailpit** + relay SMTP sortant unique (var `smtp_*` vault) ; brancher Firefly/Plane/Kitsu dessus | mailhog retiré, mail test reçu de 2 apps |
+| VE.6 | **Vaultwarden IaC** : rôle Ansible pour l'instance existante Seko-VPN (image pinnée, backup inclus dans Zerobyte/Restic, HTTPS VPN-only) — ⚠ reprendre l'existant sans perte (export préalable, gate 🔒 avant bascule) | redéploiement Seko-VPN reconstruit Vaultwarden, données intactes, backup vérifié |
+| VE.7 | **Coffre agent** : CLI `rbw` (ou `bw`) sur waza + Sese, collection `infra-agents` dédiée, compte machine ; secrets runtime (HF, RUNPOD, QDRANT, GITHUB_PAT, clés Headscale éphémères) lus à la volée au lieu des `.env` en clair ; lookup Ansible `community.general.bitwarden` pour les playbooks ; `no_log` partout ; session token protégé (systemd-creds ou keyring, jamais en clair sur disque) | `pod-ingest.env` & co. ne contiennent plus de secret en clair ; rotation = MAJ Vaultwarden seule |
+| VE.8 | **Contrats webhook n8n** : catalogue `docs/reference/WEBHOOK-CONTRACTS.md` (endpoints, payloads versionnés, auth) généré depuis les workflows existants | doc commitée, ingérée mémoire (R0 trouvera les contrats) |
+| VE.9 | Consolidation PG (étude, pas d'action) : chiffrer le coût réel des 3 PG Sese (18.4 partagé, penpot 15, flash-suite 16) → ADR migrer ou assumer | ADR commitée |
+
+**Gate V-ECO** : SSO actif sur ≥3 apps, Palais absent de prod, RAM Sese libérée mesurée, secrets agents hors `.env` clair, Vaultwarden reconstructible par playbook.
+
+> Synergies : VE.7 absorbe une partie de V0.2 (rotate-secrets écrit dans Vaultwarden au lieu d'afficher) et prépare 🔒 3.7 (rotation tokens). VE.6 renforce V3.1 (Seko-VPN reconstructible).
+
+---
+
 ## V0 — Sécurité & quick wins (1 session, ~3h)
 
 | # | Tâche | Fichiers | Done quand |
@@ -35,7 +67,7 @@
 | 1.3 | `scripts/` : séparer infra (`scripts/`) vs debug jetable (`.planning/scripts/` ou rm) | `ls scripts/` lisible, scripts infra seuls |
 | 1.4 | README véridique : ce que le repo est vraiment (3 nœuds, 66 rôles, mémoire agentique), retirer "16 Molecule-tested", retirer réf `FIRST-DEPLOY.md` | zéro claim invérifiable |
 | 1.5 | Écrire `docs/DOCTRINE.md` (1 page, I8) : VPN-first, frugal/burst, repo=cerveau, mesure avant croyance + règle de scope (tout nouveau rôle exige une entrée décommission ou une justification) | doc commitée, liée depuis README+CLAUDE.md |
-| 1.6 | 🔒 Décommission : lister rôles jamais déployés (netbox, penpot, grapesjs, openpencil…) → proposer archive `attic/` branche dédiée — décision humaine | liste + décision actée |
+| 1.6 | 🔒 Décommission (suite) : Palais déjà tranché (→ VE.1). Lister les autres rôles dormants (netbox, penpot, openpencil…) → proposer archive `attic/` — décision humaine | liste + décision actée |
 
 **Gate V1** : repo < 100M hors .git (ou justifié), README honnête, doctrine commitée.
 
@@ -112,7 +144,7 @@
 
 1. **Par vague** : R0 topics concernés → `TaskCreate` par tâche → exécuter via subagents sonnet[1m] (chemins, pas contenu) → vérif Opus → commits atomiques → gate.
 2. **Jamais** : deploy sans `make lint` ; import n8n sans `validate_workflow` (R1) ; 2 tâches d'infra prod en parallèle sur le même hôte.
-3. **Gates humains 🔒** : 1.2, 1.6, 3.7, 4.4 (validation scrubber), 5.6 — bloquer et demander.
+3. **Gates humains 🔒** : VE.6 (bascule Vaultwarden après export), 1.2, 1.6, 3.7, 4.4 (validation scrubber), 5.6 — bloquer et demander.
 4. **Compaction** : fin de chaque vague = écrire état dans `.planning/STATE.md` + `/compact`.
 5. **Mesure** : toute modif RAG passe par le harness éval avant/après (baseline `.planning/eval/`).
-6. **Estimation totale** : 10-15 sessions. V0+V1 immédiat ; V2 mécanique ; V3 avant tout nouveau service ; V4 = différenciation ; V5 = couronnement.
+6. **Estimation totale** : 12-17 sessions. Ordre acté 2026-06-10 : **V-ECO d'abord** (démarrage choisi), puis V0 quick-wins, V1, V2, V3, V4 (différenciation), V5 (couronnement). Note : tout nouveau service introduit par V-ECO (Pocket ID, Sablier, Glance, Mailpit, Vaultwarden) suit la checklist `docs/standards/ANSIBLE-ROLE-CHECKLIST.md` + image pinnée `versions.yml` dès le premier commit.

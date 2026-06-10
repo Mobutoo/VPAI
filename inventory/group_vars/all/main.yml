@@ -386,3 +386,9 @@ memory_telegram_webhook_secret: "{{ vault_memory_telegram_webhook_secret | defau
 # n8n-memctl SSH public key (forced-command to memctl-remote.sh on waza).
 # Filled after Task 5 keygen. Empty until then → authorized_key task is skipped.
 memory_worker_ssh_pubkey_value: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQCxzJ8SOieScUEd54yYUO5rmIn92bzQK/OiOLILFJYHron6i2KkblbZVXks3XAQ3K2KDPeRBShLWaIYRmroJd/MuMssfHQcC0UlhsPyDjI63FHXKZe/3MSlROcVdB/Emfzcxd7Mw2B6xxaXi7SUZag2ZacBXvDGrPhy6+I7vsNlaDXbp5FOgMLzMtR0kIoM3LxjokAgJSwAaH4ISb1i8MbwhFQxj2a8wJ2KYQnTTAuwCbRzvnFEufZ0czmGcAWGMhjt7yXEW/ec+e9atCxTmsAOLPYtLdtyRmnBoRPU/5eIWwd2ri18qpF2YT734CMbKtY2bNqge1Ksv3oadTG+8i+fYd9EiaNLQvNy3smpQtDulLINjuHQiuKudIkeB/+b3SBuwidQ7RI5LzrVPKuO/2kjWzVbYHm3iiT/9lY6XTEgJFlP1HoyFIi2JLleObVwsa0G5gGP3SNAfbMcZhiOhy2eyLIvR6VlPUIdBfcXshnE2srmV/dIlobmhnlGIZby1RvpGGoxwfKoaFTviIR5xWZk3lS/Kue9lDGGTSiauq6absn78n5EbW+AYihUS2hZFwInskWK6VCZq0XTXGM73Cszb6S7MfMkQ0DH7tZzOKDHY2zaOXgQqxUfB3zkMKNgpftnfq3eCT5DRP5h3vwDkAwGkBnovrt54O8DWV66JXA9cQ== n8n-memctl"
+
+# === RAG MEMORY — collection active ===
+# Flip v2→v3 validé par éval golden 76 q (2026-06-10) :
+# recall@1 0.6711→0.7237, recall@5 0.9474→0.9868, MRR@10 0.7887→0.8432.
+# Rollback = remettre memory_v2 + redeploy role llamaindex-memory-worker.
+memory_collection_name: "memory_v3"

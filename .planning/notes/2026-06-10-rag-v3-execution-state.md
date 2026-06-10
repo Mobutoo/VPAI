@@ -9,16 +9,25 @@ autonome (clé Headscale valide, confirmé). Contrat normatif :
 | # | Étape | Statut | Notes |
 |---|---|---|---|
 | 1 | Contrats figés | ✅ | spec 2026-06-10 |
-| 2 | Workflow build (harness, core+search, hooks, ansible) | 🔄 EN COURS | runId `wf_e2d23e5d-ce8` |
-| 3 | Baseline éval sur memory_v2 (dense) | ⏳ | `run_eval.py --collection memory_v2 --mode dense` AVANT toute bascule |
-| 4 | Commits VPAI (par chantier) + push origin main | ⏳ | OBLIGATOIRE avant pod (REX #3 : pod clone GitHub). Remote = github-seko |
-| 5 | Bootstrap memory_v3 (qdrant_bootstrap_v3.py) | ⏳ | idempotent, v2 intouchée |
-| 6 | Deploy waza (`make deploy-workstation` ou rôle ciblé) | ⏳ | déploie worker mis à jour, collection_name reste memory_v2 |
-| 7 | Pod GPU bulk → memory_v3 | ⏳ | `provision_pod.sh --create-gpu` + MEMORY_COLLECTION=memory_v3 ; watcher kill actif (REX #10) ; poll balises stage_* via Qdrant |
-| 8 | Delta 13 repos via worker `--mode full --repos <delta>` → v3 | ⏳ | nohup nice, plusieurs heures OK |
-| 9 | Éval v3 hybrid vs baseline v2 | ⏳ | flip seulement si recall@5 ne régresse pas |
-| 10 | Flip `memory_collection_name=memory_v3` + redeploy + smoke | ⏳ | rollback = re-flip v2 |
-| 11 | REX + commits finaux + MAJ mémoire | ⏳ | |
+| 2 | Workflow build (harness, core+search, hooks, ansible) | ✅ | 4/4 PASS + intégration PASS (2 correctifs). 118 pytest, golden 76 q, hooks 9/9 |
+| 3 | Baseline éval sur memory_v2 (dense) | ✅ | **r@1=0.6711 r@5=0.9474 MRR@10=0.7887** (76 q) → `.planning/eval/baseline-memory_v2-dense-full.json` |
+| 4 | Commits + push | ✅ | VPAI 5 commits `14d7bf7..031cb98` pushés origin/main ; hooks ~/.claude `e224b4f` (local) |
+| 5 | Bootstrap memory_v3 | ✅ | dense 768 cosine + bm25 idf, 11 index payload, 0 pt, v2 intouchée |
+| 6 | Deploy waza (`make deploy-memory-worker`) | ✅ | ok=40 changed=14 failed=0 ; fastembed 0.8.0 live, eval/ déployé, timer consolidation dim 04:41 |
+| 7 | Pod GPU bulk → memory_v3 | ✅ | RTX 4090 pod `tqey6cpnain08m` : **24 403 pts en 17 min** (G7 parité OK, bf16 drift 0.99990, 175.7 ch/s). Pod 1 `bcrrl718k3vy1v` tué à tort par watcher v1 (diag_gpu=INFO, pas échec) → watcher corrigé. Teardown : 15 balises supprimées, pods TERMINATED HTTP 204 |
+| 8 | Delta 14 repos → v3 | 🔄 | unit `memory-delta-v3.service` (systemd-run, MemoryMax=4G, Nice=19, seuil loadavg 24 via /tmp/config-v3-delta.yml — 5 sessions Claude = load>13 structurel). Watcher `/tmp/watch_delta_v3.sh` ré-arme le timer worker à la fin. NOTE : run worker 30h obsolète (pid 3666222, cible v2) tué |
+| 9 | Éval v3 hybrid vs baseline v2 | ✅ | **r@1 0.6711→0.7237, r@5 0.9474→0.9868, MRR@10 0.7887→0.8432 — zéro régression** (avant même le delta DOCS) |
+| 10 | Flip `memory_collection_name=memory_v3` + redeploy + smoke | ✅ | inventory/group_vars/all/main.yml + redeploy (changed=1) ; smoke : hit exact GUIDE-CADDY §3.2 Deux CIDRs, floor → "not found" |
+| 11 | REX + commits finaux + MAJ mémoire | 🔄 | |
+
+## Post-session (rappels)
+
+- Timer worker : ré-armé automatiquement par `/tmp/watch_delta_v3.sh` à la fin du delta (suspendu pendant, lock unique).
+- MCP `qdrant-find` : les process MCP déjà lancés gardent v2 en cache → v3 effectif au prochain démarrage de session.
+- Rotation secrets (HF/QDRANT/RUNPOD + clé Headscale + PAT) : toujours gate humain, inchangé.
+- `--boost-usage` : à activer après accumulation de use_count (hook Stop r0-usage-tracker live depuis ce soir).
+- `--rerank` : déposer bge-reranker-v2-m3 ONNX int8 dans le cache HF de waza pour l'activer (no-op sinon).
+- Worker incrémental post-flip : nouveaux points v2→v3 cohérents (state per-fichier partagé, node_id stables).
 
 ## Faits critiques (ne pas redécouvrir)
 

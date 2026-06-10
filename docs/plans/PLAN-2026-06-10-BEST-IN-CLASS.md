@@ -37,6 +37,7 @@ Constat source : audit §C5 + analyse stack 2026-06-10 (PM ×4, doc-gen ×3 alwa
 **Gate V-ECO** : SSO actif sur ≥3 apps, Palais absent de prod, RAM Sese libérée mesurée, secrets agents hors `.env` clair, Vaultwarden reconstructible par playbook.
 
 > Synergies : VE.7 absorbe une partie de V0.2 (rotate-secrets écrit dans Vaultwarden au lieu d'afficher) et prépare 🔒 3.7 (rotation tokens). VE.6 renforce V3.1 (Seko-VPN reconstructible).
+> **Plan d'implémentation détaillé VE.6/VE.7/VE.10** (phases P0→P4, architecture, gates, tests) : `docs/plans/PLAN-COFFRE-AGENTS-2026-06-10.md`. Jumeau client Flash-studio : `~/work/saas/flash-studio/docs/RECO-COFFRE-AGENTS-VM-CLIENT-2026-06-10.md`.
 
 ---
 

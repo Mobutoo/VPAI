@@ -42,10 +42,10 @@ CF devient une application à part entière, hors VPAI. VPAI ne garde qu'un rôl
 │  └─ telegram/           # bot télécommande (remplace le skill OpenClaw à terme)
 ├─ services/
 │  ├─ conductor/          # workflows Temporal (pipeline durable, gates humaines = signals)
-│  ├─ worker-comfy/       # handler RunPod serverless (pattern fantrad llama-worker)
+│  ├─ worker-comfy/       # worker GPU éphémère RunPod (pattern fantrad), appelé par le hub ComfyUI Waza via PodPilot
 │  ├─ worker-render/      # ffmpeg/OTIO conform + Remotion (segments motion design)
 │  ├─ worker-audio/       # TTS / musique / lipsync
-│  └─ scout/              # ingestion + analyse (whisper, scenedetect, VLM)
+│  └─ scout/              # ingestion + analyse — évolution de VideoRef-Engine (whisper, scenedetect, VLM)
 ├─ packages/
 │  ├─ domain/             # schéma Postgres + types partagés (LA source de vérité)
 │  ├─ providers/          # adapters: comfy-local, comfy-runpod, fal, veo, seedance, elevenlabs…
@@ -85,7 +85,7 @@ ReviewNote (frame-accurate, liée à Take)
 CostLedger (agrégats par contenu/étape/provider — alimenté par PodPilot + Langfuse)
 ```
 
-Kitsu : abandonné pour CF (les 3 fonctions utilisées — previews, comments, statuts — sont absorbées par Studio). Plane : adapter **optionnel one-way** (calendrier éditorial poussé, jamais lu comme vérité). NocoDB : remplacé par le Postgres du domaine.
+Kitsu : abandonné pour CF (les 3 fonctions utilisées — previews, comments, statuts — sont absorbées par Studio). **Plane : conservé** — c'est le PM principal de *tous* les projets (v1.3.1 en prod Sese, 6 conteneurs, vérifié 2026-06-10). CF ne le remplace pas, il **automatise sa mise à jour** : adapter dédié qui crée/maintient work items et cycles depuis les transitions Temporal (production créée, gate franchie, contenu publié). Plane reste l'agrégateur portefeuille ; le Postgres domaine (Take) reste la vérité du contenu — jamais l'inverse. NocoDB : remplacé par le Postgres du domaine.
 
 ### B2 — Orchestration (n8n → Temporal)
 
@@ -111,11 +111,15 @@ Transposition directe des acquis fantrad :
 
 **Innovation propre à CF** : étendre les retours factuels du coût/latence à la **qualité**. Chaque choix de take en review = un signal (take A préféré à B) → score Elo par `(provider, type_de_plan)` → pondère le resolver PodPilot. Le routage apprend le goût de l'utilisateur — ni Higgsfield ni personne ne fait ça (leur incitation est inverse : vendre des crédits d'itération).
 
-Le Pi reste le **tier draft gratuit** (previews basse résolution, file locale) ; RunPod = tier production ; APIs fermées = tier premium par plan.
+**ComfyUI = plan de contrôle créatif, pas un simple worker** (correction post-vérification 2026-06-10). État réel sur Waza : ComfyUI v0.18.1 actif (`roles/comfyui/`, 4096M/3CPU) mais **CPU-only** (`--cpu --force-fp32`, PyTorch 2.7.1+cpu, vérifié via MCP), **zéro modèle local**, 7 custom nodes dont fal-API/Gemini — il orchestre déjà des APIs cloud aujourd'hui. Architecture cible : **ComfyUI Waza reste le hub** (authoring des workflows, file, presets, custom nodes) et dispatch les sous-graphes lourds vers :
+1. les APIs cloud via les custom nodes existants (fal, Gemini/Veo, Seedance) — chemin actuel conservé ;
+2. des **workers GPU RunPod éphémères demandés via PodPilot** — custom node "PodPilot Dispatch" (`resolve` → warm → execute → collect → terminate) ou ComfyUI-Distributed pointé sur des workers provisionnés par PodPilot. **Aucun pod permanent : le GPU n'existe que pendant la génération.**
+
+Tiers résultants : Waza CPU = drafts/compositing léger gratuit ; RunPod via PodPilot = production open-weights ; APIs fermées = premium par plan.
 
 ### B4 — Ingestion & veille ("Scout") — brique aujourd'hui quasi inexistante
 
-Existant : MeTube + VRef remix (téléchargement ad-hoc), ig-dm/comment-reply (social, pas ingestion). Le PRD délègue la recherche à WebSearch. **Aucune analyse de contenu.**
+Existant (vérifié 2026-06-10) : MeTube 2026.03.21 (Waza:8081) + **VideoRef-Engine v0.2.0** (Waza:8082, 3072M/3CPU — service custom : extraction keyframes, optical flow, analyse couleur, OCR EasyOCR/Surya → **génère des workflows ComfyUI**, intégré Kitsu + Qdrant `videoref_styles` + LiteLLM + Gitea) + ig-dm/comment-reply (social). Correction de l'analyse initiale : **Scout n'est pas un greenfield, c'est l'évolution de VideoRef-Engine** — il lui manque la transcription (Whisper), la compréhension sémantique (VLM) et la sortie ContentDNA. La recherche de tendances (PRD étape 2) reste déléguée à WebSearch aujourd'hui.
 
 Cible (stack mûre et confirmée juin 2026) :
 
@@ -245,11 +249,33 @@ Coût de croisière estimé M1-M3 : **$30-120/mois GPU** (scale-to-zero + warm �
 | Plafond exact publication IG API (25/50/100 par 24 h — sources divergentes) | Vérifier developers.facebook.com avant design Broadcast ; Postiz absorbe |
 | 90 min full-auto n'existe nulle part | Objectif = assisté, pilote 5 min M4 ; ne pas vendre le film auto |
 
-## 9. Décisions à trancher (gate humain)
+## 9. Annexe — Vérification des configurations réelles (2026-06-10)
+
+Vérification post-rédaction (MCP comfyui-studio live + lecture directe `inventory/group_vars/all/versions.yml`, `roles/*/defaults/main.yml`, playbooks) — corrige les hypothèses de la première version de ce document :
+
+| Composant | Où | Version | État réel vérifié | Impact sur l'analyse |
+|---|---|---|---|---|
+| ComfyUI | Waza | v0.18.1 | **CPU-only** (`--cpu --force-fp32`, PyTorch 2.7.1+cpu — vérifié MCP live), 4096M/3CPU, **zéro modèle local**, 7 custom nodes (fal-API, fal-Connector, IPAdapter+, AnimateDiff, Impact, InstantID, controlnet_aux), 1 seul workflow sauvegardé (`cli-demo-test.json`) | **Hub d'orchestration cloud déjà en place** — B3 corrigé : ComfyUI = plan de contrôle, GPU à la demande via PodPilot |
+| comfyui-studio MCP + comfyui-cli | Waza | — | `roles/comfyui/files/comfyui-studio/mcp_server.py` + `comfyui-cli/montage*.py` : assemblage de workflows ComfyUI depuis templates Jinja2 (`montage_build`/`montage_render`) | **Base existante pour les presets (U1) et le Cutting Room** — pas un greenfield |
+| Remotion | Waza | 4.0.437 | port 3200, 8G/2CPU, compositions au runtime | Conforme |
+| **VideoRef-Engine** | Waza | v0.2.0 | port 8082, 3072M/3CPU — keyframes + optical flow + couleur + OCR (EasyOCR/Surya) → workflows ComfyUI ; intégré Kitsu, Qdrant `videoref_styles`, LiteLLM, Gitea ; watch le dossier MeTube | **Oublié de la v1 de cette analyse** — Scout (B4) = son évolution |
+| MeTube | Waza | 2026.03.21 | port 8081, cookies yt-dlp optionnels (désactivés) | Conforme |
+| Plane | Sese | v1.3.1 | 6 conteneurs actifs, MinIO 2024-11-07 (post-fix), IDs NocoDB liés en group_vars | **B1 corrigé : conservé, PM principal multi-projets** |
+| NocoDB | Sese | 2026.05.1 | base CF `pwb0jn4ncdsz460`, 3 tables | Conforme (remplacé par Postgres domaine en v2) |
+| Qdrant | Sese | v1.18.1 | **5 collections** : semantic_cache, content_index, comfyui-docs, videoref_styles, ideas | Plus riche qu'estimé (pas seulement brand-voice) |
+| LiteLLM | Sese | 1.83.3 | Seedream conditionné à `openrouter_api_key`, Gemini à `google_gemini_api_key` ; **Seedance N'EST PAS routé LiteLLM** (accès direct fal via custom node ComfyUI) ; pas de modèle `veo3` nommé | Routage vidéo réel = ComfyUI custom nodes, pas LiteLLM |
+| OpenClaw | Sese | 2026.5.27 | **20 skills** dont content-director, studio-produce, video-remix, swarm-coordinator | Assets réutilisables en v2 |
+| Kokoro TTS | — | — | **Jamais déployé en rôle** (le REX 2026-03-22 = test ponctuel) | Confirme le choix LTX-2 audio natif + TTS async |
+| Postiz / Stitch / Canva MCP | — | — | **Inexistants** (planifiés, zéro déploiement) | À créer en M3 |
+| NAS Tier 3 (P6X58D-E) | — | — | Planifié : Xeon X58 CPU-only + ZFS — **pas de GPU** ; fallback LLM GGUF + backups restic | Pas de tier génération locale possible — RunPod reste le seul GPU |
+| Grafana | Sese | 12.4.3 | dashboards `litellm_spend_*` présents, **0 alerte Telegram branchée** ; Phase 10 obs = 0 déployé | Confirme C1/C4 |
+| Backups | Sese | — | PG dumps cassés mars-mai, drill jamais fait (audit : 4/10) | Risque transverse, hors périmètre CF mais bloquant prod |
+
+## 10. Décisions à trancher (gate humain)
 
 1. **Tracker natif** (recommandé) vs AYON vs Kitsu conservé — engage tout M0
 2. **Temporal** vs queue Postgres simple en M0 (Temporal recommandé si M4 long-form est sérieux)
-3. Kitsu/Plane : extinction pour CF ou adapters one-way conservés
+3. Kitsu : extinction pour CF ? — **Plane tranché (2026-06-10) : conservé comme PM principal, mise à jour automatisée par adapter, Take ajouté côté contenu**
 4. Nom et création du repo (`content-factory` ? appliquer MANIFESTE-CREATION-PROJET.md : wing `saas`, déclaration Qdrant)
 5. Hébergement Temporal + workers render (Hetzner prod-apps vs NAS cible)
 6. Budget mensuel GPU cible (gouverne les policies PodPilot)

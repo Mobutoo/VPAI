@@ -205,6 +205,23 @@ class TestClassifyRoomRefdocs:
     def test_typebot_docs_prefix(self):
         assert classify_room("refdocs", "typebot-docs") == "typebot"
 
+    def test_repo_direct_n8n_docs(self):
+        # réorg 2026-06-10 : doc-set premier niveau → room = repo sans -docs
+        assert classify_room("refdocs", "docs/hosting/scaling/queue-mode.md", repo="n8n-docs") == "n8n"
+
+    def test_repo_direct_litellm_docs(self):
+        assert classify_room("refdocs", "docs/my-website/docs/proxy/config.md", repo="litellm-docs") == "litellm"
+
+    def test_repo_direct_wiki(self):
+        assert classify_room("refdocs", "caddy.md", repo="wiki") == "wiki"
+
+    def test_repo_direct_typebot_docs(self):
+        assert classify_room("refdocs", "packages/bot-engine/src/startSession.ts", repo="typebot-docs") == "typebot"
+
+    def test_repo_docs_legacy_falls_back_to_segment(self):
+        # parapluie DOCS legacy : règle par segment conservée
+        assert classify_room("refdocs", "n8n-docs/hosting/x.md", repo="DOCS") == "n8n"
+
     def test_misc_fallback_isolated_file(self):
         # fichier isolé sans "/" → pas de segment techno → misc
         assert classify_room("refdocs", "somefile.md") == "misc"

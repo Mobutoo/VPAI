@@ -95,11 +95,14 @@ def classify_doc_kind(path: Path) -> str:
 # ---------------------------------------------------------------------------
 # 2. classify_room — NOUVEAU, implémente §3 du manifeste taxonomie
 # ---------------------------------------------------------------------------
-def classify_room(wing: str, relative_path: str) -> str:
-    """Dérive le room depuis (wing, relative_path).
+def classify_room(wing: str, relative_path: str, repo: str | None = None) -> str:
+    """Dérive le room depuis (wing, relative_path[, repo]).
 
     Ordre = première règle qui matche, fallback par wing. Jamais nul.
     Source canonique : docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md §3.
+    repo (optionnel) : pour wing refdocs post-réorg 2026-06-10 (doc-sets au
+    premier niveau ~/work/refdocs/<name>), room = nom du repo sans suffixe
+    -docs — le 1er segment de chemin ne porte plus la techno.
     """
     rp = relative_path.replace("\\", "/")
     rp_lower = rp.lower()
@@ -161,6 +164,13 @@ def classify_room(wing: str, relative_path: str) -> str:
     # wing refdocs (room = techno)
     # ------------------------------------------------------------------
     if wing == "refdocs":
+        # Repo-direct (réorg 2026-06-10) : doc-set au premier niveau refdocs
+        # -> room = nom du repo sans suffixe -docs ("n8n-docs"->"n8n", "wiki"->"wiki").
+        # "DOCS" exclu : parapluie legacy, on retombe sur la règle par segment.
+        if repo and repo != "DOCS":
+            techno = re.sub(r"-docs$", "", repo, flags=re.IGNORECASE)
+            if techno:
+                return techno
         # typebot-docs (en premier car contient "-docs")
         if re.match(r"typebot-docs/", rp) or rp_lower.startswith("typebot-docs"):
             return "typebot"

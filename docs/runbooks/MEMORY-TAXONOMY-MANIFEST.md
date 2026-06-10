@@ -77,9 +77,12 @@ Ordre = première règle qui matche. Fallback explicite par wing (jamais nul).
 ### wing `refdocs` (room = techno)
 | Règle | room |
 |---|---|
-| `DOCS` : 1er segment de chemin sans suffixe `-docs` (`n8n-docs/…`→`n8n`, `litellm-docs/…`→`litellm`, `openclaw-docs`→`openclaw`, `wiki/…`→`wiki`) | `<techno>` |
-| `typebot-docs` | `typebot` |
+| **Repo-direct** (réorg 2026-06-10, doc-sets au premier niveau `~/work/refdocs/<name>`) : nom du repo sans suffixe `-docs` (`n8n-docs`→`n8n`, `litellm-docs`→`litellm`, `openclaw-docs`→`openclaw`, `wiki`→`wiki`, `typebot-docs`→`typebot`) | `<techno>` |
+| `DOCS` legacy (parapluie imbriqué, supprimé 2026-06-10) : 1er segment de chemin sans suffixe `-docs` | `<techno>` |
 | défaut | `misc` |
+
+> Signature : `classify_room(wing, relative_path, repo=None)` — `repo` requis pour la
+> règle repo-direct ; sans `repo` (ou `repo="DOCS"`), retombe sur la règle par segment.
 
 ### wing `tools`
 | Règle | room |

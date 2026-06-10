@@ -131,13 +131,9 @@ memory_worker_sources:
     tags:
       - "scope:typebot"
       - "kind:official-docs"
-  - name: "DOCS"
-    wing: "refdocs"
-    kind: "git_repo"
-    root: "/home/{{ workstation_pi_user | default('pi') }}/DOCS"
-    tags:
-      - "kind:official-docs"
-      - "scope:wiki"
+  # DOCS (parapluie legacy) supprimé 2026-06-10 : les doc-sets sont au premier
+  # niveau ~/work/refdocs/<name> (litellm-docs, n8n-docs, openclaw-docs, wiki)
+  # et couverts par l'auto-découverte — zéro déclaration manuelle (MANIFESTE).
   - name: "podpilot"
     wing: "saas"
     kind: "git_repo"

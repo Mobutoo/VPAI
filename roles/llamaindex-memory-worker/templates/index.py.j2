@@ -808,7 +808,7 @@ def process_file(
         LOG.warning("file outside any wing-mapped source, skipped: %s", path)
         return 0
     repo, wing, relative_path = resolved
-    room = classify_room(wing, relative_path)
+    room = classify_room(wing, relative_path, repo=repo)
     key = state_key(repo, relative_path)
     processed_keys.add(key)
 

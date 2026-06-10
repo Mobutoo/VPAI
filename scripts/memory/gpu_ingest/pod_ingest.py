@@ -172,7 +172,7 @@ def process_one(file_abs: Path, lookup, encoder, host_origin: str, git_shas_by_r
     repo, wing, rel = resolved
     if not wing:
         return None
-    room = classify_room(wing, rel)
+    room = classify_room(wing, rel, repo=repo)
     try:
         text = file_abs.read_text(encoding="utf-8")
     except UnicodeDecodeError:

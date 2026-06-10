@@ -17,8 +17,8 @@ questions:
   - query: "Quelle variable d'environnement n8n autorise require() des modules builtin fs path crypto dans les Code nodes ?"
     expected_paths:
       - "VPAI:docs/TROUBLESHOOTING.md"
-      - "DOCS:n8n-docs/docs/hosting/configuration/configuration-examples/modules-in-code-node.md"
-      - "DOCS:n8n-docs/docs/hosting/configuration/environment-variables/nodes.md"
+      - "n8n-docs:docs/hosting/configuration/configuration-examples/modules-in-code-node.md"
+      - "n8n-docs:docs/hosting/configuration/environment-variables/nodes.md"
     doc_kind: doc
     note: "exact — NODE_FUNCTION_ALLOW_BUILTIN=fs,path,crypto (§9.2 ; doc officielle n8n acceptée)"
   - query: "Which volume mount path does PostgreSQL 18 use in Docker compared to PG 17?"

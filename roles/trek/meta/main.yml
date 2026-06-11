@@ -1,0 +1,16 @@
+---
+# trek — role metadata
+
+galaxy_info:
+  role_name: trek
+  author: Mobutoo
+  description: Deploy TREK self-hosted travel planner (public, native auth)
+  license: AGPL-3.0
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

@@ -497,6 +497,18 @@ mop-mail.{{ domain_name }} {
 }
 {% endif %}
 
+# === TREK — Planificateur de voyage (trip.<domain>) — accès PUBLIC, auth native ===
+# App self-hosted (Node/Express/SQLite) avec auth email+2FA intégrée → public HTTPS suffisant
+# (même doctrine que CouchDB/Typebot viewer). Pas d'import vpn_only.
+# Conteneur sur réseaux frontend+egress (isolé du backend IA). TLS via ACME (port 80 public).
+{% if trek_subdomain | default('') | length > 0 %}
+{{ trek_subdomain }}.{{ domain_name }} {
+    reverse_proxy {{ project_name }}_trek:{{ trek_web_port | default(3000) }}
+
+    import security_headers
+}
+{% endif %}
+
 # VPS Form (EPI Telehouse) migré hors Sese-AI vers son propre projet
 # (/home/mobuone/projects/saas/vps) — plus déployé ici. 2026-05-30.
 {% if caddy_extra_sites is defined and caddy_extra_sites | length > 0 %}

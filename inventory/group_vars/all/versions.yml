@@ -68,6 +68,10 @@ mealie_image: "ghcr.io/mealie-recipes/mealie:v3.16.0"  # 2026-04-26
 grocy_image: "lscr.io/linuxserver/grocy:4.6.0"
 koodia_image: "ghcr.io/mobutoo/koodia:v0.1.0"
 
+# --- TREK (self-hosted travel planner — public trip.<domain>, native auth) ---
+# Docker Hub tag scheme = semver WITHOUT 'v' prefix (mauriceboe/trek:3.0.22 exists; v3.0.22 does NOT)
+trek_image: "mauriceboe/trek:3.0.22"  # pinned 2026-06-11 (latest GitHub release)
+
 # --- MeTube (video downloader — Workstation Pi) ---
 metube_image: "alexta69/metube:2026.03.21"
 

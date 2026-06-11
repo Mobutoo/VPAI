@@ -107,6 +107,11 @@ mealie_memory_limit: "384M"
 mealie_memory_reservation: "128M"
 mealie_cpu_limit: "0.75"
 
+# TREK (Node 22 + Express + SQLite travel planner — public)
+trek_memory_limit: "512M"
+trek_memory_reservation: "192M"
+trek_cpu_limit: "1.0"
+
 # Grocy (PHP + SQLite household/stock management)
 grocy_memory_limit: "128M"
 grocy_memory_reservation: "64M"

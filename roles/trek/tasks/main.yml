@@ -1,0 +1,42 @@
+---
+# trek — tasks
+# TREK travel planner (Docker image mauriceboe/trek from Docker Hub).
+# Container starts as root, drops to `node` (UID 1000) via su-exec.
+# Service block + restart handled by docker-stack role (central compose).
+
+- name: Create TREK config directory
+  ansible.builtin.file:
+    path: "{{ trek_config_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+
+- name: Create TREK data directory (SQLite + logs — owned by node UID 1000)
+  ansible.builtin.file:
+    path: "{{ trek_data_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0750"
+  become: true
+
+- name: Create TREK uploads directory (documents/photos up to 50MB — node UID 1000)
+  ansible.builtin.file:
+    path: "{{ trek_uploads_dir }}"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    mode: "0750"
+  become: true
+
+- name: Deploy TREK environment file
+  ansible.builtin.template:
+    src: trek.env.j2
+    dest: "{{ trek_config_dir }}/trek.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Restart trek stack

@@ -1,0 +1,19 @@
+---
+# trek — defaults
+# TREK self-hosted travel planning (Node 22 + Express + SQLite + React).
+# PUBLIC HTTPS on trip.<domain>, native auth (email + 2FA). SQLite, no shared PG.
+# Isolated from the AI backend (networks: frontend + egress only).
+
+trek_config_dir: "/opt/{{ project_name }}/configs/trek"
+trek_data_dir: "/opt/{{ project_name }}/data/trek"
+trek_uploads_dir: "/opt/{{ project_name }}/data/trek-uploads"
+
+# Internal web port (exposed via Caddy on trip.<domain>)
+trek_web_port: 3000
+
+# Public subdomain (overridden by trek_subdomain in inventory/group_vars/all/main.yml)
+trek_subdomain: "trip"
+caddy_trek_domain: "{{ trek_subdomain | default('trip') }}.{{ domain_name }}"
+
+# First-boot admin (applies only before any user exists). Override in main.yml.
+trek_admin_email: "admin@{{ domain_name }}"

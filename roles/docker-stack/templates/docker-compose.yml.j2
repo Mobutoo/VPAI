@@ -1148,6 +1148,51 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # === TREK — Travel planner (PUBLIC trip.<domain>, native auth, SQLite) ===
+  # Isolated from the AI backend: only frontend (Caddy reach) + egress (OSM internet).
+  # Upstream hardening preserved verbatim: read_only root + tmpfs /tmp + minimal caps.
+  trek:
+    image: {{ trek_image }}
+    container_name: {{ project_name }}_trek
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    env_file:
+      - /opt/{{ project_name }}/configs/trek/trek.env
+    volumes:
+      - /opt/{{ project_name }}/data/trek:/app/data
+      - /opt/{{ project_name }}/data/trek-uploads:/app/uploads
+    networks:
+      - frontend
+      - egress
+    deploy:
+      resources:
+        limits:
+          memory: {{ trek_memory_limit }}
+          cpus: "{{ trek_cpu_limit }}"
+        reservations:
+          memory: {{ trek_memory_reservation }}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   frontend:
     name: {{ project_name }}_frontend

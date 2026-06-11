@@ -280,6 +280,10 @@ mealie_subdomain: ""
 grocy_subdomain: ""
 koodia_subdomain: ""
 
+# TREK — planificateur de voyage self-hosted (PUBLIC, auth native email+2FA)
+trek_subdomain: "trip"                 # → trip.<domain> (accès public Internet)
+trek_admin_email: "seko.mobutoo@gmail.com"
+
 # Auto-Fix Pipeline (GitHub Issues -> Claude Code -> PR)
 autofix_enabled: true
 autofix_label: "auto-fix"

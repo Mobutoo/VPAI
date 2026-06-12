@@ -1171,6 +1171,9 @@ services:
     volumes:
       - /opt/{{ project_name }}/data/trek:/app/data
       - /opt/{{ project_name }}/data/trek-uploads:/app/uploads
+      # Branding Yinda : /app/public répliqué + rebrandé (TREK→Yinda), :ro.
+      # Peuplé par le rôle trek avant docker-stack. Static-served, jamais écrit.
+      - /opt/{{ project_name }}/configs/trek/public:/app/public:ro
     networks:
       - frontend
       - egress

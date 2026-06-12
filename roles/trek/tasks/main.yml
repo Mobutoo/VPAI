@@ -40,3 +40,66 @@
     mode: "0600"
   become: true
   notify: Restart trek stack
+
+# === Branding Yinda ========================================================
+# Réplique /app/public depuis l'image, remplace le nom de marque "TREK" → "Yinda"
+# dans les assets servis (html/js/css — uniquement la forme MAJUSCULE ; "trek"
+# minuscule = classes CSS / clés localStorage, "Trek" = mot commun randonnée),
+# puis recouvre les logos/favicons/manifest par les assets Yinda. Le répertoire
+# entier est monté :ro sur /app/public (docker-stack). Idempotent : ré-extraction
+# uniquement quand l'image change (marqueur = image id).
+
+- name: Replicate and rebrand TREK /app/public (TREK → Yinda)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      PUB="{{ trek_public_dir }}"
+      MARK="{{ trek_brand_marker }}"
+      if ! docker image inspect "{{ trek_image }}" >/dev/null 2>&1; then
+        docker pull "{{ trek_image }}" >/dev/null
+      fi
+      IMG_ID="$(docker images --no-trunc -q "{{ trek_image }}" | head -1)"
+      if [[ -f "$MARK" && "$(cat "$MARK")" == "$IMG_ID" && -s "$PUB/index.html" ]]; then
+        echo "UNCHANGED"; exit 0
+      fi
+      rm -rf "$PUB"; mkdir -p "$PUB"
+      cid="$(docker create "{{ trek_image }}")"
+      trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+      docker cp "$cid":/app/public/. "$PUB"/
+      grep -rlZ 'TREK' "$PUB" --include='*.js' --include='*.css' --include='*.html' \
+        --include='*.webmanifest' 2>/dev/null \
+        | xargs -0 -r sed -i 's/TREK/Yinda/g'
+      chown -R 1000:1000 "$PUB"
+      chmod -R a+rX "$PUB"
+      echo "$IMG_ID" > "$MARK"
+      echo "REBUILT"
+  register: trek_pub_rebuild
+  changed_when: "'REBUILT' in trek_pub_rebuild.stdout"
+  become: true
+  notify: Restart trek stack
+
+- name: Overlay Yinda branding assets (logos, favicons, manifest)
+  ansible.builtin.copy:
+    src: "branding/{{ item }}"
+    dest: "{{ trek_public_dir }}/{{ item }}"
+    owner: "1000"
+    group: "1000"
+    mode: "0644"
+  loop: "{{ trek_branding_files }}"
+  become: true
+  notify: Restart trek stack
+
+- name: Assert replicated public is non-empty (guard against blank UI)
+  ansible.builtin.stat:
+    path: "{{ trek_public_dir }}/index.html"
+  register: trek_index_stat
+  become: true
+
+- name: Fail if rebranded public is missing index.html
+  ansible.builtin.assert:
+    that:
+      - trek_index_stat.stat.exists
+      - trek_index_stat.stat.size | default(0) | int > 0
+    fail_msg: "{{ trek_public_dir }}/index.html absent ou vide — montage :ro blanchirait l'UI publique"
+    success_msg: "Public Yinda répliqué et rebrandé"

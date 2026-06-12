@@ -8,6 +8,25 @@ trek_config_dir: "/opt/{{ project_name }}/configs/trek"
 trek_data_dir: "/opt/{{ project_name }}/data/trek"
 trek_uploads_dir: "/opt/{{ project_name }}/data/trek-uploads"
 
+# Branding Yinda : /app/public répliqué depuis l'image, texte "TREK" → "Yinda"
+# (assets servis statiquement, jamais écrits au runtime → monté :ro). Voir
+# files/branding/ (assets vectorisés, font-independent) + generate_yinda.py.
+trek_public_dir: "{{ trek_config_dir }}/public"
+trek_brand_marker: "{{ trek_config_dir }}/.brand-image-id"
+# Fichiers de marque déposés par-dessus la copie de /app/public (overlay).
+trek_branding_files:
+  - text-light.svg
+  - text-dark.svg
+  - logo-light.svg
+  - logo-dark.svg
+  - manifest.webmanifest
+  - icons/icon.svg
+  - icons/icon-dark.svg
+  - icons/icon-white.svg
+  - icons/apple-touch-icon-180x180.png
+  - icons/icon-192x192.png
+  - icons/icon-512x512.png
+
 # Internal web port (exposed via Caddy on trip.<domain>)
 trek_web_port: 3000
 

@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: llamaindex_memory_worker
+  author: VPAI
+  namespace: mobutoo
+  description: Deploy the LlamaIndex memory worker (Qdrant-backed RAG)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

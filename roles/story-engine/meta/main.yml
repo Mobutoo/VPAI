@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: story_engine
+  author: VPAI
+  namespace: mobutoo
+  description: Deploy StoryEngine narrative IDE (dedicated host)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

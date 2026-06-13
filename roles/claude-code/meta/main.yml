@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: claude_code
+  author: VPAI
+  namespace: mobutoo
+  description: Install and configure the Claude Code CLI
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

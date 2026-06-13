@@ -1,0 +1,158 @@
+  # === APPLICATION LAYER ===
+  n8n:
+    image: {{ n8n_image }}
+    container_name: {{ project_name }}_n8n
+    extra_hosts:
+      - "{{ metube_subdomain }}.{{ domain_name }}:{{ workstation_pi_tailscale_ip }}"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - /opt/{{ project_name }}/configs/n8n/n8n.env
+    volumes:
+      - /opt/{{ project_name }}/data/n8n:/home/node/.n8n
+{% if openclaw_n8n_integration | default(false) and openclaw_volume_isolation | default(false) %}
+      # Read-only access to OpenClaw workspace for RAG content indexing
+      - {{ openclaw_workspace_dir }}:/home/node/openclaw-workspace:ro
+{% endif %}
+      # MOP machinery — host filesystem access
+      - /opt/{{ project_name }}/data/mop:/data/mop
+      - /opt/{{ project_name }}/scripts/mop:/scripts/mop:ro
+      # Carbone template ID file (read-only, written by carbone-template post-task)
+      - /opt/{{ project_name }}/configs/carbone:/configs/carbone:ro
+    networks:
+      - backend
+      - egress
+    deploy:
+      resources:
+        limits:
+          memory: {{ n8n_memory_limit }}
+          cpus: "{{ n8n_cpu_limit }}"
+        reservations:
+          memory: {{ n8n_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5678/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  litellm:
+    image: {{ litellm_image }}
+    container_name: {{ project_name }}_litellm
+    restart: unless-stopped
+    # read_only: true removed — LiteLLM writes migrations to site-packages at startup
+    # (OSError on /usr/lib/python3.13/site-packages/litellm_proxy_extras/migrations/)
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - /opt/{{ project_name }}/configs/litellm/litellm.env
+    volumes:
+      - /opt/{{ project_name }}/configs/litellm/litellm_config.yaml:/app/config.yaml:ro
+    command: --config /app/config.yaml --port 4000
+    networks:
+      - backend
+      - egress
+      - sandbox
+    deploy:
+      resources:
+        limits:
+          memory: {{ litellm_memory_limit }}
+          cpus: "{{ litellm_cpu_limit }}"
+        reservations:
+          memory: {{ litellm_memory_reservation }}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/readiness')\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  openclaw:
+    image: {{ openclaw_image }}
+    container_name: {{ project_name }}_openclaw
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - /opt/{{ project_name }}/configs/openclaw/openclaw.env
+    volumes:
+{% if openclaw_volume_isolation | default(false) %}
+      # Volume isolation with Docker-in-Docker (DooD) path identity.
+      # OpenClaw spawns sandbox containers via Docker socket. Sandbox bind-mount
+      # paths use OPENCLAW_STATE_DIR as base. Docker daemon resolves these on the
+      # HOST — so container paths MUST equal host paths for mounts to work.
+      # system/ mounted rw — OpenClaw 5.27 self-manages files under system/ (config
+      # last-known-good backup, logs/config-health.json, logs/stability/*, atomic
+      # fs-safe-replace sentinels). The blanket :ro of earlier versions caused EROFS
+      # crash-loops in 5.27. Anti-drift (REX-Integration) is preserved by mounting
+      # ONLY openclaw.json :ro just below — that one file stays Ansible-owned/immutable,
+      # so the engine cannot rewrite it (no run-2 CHANGED diff). Handler recreate:always
+      # re-resolves the single-file inode after each re-render. 2026-05-30.
+      - {{ openclaw_system_dir }}:{{ openclaw_system_dir }}
+      - {{ openclaw_system_dir }}/openclaw.json:{{ openclaw_system_dir }}/openclaw.json:ro
+      - {{ openclaw_workspace_dir }}:{{ openclaw_system_dir }}/workspace
+      - {{ openclaw_state_dir }}/sessions:{{ openclaw_system_dir }}/sessions
+      - {{ openclaw_state_dir }}/canvas:{{ openclaw_system_dir }}/canvas
+      - {{ openclaw_state_dir }}/cron:{{ openclaw_system_dir }}/cron
+      - {{ openclaw_state_dir }}/memory:{{ openclaw_system_dir }}/memory
+      - {{ openclaw_state_dir }}/sandbox:{{ openclaw_system_dir }}/sandbox
+      - {{ openclaw_state_dir }}/agents:{{ openclaw_system_dir }}/agents
+      - {{ openclaw_state_dir }}/telegram:{{ openclaw_system_dir }}/telegram
+      - {{ openclaw_state_dir }}/identity:{{ openclaw_system_dir }}/identity
+      - {{ openclaw_state_dir }}/sandboxes:{{ openclaw_system_dir }}/sandboxes
+      - {{ openclaw_state_dir }}/devices:{{ openclaw_system_dir }}/devices
+{% else %}
+      - /opt/{{ project_name }}/data/openclaw:/home/node/.openclaw
+{% endif %}
+      # Docker Outside of Docker (DooD): socket + CLI binary required for sandbox spawn.
+      # OpenClaw calls child_process.spawn("docker", ["run", ...]) to create sandbox containers.
+      # PATH inside image = /root/.bun/bin:... — /root/.bun/bin is mode 700 (root-owned),
+      # inaccessible to node:1000. execvp("docker") hits EACCES before reaching /usr/local/bin.
+      # Fix: mount host docker binary at /usr/local/bin/docker (comes after bun in PATH). REX-49.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /usr/bin/docker:/usr/local/bin/docker:ro
+    # REX: node:1000 must be in docker group to access /var/run/docker.sock
+    # GID detected dynamically by docker-stack role (stat -c '%g' /var/run/docker.sock)
+    group_add:
+      - "{{ docker_socket_gid | default('989') }}"
+    networks:
+      - backend
+      - egress
+    deploy:
+      resources:
+        limits:
+          memory: {{ openclaw_memory_limit }}
+          cpus: "{{ openclaw_cpu_limit }}"
+          pids: 512
+        reservations:
+          memory: {{ openclaw_memory_reservation }}
+    # OpenClaw Gateway healthcheck: native HTTP /healthz endpoint (v2026.3.1+ #31272)
+    # Replaces the WebSocket upgrade hack needed before v2026.3.1 (REX 11.2b)
+    # 2026-05-30: image 5.27 ne contient plus wget (curl présent /usr/bin/curl) → HC restait unhealthy malgré gateway ready. Bascule sur curl -sf.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:{{ openclaw_gateway_port }}/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+

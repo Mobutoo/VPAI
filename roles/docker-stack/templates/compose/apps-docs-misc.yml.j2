@@ -1,0 +1,288 @@
+  # === MOP MACHINERY — Rendering engines ===
+  gotenberg:
+    image: {{ gotenberg_image }}
+    container_name: {{ project_name }}_gotenberg
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # NOTE: Chromium needs a writable user-data-dir for crashpad (minidump DB).
+    # read_only:true blocks /home/gotenberg → Chrome fails with
+    # "chrome_crashpad_handler: --database is required". Keep FS writable but
+    # tmpfs /tmp and drop caps for defense-in-depth.
+    tmpfs:
+      - /tmp:size=256m
+    # Chrome wants >64MB /dev/shm (docker default) for large pages.
+    shm_size: 1gb
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    networks:
+      - backend
+      - frontend
+    ports:
+      # Expose on loopback: CLI wrappers on the host need a stable endpoint.
+      # Docker-internal IPs change on container restart — 127.0.0.1:3000 is stable.
+      # frontend network attach is required for port publishing (backend is internal).
+      - "127.0.0.1:3000:3000"
+    deploy:
+      resources:
+        limits:
+          memory: {{ gotenberg_memory_limit }}
+          cpus: "{{ gotenberg_cpu_limit }}"
+        reservations:
+          memory: {{ gotenberg_memory_reservation }}
+    healthcheck:
+      # Gotenberg image ships curl but not wget
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # No custom command — Gotenberg 8.30.1 runs on defaults per spec
+
+  msg2md:
+    build:
+      context: /opt/{{ project_name }}/msg2md
+      dockerfile: Dockerfile
+    container_name: "{{ project_name }}_msg2md"
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    networks:
+      - backend
+    environment:
+      - MSG2MD_PORT={{ msg2md_port }}
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:{{ msg2md_port }}/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: {{ msg2md_memory_limit }}
+          cpus: "{{ msg2md_cpu_limit }}"
+
+  carbone:
+    image: {{ carbone_image }}
+    container_name: {{ project_name }}_carbone
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+      - FOWNER
+    volumes:
+      - /opt/{{ project_name }}/data/carbone/template:/app/template
+      - /opt/{{ project_name }}/data/carbone/render:/app/render
+    # Bind on loopback so Ansible can POST templates from the host (Docker-internal DNS
+    # is not reachable from the host). Not exposed publicly — 127.0.0.1 only.
+    # NOTE: port publishing only works on non-internal networks, hence `frontend` attach.
+    ports:
+      - "127.0.0.1:4000:4000"
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: {{ carbone_memory_limit }}
+          cpus: "{{ carbone_cpu_limit }}"
+        reservations:
+          memory: {{ carbone_memory_reservation }}
+    healthcheck:
+      # Carbone image has no curl/wget/nc — bash /dev/tcp TCP open check only
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/4000' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # === MOP MACHINERY — Fake SMTP for Typebot magic-link login ===
+  mailhog:
+    image: {{ mailhog_image }}
+    container_name: {{ project_name }}_mailhog
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+          cpus: "0.25"
+        reservations:
+          memory: 16m
+    # No healthcheck — MailHog image is scratch (Go binary, zero shell tools).
+    # Service is trivial/stateless, Docker auto-restart handles any crash.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # === MOP MACHINERY — Authoring frontends ===
+  typebot-builder:
+    image: {{ typebot_builder_image }}
+    container_name: {{ project_name }}_typebot_builder
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - /opt/{{ project_name }}/configs/typebot/typebot.env
+    environment:
+      # Raise V8 old-space so Next.js 16 build doesn't OOM at default (~half of container limit)
+      NODE_OPTIONS: "--max-old-space-size={{ typebot_builder_node_max_old_space_mb | default(768) }}"
+      # Override Docker's default HOSTNAME=<container-id> — entrypoint uses it as bind address
+      HOSTNAME: "0.0.0.0"
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: {{ typebot_builder_memory_limit | default(typebot_memory_limit) }}
+          cpus: "{{ typebot_cpu_limit }}"
+        reservations:
+          memory: {{ typebot_builder_memory_reservation | default(typebot_memory_reservation) }}
+    healthcheck:
+      # Typebot images are distroless-ish (node only, no wget/curl) — use node-http probe
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  typebot-viewer:
+    image: {{ typebot_viewer_image }}
+    container_name: {{ project_name }}_typebot_viewer
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - /opt/{{ project_name }}/configs/typebot/typebot.env
+    environment:
+      # Override Docker's default HOSTNAME=<container-id> — entrypoint uses it as bind address
+      HOSTNAME: "0.0.0.0"
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: {{ typebot_viewer_memory_limit | default(typebot_memory_limit) }}
+          cpus: "{{ typebot_cpu_limit }}"
+        reservations:
+          memory: {{ typebot_viewer_memory_reservation | default(typebot_memory_reservation) }}
+    healthcheck:
+      # Typebot images are distroless-ish (node only, no wget/curl) — use node-http probe
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3000/api/health',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # === TREK — Travel planner (PUBLIC trip.<domain>, native auth, SQLite) ===
+  # Isolated from the AI backend: only frontend (Caddy reach) + egress (OSM internet).
+  # Upstream hardening preserved verbatim: read_only root + tmpfs /tmp + minimal caps.
+  trek:
+    image: {{ trek_image }}
+    container_name: {{ project_name }}_trek
+    restart: unless-stopped
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    env_file:
+      - /opt/{{ project_name }}/configs/trek/trek.env
+    volumes:
+      - /opt/{{ project_name }}/data/trek:/app/data
+      - /opt/{{ project_name }}/data/trek-uploads:/app/uploads
+      # Branding Yinda : /app/public répliqué + rebrandé (TREK→Yinda), :ro.
+      # Peuplé par le rôle trek avant docker-stack. Static-served, jamais écrit.
+      - /opt/{{ project_name }}/configs/trek/public:/app/public:ro
+    networks:
+      - frontend
+      - egress
+    deploy:
+      resources:
+        limits:
+          memory: {{ trek_memory_limit }}
+          cpus: "{{ trek_cpu_limit }}"
+        reservations:
+          memory: {{ trek_memory_reservation }}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+

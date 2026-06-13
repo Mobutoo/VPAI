@@ -95,6 +95,14 @@ jobs:
           - uptime-config
           - vpn-dns
           - smoke-tests
+          - firefly
+          - flash-suite
+          - grocy
+          - koodia
+          - mealie
+          - metube
+          - videoref-engine
+          - zimboo
     steps:
       - name: Checkout
         uses: actions/checkout@v4

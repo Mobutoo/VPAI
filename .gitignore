@@ -57,11 +57,15 @@ id_*
 /.tmp-verify/
 /200
 /incidents.xlsx
-/incidents-otn-oob-v1.xlsx
+/incidents-otn-oob-*.xlsx
 Thumbs.db
 
 # --- Molecule ---
 roles/*/molecule/default/.molecule/
+
+# --- Caches regénérables / résidus de scraping ---
+**/tiktoken_cache/
+.firecrawl/test_mcp*.py
 
 # --- Environment ---
 .env

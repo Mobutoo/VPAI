@@ -2,7 +2,7 @@
 
 **Deploy a complete AI and automation stack on a single VPS in minutes.**
 
-VPAI is a production-ready Ansible project that provisions and configures 12+ Docker services behind a secure reverse proxy, with full observability, automated backups, and CI/CD pipelines.
+VPAI is a production-ready Ansible project that provisions and configures 30+ Docker services behind a secure reverse proxy, with full observability, automated backups, and CI/CD pipelines.
 
 ---
 
@@ -36,7 +36,7 @@ Internet ──▶ Caddy (TLS auto) ──▶ 6 dedicated subdomains (1 service 
 
 | Category | Details |
 |----------|---------|
-| **Infrastructure as Code** | 16 Ansible roles, fully idempotent, Molecule-tested |
+| **Infrastructure as Code** | 66 Ansible roles, fully idempotent, core roles Molecule-tested |
 | **Security** | VPN-only admin access, TLS auto, CrowdSec, Fail2ban, UFW hardening |
 | **Observability** | 5 Grafana dashboards, alerting rules, centralized logs |
 | **Resilience** | Automated pre-backup scripts, S3-compatible storage, disaster recovery playbooks |
@@ -79,7 +79,7 @@ make deploy-prod                              # Production
 ```
 .
 ├── inventory/              # Hosts, variables, versions, secrets (Vault)
-├── roles/                  # 16 Ansible roles (common → smoke-tests)
+├── roles/                  # 66 Ansible roles (common → smoke-tests)
 ├── templates/              # Docker Compose Jinja2 template
 ├── playbooks/              # site.yml + rollback, restore, rotate-secrets
 ├── scripts/                # Smoke test runner
@@ -94,7 +94,7 @@ make deploy-prod                              # Production
 ```bash
 make help                # Show all available commands
 make lint                # Run yamllint + ansible-lint (profile: production)
-make test                # Molecule tests for all 16 roles
+make test                # Molecule tests for all roles
 make test-role ROLE=n8n  # Test a specific role
 make check               # Dry-run (--check --diff)
 make deploy-preprod      # Deploy to pre-production
@@ -146,7 +146,7 @@ This project was developed with [Claude Code](https://claude.ai/claude-code) fol
 **Quality standards:**
 - `ansible-lint` profile `production` — 0 failures, 0 warnings
 - `yamllint` strict mode with octal-values enforcement
-- All 16 roles have Molecule tests (converge + verify)
+- Core roles have Molecule tests (converge + verify)
 - All Docker images version-pinned (no `:latest`)
 - All secrets encrypted with Ansible Vault
 

@@ -27,6 +27,7 @@ exclude_paths:
   - collections/
   - molecule/
   - FS/
+  - archive/
   - scripts/
 
 # Offline mode (pas de téléchargement Galaxy pendant le lint)

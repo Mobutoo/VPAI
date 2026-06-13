@@ -50,7 +50,7 @@ jobs:
 
       - name: Ansible Lint
         run: |
-          ansible-lint playbooks/stacks/site.yml
+          ansible-lint playbooks/stacks/site.yml playbooks/apps/webhook-relay.yml
 
       - name: Check no latest tags
         run: |

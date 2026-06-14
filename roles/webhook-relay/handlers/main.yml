@@ -6,9 +6,11 @@
     name: caddy
     state: reloaded
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: Restart caddy relay
   ansible.builtin.systemd:
     name: caddy
     state: restarted
   become: true
+  when: not (common_molecule_mode | default(false))

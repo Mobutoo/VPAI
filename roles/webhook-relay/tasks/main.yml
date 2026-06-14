@@ -72,6 +72,7 @@
     enabled: true
     state: started
   become: true
+  when: not (common_molecule_mode | default(false))
 
 # --- UFW : ouvrir ports pour le relay ---
 # REX F5 : Seko-VPN a besoin des ports 80 (ACME HTTP-01) et 443 (webhook relay)
@@ -82,6 +83,7 @@
     proto: tcp
     comment: "Caddy ACME HTTP-01 (webhook relay)"
   become: true
+  when: not (common_molecule_mode | default(false))
 
 - name: "Webhook-relay | UFW — Allow HTTPS for webhook relay"
   community.general.ufw:
@@ -90,8 +92,11 @@
     proto: tcp
     comment: "Caddy webhook relay (Meta/Instagram)"
   become: true
+  when: not (common_molecule_mode | default(false))
 
 # --- Validation post-deploy ---
+# Skipped in molecule (common_molecule_mode): Caddy service is not started and
+# no public ACME cert is provisioned in the ephemeral container.
 - name: "Webhook-relay | Wait for Caddy to be ready"
   ansible.builtin.uri:
     url: "http://localhost:80"
@@ -103,6 +108,7 @@
   delay: 5
   until: _relay_http_check is not failed
   changed_when: false
+  when: not (common_molecule_mode | default(false))
 
 - name: "Webhook-relay | Verify relay health endpoint"
   ansible.builtin.uri:
@@ -113,3 +119,4 @@
   register: _relay_health
   failed_when: "'relay-ok' not in _relay_health.content"
   changed_when: false
+  when: not (common_molecule_mode | default(false))

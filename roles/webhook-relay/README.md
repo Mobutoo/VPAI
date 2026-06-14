@@ -40,9 +40,15 @@ Déployé via son playbook dédié, ciblant le groupe d'hôtes `vpn` :
 ansible-playbook playbooks/apps/webhook-relay.yml
 ```
 
-> **Tests** : ce rôle n'a pas encore de scénario Molecule (apt + systemd + UFW
-> sur l'hôte VPN). Le playbook est couvert par `ansible-lint` en CI. Un scénario
-> Molecule (conteneur Debian systemd) est un chantier de suivi.
+## Tests
+
+- Le playbook est couvert par `ansible-lint` en CI.
+- Scénario Molecule : `molecule/default/` (conteneur Debian systemd). Le scénario
+  installe Caddy (apt), rend et **valide** le `Caddyfile` (`caddy validate`), puis
+  vérifie la présence des chemins de relay. Les tâches runtime (démarrage du
+  service systemd, règles UFW, health-check HTTP public) sont neutralisées via
+  `common_molecule_mode: true` — même pattern que le rôle `caddy` —, donc aucun
+  impact sur le comportement de production (`default(false)`).
 
 ---
 

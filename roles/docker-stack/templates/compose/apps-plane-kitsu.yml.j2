@@ -1,0 +1,242 @@
+  # === PROJECT MANAGEMENT ===
+  plane-minio:
+    image: {{ plane_minio_image }}
+    container_name: {{ project_name }}_plane_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - {{ plane_config_dir }}/plane-minio.env
+    volumes:
+      - {{ plane_data_dir }}/minio:/data
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ plane_minio_memory_limit }}
+          cpus: "{{ plane_minio_cpu_limit }}"
+    healthcheck:
+      test: ["CMD-SHELL", "mc alias set local http://localhost:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD --quiet 2>/dev/null && mc ready local 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  plane-web:
+    image: {{ plane_web_image }}
+    container_name: {{ project_name }}_plane_web
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - {{ plane_config_dir }}/plane.env
+    volumes:
+      - {{ plane_data_dir }}/uploads:/plane/media
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: {{ plane_web_memory_limit }}
+          cpus: "{{ plane_web_cpu_limit }}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  plane-admin:
+    image: {{ plane_admin_image }}
+    container_name: {{ project_name }}_plane_admin
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - {{ plane_config_dir }}/plane.env
+    networks:
+      - backend
+      - frontend
+    deploy:
+      resources:
+        limits:
+          memory: {{ plane_admin_memory_limit }}
+          cpus: "{{ plane_admin_cpu_limit }}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3000/god-mode/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  plane-api:
+    image: {{ plane_api_image }}
+    container_name: {{ project_name }}_plane_api
+    restart: unless-stopped
+    command: ["gunicorn", "plane.wsgi", "--workers", "2", "--bind", "0.0.0.0:8000"]
+    depends_on:
+      plane-minio:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - {{ plane_config_dir }}/plane.env
+    volumes:
+      - {{ plane_data_dir }}/uploads:/plane/media
+    networks:
+      - backend
+      - egress
+    deploy:
+      resources:
+        limits:
+          memory: {{ plane_api_memory_limit }}
+          cpus: "{{ plane_api_cpu_limit }}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 90s
+
+  plane-worker:
+    image: {{ plane_worker_image }}
+    container_name: {{ project_name }}_plane_worker
+    restart: unless-stopped
+    command: ["celery", "-A", "plane", "worker", "--loglevel=info"]
+    depends_on:
+      plane-minio:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - {{ plane_config_dir }}/plane.env
+    volumes:
+      - {{ plane_data_dir }}/uploads:/plane/media
+    networks:
+      - backend
+      - egress
+    deploy:
+      resources:
+        limits:
+          memory: {{ plane_worker_memory_limit }}
+          cpus: "{{ plane_worker_cpu_limit }}"
+    healthcheck:
+      # REX: celery inspect ping trop lourd sur VPS 8GB (timeout + no reply)
+      # Vérifie que le process principal celery worker tourne
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  plane-beat:
+    image: {{ plane_worker_image }}
+    container_name: {{ project_name }}_plane_beat
+    restart: unless-stopped
+    # REX 2026-03-01: beat worker obligatoire pour les tâches planifiées Celery
+    # Sans lui : cleanup DB, suppression assets orphelins, notifications email
+    # périodiques et archivage automatique ne s'exécutent JAMAIS.
+    # Beat schedule défini dans plane/celery.py : 5min, horaire, quotidien.
+    command: ["celery", "-A", "plane", "beat", "--loglevel=info"]
+    depends_on:
+      plane-minio:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+    env_file:
+      - {{ plane_config_dir }}/plane.env
+    volumes:
+      - {{ plane_data_dir }}/uploads:/plane/media
+    networks:
+      - backend
+      - egress
+    deploy:
+      resources:
+        limits:
+          memory: {{ plane_beat_memory_limit }}
+          cpus: "{{ plane_beat_cpu_limit }}"
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # === KITSU (CGWire Production Tracker) ===
+  kitsu:
+    image: {{ kitsu_image }}
+    container_name: {{ project_name }}_kitsu
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETGID
+      - SETUID
+      - DAC_OVERRIDE
+      - FOWNER
+    env_file:
+      - /opt/{{ project_name }}/configs/kitsu/kitsu.env
+    volumes:
+      - {{ kitsu_previews_dir | default('/opt/' + project_name + '/data/kitsu/previews') }}:/opt/zou/previews
+      - {{ kitsu_config_dir | default('/opt/' + project_name + '/configs/kitsu') }}/supervisord.conf:/etc/supervisord.conf:ro
+      - {{ kitsu_config_dir | default('/opt/' + project_name + '/configs/kitsu') }}/event_handlers:/opt/zou/event_handlers:ro
+      - {{ kitsu_config_dir | default('/opt/' + project_name + '/configs/kitsu') }}/gunicorn.py:/etc/zou/gunicorn.py:ro
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: {{ kitsu_memory_limit | default('768M') }}
+          cpus: "{{ kitsu_cpu_limit | default('1.0') }}"
+        reservations:
+          memory: {{ kitsu_memory_reservation | default('384M') }}
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1/api/status')\" 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+

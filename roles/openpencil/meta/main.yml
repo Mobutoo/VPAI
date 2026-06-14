@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: openpencil
+  author: VPAI
+  namespace: mobutoo
+  description: Deploy OpenPencil — AI-native open-source design editor
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

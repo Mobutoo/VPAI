@@ -1,19 +1,23 @@
 ---
 # requirements.yml — Collections Ansible requises
 # Installation : ansible-galaxy install -r requirements.yml
+#
+# Bornes supérieures (<majeure+1) : empêchent qu'une nouvelle majeure cassante
+# entre silencieusement en CI et garantissent des builds reproductibles.
+# Relever la borne consciemment après test lors d'une montée de version.
 
 collections:
   - name: community.general
-    version: ">=9.0.0"
+    version: ">=9.0.0,<12.0.0"
   - name: community.docker
-    version: ">=4.0.0"
+    version: ">=4.0.0,<5.0.0"
   - name: community.crypto
-    version: ">=2.0.0"
+    version: ">=2.0.0,<3.0.0"
   - name: ansible.posix
-    version: ">=1.5.0"
+    version: ">=1.5.0,<3.0.0"
   - name: community.postgresql
-    version: ">=3.0.0"
+    version: ">=3.0.0,<4.0.0"
   - name: hetzner.hcloud
-    version: ">=4.0.0"
+    version: ">=4.0.0,<6.0.0"
 
 roles: []

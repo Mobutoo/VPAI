@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: n8n_mcp
+  author: VPAI
+  namespace: mobutoo
+  description: Deploy the n8n MCP server (Model Context Protocol bridge for n8n)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

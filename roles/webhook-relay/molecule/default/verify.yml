@@ -1,0 +1,29 @@
+---
+- name: Verify webhook-relay role
+  hosts: all
+  gather_facts: false
+  vars:
+    webhook_relay_config_dir: /etc/caddy
+    webhook_relay_log_dir: /var/log/caddy
+  tasks:
+    - name: Check relay Caddyfile exists
+      ansible.builtin.stat:
+        path: "{{ webhook_relay_config_dir }}/Caddyfile"
+      register: caddyfile
+      failed_when: not caddyfile.stat.exists
+
+    - name: Check log directory exists
+      ansible.builtin.stat:
+        path: "{{ webhook_relay_log_dir }}"
+      register: logdir
+      failed_when: not (logdir.stat.exists and logdir.stat.isdir)
+
+    - name: Validate the rendered Caddyfile syntax
+      ansible.builtin.command:
+        cmd: "caddy validate --config {{ webhook_relay_config_dir }}/Caddyfile --adapter caddyfile"
+      changed_when: false
+
+    - name: Assert relay reverse_proxy paths are present in the Caddyfile
+      ansible.builtin.command:
+        cmd: "grep -q '/webhook/ig-comment' {{ webhook_relay_config_dir }}/Caddyfile"
+      changed_when: false

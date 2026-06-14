@@ -18,6 +18,10 @@ on:
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
+  # Manual trigger — dispatchable from any branch once this workflow file is
+  # present on the default branch (GitHub limitation). Lets us run the full
+  # lint + Molecule matrix on demand without opening a PR.
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -25,10 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -50,7 +54,7 @@ jobs:
 
       - name: Ansible Lint
         run: |
-          ansible-lint playbooks/stacks/site.yml
+          ansible-lint playbooks/stacks/site.yml playbooks/apps/webhook-relay.yml
 
       - name: Check no latest tags
         run: |
@@ -95,12 +99,21 @@ jobs:
           - uptime-config
           - vpn-dns
           - smoke-tests
+          - firefly
+          - flash-suite
+          - grocy
+          - koodia
+          - mealie
+          - metube
+          - videoref-engine
+          - zimboo
+          - webhook-relay
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.12'
           cache: 'pip'

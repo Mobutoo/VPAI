@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: dufs
+  author: VPAI
+  namespace: mobutoo
+  description: Deploy DUFS — HTTP file server (sharing/WebDAV)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

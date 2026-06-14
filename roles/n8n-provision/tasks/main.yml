@@ -302,6 +302,7 @@
     - swarm-monitor
     - project-status
     - litellm-credit-alert
+    - external-credit-sync
     - palais-standup
     - palais-insight-alert
     - launch-claude-code
@@ -367,6 +368,7 @@
     - {file: "project-status", name: "OpenClaw Project Status"}
     - {file: "plan-dispatch", name: "OpenClaw Plan Dispatch"}
     - {file: "litellm-credit-alert", name: "LiteLLM Credit Alert"}
+    - {file: "external-credit-sync", name: "External Credit Sync"}
     - {file: "palais-standup", name: "Palais Daily Standup"}
     - {file: "palais-insight-alert", name: "Palais Insight Alert"}
     - {file: "launch-claude-code", name: "Palais Launch Claude Code"}
@@ -575,6 +577,7 @@
     - {file: "project-status", name: "OpenClaw Project Status"}
     - {file: "plan-dispatch", name: "OpenClaw Plan Dispatch"}
     - {file: "litellm-credit-alert", name: "LiteLLM Credit Alert"}
+    - {file: "external-credit-sync", name: "External Credit Sync"}
     - {file: "palais-standup", name: "Palais Daily Standup"}
     - {file: "palais-insight-alert", name: "Palais Insight Alert"}
     - {file: "launch-claude-code", name: "Palais Launch Claude Code"}
@@ -639,6 +642,7 @@
     - project-status
     - plan-dispatch
     - litellm-credit-alert
+    - external-credit-sync
     - palais-standup
     - palais-insight-alert
     - launch-claude-code

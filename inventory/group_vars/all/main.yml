@@ -137,6 +137,8 @@ huggingface_token: "{{ vault_huggingface_token | default('') }}"
 byteplus_api_key: "{{ vault_byteplus_api_key | default('') }}"
 brave_search_api_key: "{{ vault_brave_search_api_key | default('') }}"
 fal_ai_api_key: "{{ vault_fal_ai_api_key | default('') }}"
+# Runpod — used by external-credit-sync workflow to read account balance
+runpod_api_key: "{{ vault_runpod_api_key | default('') }}"
 
 # OpenClaw
 openclaw_model_profile: "openai"  # OAuth via ChatGPT Plus/Pro subscription

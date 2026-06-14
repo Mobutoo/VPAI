@@ -18,6 +18,10 @@ on:
       - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
+  # Manual trigger — dispatchable from any branch once this workflow file is
+  # present on the default branch (GitHub limitation). Lets us run the full
+  # lint + Molecule matrix on demand without opening a PR.
+  workflow_dispatch:
 
 jobs:
   lint:

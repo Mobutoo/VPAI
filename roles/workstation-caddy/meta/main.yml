@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: workstation_caddy
+  author: VPAI
+  namespace: mobutoo
+  description: Configure the Caddy reverse proxy on the workstation (xcaddy build)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

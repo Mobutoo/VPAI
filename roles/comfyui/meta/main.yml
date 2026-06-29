@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: comfyui
+  author: VPAI
+  namespace: mobutoo
+  description: Deploy the ComfyUI image/video generation stack (local build)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

@@ -1,0 +1,19 @@
+---
+- name: Converge
+  hosts: all
+  vars:
+    # ============================================================
+    # Stub values for site-wide inventory variables
+    # (inventory/group_vars/all — not defined in role defaults)
+    # ============================================================
+    domain_name: molecule.example.com
+    notification_email: molecule@example.com
+    # Headscale mesh — stub the VPS Tailscale IP so the relay Caddyfile renders
+    # a syntactically valid reverse_proxy upstream (caddy validate runs at deploy).
+    vps_tailscale_ip: "127.0.0.1"
+    webhook_subdomain: hook
+    # Molecule — skip systemd / ufw / public health-check tasks (no systemd
+    # service start, no UFW, no public ACME cert in the ephemeral container).
+    common_molecule_mode: true
+  roles:
+    - role: webhook-relay

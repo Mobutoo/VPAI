@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: grapesjs
+  author: VPAI
+  namespace: mobutoo
+  description: Deploy GrapesJS web page builder
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

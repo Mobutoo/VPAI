@@ -1,0 +1,36 @@
+---
+# playbooks/apps/webhook-relay.yml — Deploy the webhook relay on the VPN host
+# Installs Caddy (apt) on Seko-VPN and relays Meta/Instagram webhooks to the VPS
+# over the Headscale mesh:
+#   Meta → hook.<domain> (Seko-VPN public IP) → Caddy → VPN mesh → VPS Caddy → n8n
+#
+# Usage:
+#   ansible-playbook playbooks/apps/webhook-relay.yml
+#   ansible-playbook playbooks/apps/webhook-relay.yml -e "target_host=vpn-server"
+
+- name: Deploy webhook relay
+  hosts: "{{ target_host | default('vpn') }}"
+  gather_facts: true
+
+  pre_tasks:
+    - name: Display deployment info
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          Webhook Relay Deployment
+          Target: {{ inventory_hostname }}
+          Domain: {{ webhook_relay_domain | default('hook.' ~ domain_name) }}
+          Date: {{ ansible_facts['date_time']['iso8601'] }}
+          ========================================
+      tags: [always]
+
+    - name: Verify Ansible version
+      ansible.builtin.assert:
+        that:
+          - ansible_version.full is version('2.16', '>=')
+        fail_msg: "Ansible 2.16+ required. Current: {{ ansible_version.full }}"
+      tags: [always]
+
+  roles:
+    - role: webhook-relay
+      tags: [webhook-relay]

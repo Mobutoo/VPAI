@@ -13,6 +13,10 @@ memory_worker_spool_dir: "{{ memory_worker_data_dir }}/spool"
 memory_worker_log_dir: "{{ memory_worker_data_dir }}/logs"
 memory_worker_venv_dir: "{{ memory_worker_install_dir }}/.venv"
 memory_worker_hf_home: "{{ memory_worker_data_dir }}/hf-cache"
+# Cache FastEmbed (sparse BM25 v3). PERSISTANT, hors /tmp (tmpfs vide au reboot ->
+# avec HF_HUB_OFFLINE=1 le worker plante "Could not load Qdrant/bm25"). Cf pre-DL ci-dessous.
+memory_worker_fastembed_cache: "{{ memory_worker_data_dir }}/fastembed-cache"
+memory_worker_sparse_model: "Qdrant/bm25"
 
 memory_worker_config_file: "{{ memory_worker_config_dir }}/config.yml"
 memory_worker_sources_file: "{{ memory_worker_config_dir }}/sources.yml"
@@ -187,6 +191,7 @@ memory_worker_exclude_dirs:
   - .next
   - .turbo
   - .venv
+  - .venv-test
   - venv
   - __pycache__
   - .mypy_cache

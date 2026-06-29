@@ -23,6 +23,7 @@
     - path: "{{ memory_worker_spool_dir }}"
     - path: "{{ memory_worker_log_dir }}"
     - path: "{{ memory_worker_hf_home }}"
+    - path: "{{ memory_worker_fastembed_cache }}"
     - path: "{{ memory_worker_audit_report_dir }}"
   become: true
 
@@ -49,6 +50,25 @@
     virtualenv_python: python3
     state: present
   become: true
+
+# Sparse BM25 model lives in /tmp by default (tmpfs, wiped on reboot). With
+# HF_HUB_OFFLINE=1 the worker then crashes "Could not load Qdrant/bm25" (ingestion
+# HS 28-29/06/2026). Pre-seed it ONCE into the persistent cache; `creates:` = idempotent.
+- name: Pre-download sparse model (BM25) into persistent FastEmbed cache
+  ansible.builtin.command:
+    cmd: >-
+      {{ memory_worker_venv_dir }}/bin/python -c
+      "from fastembed import SparseTextEmbedding; SparseTextEmbedding('{{ memory_worker_sparse_model }}')"
+  args:
+    creates: "{{ memory_worker_fastembed_cache }}/models--{{ memory_worker_sparse_model | replace('/', '--') }}"
+  environment:
+    FASTEMBED_CACHE_PATH: "{{ memory_worker_fastembed_cache }}"
+    HF_HUB_OFFLINE: "0"
+    HF_HOME: "{{ memory_worker_hf_home }}"
+    HF_TOKEN: "{{ memory_worker_huggingface_token }}"
+  become: true
+  become_user: "{{ memory_worker_user }}"
+  tags: [llamaindex-memory-worker, memory_remote]
 
 - name: Deploy memory worker environment file
   ansible.builtin.template:

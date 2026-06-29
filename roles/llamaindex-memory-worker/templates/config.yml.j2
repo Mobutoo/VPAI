@@ -78,6 +78,10 @@ filters:
 {% endfor %}
 
 payload_indexes:
+  # ref_doc_id indexé : sans index, delete/upsert par fichier = full-scan -> wait_timeout
+  # sur Qdrant Sese (purge de masse 2026-06-29 incomplète sans lui). Identifiant fichier.
+  - field_name: "ref_doc_id"
+    field_schema: "keyword"
   - field_name: "wing"
     field_schema: "keyword"
   - field_name: "room"

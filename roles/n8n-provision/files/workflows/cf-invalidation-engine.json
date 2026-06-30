@@ -12,7 +12,10 @@
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [260, 380],
+      "position": [
+        260,
+        380
+      ],
       "webhookId": "cfie0001-0000-4000-8000-000000000001"
     },
     {
@@ -23,7 +26,10 @@
       "name": "Validate and Parse",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [480, 380]
+      "position": [
+        480,
+        380
+      ]
     },
     {
       "parameters": {
@@ -33,7 +39,10 @@
       "name": "Compute Invalidation Cascade",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [700, 380]
+      "position": [
+        700,
+        380
+      ]
     },
     {
       "parameters": {
@@ -43,7 +52,10 @@
       "name": "Load Current Scenes",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [920, 380]
+      "position": [
+        920,
+        380
+      ]
     },
     {
       "parameters": {
@@ -53,7 +65,10 @@
       "name": "Invalidate Scenes",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1140, 380]
+      "position": [
+        1140,
+        380
+      ]
     },
     {
       "parameters": {
@@ -63,39 +78,96 @@
       "name": "Update Content Step",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1360, 380]
-    },
-    {
-      "parameters": {
-        "jsCode": "// Sync Kitsu: mark invalidated steps as 'retake'\nconst { content_id, modified_step, steps_invalidated, scenes_invalidated, scenes_preserved, invalidation_results } = $input.first().json;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url: 'http://localhost:5678/webhook/cf-kitsu-sync',\n    headers: {\n      'Content-Type': 'application/json',\n      'x-webhook-secret': $env.N8N_WEBHOOK_HMAC_SECRET\n    },\n    body: {\n      action: 'update_task_status',\n      content_id,\n      data: {\n        steps: steps_invalidated,\n        status: 'retake',\n        comment: `[INVALIDATED] Step ${modified_step} modified — downstream steps require rework`\n      }\n    }\n  });\n} catch (err) {\n  // Log but don't fail — invalidation already done\n  console.error('Failed to sync Kitsu:', err.message);\n}\n\nreturn [{ json: {\n  content_id,\n  modified_step,\n  steps_invalidated,\n  scenes_invalidated,\n  scenes_preserved,\n  invalidation_results\n} }];"
-      },
-      "id": "cfie-0001-0000-0000-0000-000000000007",
-      "name": "Sync Kitsu Retake",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [1580, 380]
+      "position": [
+        1360,
+        380
+      ]
     },
     {
       "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { status: 'ok', content_id: $json.content_id, modified_step: $json.modified_step, steps_invalidated: $json.steps_invalidated, scenes_invalidated: $json.scenes_invalidated, scenes_preserved: $json.scenes_preserved } }}",
-        "options": { "responseCode": 200 }
+        "options": {
+          "responseCode": 200
+        }
       },
       "id": "cfie-0001-0000-0000-0000-000000000008",
       "name": "Webhook Response",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [1800, 380]
+      "position": [
+        1800,
+        380
+      ]
     }
   ],
   "connections": {
-    "Webhook Trigger":             { "main": [[{ "node": "Validate and Parse",         "type": "main", "index": 0 }]] },
-    "Validate and Parse":          { "main": [[{ "node": "Compute Invalidation Cascade","type": "main", "index": 0 }]] },
-    "Compute Invalidation Cascade":{ "main": [[{ "node": "Load Current Scenes",        "type": "main", "index": 0 }]] },
-    "Load Current Scenes":         { "main": [[{ "node": "Invalidate Scenes",          "type": "main", "index": 0 }]] },
-    "Invalidate Scenes":           { "main": [[{ "node": "Update Content Step",        "type": "main", "index": 0 }]] },
-    "Update Content Step":         { "main": [[{ "node": "Sync Kitsu Retake",          "type": "main", "index": 0 }]] },
-    "Sync Kitsu Retake":           { "main": [[{ "node": "Webhook Response",           "type": "main", "index": 0 }]] }
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Validate and Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate and Parse": {
+      "main": [
+        [
+          {
+            "node": "Compute Invalidation Cascade",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Invalidation Cascade": {
+      "main": [
+        [
+          {
+            "node": "Load Current Scenes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Current Scenes": {
+      "main": [
+        [
+          {
+            "node": "Invalidate Scenes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invalidate Scenes": {
+      "main": [
+        [
+          {
+            "node": "Update Content Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Content Step": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
   "settings": {
     "executionOrder": "v1",
@@ -106,7 +178,14 @@
     "errorWorkflow": ""
   },
   "staticData": null,
-  "tags": [{ "name": "content-factory" }, { "name": "invalidation" }],
+  "tags": [
+    {
+      "name": "content-factory"
+    },
+    {
+      "name": "invalidation"
+    }
+  ],
   "triggerCount": 1,
   "updatedAt": "2026-03-17T00:00:00.000Z",
   "versionId": "1",

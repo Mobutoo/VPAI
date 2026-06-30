@@ -1,0 +1,7 @@
+---
+# waza-deadman — handlers
+
+- name: Reload systemd (waza-deadman)
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true

@@ -134,6 +134,8 @@
       tags: [uptime-config, phase5, monitoring]
     - role: disk-guard
       tags: [disk-guard, phase5, ops]
+    - role: waza-deadman
+      tags: [waza-deadman, deadman, phase5, monitoring]
 
     # Phase 6 — Hardening (DERNIER - après validation complète)
     - role: hardening

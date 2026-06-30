@@ -1,0 +1,38 @@
+---
+# waza-deadman — dead-man switch off-site (déployé sur Sese, surveille waza).
+# Sonde waza par tailscale (PULL) ; alerte Telegram si waza muet durablement.
+# Couvre freeze / coupure courant / perte internet de waza : si waza tombe du
+# mesh, la sonde échoue et Sese (accès internet propre) alerte le téléphone.
+# 100% interne : watcher auto-hébergé, bot Telegram monitoring déjà en vault.
+
+deadman_user: "root"
+deadman_install_dir: "/opt/waza-deadman"
+deadman_script: "{{ deadman_install_dir }}/waza-deadman.sh"
+deadman_env_file: "{{ deadman_install_dir }}/waza-deadman.env"
+deadman_state_file: "/var/lib/waza-deadman/state"
+
+deadman_service_name: "waza-deadman"
+deadman_timer_name: "waza-deadman"
+
+# Cible sondée : IP tailscale de waza (stable, assignée Headscale). default(_, true)
+# car la var vault vaut '' si non remplie → on retombe sur l'IP connue.
+deadman_target: "{{ workstation_pi_tailscale_ip | default('100.64.0.1', true) }}"
+deadman_target_name: "waza"
+
+# Sonde ICMP (tailscale forwarde l'ICMP). 3 essais avant de compter un échec.
+deadman_ping_count: 3
+deadman_ping_timeout: 4          # secondes par essai
+
+# Anti-flap : N échecs consécutifs avant la 1re alerte. Avec interval 5min,
+# threshold=2 ≈ 10min muet → ignore les reboots watchdog (récup < 5min).
+deadman_fail_threshold: 2
+deadman_reminder_sec: 21600      # rappel si toujours down (6h) — pas de spam sur 10j
+
+# Cadence du timer
+deadman_timer_on_boot_sec: "3min"
+deadman_timer_on_unit_active_sec: "5min"
+deadman_interval_min: 5          # pour le message d'alerte (≈ durée muette)
+
+# Notification Telegram (réutilise le bot monitoring existant)
+deadman_telegram_bot_token: "{{ telegram_monitoring_bot_token | default('') }}"
+deadman_telegram_chat_id: "{{ telegram_monitoring_chat_id | default('') }}"

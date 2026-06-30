@@ -1,0 +1,11 @@
+[Unit]
+Description=Lance waza-deadman périodiquement (sonde waza)
+
+[Timer]
+OnBootSec={{ deadman_timer_on_boot_sec }}
+OnUnitActiveSec={{ deadman_timer_on_unit_active_sec }}
+Unit={{ deadman_service_name }}.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

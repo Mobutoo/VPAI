@@ -322,6 +322,27 @@ Pièges : `RuntimeWatchdogSec` n'est lu qu'au démarrage du manager → handler 
 
 ---
 
+### 0.19 Dead-man switch off-site waza (savoir si waza tombe pendant une absence)
+
+Le durcissement §0.18 fait que waza s'auto-répare — mais si l'auto-heal échoue (coupure longue, freeze non récupéré), on est aveugle. Rôle `waza-deadman` déployé **sur Sese** (off-site, OVH, always-on) : sonde waza par tailscale (ICMP `100.64.0.1`) toutes les 5min via timer systemd ; alerte **Telegram** (bot monitoring déjà en vault) si waza muet ≥ `fail_threshold` runs consécutifs. Notif de rétablissement au retour.
+
+Pourquoi sur Sese et pas waza : un dead-man doit vivre **ailleurs** que ce qu'il surveille (sinon il tombe avec). Pourquoi un timer bash et pas n8n : le watcher doit être **plus simple** que le monitoré → dépend seulement de Sese + systemd, pas de n8n.
+
+```bash
+# Déploiement (scoped, depuis waza ou CI) :
+ansible-playbook playbooks/stacks/site.yml --tags deadman -e prod_ip=100.64.0.14
+# Vérif sur Sese :
+systemctl status waza-deadman.timer
+journalctl -u waza-deadman.service -n 20
+cat /var/lib/waza-deadman/state          # FAILS / ALERTED / LAST_ALERT
+# Test canal Telegram (depuis tout hôte avec creds vault) :
+curl -sf "https://api.telegram.org/bot<TOKEN>/sendMessage" -d chat_id=<CHAT> --data-urlencode text="test"
+```
+
+Réglages `roles/waza-deadman/defaults/main.yml` : `deadman_fail_threshold=2` (~10min muet avant 1re alerte → ignore les reboots watchdog qui récupèrent <5min), `deadman_reminder_sec=21600` (rappel 6h, pas de spam). État dans `/var/lib/waza-deadman/state` (reset au retour de waza). Anti-flap : N échecs **consécutifs** requis. Si l'ISP de la box tombe (pas waza), l'alerte part quand même = signal correct (« quelque chose à la maison est offline »).
+
+---
+
 ## 1. Ansible & Linting
 
 ### 1.1 Encodage et Fins de Ligne

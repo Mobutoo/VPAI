@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: waza_deadman
+  author: VPAI
+  namespace: mobutoo
+  description: Dead-man switch off-site — sonde waza par tailscale, alerte Telegram si muet (timer systemd)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

@@ -1,0 +1,13 @@
+[Unit]
+Description=waza-deadman — sonde tailscale de waza, alerte Telegram si muet
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User={{ deadman_user }}
+ExecStart={{ deadman_script }}
+Nice=19
+
+[Install]
+WantedBy=multi-user.target

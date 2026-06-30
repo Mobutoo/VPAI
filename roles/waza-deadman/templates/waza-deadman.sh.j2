@@ -1,0 +1,86 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# waza-deadman — dead-man switch off-site (tourne sur Sese, surveille waza).
+#
+# Sonde waza par tailscale (ICMP). Si waza est muet FAIL_THRESHOLD fois d'affilée
+# (≈ THRESHOLD × interval), alerte Telegram. Notif de rétablissement au retour.
+# Dépendances : ping + curl. Aucun n8n (dead-man plus simple que ce qu'il surveille).
+set -euo pipefail
+
+TARGET="{{ deadman_target }}"
+TARGET_NAME="{{ deadman_target_name }}"
+PING_COUNT="{{ deadman_ping_count }}"
+PING_TIMEOUT="{{ deadman_ping_timeout }}"
+FAIL_THRESHOLD={{ deadman_fail_threshold }}
+REMINDER_SEC={{ deadman_reminder_sec }}
+INTERVAL_MIN={{ deadman_interval_min }}
+ENV_FILE="{{ deadman_env_file }}"
+STATE_FILE="{{ deadman_state_file }}"
+
+# Secrets Telegram (fichier 0600). Absents = pas de notif (mais script continue).
+TG_BOT=""
+TG_CHAT=""
+# shellcheck disable=SC1090
+[ -r "$ENV_FILE" ] && . "$ENV_FILE"
+
+log() { echo "[waza-deadman] $*"; }
+
+notify() {
+  local msg="$1"
+  [ -n "$TG_BOT" ] && [ -n "$TG_CHAT" ] || { log "pas de creds telegram, notif ignorée"; return 0; }
+  curl -fsS --max-time 20 \
+    "https://api.telegram.org/bot${TG_BOT}/sendMessage" \
+    -d chat_id="${TG_CHAT}" \
+    -d parse_mode="HTML" \
+    --data-urlencode text="$msg" >/dev/null 2>&1 || log "notify telegram échec (non bloquant)"
+}
+
+reachable() { ping -c "$PING_COUNT" -W "$PING_TIMEOUT" "$TARGET" >/dev/null 2>&1; }
+
+now() { date +%s; }
+
+# --- État persistant (survit aux runs ; reset au retour de waza) ---
+FAILS=0
+ALERTED=0
+LAST_ALERT=0
+# shellcheck disable=SC1090
+[ -r "$STATE_FILE" ] && . "$STATE_FILE"
+
+write_state() {
+  mkdir -p "$(dirname "$STATE_FILE")"
+  cat > "$STATE_FILE" <<EOF
+FAILS=$FAILS
+ALERTED=$ALERTED
+LAST_ALERT=$LAST_ALERT
+EOF
+}
+
+if reachable; then
+  if [ "$ALERTED" = "1" ]; then
+    notify "✅ <b>${TARGET_NAME} de nouveau joignable</b> — dead-man résolu ($(date '+%F %T'))."
+    log "rétablissement notifié"
+  fi
+  FAILS=0; ALERTED=0; LAST_ALERT=0
+  write_state
+  exit 0
+fi
+
+# Injoignable : incrémenter le compteur d'échecs consécutifs.
+FAILS=$((FAILS + 1))
+down_min=$((FAILS * INTERVAL_MIN))
+log "${TARGET_NAME} injoignable — échec consécutif #${FAILS}/${FAIL_THRESHOLD} (~${down_min}min)"
+
+if [ "$ALERTED" = "0" ] && [ "$FAILS" -ge "$FAIL_THRESHOLD" ]; then
+  notify "🔴 <b>${TARGET_NAME} INJOIGNABLE</b> depuis ~${down_min}min (sonde tailscale ${TARGET}).
+Causes possibles : coupure courant, perte internet box, ou freeze non récupéré.
+Le watchdog matériel/réseau tente de récupérer seul ; si pas de ✅ d'ici quelques min, intervention requise."
+  ALERTED=1; LAST_ALERT=$(now)
+  log "ALERTE DOWN envoyée"
+elif [ "$ALERTED" = "1" ] && [ "$(( $(now) - LAST_ALERT ))" -ge "$REMINDER_SEC" ]; then
+  notify "🔴 <b>${TARGET_NAME} TOUJOURS injoignable</b> (~${down_min}min cumulés, $(date '+%F %T'))."
+  LAST_ALERT=$(now)
+  log "RAPPEL down envoyé"
+fi
+
+write_state
+exit 1

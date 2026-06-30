@@ -30,3 +30,11 @@
   ansible.builtin.systemd:
     daemon_reload: true
   become: true
+
+# Re-exec PID1 in-place pour appliquer RuntimeWatchdogSec/RebootWatchdogSec
+# (lus uniquement au démarrage du manager). daemon-reexec préserve l'état des
+# unités et la session SSH — sûr en headless. Le watchdog matériel s'arme alors.
+- name: Re-exec systemd manager (workstation)
+  ansible.builtin.systemd:
+    daemon_reexec: true
+  become: true

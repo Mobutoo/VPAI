@@ -302,6 +302,26 @@ Fix (commit 45015bb) : cap cgroup sur le worker (`MemoryMax`+`OOMScoreAdjust=100
 
 ---
 
+### 0.18 Résilience waza headless (absence prolongée — freeze / coupure courant / perte internet)
+
+Durcissement `roles/workstation-common` pour que waza redémarre/se reconnecte seul sans intervention. Déploiement scoped **depuis waza** (handlers reload + daemon-reexec only, jamais de restart networkd/tailscaled → pas de lockout) :
+
+```bash
+ansible-playbook playbooks/hosts/workstation.yml --diff --tags net_resilience,resilience
+```
+
+| Panne | Couverture | Mécanisme |
+|---|---|---|
+| **Freeze total** (PID1 gelé) | Watchdog matériel BCM2835 | `RuntimeWatchdogSec=15s` (drop-in `system.conf.d/10-hw-watchdog.conf`) → le SoC reboote si systemd ne "pet" plus `/dev/watchdog`. Vérif : `wdctl`, `systemctl show -p RuntimeWatchdogUSec`. |
+| **Coupure courant** → reboot | EEPROM `BOOT_ORDER=0xf461`, pas de `POWER_OFF_ON_HALT` | Le Pi boote dès retour secteur (défaut RPi5). |
+| **Coupure courant** → FS sain | `fsck.repair=yes` dans `cmdline.txt` | ext4 sale réparé automatiquement au boot au lieu de prompt manuel bloquant. |
+| **Perte internet** (DHCP/route) | `net-watchdog.timer` (2min) | `networkctl reconfigure eth0` + restart tailscaled. Reboot **guardé** en dernier recours : `fail_threshold=15` (~30min) + `reboot_cooldown=3600` (anti boot-loop). Compteur `/run/net-watchdog/failcount` (volatil), cooldown `/var/lib/net-watchdog/last-reboot-epoch` (persistant). |
+| **OOM** affame réseau | `OOMScoreAdjust=-900` networkd/tailscaled + worker capé 4G | cf §0.17. |
+
+Pièges : `RuntimeWatchdogSec` n'est lu qu'au démarrage du manager → handler `daemon-reexec` (in-place, préserve la session SSH) pour l'armer à chaud. 15s = plafond matériel BCM2835 (~15,3s) ; si le journal montre un clamp, descendre à 14s. `systemd-networkd` apparaît `enabled-runtime` (normal sous netplan : le générateur recrée l'enablement à chaque boot — reboot→DHCP prouvé §0.17, ne pas forcer `enable`). tailscaled `KeyExpiry=None` → pas d'expiry clé sur l'absence.
+
+---
+
 ## 1. Ansible & Linting
 
 ### 1.1 Encodage et Fins de Ligne

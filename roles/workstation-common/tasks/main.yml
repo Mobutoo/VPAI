@@ -340,3 +340,39 @@
     - workstation_net_watchdog_enabled | bool
     - not ansible_check_mode      # --check n'écrit pas l'unit -> enable échouerait (artefact)
   tags: [workstation-common, net_resilience]
+
+# --- P4: Watchdog matériel (freeze / kernel hang headless) ---
+# Couvre le cas qu'aucun watchdog logiciel ne peut traiter: PID1 gelé.
+- name: P4 — Create systemd manager drop-in dir
+  ansible.builtin.file:
+    path: /etc/systemd/system.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: workstation_hw_watchdog_enabled | bool
+  tags: [workstation-common, resilience, hw_watchdog]
+
+- name: P4 — Arm hardware watchdog (RuntimeWatchdogSec/RebootWatchdogSec)
+  ansible.builtin.template:
+    src: hw-watchdog.conf.j2
+    dest: /etc/systemd/system.conf.d/10-hw-watchdog.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: workstation_hw_watchdog_enabled | bool
+  notify: Re-exec systemd manager (workstation)
+  tags: [workstation-common, resilience, hw_watchdog]
+
+# --- P5: Intégrité FS après coupure de courant brutale ---
+- name: P5 — Enable fsck auto-repair on boot (dirty power-off resilience)
+  ansible.builtin.lineinfile:
+    path: "{{ workstation_cmdline_path }}"
+    backrefs: true
+    regexp: '^(?!.*fsck\.repair=)(.+)$'   # match seulement si fsck.repair absent (idempotent)
+    line: '\1 fsck.repair=yes'
+  become: true
+  when: workstation_fsck_repair_enabled | bool
+  tags: [workstation-common, resilience, fsck]

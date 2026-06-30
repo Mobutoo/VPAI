@@ -101,4 +101,22 @@ workstation_net_watchdog_ping_timeout: 3   # secondes par ping
 workstation_net_watchdog_fallback_target: "1.1.1.1"   # 2e cible pour confirmer la panne
 workstation_net_watchdog_interval: "2min"  # OnUnitActiveSec du timer
 workstation_net_watchdog_bin: "/opt/workstation/bin/net-watchdog.sh"
-workstation_net_watchdog_reboot_on_fail: false   # escalade reboot si recovery échoue (OFF par défaut)
+# Escalade reboot si la recovery réseau échoue durablement (headless 10j).
+# Guardé: reboot SEULEMENT après N échecs consécutifs + cooldown anti-boucle.
+workstation_net_watchdog_reboot_on_fail: true
+workstation_net_watchdog_fail_threshold: 15        # échecs consécutifs avant reboot (15 × interval 2min ≈ 30min)
+workstation_net_watchdog_reboot_cooldown: 3600     # secondes mini entre 2 reboots watchdog (anti boot-loop)
+
+# --- Watchdog matériel (freeze / kernel hang headless) ---
+# RPi5 expose /dev/watchdog (RP1). systemd le "pet" tant qu'il est vivant ;
+# si PID1 gèle plus de RuntimeWatchdogSec, le SoC reboote tout seul.
+# Couvre le cas "freeze total" qu'aucun watchdog logiciel ne peut traiter.
+workstation_hw_watchdog_enabled: true
+workstation_hw_watchdog_runtime_sec: "15s"         # délai sans "pet" avant reboot matériel
+workstation_hw_watchdog_reboot_sec: "10min"        # délai max d'un shutdown/reboot avant kill matériel
+
+# --- Intégrité FS après coupure de courant brutale ---
+# fsck.repair=yes : répare automatiquement l'ext4 au boot si le FS est sale
+# (coupure secteur) au lieu de tomber en prompt manuel -> évite un Pi bloqué.
+workstation_fsck_repair_enabled: true
+workstation_cmdline_path: "/boot/firmware/cmdline.txt"

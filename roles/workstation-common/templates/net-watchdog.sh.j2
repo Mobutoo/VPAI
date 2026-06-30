@@ -6,6 +6,9 @@
 # par systemd-networkd -> plus de default route -> tailscale ENETUNREACH -> SSH mort.
 # Recovery: networkctl reconfigure <iface> (relance DHCP) puis restart tailscaled.
 # Idempotent: n'agit QUE si la passerelle est réellement injoignable.
+#
+# Dernier recours (headless): si la recovery échoue FAIL_THRESHOLD fois d'affilée
+# (≈30min), reboot guardé par un cooldown (REBOOT_COOLDOWN) anti boot-loop.
 set -euo pipefail
 
 IFACE="{{ workstation_net_watchdog_iface }}"
@@ -13,9 +16,24 @@ PING_COUNT="{{ workstation_net_watchdog_ping_count }}"
 PING_TIMEOUT="{{ workstation_net_watchdog_ping_timeout }}"
 FALLBACK="{{ workstation_net_watchdog_fallback_target }}"
 REBOOT_ON_FAIL="{{ 'true' if workstation_net_watchdog_reboot_on_fail | bool else 'false' }}"
+FAIL_THRESHOLD="{{ workstation_net_watchdog_fail_threshold }}"
+REBOOT_COOLDOWN="{{ workstation_net_watchdog_reboot_cooldown }}"
 TAG="net-watchdog"
 
+# Compteur d'échecs: /run = tmpfs, remis à zéro au boot (pas de reboot en rafale
+# juste après un reboot watchdog). Cooldown: /var/lib = persistant entre reboots.
+STATE_DIR="/run/net-watchdog"
+FAILCOUNT_FILE="$STATE_DIR/failcount"
+PERSIST_DIR="/var/lib/net-watchdog"
+LAST_REBOOT_FILE="$PERSIST_DIR/last-reboot-epoch"
+
 log() { logger -t "$TAG" -- "$*"; echo "$TAG: $*"; }
+
+# Connectivité saine -> on remet le compteur d'échecs à zéro et on sort.
+healthy_exit() {
+  rm -f "$FAILCOUNT_FILE" 2>/dev/null || true
+  exit 0
+}
 
 # Passerelle par défaut courante (vide si la route a disparu = déjà cassé).
 gateway() { ip -4 route show default 2>/dev/null | awk '/default/ {print $3; exit}'; }
@@ -29,13 +47,13 @@ GW="$(gateway || true)"
 
 # Cas sain le plus courant: gateway présente ET joignable -> rien à faire.
 if [[ -n "$GW" ]] && reachable "$GW"; then
-  exit 0
+  healthy_exit
 fi
 
 # Double-check: confirmer la panne via une 2e cible avant d'agir (anti-flap).
 if [[ -n "$GW" ]] && reachable "$FALLBACK"; then
   # Gateway ne répond pas au ping (ICMP filtré) mais Internet OK -> pas une vraie panne.
-  exit 0
+  healthy_exit
 fi
 
 log "PANNE détectée: gateway='${GW:-<aucune>}' injoignable + fallback ${FALLBACK} KO -> recovery"
@@ -51,7 +69,7 @@ if [[ -n "$GW" ]] && reachable "$GW"; then
   log "route restaurée (gw=${GW}) -> restart tailscaled pour rebind"
   systemctl restart tailscaled 2>&1 | logger -t "$TAG" || log "WARN: restart tailscaled échoué"
   log "recovery RÉUSSIE"
-  exit 0
+  healthy_exit
 fi
 
 # 2) Échec persistant: dernier recours = redémarrer networkd puis tailscaled.
@@ -62,12 +80,26 @@ GW="$(gateway || true)"
 if [[ -n "$GW" ]] && reachable "$GW"; then
   systemctl restart tailscaled 2>&1 | logger -t "$TAG" || true
   log "recovery RÉUSSIE après restart networkd (gw=${GW})"
-  exit 0
+  healthy_exit
 fi
 
-log "ÉCHEC recovery: toujours sans connectivité (gw='${GW:-<aucune>}')"
-if [[ "$REBOOT_ON_FAIL" == "true" ]]; then
-  log "REBOOT_ON_FAIL=true -> systemctl reboot"
-  systemctl reboot
+# 3) Recovery KO: incrémenter le compteur d'échecs consécutifs.
+mkdir -p "$STATE_DIR"
+count=$(( $(cat "$FAILCOUNT_FILE" 2>/dev/null || echo 0) + 1 ))
+echo "$count" > "$FAILCOUNT_FILE"
+log "ÉCHEC recovery #${count}/${FAIL_THRESHOLD} (gw='${GW:-<aucune>}')"
+
+# 4) Escalade reboot, uniquement si seuil atteint ET hors cooldown (anti boot-loop).
+if [[ "$REBOOT_ON_FAIL" == "true" && "$count" -ge "$FAIL_THRESHOLD" ]]; then
+  now="$(date +%s)"
+  last="$(cat "$LAST_REBOOT_FILE" 2>/dev/null || echo 0)"
+  if (( now - last >= REBOOT_COOLDOWN )); then
+    mkdir -p "$PERSIST_DIR"
+    echo "$now" > "$LAST_REBOOT_FILE"
+    log "seuil ${FAIL_THRESHOLD} atteint + cooldown OK -> systemctl reboot (dernier recours)"
+    systemctl reboot
+  else
+    log "seuil atteint mais cooldown actif ($(( REBOOT_COOLDOWN - (now - last) ))s restants) -> pas de reboot"
+  fi
 fi
 exit 1

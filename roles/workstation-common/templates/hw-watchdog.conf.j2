@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# Watchdog matériel RPi5 — reboot auto si PID1 (systemd) gèle (freeze headless).
+# RuntimeWatchdogSec: délai max sans "pet" de /dev/watchdog avant reset SoC.
+# RebootWatchdogSec : si un reboot/shutdown se bloque, le matériel force le reset.
+[Manager]
+RuntimeWatchdogSec={{ workstation_hw_watchdog_runtime_sec }}
+RebootWatchdogSec={{ workstation_hw_watchdog_reboot_sec }}

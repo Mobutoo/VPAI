@@ -3,7 +3,7 @@ galaxy_info:
   role_name: content_factory
   author: VPAI
   namespace: mobutoo
-  description: Deploy Content Factory v2 (M0) stack on Hetzner app-prod (build-on-host)
+  description: Deploy Content Factory v2 (M0) on Sese-AI, reusing prod Postgres + Caddy + networks
   license: MIT
   min_ansible_version: "2.16"
   platforms:

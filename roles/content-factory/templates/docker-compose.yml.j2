@@ -1,60 +1,33 @@
 # {{ ansible_managed }}
-# Content Factory v2 (M0) — Docker Compose, build-on-host
-# Hetzner app-prod (CX22, 2 vCPU / 4 GB). Frugal: 1 Postgres for 3 DBs.
+# Content Factory v2 (M0) — variante Sese-AI (FRUGAL).
+# RÉUTILISE l'infra prod : Postgres `javisi_postgresql` (PG18.4) + réseaux externes
+# `javisi_backend`/`javisi_frontend`. Routing via `javisi_caddy` (vhost hors de ce compose).
+# 3 services : Temporal (auto-setup), API (FastAPI), Conductor (worker Temporal).
 
 services:
-  cf-postgres:
-    image: {{ cf_postgres_image }}
-    container_name: cf-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: {{ cf_db_name }}
-      POSTGRES_USER: {{ cf_db_user }}
-      POSTGRES_PASSWORD: {{ postgresql_password }}
-    volumes:
-      # PG18 data dir = /var/lib/postgresql (NOT /var/lib/postgresql/data like PG17)
-      - {{ cf_data_dir }}/postgres:/var/lib/postgresql
-      # Domain schema applied at FIRST init only, against POSTGRES_DB (content_factory)
-      - {{ cf_src_dir }}/packages/domain/schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
-    networks:
-      - cf_backend
-    mem_limit: {{ cf_pg_mem_limit }}
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U {{ cf_db_user }} -d {{ cf_db_name }}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   cf-temporal:
     image: {{ cf_temporal_image }}
     container_name: cf-temporal
     restart: unless-stopped
     environment:
-      # auto-setup creates temporal + temporal_visibility DBs and the default namespace.
-      DB: postgres12                       # driver plugin name (valid for PG12..18), not a version
-      POSTGRES_SEEDS: cf-postgres
-      POSTGRES_USER: {{ cf_db_user }}
+      # auto-setup crée temporal + temporal_visibility + le namespace, DANS javisi_postgresql.
+      DB: postgres12                       # nom du plugin driver (valide PG12..18), pas une version
+      DB_PORT: "5432"                       # OBLIGATOIRE : wait_for_postgres fait `nc -z $SEEDS $DB_PORT` ; vide = boucle infinie
+      POSTGRES_SEEDS: {{ cf_pg_host }}
+      POSTGRES_USER: {{ cf_pg_user }}
       POSTGRES_PWD: {{ postgresql_password }}
       DBNAME: {{ cf_temporal_db_name }}
       VISIBILITY_DBNAME: {{ cf_temporal_visibility_db_name }}
       DEFAULT_NAMESPACE: {{ cf_temporal_namespace }}
       ENABLE_ES: "false"
     networks:
-      - cf_backend
+      - {{ cf_backend_network }}           # accès javisi_postgresql + inter-services
     mem_limit: {{ cf_temporal_mem_limit }}
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
-    depends_on:
-      cf-postgres:
-        condition: service_healthy
 
   cf-api:
     build:
@@ -65,17 +38,14 @@ services:
     env_file:
       - {{ cf_config_dir }}/api.env
     networks:
-      - cf_backend
-      - app_frontend
+      - {{ cf_backend_network }}           # joindre javisi_postgresql
+      - {{ cf_frontend_network }}          # être routé par javisi_caddy
     mem_limit: {{ cf_api_mem_limit }}
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
-    depends_on:
-      cf-postgres:
-        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")'"]
       interval: 15s
@@ -85,7 +55,7 @@ services:
 
   cf-conductor:
     build:
-      # Build context = services/ (conductor imports sibling plane-adapter via sys.path)
+      # Contexte = services/ (conductor importe le frère plane-adapter via sys.path)
       context: {{ cf_src_dir }}/services
       dockerfile: conductor/Dockerfile
     container_name: cf-conductor
@@ -93,7 +63,7 @@ services:
     env_file:
       - {{ cf_config_dir }}/conductor.env
     networks:
-      - cf_backend
+      - {{ cf_backend_network }}           # joindre cf-temporal + cf-api (+ egress Plane)
     mem_limit: {{ cf_conductor_mem_limit }}
     logging:
       driver: json-file
@@ -101,46 +71,15 @@ services:
         max-size: "10m"
         max-file: "3"
     depends_on:
-      # auto-setup ships no healthcheck -> service_started (worker retries via restart policy)
+      # auto-setup ne fournit pas de healthcheck -> service_started (retry via restart policy)
       cf-temporal:
         condition: service_started
       cf-api:
         condition: service_healthy
 
-  cf-caddy:
-    image: {{ cf_caddy_image }}
-    container_name: cf-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - {{ cf_config_dir }}/Caddyfile:/etc/caddy/Caddyfile:ro
-      - {{ cf_data_dir }}/caddy_data:/data
-      - {{ cf_data_dir }}/caddy_config:/config
-    networks:
-      - cf_backend
-      - app_frontend
-    mem_limit: {{ cf_caddy_mem_limit }}
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    depends_on:
-      cf-api:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 443"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-
 networks:
-  # Internal backend (NOT internal:true — conductor needs egress to Plane via httpx).
-  cf_backend:
-    driver: bridge
-  # Shared frontend created by app-scaffold.
-  app_frontend:
+  # Réseaux prod pré-existants — jamais créés par ce compose.
+  {{ cf_backend_network }}:
+    external: true
+  {{ cf_frontend_network }}:
     external: true

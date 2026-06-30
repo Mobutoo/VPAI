@@ -1,65 +1,53 @@
 ---
-# content-factory — defaults
-# Deploys Content Factory v2 (M0) on Hetzner app-prod (CX22, 2 vCPU / 4 GB).
-# Build-on-host: clone private repo, build API + Conductor images locally,
-# run a frugal Docker Compose stack (single Postgres, Temporal, API, Conductor, Caddy).
-# Calqué sur le rôle story-engine.
+# content-factory — defaults (variante Sese-AI, mode FRUGAL)
+# Co-localise Content Factory v2 (M0) sur Sese-AI (OVH VPS prod, déjà chargé).
+# RÉUTILISE l'infra existante : Postgres prod `javisi_postgresql`, réseaux docker
+# `javisi_backend`/`javisi_frontend`, et `javisi_caddy` (vhost ajouté hors de ce rôle).
+# 3 services seulement : cf-temporal, cf-api, cf-conductor.
+# PAS de Postgres dédié, PAS de Caddy bundlé. Source = sync du repo local (pas de remote git).
 
-# --- Directories ---
+# --- Directories (sur Sese) ---
 cf_base_dir: "/opt/content-factory"
-cf_config_dir: "{{ cf_base_dir }}/configs"
-cf_data_dir: "{{ cf_base_dir }}/data"
 cf_src_dir: "{{ cf_base_dir }}/src"
+cf_config_dir: "{{ cf_base_dir }}/configs"
 
-# --- Git source (clone on server, build images locally) ---
-# Private repo: reuse app-scaffold GHCR token for HTTPS clone auth.
-cf_repo_url: "https://{{ cf_ghcr_user }}:{{ cf_ghcr_token }}@github.com/Mobutoo/content-factory.git"
-cf_repo_branch: "main"
-cf_ghcr_user: "Mobutoo"
-cf_ghcr_token: "{{ ghcr_pull_token | default('') }}"
+# --- Source locale (rsync vers Sese — le repo n'a PAS de remote GitHub) ---
+cf_local_repo: "/home/mobuone/work/saas/content-factory"
 
-# --- Domain (public A record cf.<domain> -> app-prod public IP required for HTTP-01 TLS) ---
-cf_domain: "cf.{{ domain_name }}"
+# --- Postgres prod réutilisé (javisi_postgresql, PG18.4 sur réseau javisi_backend) ---
+# Superuser confirmé = postgres, authentifié par le mot de passe PARTAGÉ (CLAUDE.md).
+cf_pg_container: "javisi_postgresql"
+cf_pg_host: "javisi_postgresql"
+cf_pg_user: "postgres"
+cf_db_name: "content_factory"               # base domaine (schema.sql appliqué 1re init)
+cf_temporal_db_name: "temporal"             # créée par auto-setup
+cf_temporal_visibility_db_name: "temporal_visibility"  # créée par auto-setup
 
-# --- Images ---
-# Single Postgres (PG18) shared by 3 logical DBs. Caddy = official image (HTTP-01 auto-TLS).
-cf_postgres_image: "{{ postgresql_image }}"
-cf_temporal_image: "{{ temporal_auto_setup_image }}"
-cf_caddy_image: "{{ caddy_image }}"
+# --- Réseaux docker EXTERNES pré-existants (déclarés external dans le compose) ---
+cf_backend_network: "javisi_backend"        # 172.20.2.0/24 — joint javisi_postgresql + inter-services
+cf_frontend_network: "javisi_frontend"      # 172.20.1.0/24 — joint javisi_caddy (routing)
 
-# --- PostgreSQL (ONE instance, 3 databases) ---
-# Shared password rule (CLAUDE.md): NEVER per-service variants -> always postgresql_password.
-cf_db_name: "content_factory"          # domain DB (schema.sql applied at first init)
-cf_db_user: "content_factory"          # becomes superuser of the PG instance -> can create temporal DBs
-cf_temporal_db_name: "temporal"
-cf_temporal_visibility_db_name: "temporal_visibility"
+# --- Images (déjà dans versions.yml) ---
+cf_temporal_image: "{{ temporal_auto_setup_image }}"   # temporalio/auto-setup:1.29.7
 
 # --- Temporal ---
 cf_temporal_host: "cf-temporal:7233"
-cf_temporal_namespace: "content-factory"   # created via auto-setup DEFAULT_NAMESPACE
+cf_temporal_namespace: "content-factory"    # créé via auto-setup DEFAULT_NAMESPACE
 cf_task_queue: "cf-conductor"
 
 # --- API ---
-cf_api_internal_base_url: "http://cf-api:8000"   # used by conductor activities (CF_API_BASE_URL)
+cf_api_internal_base_url: "http://cf-api:8000"   # utilisé par le conductor (CF_API_BASE_URL)
 
-# --- Plane adapter (write-only projection; see services/plane-adapter/README.md) ---
+# --- Domaine (vhost ajouté au Caddyfile prod par l'orchestrateur, pas par ce rôle) ---
+cf_domain: "cf.{{ domain_name }}"
+
+# --- Plane adapter (projection write-only ; cf services/plane-adapter/README.md) ---
 cf_plane_base_url: "{{ vault_plane_base_url | default('https://work.' + domain_name) }}"
 cf_plane_api_token: "{{ vault_plane_admin_api_token | default('') }}"
-cf_plane_project_id: "{{ vault_cf_plane_project_id | default('') }}"
+cf_plane_project_id: "{{ vault_cf_plane_project_id | default('e0cb95f0-0ea5-41b8-a3e3-aec45e8cc37e') }}"
 cf_plane_workspace_slug: "{{ vault_plane_workspace_slug | default('ewutelo') }}"
 
-# --- Caddy VPN ACL (app-prod frontend subnet = 172.21.1.0/24, NOT the 172.20 caddy-role default) ---
-cf_caddy_vpn_cidr: "{{ vpn_network_cidr }}"          # 100.64.0.0/10 (Tailscale)
-cf_caddy_frontend_cidr: "172.21.1.0/24"              # app_scaffold_frontend_subnet (HTTP/3 QUIC DNAT)
-cf_caddy_acme_email: "{{ notification_email | default('') }}"
-
-# --- Docker networks ---
-cf_frontend_network: "app_frontend"   # external, created by app-scaffold
-cf_backend_network: "cf_backend"      # created by this compose (NOT internal: conductor needs Plane egress)
-
-# --- Resource limits (CX22 4 GB; total ~2.5 GB, ~1.5 GB headroom for OS) ---
-cf_pg_mem_limit: "1g"
+# --- Resource limits (Sese 12 GB déjà chargé ; total ajouté ~1.4 GB) ---
 cf_temporal_mem_limit: "512m"
 cf_api_mem_limit: "512m"
 cf_conductor_mem_limit: "384m"
-cf_caddy_mem_limit: "128m"

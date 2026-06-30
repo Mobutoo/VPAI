@@ -1,35 +1,147 @@
 ---
-# content-factory — tasks
-# Deploys Content Factory v2 (M0) on Hetzner app-prod. Build-on-host:
-# clone private repo -> deploy env/compose/Caddyfile -> build & run via compose.
+# content-factory — tasks (variante Sese-AI, mode FRUGAL)
+# Co-localise Content Factory v2 (M0) sur Sese-AI en réutilisant l'infra prod :
+#   - Postgres `javisi_postgresql` (PG18.4) au lieu d'un PG dédié
+#   - réseaux externes `javisi_backend`/`javisi_frontend`
+#   - routing via `javisi_caddy` (vhost ajouté hors de ce rôle)
+# Source = sync du repo LOCAL (pas de remote git) -> build images -> compose up.
 
-- name: Create base directories
+- name: Create base directory (root)
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ cf_base_dir }}"
     state: directory
     owner: root
     group: root
     mode: "0755"
   become: true
-  loop:
-    - "{{ cf_base_dir }}"
-    - "{{ cf_config_dir }}"
-    - "{{ cf_data_dir }}"
-    - "{{ cf_data_dir }}/postgres"
-    - "{{ cf_data_dir }}/caddy_data"
-    - "{{ cf_data_dir }}/caddy_config"
   tags: [content-factory, phase3]
 
-- name: Clone Content Factory repository
-  ansible.builtin.git:
-    repo: "{{ cf_repo_url }}"
-    dest: "{{ cf_src_dir }}"
-    version: "{{ cf_repo_branch }}"
-    force: true
+- name: Create src/configs directories owned by deploy user
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
   become: true
-  register: _cf_git
+  loop:
+    - "{{ cf_src_dir }}"      # rsync écrit ici sans become (propriété prod_user)
+    - "{{ cf_config_dir }}"
+  tags: [content-factory, phase3]
+
+- name: Sync local Content Factory repo to Sese
+  ansible.posix.synchronize:
+    src: "{{ cf_local_repo }}/"
+    dest: "{{ cf_src_dir }}/"
+    dest_port: "{{ prod_ssh_port | int }}"  # TROUBLESHOOTING 14.2 : ansible_port=template Jinja → dest_port str
+    delete: true
+    recursive: true
+    rsync_opts:
+      - "--exclude=.git"
+      - "--exclude=**/.venv"
+      - "--exclude=**/__pycache__"
+      - "--exclude=**/*.pyc"
+      - "--exclude=**/.pytest_cache"
   notify: Recreate content-factory stack
   tags: [content-factory, phase3]
+
+# --- Provisioning DB dans le Postgres prod javisi_postgresql (idempotent) ---
+# Idempotence schema.sql : son CREATE TYPE ... AS ENUM n'accepte PAS IF NOT EXISTS et un
+# rejeu échouerait. On garde donc schema.sql INTACT (= source de vérité du domaine) et on
+# applique en TOUT-OU-RIEN sous garde sentinelle :
+#   1. table `brand` absente -> on applique le schéma dans une SEULE transaction
+#      (psql --single-transaction -v ON_ERROR_STOP=1) -> si une instruction échoue, ROLLBACK
+#      complet, donc `to_regclass('public.brand')` reste NULL et le rejeu retentera proprement
+#      (pas d'état partiel "present-but-incomplete").
+#   2. table `brand` présente -> schéma déjà appliqué -> on ne touche à rien.
+# Le mot de passe transite par `environment:` (PGPASSWORD), jamais interpolé dans la commande,
+# + no_log:true sur les tâches porteuses du secret.
+
+- name: Check content_factory database presence
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - PGPASSWORD          # forwarde la valeur depuis environment: (jamais en argv → pas de fuite ps)
+      - "{{ cf_pg_container }}"
+      - psql
+      - -U
+      - "{{ cf_pg_user }}"
+      - -tAc
+      - "SELECT 1 FROM pg_database WHERE datname = '{{ cf_db_name }}'"
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  register: _cf_db_present
+  changed_when: false
+  no_log: true
+  tags: [content-factory, phase3]
+
+- name: Create content_factory database
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - PGPASSWORD          # forwarde la valeur depuis environment: (jamais en argv → pas de fuite ps)
+      - "{{ cf_pg_container }}"
+      - psql
+      - -U
+      - "{{ cf_pg_user }}"
+      - -c
+      - "CREATE DATABASE {{ cf_db_name }}"
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  when: _cf_db_present.stdout | trim != "1"
+  register: _cf_db_created
+  changed_when: _cf_db_created.rc == 0
+  no_log: true
+  tags: [content-factory, phase3]
+
+- name: Check domain schema sentinel (public.brand)
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - PGPASSWORD          # forwarde la valeur depuis environment: (jamais en argv → pas de fuite ps)
+      - "{{ cf_pg_container }}"
+      - psql
+      - -U
+      - "{{ cf_pg_user }}"
+      - -d
+      - "{{ cf_db_name }}"
+      - -tAc
+      - "SELECT to_regclass('public.brand')"
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  register: _cf_schema_sentinel
+  changed_when: false
+  no_log: true
+  tags: [content-factory, phase3]
+
+- name: Apply domain schema (first init only, single transaction)
+  ansible.builtin.shell:
+    cmd: >-
+      set -euo pipefail;
+      docker exec -i -e PGPASSWORD {{ cf_pg_container }}
+      psql -U {{ cf_pg_user }} -d {{ cf_db_name }}
+      --single-transaction -v ON_ERROR_STOP=1 -f -
+      < '{{ cf_src_dir }}/packages/domain/schema.sql'
+    executable: /bin/bash
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  when: _cf_schema_sentinel.stdout | trim == ""
+  register: _cf_schema_applied
+  changed_when: _cf_schema_applied.rc == 0
+  no_log: true
+  tags: [content-factory, phase3]
+
+# --- Config + déploiement ---
 
 - name: Deploy API environment file
   ansible.builtin.template:
@@ -53,31 +165,20 @@
   notify: Recreate content-factory stack
   tags: [content-factory, phase3]
 
-- name: Deploy Caddyfile
-  ansible.builtin.template:
-    src: Caddyfile.j2
-    dest: "{{ cf_config_dir }}/Caddyfile"
-    owner: root
-    group: root
-    mode: "0644"
-  become: true
-  notify: Recreate content-factory stack
-  tags: [content-factory, phase3]
-
 - name: Deploy docker-compose file
   ansible.builtin.template:
     src: docker-compose.yml.j2
-    dest: "{{ cf_base_dir }}/docker-compose.yml"
-    owner: root
-    group: root
-    mode: "0644"
+    dest: "{{ cf_config_dir }}/docker-compose.yml"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"  # contient POSTGRES_PWD inline → jamais world-readable
   become: true
   notify: Recreate content-factory stack
   tags: [content-factory, phase3]
 
 - name: Build and start Content Factory stack
   community.docker.docker_compose_v2:
-    project_src: "{{ cf_base_dir }}"
+    project_src: "{{ cf_config_dir }}"
     build: always
     state: present
   become: true

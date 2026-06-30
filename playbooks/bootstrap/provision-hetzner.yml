@@ -16,8 +16,16 @@
   connection: local
   gather_facts: false
 
+  vars_files:
+    - "{{ playbook_dir }}/../../inventory/group_vars/all/secrets.yml"
+
   vars:
-    hetzner_api_token: "{{ vault_hetzner_api_token }}"
+    # vault_hetzner_cloud_token contient 2 tokens séparés par une virgule — on prend le 1er.
+    # Fallback sur l'ancien nom vault_hetzner_api_token si présent.
+    hetzner_api_token: >-
+      {{ (vault_hetzner_cloud_token | trim).split(',') | first
+         if vault_hetzner_cloud_token is defined
+         else vault_hetzner_api_token }}
     server_name: "{{ app_prod_hostname | default('app-prod-01') }}"
     server_type: "{{ app_prod_server_type | default('cx22') }}"
     server_location: "{{ app_prod_location | default('fsn1') }}"

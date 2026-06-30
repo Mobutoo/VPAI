@@ -102,6 +102,8 @@
       tags: [typebot, phase3, apps]
     - role: trek
       tags: [trek, phase3, apps]
+    - role: content-factory
+      tags: [content-factory, phase3, apps]
 
     # Phase 4 — Observabilité
     - role: monitoring

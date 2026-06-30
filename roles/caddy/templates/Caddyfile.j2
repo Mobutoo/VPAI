@@ -263,6 +263,20 @@ BOOTSTRAP 200
     import security_headers
 }
 
+# === Content Factory (M0) — orchestration API (cf-api) ===
+# Co-localisé Sese (mode frugal). API expose ses routes à la racine (/health, /productions/*,
+# /compat/*) → catch-all reverse_proxy. cf-api joignable via javisi_frontend.
+{% if content_factory_enabled | default(false) | bool %}
+{{ caddy_cf_domain }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy cf-api:8000
+
+    import security_headers
+}
+{% endif %}
+
 # === Flash Suite (unified dashboard) — suite.<domain> ===
 # Architecture: Shell (Next.js) = dashboard + auth. Sub-apps served directly at their paths.
 # Ase (Django/Vite) assets are at /assets/ (no /flow/ prefix — Vite base path not set at build time).

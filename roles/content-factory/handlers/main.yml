@@ -1,0 +1,12 @@
+---
+# content-factory — handlers
+
+- name: Recreate content-factory stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ cf_base_dir }}"
+    build: always
+    state: present
+    recreate: always
+  become: true
+  when:
+    - not ansible_check_mode

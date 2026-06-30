@@ -1,0 +1,86 @@
+---
+# content-factory — tasks
+# Deploys Content Factory v2 (M0) on Hetzner app-prod. Build-on-host:
+# clone private repo -> deploy env/compose/Caddyfile -> build & run via compose.
+
+- name: Create base directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  loop:
+    - "{{ cf_base_dir }}"
+    - "{{ cf_config_dir }}"
+    - "{{ cf_data_dir }}"
+    - "{{ cf_data_dir }}/postgres"
+    - "{{ cf_data_dir }}/caddy_data"
+    - "{{ cf_data_dir }}/caddy_config"
+  tags: [content-factory, phase3]
+
+- name: Clone Content Factory repository
+  ansible.builtin.git:
+    repo: "{{ cf_repo_url }}"
+    dest: "{{ cf_src_dir }}"
+    version: "{{ cf_repo_branch }}"
+    force: true
+  become: true
+  register: _cf_git
+  notify: Recreate content-factory stack
+  tags: [content-factory, phase3]
+
+- name: Deploy API environment file
+  ansible.builtin.template:
+    src: api.env.j2
+    dest: "{{ cf_config_dir }}/api.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Recreate content-factory stack
+  tags: [content-factory, phase3]
+
+- name: Deploy conductor environment file
+  ansible.builtin.template:
+    src: conductor.env.j2
+    dest: "{{ cf_config_dir }}/conductor.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Recreate content-factory stack
+  tags: [content-factory, phase3]
+
+- name: Deploy Caddyfile
+  ansible.builtin.template:
+    src: Caddyfile.j2
+    dest: "{{ cf_config_dir }}/Caddyfile"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Recreate content-factory stack
+  tags: [content-factory, phase3]
+
+- name: Deploy docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ cf_base_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Recreate content-factory stack
+  tags: [content-factory, phase3]
+
+- name: Build and start Content Factory stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ cf_base_dir }}"
+    build: always
+    state: present
+  become: true
+  changed_when: false
+  register: _cf_compose
+  tags: [content-factory, phase3]

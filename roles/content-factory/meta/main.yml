@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: content_factory
+  author: VPAI
+  namespace: mobutoo
+  description: Deploy Content Factory v2 (M0) stack on Hetzner app-prod (build-on-host)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

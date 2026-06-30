@@ -1,0 +1,38 @@
+# {{ ansible_managed }}
+# Content Factory — Caddy reverse proxy (VPN-only, bundled — app-scaffold ships no shared Caddy)
+# TLS: automatic HTTP-01 (official caddy image). Requires public A record cf.<domain> -> app-prod public IP.
+
+{
+    admin localhost:2019
+{% if cf_caddy_acme_email %}
+    email {{ cf_caddy_acme_email }}
+{% endif %}
+    servers {
+        protocols h1 h2 h3
+        # Required so client_ip reflects the real source behind Docker bridge DNAT.
+        trusted_proxies static private_ranges
+    }
+}
+
+# VPN ACL snippet — BOTH CIDRs mandatory:
+#   - {{ cf_caddy_vpn_cidr }} : Tailscale direct IPs (TCP/HTTP2)
+#   - {{ cf_caddy_frontend_cidr }} : Docker frontend gateway (HTTP/3 QUIC via DNAT)
+(cf_vpn_only) {
+    @blocked not client_ip {{ cf_caddy_vpn_cidr }} {{ cf_caddy_frontend_cidr }}
+    error @blocked 403
+}
+
+{{ cf_domain }} {
+    import cf_vpn_only
+
+    # Backend-down -> friendly 502/503 (handle_errors, not handle_response — CLAUDE.md).
+    handle_errors {
+        respond "Content Factory temporarily unavailable" 503
+    }
+
+    # NOTE (path contract): the API mounts its domain routes at ROOT
+    # (/health, /brands, /productions/*, /takes/*, /events/stream) and the v1 compat
+    # router at /compat/*. There is NO /api/* prefix (brief assumption did not match
+    # apps/api/app/main.py). cf-api is the only backend in M0 -> single catch-all.
+    reverse_proxy cf-api:8000
+}

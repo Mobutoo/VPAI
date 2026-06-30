@@ -33,6 +33,11 @@ dufs_image: "sigoden/dufs:v0.46.0"
 # --- Reverse Proxy ---
 caddy_image: "caddy:2.11.3-alpine"  # CVE-2026-30851/30852 identity injection + env leak (fix 2.11.2); patch 2.11.3
 
+# --- Content Factory (Hetzner app-prod) ---
+# temporalio/auto-setup: dernier stable 1.29.7 (Docker Hub, juin 2026). Image deprecated
+# (builds migrés vers temporalio/server) mais auto-setup reste le chemin standard compose pour M0.
+temporal_auto_setup_image: "temporalio/auto-setup:1.29.7"
+
 # --- Observabilité ---
 grafana_image: "grafana/grafana:12.4.3"  # CVE-2026-27876 CVSS 9.1 RCE SQL expressions (fix 12.4.2); patch 12.4.3 (2026-04)
 victoriametrics_image: "victoriametrics/victoria-metrics:v1.144.0"

@@ -35,3 +35,5 @@
     # Example:
     #   - role: my-app
     #     tags: [my-app, phase3]
+    - role: content-factory
+      tags: [content-factory, phase3]

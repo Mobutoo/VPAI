@@ -134,6 +134,9 @@ flash_suite_postgres_image: "postgres:16-alpine"
 flash_suite_ase_image: "ghcr.io/mobutoo/ase:suite-v1.0.0"
 flash_suite_zimboo_image: "ghcr.io/mobutoo/zimboo:suite-v1.0.0"
 flash_suite_koodia_image: "ghcr.io/mobutoo/koodia:suite-v1.0.0"
+# TODO pin patch concret (7-alpine flotte) — vérifier via DIUN/digest live avant bump
+flash_suite_redis_image: "redis:7-alpine"    # flash-suite (centralisé audit 2026-07-02)
+flash_suite_alpine_image: "alpine:3.21"      # flash-suite (centralisé audit 2026-07-02)
 
 # --- GrapeJS (HTML visual editor — wizy.<domain>) ---
 # Build: cd roles/grapesjs/files && docker buildx build --platform linux/amd64 -t ghcr.io/mobutoo/grapesjs-editor:v1.1.0 --push .

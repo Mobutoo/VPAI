@@ -40,7 +40,7 @@ services:
         max-file: "3"
 
   redis:
-    image: redis:7-alpine
+    image: {{ flash_suite_redis_image }}
     container_name: suite_redis
     security_opt:
       - no-new-privileges:true
@@ -103,7 +103,7 @@ services:
         max-file: "3"
 
   event-cron:
-    image: alpine:3.21
+    image: {{ flash_suite_alpine_image }}
     container_name: suite_event_cron
     security_opt:
       - no-new-privileges:true

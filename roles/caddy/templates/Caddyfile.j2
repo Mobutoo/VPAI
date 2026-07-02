@@ -476,7 +476,7 @@ mop.{{ domain_name }} {
 # MOP PDF download server — serves /srv/mop-pdf volume (public — liens de téléchargement partagés)
 mop-dl.{{ domain_name }} {
     root * /srv/mop-pdf
-    file_server browse
+    file_server
 
     import security_headers
 }
@@ -491,9 +491,12 @@ mop-mail.{{ domain_name }} {
     import security_headers
 }
 
-# === GrapeJS — Éditeur HTML visuel (edit.<domain>) — accès public ===
+# === GrapeJS — Éditeur HTML visuel (edit.<domain>) — accès VPN-only ===
 {% if grapesjs_subdomain | default('') | length > 0 %}
 {{ grapesjs_subdomain }}.{{ domain_name }} {
+    import vpn_only
+    import vpn_error_page
+
     reverse_proxy {{ project_name }}_grapesjs:80
 
     import security_headers
@@ -502,9 +505,12 @@ mop-mail.{{ domain_name }} {
 
 # === Dufs — File drop zone bidirectionnel (drop.<domain>) ===
 # Upload drag & drop (navigateur → serveur) + Download (fichiers déposés par Claude)
-# Public : pas de VPN requis — accessible depuis Internet
+# VPN-only : accès restreint au mesh Tailscale (upload+delete anonymes non exposés Internet)
 {% if dufs_subdomain | default('') | length > 0 %}
 {{ dufs_subdomain }}.{{ domain_name }} {
+    import vpn_only
+    import vpn_error_page
+
     reverse_proxy {{ project_name }}_dufs:{{ dufs_port | default(5000) }}
 
     import security_headers

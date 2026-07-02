@@ -128,8 +128,9 @@
       tags: [plane-provision, phase4, provision]
     - role: kitsu-provision
       tags: [kitsu-provision, phase4, provision]
-    - role: content-factory-provision
-      tags: [content-factory-provision, phase4, provision]
+    # legacy CF v1 (NocoDB) — retiré du chemin 2026-07-02, cf audit content-factory
+    # - role: content-factory-provision
+    #   tags: [content-factory-provision, phase4, provision]
     - role: app-factory-provision
       tags: [app-factory-provision, phase4, provision]
 

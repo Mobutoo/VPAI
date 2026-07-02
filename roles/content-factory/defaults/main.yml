@@ -18,7 +18,12 @@ cf_local_repo: "/home/mobuone/work/saas/content-factory"
 # Superuser confirmé = postgres, authentifié par le mot de passe PARTAGÉ (CLAUDE.md).
 cf_pg_container: "javisi_postgresql"
 cf_pg_host: "javisi_postgresql"
-cf_pg_user: "postgres"
+# postgres reste l'user du PROVISIONING Ansible (CREATE DATABASE/rôle/schéma/migrations)
+# + de l'auto-setup Temporal (a besoin de créer temporal/temporal_visibility).
+cf_pg_admin_user: "postgres"
+# cf_app = user applicatif du DSN cf-api (audit 2026-07-02 C2/A1.1 : casse la chaîne
+# superuser). Créé par ce rôle, mot de passe PARTAGÉ {{ postgresql_password }} (CLAUDE.md).
+cf_pg_user: "cf_app"
 cf_db_name: "content_factory"               # base domaine (schema.sql appliqué 1re init)
 cf_temporal_db_name: "temporal"             # créée par auto-setup
 cf_temporal_visibility_db_name: "temporal_visibility"  # créée par auto-setup
@@ -31,12 +36,19 @@ cf_frontend_network: "javisi_frontend"      # 172.20.1.0/24 — joint javisi_cad
 cf_temporal_image: "{{ temporal_auto_setup_image }}"   # temporalio/auto-setup:1.29.7
 
 # --- Temporal ---
+cf_temporal_container: "cf-temporal"
 cf_temporal_host: "cf-temporal:7233"
 cf_temporal_namespace: "content-factory"    # créé via auto-setup DEFAULT_NAMESPACE
+cf_temporal_retention: "720h"               # 30 j (audit M7) — `describe` affiche `Retention: 720h0m0s`
 cf_task_queue: "cf-conductor"
 
 # --- API ---
 cf_api_internal_base_url: "http://cf-api:8000"   # utilisé par le conductor (CF_API_BASE_URL)
+cf_api_token: "{{ vault_cf_api_token }}"         # Bearer REST cf-api (audit C2/A1.2) — vault, pas de default
+
+# --- Swap (audit F9/A0.2 : /swapfile-cf-temp existe déjà sur Sese — porté en IaC) ---
+cf_swap_file: "/swapfile-cf-temp"
+cf_swap_size: "4G"
 
 # --- Domaine (vhost ajouté au Caddyfile prod par l'orchestrateur, pas par ce rôle) ---
 cf_domain: "cf.{{ domain_name }}"

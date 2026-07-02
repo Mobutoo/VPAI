@@ -14,7 +14,7 @@ services:
       DB: postgres12                       # nom du plugin driver (valide PG12..18), pas une version
       DB_PORT: "5432"                       # OBLIGATOIRE : wait_for_postgres fait `nc -z $SEEDS $DB_PORT` ; vide = boucle infinie
       POSTGRES_SEEDS: {{ cf_pg_host }}
-      POSTGRES_USER: {{ cf_pg_user }}
+      POSTGRES_USER: {{ cf_pg_admin_user }}   # auto-setup crée temporal/temporal_visibility → superuser requis (cf_app = DSN cf-api uniquement)
       POSTGRES_PWD: {{ postgresql_password }}
       DBNAME: {{ cf_temporal_db_name }}
       VISIBILITY_DBNAME: {{ cf_temporal_visibility_db_name }}
@@ -28,6 +28,16 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    healthcheck:
+      # tctl présent dans l'image auto-setup (vérifié live 2026-07-02 : /usr/local/bin/tctl).
+      # PIÈGE : l'entrypoint binde le frontend sur l'IP du conteneur (BIND_ON_IP par défaut
+      # = getent hosts $(hostname)), PAS sur 127.0.0.1 → cibler $(hostname -i):7233.
+      # `tctl cluster health` → rc 0 + "WorkflowService: SERVING" quand le frontend répond.
+      test: ["CMD-SHELL", "tctl --address \"$(hostname -i):7233\" cluster health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   cf-api:
     build:
@@ -71,9 +81,8 @@ services:
         max-size: "10m"
         max-file: "3"
     depends_on:
-      # auto-setup ne fournit pas de healthcheck -> service_started (retry via restart policy)
       cf-temporal:
-        condition: service_started
+        condition: service_healthy         # healthcheck tctl ci-dessus (audit H7)
       cf-api:
         condition: service_healthy
 

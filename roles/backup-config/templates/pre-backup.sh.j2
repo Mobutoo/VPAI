@@ -15,8 +15,12 @@ echo "[$(date)] Starting pre-backup..."
 
 # === PostgreSQL dump ===
 # DB list generated from postgresql_databases (roles/postgresql) + Plane (plane_production)
+# + content_factory (created by roles/content-factory, NOT in postgresql_databases)
 echo "[$(date)] Dumping PostgreSQL databases..."
-{% set backup_pg_databases = (postgresql_databases | default([]) | map(attribute='name') | list) + ['plane_production'] %}
+{# temporal / temporal_visibility VOLONTAIREMENT exclues (decision 2026-07-02 : perte des
+   runs Temporal en vol acceptee, workflows relancables ;
+   cf content-factory/docs/decisions/2026-07-02-decisions-audit.md) #}
+{% set backup_pg_databases = (postgresql_databases | default([]) | map(attribute='name') | list) + ['plane_production', 'content_factory'] %}
 for DB in {{ backup_pg_databases | unique | join(' ') }}; do
   docker exec -e PGPASSWORD="${PGPASSWORD}" "${PROJECT}_postgresql" \
     pg_dump -U postgres -Fc --file="/tmp/${DB}_backup.dump" "${DB}"

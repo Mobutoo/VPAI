@@ -80,6 +80,10 @@
       tags: [openclaw, phase3, apps]
     - role: palais
       tags: [palais, phase3, apps]
+    - role: firefly
+      tags: [firefly, phase3, apps]
+    - role: zimboo
+      tags: [zimboo, phase3, apps]
     - role: kitsu
       tags: [kitsu, phase3, apps]
     - role: flash-suite

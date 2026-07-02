@@ -49,16 +49,22 @@ echo "[$(date)] Redis snapshot completed"
 # === Qdrant snapshots ===
 # NOTE: Qdrant image has no wget/curl — call API from host via Docker network
 echo "[$(date)] Creating Qdrant snapshot..."
-QDRANT_IP=$(docker inspect -f '{{ '{{' }}range .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}.IPAddress{{ '}}' }}{{ '{{' }}end{{ '}}' }}' "${PROJECT}_qdrant" | head -c -1)
-SNAPSHOT_RESULT=$(curl -sS --max-time 30 \
-  -X POST "http://${QDRANT_IP}:6333/snapshots" \
-  -H "api-key: {{ qdrant_api_key }}") || true
-SNAPSHOT_NAME=$(echo "${SNAPSHOT_RESULT}" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4)
-if [ -n "${SNAPSHOT_NAME}" ]; then
-  echo "${SNAPSHOT_NAME}" > "${BACKUP_DIR}/qdrant/latest-snapshot-${TIMESTAMP}.txt"
-  echo "[$(date)] Qdrant snapshot created: ${SNAPSHOT_NAME}"
+# Qdrant est sur plusieurs réseaux Docker : prendre le PREMIER IP (séparateur espace
+# + awk) au lieu de concaténer toutes les IPs (URL invalide → curl timeout → set -e
+# avortait n8n+TREK). Bloc entièrement non-fatal : un échec = WARNING, on continue.
+QDRANT_IP=$(docker inspect -f '{{ '{{' }}range .NetworkSettings.Networks{{ '}}' }}{{ '{{' }}.IPAddress{{ '}}' }} {{ '{{' }}end{{ '}}' }}' "${PROJECT}_qdrant" 2>/dev/null | awk '{print $1}')
+if [ -n "${QDRANT_IP}" ] && SNAPSHOT_RESULT=$(curl -sS --max-time 30 \
+    -X POST "http://${QDRANT_IP}:6333/snapshots" \
+    -H "api-key: {{ qdrant_api_key }}" 2>/dev/null); then
+  SNAPSHOT_NAME=$(echo "${SNAPSHOT_RESULT}" | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+  if [ -n "${SNAPSHOT_NAME}" ]; then
+    echo "${SNAPSHOT_NAME}" > "${BACKUP_DIR}/qdrant/latest-snapshot-${TIMESTAMP}.txt"
+    echo "[$(date)] Qdrant snapshot created: ${SNAPSHOT_NAME}"
+  else
+    echo "[$(date)] WARNING: Qdrant snapshot name vide"
+  fi
 else
-  echo "[$(date)] WARNING: Qdrant snapshot name could not be extracted"
+  echo "[$(date)] WARNING: Qdrant snapshot échoué (IP=${QDRANT_IP:-?}) — étape ignorée"
 fi
 
 # === OpenClaw workspace backup ===

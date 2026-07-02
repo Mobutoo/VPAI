@@ -491,11 +491,15 @@ mop-mail.{{ domain_name }} {
     import security_headers
 }
 
-# === GrapeJS — Éditeur HTML visuel (edit.<domain>) — accès VPN-only ===
+# === GrapeJS — Éditeur HTML visuel (edit.<domain>) — accès PUBLIC sous basic_auth ===
+# vpn_only écarté : wizy n'est pas dans le split-DNS Headscale (Seko-VPN SPOF down) →
+# les clients mesh le résoudraient vers l'IP publique et seraient bloqués. basic_auth
+# ferme l'éditeur anonyme (audit M1) sans dépendre du split-DNS.
 {% if grapesjs_subdomain | default('') | length > 0 %}
 {{ grapesjs_subdomain }}.{{ domain_name }} {
-    import vpn_only
-    import vpn_error_page
+    basic_auth {
+        {{ grapesjs_basicauth_user | default('admin') }} {{ grapesjs_basicauth_hash }}
+    }
 
     reverse_proxy {{ project_name }}_grapesjs:80
 

@@ -28,7 +28,9 @@
 - name: Execute Kitsu provisioning
   ansible.builtin.shell:
     executable: /bin/bash
-    cmd: "{{ kitsu_provision_config_dir }}/provision-kitsu.sh"
+    cmd: |
+      set -euo pipefail
+      {{ kitsu_provision_config_dir }}/provision-kitsu.sh
     creates: "{{ kitsu_provision_config_dir }}/.provision-complete"
   become: true
   register: kitsu_provision_result

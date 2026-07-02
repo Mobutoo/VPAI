@@ -59,7 +59,9 @@
 
 - name: Obsidian | Initialize CouchDB (database + user) — idempotent
   ansible.builtin.shell:
-    cmd: bash {{ couchdb_scripts_dir }}/init-couchdb.sh
+    cmd: |
+      set -euo pipefail
+      bash {{ couchdb_scripts_dir }}/init-couchdb.sh
     executable: /bin/bash
   become: true
   no_log: true

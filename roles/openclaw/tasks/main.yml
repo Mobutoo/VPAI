@@ -611,11 +611,12 @@
 - name: Build openclaw-sandbox image from embedded Dockerfile
   ansible.builtin.shell:
     executable: /bin/bash
-    cmd: >-
-      docker build
-      {{ '--no-cache' if (openclaw_sandbox_tools_check.rc | default(0) != 0) else '' }}
-      -t {{ openclaw_sandbox_image }}
-      {{ openclaw_config_dir }}/build/openclaw-sandbox
+    cmd: |
+      set -euo pipefail
+      docker build \
+        {{ '--no-cache' if (openclaw_sandbox_tools_check.rc | default(0) != 0) else '' }} \
+        -t {{ openclaw_sandbox_image }} \
+        {{ openclaw_config_dir }}/build/openclaw-sandbox
   become: true
   changed_when: false
   # NOTE: community.docker.docker_image uses Docker BuildKit via Python SDK which does NOT

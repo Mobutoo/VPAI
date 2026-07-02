@@ -24,7 +24,9 @@
 - name: Execute NocoDB table provisioning
   ansible.builtin.shell:
     executable: /bin/bash
-    cmd: "{{ content_factory_config_dir }}/provision-nocodb-tables.sh"
+    cmd: |
+      set -euo pipefail
+      {{ content_factory_config_dir }}/provision-nocodb-tables.sh
     creates: "{{ content_factory_config_dir }}/.nocodb-provision-complete"
   become: true
   register: nocodb_provision_result
@@ -52,7 +54,9 @@
 - name: Execute Qdrant provisioning
   ansible.builtin.shell:
     executable: /bin/bash
-    cmd: "{{ content_factory_config_dir }}/provision-qdrant.sh"
+    cmd: |
+      set -euo pipefail
+      {{ content_factory_config_dir }}/provision-qdrant.sh
     creates: "{{ content_factory_config_dir }}/.qdrant-provision-complete"
   become: true
   register: qdrant_provision_result

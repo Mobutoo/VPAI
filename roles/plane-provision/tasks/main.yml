@@ -29,7 +29,9 @@
 - name: Create MinIO bucket for Plane
   ansible.builtin.shell:
     executable: /bin/bash
-    cmd: "{{ plane_config_dir }}/provision-minio.sh"
+    cmd: |
+      set -euo pipefail
+      {{ plane_config_dir }}/provision-minio.sh
     creates: "{{ plane_config_dir }}/.minio-provision-complete"
   become: true
   register: minio_provision_result
@@ -119,7 +121,9 @@
 - name: Execute provision script
   ansible.builtin.shell:
     executable: /bin/bash
-    cmd: "{{ plane_config_dir }}/provision-plane.sh"
+    cmd: |
+      set -euo pipefail
+      {{ plane_config_dir }}/provision-plane.sh
     creates: "{{ plane_config_dir }}/.provision-complete"
   become: true
   register: plane_provision_result

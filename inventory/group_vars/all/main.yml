@@ -22,7 +22,10 @@ qdrant_subdomain: "qd"
 nocodb_subdomain: "hq"              # → hq.<domain>
 plane_subdomain: "work"             # → work.<domain>
 dufs_subdomain: "drop"              # → drop.<domain> (file drop zone bidirectionnel)
-grapesjs_subdomain: "wizy"          # → wizy.<domain> (HTML visual editor — accès public)
+# DUFS public sous basic_auth Caddy (audit C1 2026-07-02) — hash bcrypt en vault
+dufs_basicauth_user: "{{ vault_dufs_basicauth_user | default('admin') }}"
+dufs_basicauth_hash: "{{ vault_dufs_basicauth_hash | mandatory }}"
+grapesjs_subdomain: "wizy"          # → wizy.<domain> (HTML visual editor — accès VPN-only)
 # vps_form_subdomain retiré 2026-05-30 — VPS Form migré hors Sese-AI (/home/mobuone/projects/saas/vps)
 subdomain_preprod: "preprod"
 

@@ -503,13 +503,15 @@ mop-mail.{{ domain_name }} {
 }
 {% endif %}
 
-# === Dufs — File drop zone bidirectionnel (drop.<domain>) ===
-# Upload drag & drop (navigateur → serveur) + Download (fichiers déposés par Claude)
-# VPN-only : accès restreint au mesh Tailscale (upload+delete anonymes non exposés Internet)
+# === Dufs — File drop zone bidirectionnel (drop.<domain>) — accès PUBLIC sous basic_auth ===
+# Upload drag & drop (navigateur → serveur) + Download (fichiers déposés par Claude).
+# Doit rester accessible hors mesh (dépôt externe) → public HTTPS MAIS protégé par
+# basic_auth Caddy sur TLS (fin de l'upload+delete anonymes exposés Internet, audit C1).
 {% if dufs_subdomain | default('') | length > 0 %}
 {{ dufs_subdomain }}.{{ domain_name }} {
-    import vpn_only
-    import vpn_error_page
+    basic_auth {
+        {{ dufs_basicauth_user | default('admin') }} {{ dufs_basicauth_hash }}
+    }
 
     reverse_proxy {{ project_name }}_dufs:{{ dufs_port | default(5000) }}
 

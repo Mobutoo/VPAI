@@ -58,14 +58,32 @@ jobs:
 
       - name: Check no latest tags
         run: |
-          # Ignore comment lines, check only actual image definitions
-          VIOLATIONS=$(grep -v '^\s*#' inventory/group_vars/all/versions.yml | grep -E ':(latest|stable)"' || true)
-          if [ -n "$VIOLATIONS" ]; then
-            echo "WARNING: Found unpinned tags in versions.yml:"
-            echo "$VIOLATIONS"
-            echo "Pin these images to specific versions before production deploy"
+          set -euo pipefail
+          fail=0
+          # 1) Version catalogue — no floating tag values (ignore comment lines)
+          if grep -vE '^[[:space:]]*#' inventory/group_vars/all/versions.yml \
+               | grep -nE ':(latest|stable|main)"'; then
+            echo "::error::Floating tag found in versions.yml"
+            fail=1
           fi
-          echo "OK: Tag check complete"
+          # 2) Image definitions in templates of roles DEPLOYED by site.yml only.
+          #    Roles absent from site.yml (e.g. opencut) are intentionally skipped:
+          #    they may still carry :latest and must not fail this gate.
+          roles=$(grep -oE '^[[:space:]]*-[[:space:]]+role:[[:space:]]+[a-zA-Z0-9_-]+' \
+                    playbooks/stacks/site.yml | awk '{print $NF}' | sort -u)
+          for r in $roles; do
+            d="roles/$r/templates"
+            [ -d "$d" ] || continue
+            if grep -rnE '^[[:space:]]*image:.*:(latest|stable)("|[[:space:]]|$)' "$d"; then
+              echo "::error::Floating image tag in $d"
+              fail=1
+            fi
+          done
+          if [ "$fail" -ne 0 ]; then
+            echo "FAIL: unpinned image tags found — pin them in versions.yml"
+            exit 1
+          fi
+          echo "OK: all image tags pinned"
 
   molecule:
     name: Molecule — ${{ matrix.role }}

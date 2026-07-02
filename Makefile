@@ -69,13 +69,25 @@ lint-ansible: ## Lancer ansible-lint uniquement
 	$(ANSIBLE_LINT) playbooks/stacks/site.yml
 
 .PHONY: check-no-latest
-check-no-latest: ## Vérifier qu'aucune image Docker n'utilise :latest
+check-no-latest: ## Vérifier qu'aucune image Docker n'utilise :latest (versions.yml + templates des rôles de site.yml)
 	@echo "$(GREEN)>>> Checking for :latest tags...$(NC)"
-	@if grep -r ':latest\|:stable\|:main' inventory/group_vars/all/versions.yml; then \
-		echo "$(RED)>>> FAIL: Found :latest or :stable tags!$(NC)"; exit 1; \
-	else \
-		echo "$(GREEN)>>> OK: No :latest tags found$(NC)"; \
-	fi
+	@set -euo pipefail; \
+	fail=0; \
+	if grep -vE '^[[:space:]]*#' inventory/group_vars/all/versions.yml | grep -nE ':(latest|stable|main)"'; then \
+		echo "$(RED)>>> FAIL: Floating tag in versions.yml$(NC)"; fail=1; \
+	fi; \
+	roles=$$(grep -oE '^[[:space:]]*-[[:space:]]+role:[[:space:]]+[a-zA-Z0-9_-]+' playbooks/stacks/site.yml | awk '{print $$NF}' | sort -u); \
+	for r in $$roles; do \
+		d="roles/$$r/templates"; \
+		[ -d "$$d" ] || continue; \
+		if grep -rnE '^[[:space:]]*image:.*:(latest|stable)("|[[:space:]]|$$)' "$$d"; then \
+			echo "$(RED)>>> FAIL: Floating image tag in $$d$(NC)"; fail=1; \
+		fi; \
+	done; \
+	if [ "$$fail" -ne 0 ]; then \
+		echo "$(RED)>>> FAIL: Found unpinned image tags — pin them in versions.yml$(NC)"; exit 1; \
+	fi; \
+	echo "$(GREEN)>>> OK: No :latest tags found$(NC)"
 
 .PHONY: check-hardcoded
 check-hardcoded: ## Vérifier qu'aucune valeur n'est hardcodée (recherche le nom du projet)

@@ -29,10 +29,10 @@ penpot_frontend_port: 9001
 # --- Database ---
 penpot_db_name: "penpot"
 penpot_db_user: "penpot"
-penpot_db_password: "{{ vault_penpot_db_password | default('changeme') }}"
+penpot_db_password: "{{ vault_penpot_db_password | mandatory }}"
 
 # --- Application secrets ---
-penpot_secret_key: "{{ vault_penpot_secret_key | default('changeme-generate-random') }}"
+penpot_secret_key: "{{ vault_penpot_secret_key | mandatory }}"
 
 # --- Admin user (created on first deploy) ---
 penpot_admin_email: "{{ vault_penpot_admin_email }}"

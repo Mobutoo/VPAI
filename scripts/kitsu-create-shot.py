@@ -4,7 +4,9 @@
 Workaround for Zou 1.0.18 where POST /data/projects/{id}/shots returns 404.
 """
 import json
+import os
 import subprocess
+import sys
 import uuid
 import urllib.request
 
@@ -12,6 +14,10 @@ import urllib.request
 PROJECT_ID = "19b9faf4-f7c4-4829-9739-cbf7c3181941"
 SEQ_ID = "edb8375a-0e5e-4ed3-9e90-59f6e63cf3e9"
 SHOT_TYPE_ID = "7a1b7c9e-74eb-40a3-95fe-ce0f6967a989"
+
+if not os.environ.get("KITSU_ADMIN_PASSWORD"):
+    print("ERROR: KITSU_ADMIN_PASSWORD requis — export avant exécution", file=sys.stderr)
+    sys.exit(1)
 
 
 def sql(query):
@@ -48,7 +54,7 @@ def main():
     print(f"Shot SH0010 created: {shot_id}")
 
     # Verify via API
-    data = "email=seko.mobutoo@gmail.com&password=Admin2026!".encode()
+    data = f"email=seko.mobutoo@gmail.com&password={os.environ['KITSU_ADMIN_PASSWORD']}".encode()
     req = urllib.request.Request(
         "http://localhost/api/auth/login", data=data, method="POST"
     )

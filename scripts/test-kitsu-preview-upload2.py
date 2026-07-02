@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Test Kitsu preview upload with urllib (no curl needed)."""
 import json
+import os
+import sys
 import urllib.request
 import urllib.error
 import io
@@ -8,8 +10,12 @@ import io
 KITSU = "http://localhost"
 PREVIEW_ID = "bc3595e7-9146-4f71-9719-2ec38f5e61e8"
 
+if not os.environ.get("KITSU_ADMIN_PASSWORD"):
+    print("ERROR: KITSU_ADMIN_PASSWORD requis — export avant exécution", file=sys.stderr)
+    sys.exit(1)
+
 # Login
-data = "email=seko.mobutoo@gmail.com&password=Admin2026!".encode()
+data = f"email=seko.mobutoo@gmail.com&password={os.environ['KITSU_ADMIN_PASSWORD']}".encode()
 req = urllib.request.Request(f"{KITSU}/api/auth/login", data=data, method="POST")
 with urllib.request.urlopen(req) as r:
     token = json.loads(r.read())["access_token"]

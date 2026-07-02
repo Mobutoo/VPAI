@@ -22,7 +22,7 @@ story_engine_domain: "story.{{ domain_name }}"
 # PostgreSQL
 story_engine_db_name: "story_engine"
 story_engine_db_user: "story_engine"
-story_engine_db_password: "{{ vault_story_engine_db_password | default('change-me') }}"
+story_engine_db_password: "{{ vault_story_engine_db_password | mandatory }}"
 story_engine_pg_image: "pgvector/pgvector:pg16"
 
 # Redis
@@ -32,7 +32,7 @@ story_engine_redis_image: "redis:7-alpine"
 story_engine_qdrant_image: "qdrant/qdrant:v1.16.3"
 
 # API
-story_engine_jwt_secret: "{{ vault_story_engine_jwt_secret | default('change-me-in-production') }}"
+story_engine_jwt_secret: "{{ vault_story_engine_jwt_secret | mandatory }}"
 story_engine_litellm_url: "https://llm.{{ domain_name }}/v1"
 story_engine_litellm_api_key: "{{ vault_litellm_master_key | default('') }}"
 story_engine_embedding_model: "embedding"  # LiteLLM alias -> text-embedding-3-small (1536d)

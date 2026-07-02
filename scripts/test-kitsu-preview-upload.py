@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """Test Kitsu preview file upload — find the correct method."""
 import json
+import os
+import sys
 import urllib.request
 import urllib.error
 
 KITSU = "http://localhost"
 EMAIL = "seko.mobutoo@gmail.com"
-PASSWORD = "Admin2026!"
+if not os.environ.get("KITSU_ADMIN_PASSWORD"):
+    print("ERROR: KITSU_ADMIN_PASSWORD requis — export avant exécution", file=sys.stderr)
+    sys.exit(1)
+PASSWORD = os.environ["KITSU_ADMIN_PASSWORD"]
 
 # Login
 data = f"email={EMAIL}&password={PASSWORD}".encode()

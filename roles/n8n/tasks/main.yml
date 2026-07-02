@@ -1,6 +1,16 @@
 ---
 # n8n — tasks
 
+- name: Assert n8n webhook HMAC secret is defined (fail-loud — HMAC validation disabled otherwise)
+  ansible.builtin.assert:
+    that:
+      - n8n_webhook_secret | default('') | length > 0
+    fail_msg: >-
+      N8N_WEBHOOK_HMAC_SECRET vide: définir vault_n8n_webhook_secret
+      (validation HMAC désactivée sinon)
+    quiet: true
+  tags: [n8n, phase3, apps]
+
 - name: Create n8n config directory
   ansible.builtin.file:
     path: "{{ n8n_config_dir }}"

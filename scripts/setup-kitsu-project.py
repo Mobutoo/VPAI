@@ -7,13 +7,17 @@
 - Regenerate bot token
 """
 import json
+import os
 import sys
 import urllib.request
 import urllib.error
 
 KITSU_URL = "https://boss.ewutelo.cloud"
 ADMIN_EMAIL = "seko.mobutoo@gmail.com"
-ADMIN_PASSWORD = "Admin2026!"
+if not os.environ.get("KITSU_ADMIN_PASSWORD"):
+    print("ERROR: KITSU_ADMIN_PASSWORD requis — export avant exécution", file=sys.stderr)
+    sys.exit(1)
+ADMIN_PASSWORD = os.environ["KITSU_ADMIN_PASSWORD"]
 BOT_EMAIL = "videoref.agent@gmail.com"
 
 PROJECT_ID = "19b9faf4-f7c4-4829-9739-cbf7c3181941"

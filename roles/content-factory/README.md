@@ -20,10 +20,41 @@ Pas de service `postgres`, pas de service `caddy`.
 
 ## Postgres prod réutilisé
 
-- Superuser confirmé (SSH) : **`postgres`**, authentifié par le mot de passe **partagé** `{{ postgresql_password }}` (règle CLAUDE.md — jamais de variante par service).
+- **Deux users PG** (audit 2026-07-02 C2/A1.1 — casse la chaîne superuser) :
+  - `{{ cf_pg_admin_user }}` (= `postgres`) : réservé au **provisioning Ansible** (CREATE DATABASE,
+    schéma, migrations, rôle `cf_app`) + à l'**auto-setup Temporal** (crée `temporal`/`temporal_visibility`).
+  - `{{ cf_pg_user }}` (= `cf_app`) : **user applicatif du DSN cf-api** (LOGIN, droits limités à
+    `content_factory`). Créé idempotent par le rôle : GRANT CONNECT/ALL sur la base,
+    USAGE+CREATE sur `public`, ALL sur toutes tables/séquences existantes (elles appartiennent
+    à `postgres`) + `ALTER DEFAULT PRIVILEGES FOR ROLE postgres` pour les objets futurs.
+  - Les deux authentifiés par le mot de passe **partagé** `{{ postgresql_password }}`
+    (règle CLAUDE.md — jamais de variante par service).
 - Le rôle provisionne `content_factory` (base domaine) si absente, applique `packages/domain/schema.sql` une seule fois (garde sentinelle, transaction unique).
+- **Runner de migrations** : les évolutions post-init vivent dans `packages/domain/migrations/*.sql`,
+  appliquées dans l'ordre lexicographique, chacune en **transaction unique** (`psql -1 -v ON_ERROR_STOP=1`).
+  Registre = table `schema_migrations` (version = nom de fichier sans `.sql`). Idempotent :
+  0 changed au 2ᵉ run (seules les migrations non enregistrées comptent comme changed).
 - `temporal` / `temporal_visibility` sont créées par **auto-setup au démarrage** (ne pas pré-créer).
 - **À SURVEILLER** : Temporal écrit ses 2 bases dans le **Postgres prod** partagé (charge + sauvegardes restic à étendre à `temporal`/`temporal_visibility`).
+
+## Temporal — healthcheck + retention
+
+- **Healthcheck `cf-temporal`** (audit H7) : `tctl --address "$(hostname -i):7233" cluster health`
+  (interval 30s, retries 5, start_period 60s). `tctl` présent dans l'image auto-setup
+  (vérifié live 2026-07-02). **Piège** : l'entrypoint binde le frontend sur l'**IP du conteneur**
+  (`BIND_ON_IP`), pas sur 127.0.0.1 → `localhost:7233` = connection refused.
+  `cf-conductor` dépend désormais de `cf-temporal: service_healthy`.
+- **Retention namespace** (audit M7) : `tctl --ns content-factory namespace update --retention 720h`
+  (30 j — le défaut auto-setup est 24h). Task idempotente : `describe` d'abord (retries, le
+  namespace peut mettre du temps à exister au 1ᵉʳ boot), update seulement si la retention
+  affichée ≠ `720h` ; `failed_when: false` → le run suivant converge.
+
+## Swap (audit F9/A0.2)
+
+Le swapfile `/swapfile-cf-temp` (4G, créé à la main sur Sese pour absorber les builds cf-*)
+est porté en IaC : allocation (`fallocate`), perms 0600, `mkswap` (gardé par signature `blkid`),
+persistance fstab (`ansible.posix.mount`, ligne `none swap sw 0 0`), activation (`swapon`).
+Sur Sese en l'état = **0 changed** (état live vérifié 2026-07-02).
 
 ## Secrets vault à créer AVANT déploiement (gate humain)
 
@@ -31,6 +62,7 @@ Pas de service `postgres`, pas de service `caddy`.
 
 | Variable vault | Requis | Défaut si absent | Rôle |
 |----------------|--------|------------------|------|
+| `vault_cf_api_token` | **oui** | — (pas de default : deploy échoue si absent) | Bearer REST cf-api (`CF_API_TOKEN`, api.env + conductor.env — audit C2/A1.2) |
 | `vault_cf_plane_project_id` | **oui** | `e0cb95f0-0ea5-41b8-a3e3-aec45e8cc37e` | UUID projet Plane CF |
 | `vault_plane_admin_api_token` | **oui** | `''` | header `X-Api-Key` adapter Plane |
 | `vault_plane_base_url` | non | `https://work.<domain>` | base API Plane |
@@ -85,6 +117,8 @@ ansible-playbook playbooks/stacks/site.yml -e "target_env=prod" -e "prod_ip=100.
 - **Image Temporal dépréciée** : `temporalio/auto-setup:1.29.7` (builds migrés vers
   `temporalio/server`), conservée pour M0 (chemin standard compose). Combo Temporal 1.29 × PG18
   à confirmer au 1er run.
-- **`cf-temporal` sans healthcheck** → `cf-conductor` utilise `depends_on: service_started`
-  + `restart: unless-stopped` (retry connexion).
-- **Secret PG** : passé via `environment: PGPASSWORD` (jamais dans la commande) + `no_log: true`.
+- **Healthcheck `cf-temporal`** : cibler `$(hostname -i):7233`, jamais `127.0.0.1`
+  (BIND_ON_IP = IP du conteneur, cf. section Temporal ci-dessus).
+- **Secret PG** : passé via `environment: PGPASSWORD` (jamais dans la commande) + `no_log: true` ;
+  le SQL porteur du mot de passe (`CREATE ROLE cf_app ... PASSWORD`) transite par **stdin**
+  (jamais en argv → pas de fuite `ps`).

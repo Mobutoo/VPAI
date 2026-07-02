@@ -45,7 +45,105 @@
   notify: Recreate content-factory stack
   tags: [content-factory, phase3]
 
+# --- Swap (audit 2026-07-02 F9/A0.2) ------------------------------------------
+# Le swapfile /swapfile-cf-temp existe DÉJÀ sur Sese (créé à la main pour absorber
+# les builds cf-*) et est DÉJÀ persisté en fstab : ces tâches le déclarent en IaC
+# pour la reproductibilité. Sur Sese en l'état = 0 changed (convergence vérifiée
+# live 2026-07-02 : 4G root:root 0600, TYPE=swap, fstab `none swap sw 0 0`, actif).
+
+- name: Check swapfile presence
+  ansible.builtin.stat:
+    path: "{{ cf_swap_file }}"
+  become: true
+  register: _cf_swap_stat
+  tags: [content-factory, phase3]
+
+- name: Allocate swapfile
+  ansible.builtin.command:
+    argv:
+      - fallocate
+      - -l
+      - "{{ cf_swap_size }}"
+      - "{{ cf_swap_file }}"
+  become: true
+  when: not _cf_swap_stat.stat.exists
+  register: _cf_swap_alloc
+  changed_when: _cf_swap_alloc.rc == 0
+  tags: [content-factory, phase3]
+
+- name: Enforce swapfile ownership and mode
+  ansible.builtin.file:
+    path: "{{ cf_swap_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  tags: [content-factory, phase3]
+
+- name: Check swap signature
+  ansible.builtin.command:
+    argv:
+      - blkid
+      - -o
+      - value
+      - -s
+      - TYPE
+      - "{{ cf_swap_file }}"
+  become: true
+  register: _cf_swap_sig
+  changed_when: false
+  failed_when: _cf_swap_sig.rc not in [0, 2]  # rc=2 = aucune signature (fichier fraîchement alloué)
+  tags: [content-factory, phase3]
+
+- name: Format swapfile (mkswap)
+  ansible.builtin.command:
+    argv:
+      - mkswap
+      - "{{ cf_swap_file }}"
+  become: true
+  when: _cf_swap_sig.stdout | trim != "swap"
+  register: _cf_swap_mkswap
+  changed_when: _cf_swap_mkswap.rc == 0
+  tags: [content-factory, phase3]
+
+- name: Persist swapfile in fstab
+  ansible.posix.mount:
+    path: none                      # convention fstab pour le swap
+    src: "{{ cf_swap_file }}"
+    fstype: swap
+    opts: sw
+    dump: "0"
+    passno: "0"
+    state: present
+  become: true
+  tags: [content-factory, phase3]
+
+- name: Check active swap devices
+  ansible.builtin.command:
+    argv:
+      - swapon
+      - --show=NAME
+      - --noheadings
+  become: true
+  register: _cf_swap_active
+  changed_when: false
+  tags: [content-factory, phase3]
+
+- name: Activate swapfile
+  ansible.builtin.command:
+    argv:
+      - swapon
+      - "{{ cf_swap_file }}"
+  become: true
+  when: cf_swap_file not in _cf_swap_active.stdout_lines
+  register: _cf_swap_on
+  changed_when: _cf_swap_on.rc == 0
+  tags: [content-factory, phase3]
+
 # --- Provisioning DB dans le Postgres prod javisi_postgresql (idempotent) ---
+# Tout le provisioning (CREATE DATABASE / schéma / migrations / rôle cf_app)
+# s'exécute avec le superuser {{ cf_pg_admin_user }} ; le DSN applicatif de
+# cf-api utilise {{ cf_pg_user }} (cf_app), cf. section dédiée plus bas.
 # Idempotence schema.sql : son CREATE TYPE ... AS ENUM n'accepte PAS IF NOT EXISTS et un
 # rejeu échouerait. On garde donc schema.sql INTACT (= source de vérité du domaine) et on
 # applique en TOUT-OU-RIEN sous garde sentinelle :
@@ -67,7 +165,7 @@
       - "{{ cf_pg_container }}"
       - psql
       - -U
-      - "{{ cf_pg_user }}"
+      - "{{ cf_pg_admin_user }}"
       - -tAc
       - "SELECT 1 FROM pg_database WHERE datname = '{{ cf_db_name }}'"
   environment:
@@ -88,7 +186,7 @@
       - "{{ cf_pg_container }}"
       - psql
       - -U
-      - "{{ cf_pg_user }}"
+      - "{{ cf_pg_admin_user }}"
       - -c
       - "CREATE DATABASE {{ cf_db_name }}"
   environment:
@@ -110,7 +208,7 @@
       - "{{ cf_pg_container }}"
       - psql
       - -U
-      - "{{ cf_pg_user }}"
+      - "{{ cf_pg_admin_user }}"
       - -d
       - "{{ cf_db_name }}"
       - -tAc
@@ -128,7 +226,7 @@
     cmd: >-
       set -euo pipefail;
       docker exec -i -e PGPASSWORD {{ cf_pg_container }}
-      psql -U {{ cf_pg_user }} -d {{ cf_db_name }}
+      psql -U {{ cf_pg_admin_user }} -d {{ cf_db_name }}
       --single-transaction -v ON_ERROR_STOP=1 -f -
       < '{{ cf_src_dir }}/packages/domain/schema.sql'
     executable: /bin/bash
@@ -138,6 +236,239 @@
   when: _cf_schema_sentinel.stdout | trim == ""
   register: _cf_schema_applied
   changed_when: _cf_schema_applied.rc == 0
+  no_log: true
+  tags: [content-factory, phase3]
+
+# --- Migrations de schéma (audit 2026-07-02 H2) --------------------------------
+# schema.sql reste la source de vérité du FIRST INIT (sentinelle ci-dessus) ;
+# les évolutions post-init vivent dans packages/domain/migrations/*.sql, appliquées
+# dans l'ordre lexicographique, chacune en transaction unique (psql -1 ON_ERROR_STOP).
+# Registre = table schema_migrations (version PK). Idempotent : au 2e run, toutes
+# les versions sont enregistrées -> 0 changed (changed_when porte uniquement sur
+# les migrations réellement appliquées).
+
+- name: Check schema_migrations table presence
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - PGPASSWORD
+      - "{{ cf_pg_container }}"
+      - psql
+      - -U
+      - "{{ cf_pg_admin_user }}"
+      - -d
+      - "{{ cf_db_name }}"
+      - -tAc
+      - "SELECT to_regclass('public.schema_migrations')"
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  register: _cf_migrations_table
+  changed_when: false
+  no_log: true
+  tags: [content-factory, phase3]
+
+- name: Create schema_migrations table
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - PGPASSWORD
+      - "{{ cf_pg_container }}"
+      - psql
+      - -U
+      - "{{ cf_pg_admin_user }}"
+      - -d
+      - "{{ cf_db_name }}"
+      - -v
+      - ON_ERROR_STOP=1
+      - -c
+      - "CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())"
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  when: _cf_migrations_table.stdout | trim == ""
+  register: _cf_migrations_table_created
+  changed_when: _cf_migrations_table_created.rc == 0
+  no_log: true
+  tags: [content-factory, phase3]
+
+- name: List applied migration versions
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - PGPASSWORD
+      - "{{ cf_pg_container }}"
+      - psql
+      - -U
+      - "{{ cf_pg_admin_user }}"
+      - -d
+      - "{{ cf_db_name }}"
+      - -tAc
+      - "SELECT version FROM schema_migrations ORDER BY version"
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  register: _cf_applied_migrations
+  changed_when: false
+  no_log: true
+  tags: [content-factory, phase3]
+
+- name: List domain migration files
+  ansible.builtin.find:
+    paths: "{{ cf_src_dir }}/packages/domain/migrations"
+    patterns: "*.sql"
+  become: true
+  register: _cf_migration_files
+  tags: [content-factory, phase3]
+
+- name: Apply pending domain migrations (single transaction each)
+  ansible.builtin.shell:
+    cmd: >-
+      set -euo pipefail;
+      docker exec -i -e PGPASSWORD {{ cf_pg_container }}
+      psql -U {{ cf_pg_admin_user }} -d {{ cf_db_name }}
+      --single-transaction -v ON_ERROR_STOP=1 -f -
+      < '{{ item }}';
+      docker exec -e PGPASSWORD {{ cf_pg_container }}
+      psql -U {{ cf_pg_admin_user }} -d {{ cf_db_name }}
+      -v ON_ERROR_STOP=1
+      -c "INSERT INTO schema_migrations (version) VALUES ('{{ (item | basename | splitext)[0] }}') ON CONFLICT (version) DO NOTHING"
+    executable: /bin/bash
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  loop: "{{ _cf_migration_files.files | map(attribute='path') | sort }}"
+  when: (item | basename | splitext)[0] not in _cf_applied_migrations.stdout_lines | map('trim')
+  register: _cf_migrations_run
+  changed_when: _cf_migrations_run.rc == 0
+  no_log: true
+  tags: [content-factory, phase3]
+
+# --- Rôle applicatif cf_app (audit 2026-07-02 C2/A1.1) --------------------------
+# Casse la chaîne superuser : le DSN de cf-api utilise cf_app (LOGIN, droits limités
+# à la base content_factory), tandis que postgres reste réservé au provisioning
+# Ansible ci-dessus + à l'auto-setup Temporal. Mot de passe = {{ postgresql_password }}
+# PARTAGÉ (convention CLAUDE.md — jamais de variante par service). Les tables
+# existantes appartiennent à postgres -> GRANT ALL ON ALL TABLES/SEQUENCES + ALTER
+# DEFAULT PRIVILEGES FOR ROLE postgres pour couvrir les objets futurs (migrations).
+
+- name: Check cf_app role presence
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - PGPASSWORD
+      - "{{ cf_pg_container }}"
+      - psql
+      - -U
+      - "{{ cf_pg_admin_user }}"
+      - -tAc
+      - "SELECT 1 FROM pg_roles WHERE rolname = '{{ cf_pg_user }}'"
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  register: _cf_app_role
+  changed_when: false
+  no_log: true
+  tags: [content-factory, phase3]
+
+- name: Create cf_app role
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -i
+      - -e
+      - PGPASSWORD
+      - "{{ cf_pg_container }}"
+      - psql
+      - -U
+      - "{{ cf_pg_admin_user }}"
+      - -v
+      - ON_ERROR_STOP=1
+      - -f
+      - "-"
+    # SQL via stdin : le mot de passe n'apparaît jamais dans argv (pas de fuite ps)
+    stdin: "CREATE ROLE {{ cf_pg_user }} LOGIN PASSWORD '{{ postgresql_password }}'"
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  when: _cf_app_role.stdout | trim != "1"
+  register: _cf_app_role_created
+  changed_when: _cf_app_role_created.rc == 0
+  no_log: true
+  tags: [content-factory, phase3]
+
+- name: Check cf_app grants
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - PGPASSWORD
+      - "{{ cf_pg_container }}"
+      - psql
+      - -U
+      - "{{ cf_pg_admin_user }}"
+      - -d
+      - "{{ cf_db_name }}"
+      - -tAc
+      - >-
+        SELECT has_database_privilege('{{ cf_pg_user }}', '{{ cf_db_name }}', 'CONNECT')
+        AND has_schema_privilege('{{ cf_pg_user }}', 'public', 'CREATE')
+        AND has_table_privilege('{{ cf_pg_user }}', 'public.brand', 'SELECT')
+        AND (SELECT count(*) FROM pg_default_acl d
+             JOIN pg_namespace n ON n.oid = d.defaclnamespace
+             WHERE n.nspname = 'public'
+             AND d.defaclacl::text LIKE '%{{ cf_pg_user }}%') >= 2
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  register: _cf_app_grants
+  changed_when: false
+  failed_when: false   # rôle/table potentiellement absents au 1er run -> traité comme "grants manquants"
+  no_log: true
+  tags: [content-factory, phase3]
+
+- name: Grant cf_app privileges on content_factory
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -i
+      - -e
+      - PGPASSWORD
+      - "{{ cf_pg_container }}"
+      - psql
+      - -U
+      - "{{ cf_pg_admin_user }}"
+      - -d
+      - "{{ cf_db_name }}"
+      - -v
+      - ON_ERROR_STOP=1
+      - -f
+      - "-"
+    stdin: |
+      GRANT CONNECT ON DATABASE {{ cf_db_name }} TO {{ cf_pg_user }};
+      GRANT ALL PRIVILEGES ON DATABASE {{ cf_db_name }} TO {{ cf_pg_user }};
+      GRANT USAGE, CREATE ON SCHEMA public TO {{ cf_pg_user }};
+      GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO {{ cf_pg_user }};
+      GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO {{ cf_pg_user }};
+      ALTER DEFAULT PRIVILEGES FOR ROLE {{ cf_pg_admin_user }} IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO {{ cf_pg_user }};
+      ALTER DEFAULT PRIVILEGES FOR ROLE {{ cf_pg_admin_user }} IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO {{ cf_pg_user }};
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  when: _cf_app_grants.stdout | default('') | trim != "t"
+  register: _cf_app_granted
+  changed_when: _cf_app_granted.rc == 0
   no_log: true
   tags: [content-factory, phase3]
 
@@ -184,4 +515,49 @@
   become: true
   changed_when: false
   register: _cf_compose
+  tags: [content-factory, phase3]
+
+# --- Retention du namespace Temporal (audit 2026-07-02 M7) ---------------------
+# auto-setup crée le namespace avec la retention par défaut (24h, vérifié live) ;
+# on la porte à {{ cf_temporal_retention }} (30 j). Piège vérifié live 2026-07-02 :
+# l'entrypoint binde le frontend sur l'IP du conteneur (BIND_ON_IP), PAS sur
+# 127.0.0.1 -> tctl doit cibler $(hostname -i):7233. Le namespace peut mettre du
+# temps à exister après le 1er boot -> retries sur le describe, failed_when false
+# (le run suivant convergera).
+
+- name: Check Temporal namespace retention
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ cf_temporal_container }}"
+      - bash
+      - -c
+      - tctl --address "$(hostname -i):7233" --ns {{ cf_temporal_namespace }} namespace describe
+  become: true
+  register: _cf_ns_describe
+  changed_when: false
+  failed_when: false
+  retries: 12
+  delay: 10
+  until: _cf_ns_describe.rc == 0
+  tags: [content-factory, phase3]
+
+- name: Set Temporal namespace retention
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ cf_temporal_container }}"
+      - bash
+      - -c
+      - tctl --address "$(hostname -i):7233" --ns {{ cf_temporal_namespace }} namespace update --retention {{ cf_temporal_retention }}
+  become: true
+  when:
+    - _cf_ns_describe.rc == 0
+    # describe affiche `Retention: 720h0m0s` une fois convergé -> discriminant
+    - '("Retention: " ~ cf_temporal_retention) not in _cf_ns_describe.stdout'
+  register: _cf_ns_retention_set
+  changed_when: _cf_ns_retention_set.rc == 0
+  failed_when: false   # namespace pas encore prêt -> le run suivant converge
   tags: [content-factory, phase3]

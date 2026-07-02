@@ -10,7 +10,7 @@ RETENTION_DAYS="{{ backup_local_retention_days }}"
 
 echo "[$(date)] Starting backup cleanup (retention: ${RETENTION_DAYS} days)..."
 
-for SUBDIR in pg_dump redis qdrant n8n grafana; do
+for SUBDIR in pg_dump redis qdrant n8n grafana trek; do
   if [ -d "${BACKUP_DIR}/${SUBDIR}" ]; then
     COUNT=$(find "${BACKUP_DIR}/${SUBDIR}" -type f -mtime +${RETENTION_DAYS} | wc -l)
     if [ "${COUNT}" -gt 0 ]; then

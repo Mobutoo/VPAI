@@ -8,6 +8,7 @@ backup_redis_dir: "{{ backup_base_dir }}/redis"
 backup_qdrant_dir: "{{ backup_base_dir }}/qdrant"
 backup_n8n_dir: "{{ backup_base_dir }}/n8n"
 backup_grafana_dir: "{{ backup_base_dir }}/grafana"
+backup_trek_dir: "{{ backup_base_dir }}/trek"
 
 # --- Cron schedule ---
 backup_pre_script_cron_minute: "55"

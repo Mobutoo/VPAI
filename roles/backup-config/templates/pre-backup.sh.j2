@@ -14,8 +14,10 @@ PROJECT="{{ project_name }}"
 echo "[$(date)] Starting pre-backup..."
 
 # === PostgreSQL dump ===
+# DB list generated from postgresql_databases (roles/postgresql) + Plane (plane_production)
 echo "[$(date)] Dumping PostgreSQL databases..."
-for DB in n8n litellm nocodb kitsu_production; do
+{% set backup_pg_databases = (postgresql_databases | default([]) | map(attribute='name') | list) + ['plane_production'] %}
+for DB in {{ backup_pg_databases | unique | join(' ') }}; do
   docker exec -e PGPASSWORD="${PGPASSWORD}" "${PROJECT}_postgresql" \
     pg_dump -U postgres -Fc --file="/tmp/${DB}_backup.dump" "${DB}"
   docker cp "${PROJECT}_postgresql:/tmp/${DB}_backup.dump" \
@@ -63,6 +65,18 @@ tar -czf "${BACKUP_DIR}/openclaw/state-${TIMESTAMP}.tar.gz" \
   echo "[$(date)] WARNING: OpenClaw state backup failed"
 echo "[$(date)] OpenClaw backup completed"
 {% endif %}
+
+# === TREK data backup (SQLite DB + uploads, host volumes) ===
+# trip.<domain> — public service, SQLite in {{ trek_data_dir }} + uploads in {{ trek_uploads_dir }}
+echo "[$(date)] Backing up TREK data..."
+mkdir -p "{{ backup_trek_dir }}"
+tar -czf "{{ backup_trek_dir }}/data-${TIMESTAMP}.tar.gz" \
+  -C "{{ trek_data_dir }}" . 2>/dev/null || \
+  echo "[$(date)] WARNING: TREK data backup failed"
+tar -czf "{{ backup_trek_dir }}/uploads-${TIMESTAMP}.tar.gz" \
+  -C "{{ trek_uploads_dir }}" . 2>/dev/null || \
+  echo "[$(date)] WARNING: TREK uploads backup failed"
+echo "[$(date)] TREK backup completed"
 
 # === n8n workflow export ===
 echo "[$(date)] Exporting n8n workflows..."

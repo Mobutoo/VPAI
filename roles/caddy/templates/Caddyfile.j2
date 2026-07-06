@@ -263,14 +263,19 @@ BOOTSTRAP 200
     import security_headers
 }
 
-# === Content Factory (M0) — orchestration API (cf-api) ===
+# === Content Factory (M1) — orchestration API (cf-api) — accès PUBLIC token-gated ===
 # Co-localisé Sese (mode frugal). API expose ses routes à la racine (/health, /productions/*,
-# /compat/*) → catch-all reverse_proxy. cf-api joignable via javisi_frontend.
+# /takes/*, /compat/*) → catch-all reverse_proxy. cf-api joignable via javisi_frontend.
+#
+# PUBLIC (pas d'import vpn_only) depuis M1 serverless (2026-07-06) : le worker GPU RunPod
+# serverless tourne dans le cloud (hors mesh Tailscale) et doit PATCH /takes/{tid} +
+# append cost-ledger sur cf-api à la fin d'un job. Frontière sécu = require_bearer
+# (apps/api/app/main.py) : CF_API_TOKEN exigé sur TOUTES les routes REST natives
+# (503 fail-closed si non configuré, 401 si invalide, compare constant-time). Seuls
+# GET /health (sonde) et /compat/* (x-webhook-secret) restent hors bearer. Même doctrine
+# public+auth-native que TREK / Typebot viewer. TLS via ACME (port 80 public).
 {% if content_factory_enabled | default(false) | bool %}
 {{ caddy_cf_domain }} {
-    import vpn_only
-    import vpn_error_page
-
     reverse_proxy cf-api:8000
 
     import security_headers

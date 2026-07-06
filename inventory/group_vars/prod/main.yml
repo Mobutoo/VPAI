@@ -11,3 +11,9 @@ postgresql_maintenance_work_mem: "128MB"
 
 # Redis
 redis_maxmemory: "384mb"
+
+# === Content Factory (M1) ===
+# Persistant en prod (2026-07-06) : la vhost publique cf.ewutelo.cloud (Caddy) ET le
+# stack cf-api/conductor sont gatés sur ce flag. Le laisser en -e-only ferait tomber
+# le vhost — donc périmer le cert ACME — au prochain deploy caddy sans le flag.
+content_factory_enabled: true

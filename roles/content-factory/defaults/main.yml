@@ -59,6 +59,28 @@ cf_plane_api_token: "{{ vault_plane_admin_api_token | default('') }}"
 cf_plane_project_id: "{{ vault_cf_plane_project_id | default('e0cb95f0-0ea5-41b8-a3e3-aec45e8cc37e') }}"
 cf_plane_workspace_slug: "{{ vault_plane_workspace_slug | default('ewutelo') }}"
 
+# --- GPU dispatch (I5 — services/conductor/activities_gpu.py, cf. son docstring) ---
+# Gate : "0" par défaut => generate_take_gpu reste un NO-OP complet (zéro réseau
+# PodPilot/RunPod). Passage à "1" = geste opérateur séparé du déploiement Ansible.
+cf_gpu_live: "0"
+cf_podpilot_project: "content-factory"
+cf_podpilot_policy: "cf-video-draft"
+cf_gpu_poll_interval_s: "5"
+cf_gpu_poll_timeout_s: "900"
+# PodPilot tourne aujourd'hui en LOOPBACK sur waza (127.0.0.1:8000 — RUNBOOK-PODPILOT-WAZA.md
+# côté repo content-factory), injoignable depuis un conteneur cf-conductor sur Sese-AI.
+# Reste vide tant que l'exposition réseau (Tailscale ?) n'est pas tranchée séparément —
+# NE PAS deviner une URL ici (point ouvert documenté côté content-factory).
+cf_podpilot_url: ""
+# Doit contenir PODPILOT_WORKER_KEY (scopes read+ingest, jamais la clé admin). Vault var
+# à créer par l'opérateur (sudo-gated, absente de secrets.yml à ce jour) — default('')
+# volontaire : env vide => PodPilotClient.from_env() lève KeyError => take=failed (fail
+# loud côté activity, jamais un crash de déploiement Ansible, cf. REX-62).
+cf_podpilot_api_key: "{{ vault_podpilot_worker_key | default('') }}"
+# RunPod Serverless (POST /v2/{endpoint_id}/run). Vault var à créer par l'opérateur
+# (absente de secrets.yml à ce jour) — default('') volontaire, même raisonnement.
+cf_runpod_api_key: "{{ vault_runpod_api_key | default('') }}"
+
 # --- Resource limits (Sese 12 GB déjà chargé ; total ajouté ~1.4 GB) ---
 cf_temporal_mem_limit: "512m"
 cf_api_mem_limit: "512m"

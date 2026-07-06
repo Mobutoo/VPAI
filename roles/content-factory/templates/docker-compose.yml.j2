@@ -65,9 +65,12 @@ services:
 
   cf-conductor:
     build:
-      # Contexte = services/ (conductor importe le frère plane-adapter via sys.path)
-      context: {{ cf_src_dir }}/services
-      dockerfile: conductor/Dockerfile
+      # Contexte = RACINE du repo : le Dockerfile (depuis 8e06e2e) COPY services/conductor/,
+      # services/plane-adapter/ ET packages/providers/ (activities_gpu importe providers) —
+      # chemins relatifs à la racine, pas à services/. Corrigé 2026-07-06 (ancien
+      # context=services/ + dockerfile=conductor/Dockerfile → COPY services/conductor cassé).
+      context: {{ cf_src_dir }}
+      dockerfile: services/conductor/Dockerfile
     container_name: cf-conductor
     restart: unless-stopped
     env_file:

@@ -17,3 +17,13 @@ redis_maxmemory: "384mb"
 # stack cf-api/conductor sont gatés sur ce flag. Le laisser en -e-only ferait tomber
 # le vhost — donc périmer le cert ACME — au prochain deploy caddy sans le flag.
 content_factory_enabled: true
+
+# M1 serverless GPU LIVE (2026-07-07) : le conducteur dispatche les takes sur
+# l'endpoint RunPod serverless (ddafuqglem08aw, RTX 5090/4090 EU-RO-1, workersMin=0
+# = 0$ a l'idle, workersMax=1). Persistant = etat M1-live ; en -e-only, tout
+# redeploy conducteur sans le flag repasserait CF_GPU_LIVE=0 (M1 silencieusement
+# desarme). PODPILOT_URL = mesh Tailscale waza (conducteur Sese 100.64.0.14 ->
+# PodPilot waza 100.64.0.1, leg resolve valide). Budget borne : scale-to-zero +
+# workersMax=1 + cap $120/mois (RunPod).
+cf_gpu_live: "1"
+cf_podpilot_url: "http://100.64.0.1:8000"

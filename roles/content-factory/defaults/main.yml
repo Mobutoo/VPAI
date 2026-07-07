@@ -45,6 +45,9 @@ cf_task_queue: "cf-conductor"
 # --- API ---
 cf_api_internal_base_url: "http://cf-api:8000"   # utilisé par le conductor (CF_API_BASE_URL)
 cf_api_token: "{{ vault_cf_api_token }}"         # Bearer REST cf-api (audit C2/A1.2) — vault, pas de default
+# S0.4 — auth Studio : login mot de passe -> JWT HS256 (dual-accept avec cf_api_token).
+studio_password: "{{ vault_studio_password | default('') }}"      # mdp opérateur Studio
+studio_jwt_secret: "{{ vault_studio_jwt_secret | default('') }}"  # secret signature JWT (rotation = invalide les sessions)
 
 # --- Swap (audit F9/A0.2 : /swapfile-cf-temp existe déjà sur Sese — porté en IaC) ---
 cf_swap_file: "/swapfile-cf-temp"

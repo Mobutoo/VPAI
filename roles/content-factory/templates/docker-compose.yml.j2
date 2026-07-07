@@ -77,6 +77,12 @@ services:
       - {{ cf_config_dir }}/conductor.env
     networks:
       - {{ cf_backend_network }}           # joindre cf-temporal + cf-api (+ egress Plane)
+      # M1 GPU dispatch (2026-07-07) : cf_backend_network est `internal:true` (aucun
+      # egress). Le conducteur DOIT joindre le frontend (comme cf-api) pour atteindre
+      # (1) RunPod api.runpod.ai/v2 sur INTERNET (POST /run dispatch) et (2) PodPilot
+      # sur le MESH Tailscale waza 100.64.0.1 (GET /v1/resolve) — les deux echouent
+      # depuis backend seul (« Network unreachable » / DNS fail, constate au 1er e2e).
+      - {{ cf_frontend_network }}
     mem_limit: {{ cf_conductor_mem_limit }}
     logging:
       driver: json-file

@@ -15,6 +15,8 @@ caddy_firefly_domain: "{{ firefly_subdomain | default('lola') }}.{{ domain_name 
 caddy_zimboo_domain: "{{ zimboo_subdomain | default('zimboo') }}.{{ domain_name }}"
 caddy_palais_domain: "{{ palais_subdomain | default('palais') }}.{{ domain_name }}"
 caddy_cf_domain: "{{ cf_subdomain | default('cf') }}.{{ domain_name }}"
+# Studio Web CF (atelier) — 'studio' est déjà pris par ComfyUI (comfyui_subdomain), d'où 'atelier'.
+caddy_studio_domain: "{{ studio_subdomain | default('atelier') }}.{{ domain_name }}"
 caddy_mealie_domain: "{{ mealie_subdomain | default('miam') }}.{{ domain_name }}"
 caddy_grocy_domain: "{{ grocy_subdomain | default('garde') }}.{{ domain_name }}"
 caddy_koodia_domain: "{{ koodia_subdomain | default('koodia') }}.{{ domain_name }}"

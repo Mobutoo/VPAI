@@ -42,6 +42,9 @@
       - "--exclude=**/__pycache__"
       - "--exclude=**/*.pyc"
       - "--exclude=**/.pytest_cache"
+      - "--exclude=**/node_modules"       # Studio Next.js : deps réinstallées au build image
+      - "--exclude=**/.next"
+      - "--exclude=apps/studio/out"
   notify: Recreate content-factory stack
   tags: [content-factory, phase3]
 

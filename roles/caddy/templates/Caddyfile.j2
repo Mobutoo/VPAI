@@ -282,6 +282,21 @@ BOOTSTRAP 200
 }
 {% endif %}
 
+# === Content Factory — Studio Web (atelier Next.js statique) — PUBLIC ===
+# SPA statique (Next.js output:export) servie par le conteneur cf-studio (nginx),
+# joignable via javisi_frontend. PUBLIC (pas de vpn_only) : l'opérateur n'a pas
+# d'accès VPN (même doctrine que cf-api/TREK). Sécu = auth applicative Studio
+# (login mot de passe -> JWT, apps/api /auth/login) + require_bearer sur cf-api.
+# Le Studio appelle cf-api sur https://{{ caddy_cf_domain }} (baké au build,
+# NEXT_PUBLIC_CF_API_URL). TLS ACME (port 80 public).
+{% if studio_enabled | default(false) | bool %}
+{{ caddy_studio_domain }} {
+    reverse_proxy cf-studio:80
+
+    import security_headers
+}
+{% endif %}
+
 # === Flash Suite (unified dashboard) — suite.<domain> ===
 # Architecture: Shell (Next.js) = dashboard + auth. Sub-apps served directly at their paths.
 # Ase (Django/Vite) assets are at /assets/ (no /flow/ prefix — Vite base path not set at build time).

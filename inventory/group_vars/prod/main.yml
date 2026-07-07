@@ -17,6 +17,9 @@ redis_maxmemory: "384mb"
 # stack cf-api/conductor sont gatés sur ce flag. Le laisser en -e-only ferait tomber
 # le vhost — donc périmer le cert ACME — au prochain deploy caddy sans le flag.
 content_factory_enabled: true
+# Studio Web (atelier.ewutelo.cloud) — même doctrine persistante que ci-dessus : gate
+# le vhost Caddy public + le service cf-studio. -e-only ferait tomber le vhost/cert.
+studio_enabled: true
 
 # M1 serverless GPU LIVE (2026-07-07) : le conducteur dispatche les takes sur
 # l'endpoint RunPod serverless (ddafuqglem08aw, RTX 5090/4090 EU-RO-1, workersMin=0

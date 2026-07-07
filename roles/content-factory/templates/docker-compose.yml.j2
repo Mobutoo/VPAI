@@ -95,6 +95,34 @@ services:
       cf-api:
         condition: service_healthy
 
+{% if studio_enabled | default(false) | bool %}
+  # Studio Web (atelier Next.js statique) — build-on-host, servi par nginx, routé
+  # par javisi_caddy sur {{ caddy_studio_domain }}. Ne parle qu'à javisi_frontend :
+  # le navigateur appelle cf-api directement (NEXT_PUBLIC_CF_API_URL inliné au build).
+  cf-studio:
+    build:
+      context: {{ cf_src_dir }}/apps/studio
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_CF_API_URL: "https://{{ caddy_cf_domain }}"
+    container_name: cf-studio
+    restart: unless-stopped
+    networks:
+      - {{ cf_frontend_network }}          # routé par javisi_caddy
+    mem_limit: {{ cf_studio_mem_limit | default('128m') }}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+{% endif %}
+
 networks:
   # Réseaux prod pré-existants — jamais créés par ce compose.
   {{ cf_backend_network }}:

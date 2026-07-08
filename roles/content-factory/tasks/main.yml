@@ -520,6 +520,31 @@
   register: _cf_compose
   tags: [content-factory, phase3]
 
+# --- S2 : ownership du volume media (cf-api uid 10001) -------------------------
+# Le volume Docker NOMMÉ `cf_media` est monté root:root (Docker ne connaît pas
+# l'uid applicatif). cf-api tourne en appuser(10001) et ne peut PAS y écrire ->
+# POST /takes/{id}/representations 500 (PermissionError sur os.makedirs /media),
+# vérifié live 2026-07-08. Le Dockerfile crée /media chown 10001 (fresh install :
+# Docker copie l'ownership dans un volume VIDE au 1er mount) ; ce chown couvre le
+# cas d'un volume DÉJÀ créé root:root (upgrade). Idempotent (no-op si déjà 10001),
+# l'ownership du volume persiste au recreate.
+- name: Ensure cf_media volume is writable by cf-api (uid 10001)
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -u
+      - "0"
+      - "{{ cf_api_container | default('cf-api') }}"
+      - chown
+      - -R
+      - "10001:10001"
+      - /media
+  become: true
+  changed_when: false
+  when: not ansible_check_mode
+  tags: [content-factory, phase3]
+
 # --- Retention du namespace Temporal (audit 2026-07-02 M7) ---------------------
 # auto-setup crée le namespace avec la retention par défaut (24h, vérifié live) ;
 # on la porte à {{ cf_temporal_retention }} (30 j). Piège vérifié live 2026-07-02 :

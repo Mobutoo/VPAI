@@ -47,6 +47,11 @@ services:
     restart: unless-stopped
     env_file:
       - {{ cf_config_dir }}/api.env
+    volumes:
+      # S2 : persistance de la sortie vidéo (worker GPU → upload → volume Sese,
+      # PAS d'objectstore S3). Monté sur CF_MEDIA_DIR (api.env.j2) ; nommé (pas de
+      # bind-host) → survit à un recreate du conteneur, backup via le volume Docker.
+      - cf_media:/media
     networks:
       - {{ cf_backend_network }}           # joindre javisi_postgresql
       - {{ cf_frontend_network }}          # être routé par javisi_caddy
@@ -122,6 +127,11 @@ services:
       retries: 5
       start_period: 15s
 {% endif %}
+
+volumes:
+  # S2 : sortie vidéo persistée (cf-api, /media) — volume Docker NOMMÉ, créé par
+  # ce compose (pas external, contrairement aux réseaux ci-dessous).
+  cf_media:
 
 networks:
   # Réseaux prod pré-existants — jamais créés par ce compose.

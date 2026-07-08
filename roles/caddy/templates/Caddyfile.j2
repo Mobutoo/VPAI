@@ -276,6 +276,14 @@ BOOTSTRAP 200
 # public+auth-native que TREK / Typebot viewer. TLS via ACME (port 80 public).
 {% if content_factory_enabled | default(false) | bool %}
 {{ caddy_cf_domain }} {
+    # S2 : POST /takes/{id}/representations reçoit l'upload multipart de la sortie
+    # vidéo (worker GPU) — la limite Caddy par défaut (~1MB héritée du body buffer)
+    # 413 sur un .mp4 de quelques Mo. 200MB = large marge au-dessus d'un draft
+    # 768x512/~5s (bien en dessous en pratique), sans ouvrir en grand.
+    request_body {
+        max_size 200MB
+    }
+
     reverse_proxy cf-api:8000
 
     import security_headers

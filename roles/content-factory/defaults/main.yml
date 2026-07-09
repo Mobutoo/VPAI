@@ -66,6 +66,10 @@ cf_plane_workspace_slug: "{{ vault_plane_workspace_slug | default('ewutelo') }}"
 # Gate : "0" par défaut => generate_take_gpu reste un NO-OP complet (zéro réseau
 # PodPilot/RunPod). Passage à "1" = geste opérateur séparé du déploiement Ansible.
 cf_gpu_live: "0"
+# Gate LLM (C5 AI Director — services/conductor/activities_llm.py) : "0" par défaut
+# => decompose_brief tombe en fallback local (1 scène/1 plan), zéro réseau.
+# L'endpoint LLM vient du resolve PodPilot (policy cf-llm-decompose), pas d'une env.
+cf_llm_live: "0"
 cf_podpilot_project: "content-factory"
 cf_podpilot_policy: "cf-video-draft"
 cf_gpu_poll_interval_s: "5"

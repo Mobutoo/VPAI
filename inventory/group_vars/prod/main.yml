@@ -29,4 +29,7 @@ studio_enabled: true
 # PodPilot waza 100.64.0.1, leg resolve valide). Budget borne : scale-to-zero +
 # workersMax=1 + cap $120/mois (RunPod).
 cf_gpu_live: "1"
+# C5 AI Director live (endpoint LLM serverless cf-llm hizahkyaanf2lh, Qwen2.5-14B-AWQ,
+# US-IL-1, workersMin=0 = 0$ idle — provisionné 2026-07-09, RUNBOOK-LLM-ENDPOINT.md).
+cf_llm_live: "1"
 cf_podpilot_url: "http://100.64.0.1:8000"

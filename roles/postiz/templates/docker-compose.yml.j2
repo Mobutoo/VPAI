@@ -1,0 +1,65 @@
+# {{ ansible_managed }}
+# Postiz (Content Factory V-0) — variante Sese-AI (FRUGAL).
+# RÉUTILISE l'infra prod : Postgres `javisi_postgresql` (DB postiz, provisionnée
+# par le rôle), Temporal `cf-temporal` (namespace `postiz`, enregistré par le
+# rôle), réseaux externes. Redis DÉDIÉ (queues BullMQ — noeviction obligatoire).
+services:
+  postiz:
+    image: {{ postiz_image }}
+    container_name: {{ postiz_container }}
+    restart: unless-stopped
+    env_file:
+      - {{ postiz_config_dir }}/postiz.env
+    volumes:
+      - {{ postiz_data_dir }}:/config
+      - {{ postiz_uploads_dir }}:/uploads
+    networks:
+      - {{ postiz_backend_network }}    # javisi_postgresql + cf-temporal + postiz-redis
+      - {{ postiz_frontend_network }}   # routé par javisi_caddy (vpn_only)
+    mem_limit: {{ postiz_mem_limit }}
+    healthcheck:
+      # Sonde du compose officiel (gateway :5000) — 127.0.0.1 explicite
+      # (REX cf-studio : localhost peut résoudre ::1, service IPv4-only).
+      test: ["CMD", "node", "-e", "const r=require('http').get('http://127.0.0.1:5000/',res=>process.exit(res.statusCode<500?0:1));r.on('error',()=>process.exit(1));r.setTimeout(4000,()=>{r.destroy();process.exit(1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    depends_on:
+      postiz-redis:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postiz-redis:
+    image: {{ postiz_redis_image }}
+    container_name: {{ postiz_redis_container }}
+    restart: unless-stopped
+    # noeviction : les clés BullMQ ne doivent JAMAIS être évincées (perte de jobs).
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "96mb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - {{ postiz_redis_data_dir }}:/data
+    networks:
+      - {{ postiz_backend_network }}
+    mem_limit: {{ postiz_redis_mem_limit }}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  # Réseaux prod pré-existants — jamais créés par ce compose.
+  {{ postiz_backend_network }}:
+    external: true
+  {{ postiz_frontend_network }}:
+    external: true

@@ -108,6 +108,8 @@
       tags: [trek, phase3, apps]
     - role: content-factory
       tags: [content-factory, phase3, apps]
+    - role: postiz
+      tags: [postiz, phase4, apps]
 
     # Phase 4 — Observabilité
     - role: monitoring

@@ -1,0 +1,50 @@
+---
+# postiz — defaults (variante Sese-AI, FRUGAL)
+# Postiz self-host (planification/publication réseaux sociaux) — Content Factory V-0.
+# RÉUTILISE l'infra prod : Postgres `javisi_postgresql` (DB `postiz`), Temporal
+# `cf-temporal` (namespace dédié `postiz` — Postiz >= 2.12 exige Temporal pour les
+# posts planifiés, compose officiel gitroomhq/postiz-docker-compose), réseaux
+# externes javisi_backend/javisi_frontend. Redis DÉDIÉ léger : `javisi_redis` est
+# tuné cache LiteLLM (maxmemory + éviction) — incompatible queues BullMQ Postiz
+# (une éviction = perte de jobs). UI derrière Caddy vpn_only postiz.<domain>.
+
+postiz_config_dir: "/opt/{{ project_name }}/configs/postiz"
+postiz_data_dir: "/opt/{{ project_name }}/data/postiz"            # -> /config
+postiz_uploads_dir: "/opt/{{ project_name }}/data/postiz-uploads" # -> /uploads
+postiz_redis_data_dir: "/opt/{{ project_name }}/data/postiz-redis"
+
+postiz_container: "postiz"
+postiz_redis_container: "postiz-redis"
+postiz_port: 5000                       # gateway HTTP interne de l'image (front+API)
+
+# Image redis = pin global versions.yml (8.4.0-bookworm — REX : PAS 8.8+,
+# entrypoint setpriv incompatible durcissement ; ici sans cap_drop, pin conservé
+# pour cohérence de flotte).
+postiz_redis_image: "{{ redis_image }}"
+
+# --- DB (javisi_postgresql partagé — mot de passe UNIQUE {{ postgresql_password }},
+#     convention CLAUDE.md ; postiz_app = owner de la DB, Prisma migre au boot)
+postiz_pg_container: "{{ project_name }}_postgresql"
+postiz_pg_admin_user: "postgres"
+postiz_pg_user: "postiz_app"
+postiz_db_name: "postiz"
+
+# --- Temporal (mutualisé cf-temporal — rôle content-factory ; namespace dédié)
+postiz_temporal_container: "cf-temporal"
+postiz_temporal_address: "cf-temporal:7233"
+postiz_temporal_namespace: "postiz"
+postiz_temporal_retention: "720h"       # 30 j, même doctrine que cf (audit M7)
+
+# --- Réseaux prod pré-existants — jamais créés par ce compose
+postiz_backend_network: "javisi_backend"    # javisi_postgresql + cf-temporal + postiz-redis
+postiz_frontend_network: "javisi_frontend"  # routé par javisi_caddy (vpn_only)
+
+# --- Limites (headroom Sese ~5,5 Go mesuré 2026-07-10 ; Postiz ~400-600 Mo)
+postiz_mem_limit: "1g"
+postiz_redis_mem_limit: "128m"
+
+# Inscription ouverte tant que le compte opérateur n'existe pas (UI vpn_only).
+# GATE HUMAIN : passer à true (redeploy) après création du compte opérateur.
+postiz_disable_registration: false
+
+caddy_postiz_domain: "{{ postiz_subdomain }}.{{ domain_name }}"

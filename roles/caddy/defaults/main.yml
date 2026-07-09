@@ -21,6 +21,9 @@ caddy_cf_domain: "{{ cf_subdomain | default('cf') }}.{{ domain_name }}"
 caddy_cf_upload_max_size: "500MB"
 # Studio Web CF (atelier) — 'studio' est déjà pris par ComfyUI (comfyui_subdomain), d'où 'atelier'.
 caddy_studio_domain: "{{ studio_subdomain | default('atelier') }}.{{ domain_name }}"
+# Postiz (Content Factory V-0) — VPN-only. Upload médias à publier (vidéos) : 500MB.
+caddy_postiz_domain: "{{ postiz_subdomain | default('postiz') }}.{{ domain_name }}"
+caddy_postiz_upload_max_size: "500MB"
 caddy_mealie_domain: "{{ mealie_subdomain | default('miam') }}.{{ domain_name }}"
 caddy_grocy_domain: "{{ grocy_subdomain | default('garde') }}.{{ domain_name }}"
 caddy_koodia_domain: "{{ koodia_subdomain | default('koodia') }}.{{ domain_name }}"

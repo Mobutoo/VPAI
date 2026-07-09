@@ -305,6 +305,26 @@ BOOTSTRAP 200
 }
 {% endif %}
 
+# === Postiz (Content Factory V-0) — publication réseaux sociaux — VPN only ===
+# UI + API Postiz (gateway interne :5000). Postiz joignable via javisi_frontend.
+# vpn_only : outil opérateur interne, aucun besoin d'exposition publique (les
+# plateformes sociales sont appelées en SORTIE par Postiz, pas en entrée).
+{% if postiz_enabled | default(false) | bool %}
+{{ caddy_postiz_domain }} {
+    import vpn_only
+    import vpn_error_page
+
+    # Upload des médias à publier (vidéos) — même borne que cf-api.
+    request_body {
+        max_size {{ caddy_postiz_upload_max_size | default('500MB') }}
+    }
+
+    reverse_proxy postiz:{{ postiz_port | default(5000) }}
+
+    import security_headers
+}
+{% endif %}
+
 # === Flash Suite (unified dashboard) — suite.<domain> ===
 # Architecture: Shell (Next.js) = dashboard + auth. Sub-apps served directly at their paths.
 # Ase (Django/Vite) assets are at /assets/ (no /flow/ prefix — Vite base path not set at build time).

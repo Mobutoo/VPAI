@@ -1,0 +1,11 @@
+---
+# postiz — handlers
+# env_file service → recreate: always (JAMAIS state: restarted — règle CLAUDE.md)
+
+- name: Recreate postiz stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ postiz_config_dir }}"
+    state: present
+    recreate: always
+  become: true
+  when: not ansible_check_mode

@@ -290,6 +290,9 @@ koodia_subdomain: ""
 trek_subdomain: "trip"                 # → trip.<domain> (accès public Internet)
 trek_admin_email: "seko.mobutoo@gmail.com"
 
+# Postiz — publication réseaux sociaux (Content Factory V-0, VPN-only)
+postiz_subdomain: "postiz"             # → postiz.<domain> (vpn_only)
+
 # Auto-Fix Pipeline (GitHub Issues -> Claude Code -> PR)
 autofix_enabled: true
 autofix_label: "auto-fix"

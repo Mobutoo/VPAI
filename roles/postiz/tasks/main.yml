@@ -1,0 +1,215 @@
+---
+# postiz — tasks (variante Sese-AI, FRUGAL)
+# Provisionne DB `postiz` dans javisi_postgresql + namespace Temporal `postiz`
+# sur cf-temporal, puis déploie le compose (postiz + postiz-redis dédié).
+
+# --- Garde-fous (REX-62 : vault_* sans default() → vérifier AVANT deploy) ---
+
+- name: Assert Postiz vault secrets are defined
+  ansible.builtin.assert:
+    that:
+      - vault_postiz_jwt_secret is defined
+      - vault_postiz_jwt_secret | length >= 32
+    fail_msg: "vault_postiz_jwt_secret absent ou trop court (< 32) dans secrets.yml — ansible-vault edit requis"
+    quiet: true
+  no_log: true
+  tags: [postiz, phase4]
+
+# --- Répertoires ---
+
+- name: Create Postiz directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  loop:
+    - "{{ postiz_config_dir }}"
+    - "{{ postiz_data_dir }}"
+    - "{{ postiz_uploads_dir }}"
+    - "{{ postiz_redis_data_dir }}"
+  become: true
+  tags: [postiz, phase4]
+
+# --- Provisioning DB dans javisi_postgresql (idempotent, pattern content-factory)
+# Mot de passe UNIQUE {{ postgresql_password }} (convention CLAUDE.md — jamais de
+# variante par service). postiz_app = OWNER de la DB : Prisma (Postiz) crée et
+# migre son schéma au boot, aucun GRANT supplémentaire requis.
+# PGPASSWORD transite par environment: (jamais argv → pas de fuite ps) + no_log.
+
+- name: Check postiz_app role presence
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - PGPASSWORD
+      - "{{ postiz_pg_container }}"
+      - psql
+      - -U
+      - "{{ postiz_pg_admin_user }}"
+      - -tAc
+      - "SELECT 1 FROM pg_roles WHERE rolname = '{{ postiz_pg_user }}'"
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  register: _postiz_role_present
+  changed_when: false
+  no_log: true
+  tags: [postiz, phase4]
+
+- name: Create postiz_app role
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -i
+      - -e
+      - PGPASSWORD
+      - "{{ postiz_pg_container }}"
+      - psql
+      - -U
+      - "{{ postiz_pg_admin_user }}"
+      - -v
+      - ON_ERROR_STOP=1
+      - -f
+      - "-"
+    stdin: "CREATE ROLE {{ postiz_pg_user }} LOGIN PASSWORD '{{ postgresql_password }}'"
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  when: _postiz_role_present.stdout | trim != "1"
+  register: _postiz_role_created
+  changed_when: _postiz_role_created.rc == 0
+  no_log: true
+  tags: [postiz, phase4]
+
+- name: Check postiz database presence
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - PGPASSWORD
+      - "{{ postiz_pg_container }}"
+      - psql
+      - -U
+      - "{{ postiz_pg_admin_user }}"
+      - -tAc
+      - "SELECT 1 FROM pg_database WHERE datname = '{{ postiz_db_name }}'"
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  register: _postiz_db_present
+  changed_when: false
+  no_log: true
+  tags: [postiz, phase4]
+
+- name: Create postiz database (owner postiz_app)
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - PGPASSWORD
+      - "{{ postiz_pg_container }}"
+      - psql
+      - -U
+      - "{{ postiz_pg_admin_user }}"
+      - -c
+      - "CREATE DATABASE {{ postiz_db_name }} OWNER {{ postiz_pg_user }}"
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  when: _postiz_db_present.stdout | trim != "1"
+  register: _postiz_db_created
+  changed_when: _postiz_db_created.rc == 0
+  no_log: true
+  tags: [postiz, phase4]
+
+# --- Namespace Temporal `postiz` sur cf-temporal (mutualisation FRUGAL) --------
+# REX-59 : vérifier le conteneur avant docker exec (fresh install = cf-temporal
+# absent → on skippe, le run suivant post content-factory convergera).
+# Piège vérifié live (rôle content-factory) : le frontend Temporal binde sur l'IP
+# du conteneur (BIND_ON_IP), PAS 127.0.0.1 → tctl doit cibler $(hostname -i):7233.
+
+- name: Check cf-temporal container is running
+  ansible.builtin.command:
+    argv:
+      - docker
+      - inspect
+      - -f
+      - "{{ '{{.State.Running}}' }}"
+      - "{{ postiz_temporal_container }}"
+  become: true
+  register: _postiz_temporal_up
+  changed_when: false
+  failed_when: false
+  tags: [postiz, phase4]
+
+- name: Check Temporal namespace postiz
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ postiz_temporal_container }}"
+      - bash
+      - -c
+      - tctl --address "$(hostname -i):7233" --ns {{ postiz_temporal_namespace }} namespace describe
+  become: true
+  when: _postiz_temporal_up.stdout | default('') | trim == "true"
+  register: _postiz_ns_describe
+  changed_when: false
+  failed_when: false
+  tags: [postiz, phase4]
+
+- name: Register Temporal namespace postiz
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ postiz_temporal_container }}"
+      - bash
+      - -c
+      - tctl --address "$(hostname -i):7233" --ns {{ postiz_temporal_namespace }} namespace register --retention {{ postiz_temporal_retention }}
+  become: true
+  when:
+    - _postiz_temporal_up.stdout | default('') | trim == "true"
+    - _postiz_ns_describe.rc | default(1) != 0
+  register: _postiz_ns_registered
+  changed_when: _postiz_ns_registered.rc == 0
+  failed_when: false   # cluster pas encore prêt → le run suivant converge
+  tags: [postiz, phase4]
+
+# --- Config + déploiement ---
+
+- name: Deploy Postiz environment file
+  ansible.builtin.template:
+    src: postiz.env.j2
+    dest: "{{ postiz_config_dir }}/postiz.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Recreate postiz stack
+  tags: [postiz, phase4]
+
+- name: Deploy docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ postiz_config_dir }}/docker-compose.yml"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Recreate postiz stack
+  tags: [postiz, phase4]
+
+- name: Ensure Postiz stack is running
+  community.docker.docker_compose_v2:
+    project_src: "{{ postiz_config_dir }}"
+    state: present
+  become: true
+  changed_when: false
+  tags: [postiz, phase4]

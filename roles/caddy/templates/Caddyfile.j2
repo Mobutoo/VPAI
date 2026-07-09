@@ -278,10 +278,10 @@ BOOTSTRAP 200
 {{ caddy_cf_domain }} {
     # S2 : POST /takes/{id}/representations reçoit l'upload multipart de la sortie
     # vidéo (worker GPU) — la limite Caddy par défaut (~1MB héritée du body buffer)
-    # 413 sur un .mp4 de quelques Mo. 200MB = large marge au-dessus d'un draft
-    # 768x512/~5s (bien en dessous en pratique), sans ouvrir en grand.
+    # 413 sur un .mp4 de quelques Mo. V-1 (références) : l'opérateur uploade des
+    # vidéos de référence depuis le Studio → 500MB par défaut (variable rôle).
     request_body {
-        max_size 200MB
+        max_size {{ caddy_cf_upload_max_size | default('500MB') }}
     }
 
     reverse_proxy cf-api:8000

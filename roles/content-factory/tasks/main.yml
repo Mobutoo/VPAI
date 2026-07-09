@@ -499,6 +499,17 @@
   notify: Recreate content-factory stack
   tags: [content-factory, phase3]
 
+- name: Deploy render environment file
+  ansible.builtin.template:
+    src: render.env.j2
+    dest: "{{ cf_config_dir }}/render.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  notify: Recreate content-factory stack
+  tags: [content-factory, phase3]
+
 - name: Deploy docker-compose file
   ansible.builtin.template:
     src: docker-compose.yml.j2

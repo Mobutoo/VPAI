@@ -2,7 +2,8 @@
 # Content Factory v2 (M0) — variante Sese-AI (FRUGAL).
 # RÉUTILISE l'infra prod : Postgres `javisi_postgresql` (PG18.4) + réseaux externes
 # `javisi_backend`/`javisi_frontend`. Routing via `javisi_caddy` (vhost hors de ce compose).
-# 3 services : Temporal (auto-setup), API (FastAPI), Conductor (worker Temporal).
+# 4 services : Temporal (auto-setup), API (FastAPI), Conductor (worker Temporal),
+# Render (worker Temporal V-2 découpe — ffmpeg+PySceneDetect) ; + Studio optionnel.
 
 services:
   cf-temporal:
@@ -97,6 +98,34 @@ services:
     depends_on:
       cf-temporal:
         condition: service_healthy         # healthcheck tctl ci-dessus (audit H7)
+      cf-api:
+        condition: service_healthy
+
+  # V-2 découpe → plans : worker Temporal task-queue cf-render (ffmpeg +
+  # PySceneDetect, 1 job à la fois). Backend SEUL : il ne parle qu'à cf-temporal
+  # et cf-api (write-back) — aucun egress internet/mesh, contrairement au
+  # conducteur. Monte cf_media en RW (mêmes chemins que cf-api, uid 10001).
+  cf-render:
+    build:
+      context: {{ cf_src_dir }}
+      dockerfile: services/render/Dockerfile
+    container_name: cf-render
+    restart: unless-stopped
+    env_file:
+      - {{ cf_config_dir }}/render.env
+    volumes:
+      - cf_media:/media
+    networks:
+      - {{ cf_backend_network }}
+    mem_limit: {{ cf_render_mem_limit }}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      cf-temporal:
+        condition: service_healthy
       cf-api:
         condition: service_healthy
 

@@ -42,6 +42,12 @@ cf_temporal_namespace: "content-factory"    # créé via auto-setup DEFAULT_NAME
 cf_temporal_retention: "720h"               # 30 j (audit M7) — `describe` affiche `Retention: 720h0m0s`
 cf_task_queue: "cf-conductor"
 
+# --- cf-render (V-2 découpe → plans — worker Temporal ffmpeg+PySceneDetect) ---
+cf_render_task_queue: "cf-render"
+# 1 job média à la fois (spec §Risques RAM Sese) — le ThreadPoolExecutor du
+# worker sérialise ; les runs excédentaires attendent dans la task-queue.
+cf_render_concurrency: "1"
+
 # --- API ---
 cf_api_internal_base_url: "http://cf-api:8000"   # utilisé par le conductor (CF_API_BASE_URL)
 cf_api_token: "{{ vault_cf_api_token }}"         # Bearer REST cf-api (audit C2/A1.2) — vault, pas de default
@@ -88,7 +94,9 @@ cf_podpilot_api_key: "{{ vault_podpilot_worker_key | default('') }}"
 # (absente de secrets.yml à ce jour) — default('') volontaire, même raisonnement.
 cf_runpod_api_key: "{{ vault_runpod_api_key | default('') }}"
 
-# --- Resource limits (Sese 12 GB déjà chargé ; total ajouté ~1.4 GB) ---
+# --- Resource limits (Sese 12 GB déjà chargé ; total ajouté ~1.9 GB) ---
 cf_temporal_mem_limit: "512m"
 cf_api_mem_limit: "512m"
 cf_conductor_mem_limit: "384m"
+# cf-render : ~150 Mo idle ; pic = x264 veryfast 1080p (1 job à la fois, nice).
+cf_render_mem_limit: "512m"

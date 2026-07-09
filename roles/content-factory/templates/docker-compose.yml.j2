@@ -121,7 +121,9 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ >/dev/null 2>&1 || exit 1"]
+      # 127.0.0.1 explicite : `localhost` résout ::1 en premier dans le conteneur
+      # alors que nginx n'écoute qu'en IPv4 -> faux unhealthy permanent.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:80/ >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5

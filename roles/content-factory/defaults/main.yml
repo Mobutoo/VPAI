@@ -50,6 +50,9 @@ cf_render_concurrency: "1"
 # V5-B — Remotion Render Server sur waza via le mesh (idiome IP littérale,
 # cf. cf_podpilot_url). Consommé par render.env.j2 (CF_REMOTION_URL).
 cf_remotion_mesh_url: "100.64.0.1:3200"
+# V-4 — gate dépense vision Qwen2.5-VL (endpoint RunPod cf-vision). "0" = les
+# describes sont refusés (503 API) et l'activity est no-op. Flip prod après smoke.
+cf_vision_live: "0"
 
 # --- API ---
 cf_api_internal_base_url: "http://cf-api:8000"   # utilisé par le conductor (CF_API_BASE_URL)

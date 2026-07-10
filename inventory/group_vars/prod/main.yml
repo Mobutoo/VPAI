@@ -38,4 +38,9 @@ cf_llm_live: "1"
 # V-4 vision Qwen2.5-VL (endpoint cf-vision 49c91koo2sxl2o, GPU 48 Go, smoke
 # multimodal OK 2026-07-10 — RUNBOOK-LLM-ENDPOINT.md §8-ter). Scale-to-zero.
 cf_vision_live: "1"
+# T5/T6.8 — cf-render : 3 activities concurrentes (polls LLM/vision 840s +
+# ffmpeg nice) ; mem bump CONJOINT obligatoire (512m = OOM-kill du conteneur
+# avec 3 ffmpeg re-encode simultanes — revue plan T5 D7).
+cf_render_concurrency: "3"
+cf_render_mem_limit: "1536m"
 cf_podpilot_url: "http://100.64.0.1:8000"

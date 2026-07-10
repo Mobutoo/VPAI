@@ -11,5 +11,7 @@ qdrant_collection: "{{ comfyui_qdrant_collection }}"
 litellm_url: "https://llm.{{ domain_name }}/v1"
 litellm_api_key: "{{ litellm_api_key | default('') }}"
 remotion_api_url: "http://localhost:{{ remotion_port | default('3200') }}"
-remotion_api_token: "{{ remotion_api_token | default('') }}"
+# V5-B : le serveur Remotion exige désormais le bearer (vault) — sans lui,
+# montage_render passerait de no-op-auth à 401.
+remotion_api_token: "{{ remotion_api_token | default(vault_remotion_api_token | default('')) }}"
 montage_adjust_model: "{{ comfyui_montage_adjust_model | default('qwen3-coder') }}"

@@ -117,6 +117,9 @@ services:
       - cf_media:/media
     networks:
       - {{ cf_backend_network }}
+      # V5-B : egress mesh (POST jobs Remotion waza:3200) — même fix que
+      # cf-conductor en M1 (javisi_backend est internal:true = zéro egress).
+      - {{ cf_frontend_network }}
     mem_limit: {{ cf_render_mem_limit }}
     logging:
       driver: json-file

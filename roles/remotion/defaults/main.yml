@@ -11,6 +11,13 @@ remotion_version: "4.0.437"
 
 # Ports
 remotion_port: 3200
+# V5-B : publication SUPPLÉMENTAIRE sur l'IP tailscale de waza (cf-render Sese
+# poste ses jobs d'habillage). La frontière de sécurité = ce bind (interface
+# mesh, injoignable d'Internet) + bearer REMOTION_API_TOKEN ; la règle ufw
+# (workstation-common) est documentaire (port publié Docker = chaîne FORWARD).
+# ⚠️ Si tailscaled n'est pas up au start Docker, le bind échoue — restart
+# unless-stopped rattrape au tick suivant.
+remotion_mesh_bind_ip: "100.64.0.1"
 
 # Docker resource limits (RPi 5 16GB — Chrome headless for rendering)
 remotion_memory_limit: "8G"

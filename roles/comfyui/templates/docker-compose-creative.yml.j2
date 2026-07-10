@@ -75,6 +75,8 @@ services:
       - {{ creative_assets_dir }}:/app/creative-assets:ro
     ports:
       - "127.0.0.1:{{ remotion_port }}:{{ remotion_port }}"
+      # V5-B : joignable du mesh (cf-render Sese) — frontière = ce bind + bearer.
+      - "{{ remotion_mesh_bind_ip | default('100.64.0.1') }}:{{ remotion_port }}:{{ remotion_port }}"
     networks:
       - creative
     deploy:

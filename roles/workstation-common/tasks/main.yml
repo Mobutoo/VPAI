@@ -227,6 +227,17 @@
   loop: "{{ workstation_ufw_allow_cidrs | product(['80', '443']) | list }}"
   become: true
 
+# V5-B : Remotion Render Server joignable du MESH SEUL (pas du LAN) — cf-render
+# (Sese) poste ses jobs d'habillage sur :3200. Règle documentaire : la vraie
+# frontière est le bind Docker sur l'IP tailscale (roles/remotion/defaults).
+- name: Allow Remotion render port from Tailscale mesh only
+  community.general.ufw:
+    rule: allow
+    port: "{{ remotion_port | default('3200') }}"
+    proto: tcp
+    src: "{{ vpn_network_cidr }}"
+  become: true
+
 - name: Enable UFW
   community.general.ufw:
     state: enabled

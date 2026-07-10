@@ -35,4 +35,7 @@ cf_gpu_live: "1"
 # C5 AI Director live (endpoint LLM serverless cf-llm hizahkyaanf2lh, Qwen2.5-14B-AWQ,
 # US-IL-1, workersMin=0 = 0$ idle — provisionné 2026-07-09, RUNBOOK-LLM-ENDPOINT.md).
 cf_llm_live: "1"
+# V-4 vision Qwen2.5-VL (endpoint cf-vision 49c91koo2sxl2o, GPU 48 Go, smoke
+# multimodal OK 2026-07-10 — RUNBOOK-LLM-ENDPOINT.md §8-ter). Scale-to-zero.
+cf_vision_live: "1"
 cf_podpilot_url: "http://100.64.0.1:8000"

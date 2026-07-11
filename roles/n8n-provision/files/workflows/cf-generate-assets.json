@@ -167,7 +167,13 @@
     },
     "Update Scene Status": {
       "main": [
-        []
+        [
+          {
+            "node": "TG: Assets Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "TG: Assets Done": {

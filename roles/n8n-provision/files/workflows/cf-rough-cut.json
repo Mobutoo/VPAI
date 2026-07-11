@@ -204,7 +204,13 @@
     },
     "Store Rough Cut URL": {
       "main": [
-        []
+        [
+          {
+            "node": "Deliver to Drop",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Deliver to Drop": {

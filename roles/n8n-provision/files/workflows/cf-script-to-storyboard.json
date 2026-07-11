@@ -191,7 +191,13 @@
     },
     "Store Results": {
       "main": [
-        []
+        [
+          {
+            "node": "TG: Storyboard Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "TG: Storyboard Done": {

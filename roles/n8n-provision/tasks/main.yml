@@ -420,11 +420,15 @@
       set -euo pipefail
       WORKFLOW_NAME="{{ item.item.name }}"
 
-      # Get workflow ID from list (grep -F returns 1 if not found, || true prevents set -e exit)
-      WORKFLOW_ID=$(docker exec {{ project_name }}_n8n n8n list:workflow 2>/dev/null | \
-        grep -F "$WORKFLOW_NAME" | head -1 | cut -d'|' -f1 | xargs || true)
+      # Get ALL workflow IDs matching this name EXACTLY (list:workflow format "ID|Name").
+      # Ancien code (grep -F "$NAME" | head -1) : (a) match SOUS-CHAINE fragile,
+      # (b) ne renvoyait qu'UN ID -> avec N copies homonymes il n'en supprimait
+      # qu'une par run, les doublons ne convergeaient JAMAIS. awk $2==n = match
+      # exact + TOUTES les copies. (Noms n8n CF sans '|' interne.)
+      WORKFLOW_IDS=$(docker exec {{ project_name }}_n8n n8n list:workflow 2>/dev/null | \
+        awk -F'|' -v n="$WORKFLOW_NAME" '$2==n {print $1}' | xargs || true)
 
-      if [ -z "$WORKFLOW_ID" ]; then
+      if [ -z "$WORKFLOW_IDS" ]; then
         echo "NEW: Workflow '$WORKFLOW_NAME' does not exist yet"
         exit 0
       fi
@@ -460,14 +464,17 @@
       DELSCRIPT
 
       docker cp /tmp/n8n-delete-wf.js {{ project_name }}_n8n:/home/node/n8n-delete-wf.js
-      RESULT=$(docker exec {{ project_name }}_n8n node /home/node/n8n-delete-wf.js \
-        "$WORKFLOW_ID" "{{ n8n_owner_email }}" "{{ n8n_owner_password }}" 2>&1)
 
-      if [ "$RESULT" = "DELETED" ]; then
-        echo "DELETED: $WORKFLOW_NAME (ID: $WORKFLOW_ID)"
-      else
-        echo "WARN: $RESULT for $WORKFLOW_NAME (ID: $WORKFLOW_ID)"
-      fi
+      # Boucle sur TOUTES les copies homonymes -> convergence à 0 avant ré-import.
+      for WORKFLOW_ID in $WORKFLOW_IDS; do
+        RESULT=$(docker exec {{ project_name }}_n8n node /home/node/n8n-delete-wf.js \
+          "$WORKFLOW_ID" "{{ n8n_owner_email }}" "{{ n8n_owner_password }}" 2>&1)
+        if [ "$RESULT" = "DELETED" ]; then
+          echo "DELETED: $WORKFLOW_NAME (ID: $WORKFLOW_ID)"
+        else
+          echo "WARN: $RESULT for $WORKFLOW_NAME (ID: $WORKFLOW_ID)"
+        fi
+      done
   register: n8n_workflow_delete
   changed_when: "'DELETED:' in (n8n_workflow_delete.stdout | default(''))"
   failed_when: false
@@ -513,9 +520,10 @@
       set -euo pipefail
       WORKFLOW_NAME="{{ item.item.name }}"
 
-      # Get workflow ID from list (format: "ID|Name")
+      # Get workflow ID from list (format "ID|Name") — match EXACT (awk $2==n)
+      # pas grep -F sous-chaîne ; delete-all garantit 1 copie ici.
       WORKFLOW_ID=$(docker exec {{ project_name }}_n8n n8n list:workflow 2>/dev/null | \
-        grep -F "$WORKFLOW_NAME" | head -1 | cut -d'|' -f1 | xargs)
+        awk -F'|' -v n="$WORKFLOW_NAME" '$2==n {print $1}' | head -1 | xargs)
 
       if [ -z "$WORKFLOW_ID" ]; then
         echo "SKIP: Workflow '$WORKFLOW_NAME' not found, cannot activate"

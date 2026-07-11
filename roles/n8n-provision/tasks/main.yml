@@ -315,6 +315,7 @@
     - cf-create-content
     - cf-read-content
     - cf-update-content
+    - cf-gate-decision
     - cf-scene
 
 - name: Check workflow update status (checksum comparison)
@@ -381,6 +382,7 @@
     - {file: "cf-create-content", name: "CF Create Content"}
     - {file: "cf-read-content", name: "CF Read Content"}
     - {file: "cf-update-content", name: "CF Update Content"}
+    - {file: "cf-gate-decision", name: "CF Gate Decision"}
     - {file: "cf-scene", name: "CF Scene"}
   loop_control:
     label: "{{ item.name }}"
@@ -589,6 +591,7 @@
     - {file: "cf-create-content", name: "CF Create Content"}
     - {file: "cf-read-content", name: "CF Read Content"}
     - {file: "cf-update-content", name: "CF Update Content"}
+    - {file: "cf-gate-decision", name: "CF Gate Decision"}
     - {file: "cf-scene", name: "CF Scene"}
   loop_control:
     label: "{{ item.name }}"
@@ -653,6 +656,7 @@
     - cf-create-content
     - cf-read-content
     - cf-update-content
+    - cf-gate-decision
     - cf-scene
 
 - name: Display n8n workflow update results

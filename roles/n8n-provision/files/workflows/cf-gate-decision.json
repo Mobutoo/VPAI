@@ -1,0 +1,95 @@
+{
+  "name": "CF Gate Decision",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cf-gate-decision",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "cfgd-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        380
+      ],
+      "webhookId": "cfgd-0001-0000-4000-8000-000000000001",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// === CF Gate Decision (T7a) : webhook Telegram/Studio -> POST /productions/{id}/gate ===\n// Signale une decision de gate humaine au ContentWorkflow Temporal via cf-api.\n// Route REST NATIVE (pas /compat/*) : auth = Authorization Bearer CF_API_TOKEN,\n// PAS x-webhook-secret (ce secret protege uniquement l'entree du webhook n8n,\n// comme sur cf-update-content/cf-create-content/cf-read-content).\nconst data = $input.first().json;\nconst body = data.body || data;\n\n// Validation du secret webhook entrant (meme pattern que cf-update-content) :\n// header x-webhook-secret, repli body.secret.\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\nif (!expectedSecret) throw new Error('N8N_WEBHOOK_HMAC_SECRET not configured');\nconst receivedSecret = (data.headers || {})['x-webhook-secret'] || body.secret || '';\nif (receivedSecret !== expectedSecret) throw new Error('Unauthorized: invalid webhook secret');\n\nconst content_id = body.content_id;\nconst gate = body.gate;\nconst decision = body.decision || 'approve';\nconst note = body.note || '';\nconst author = body.author || '';\n\n// Garde-fous lisibles AVANT l'appel reseau : content_id/gate manquants ->\n// reponse d'erreur structuree, jamais un throw (pas de 500 opaque), et on\n// evite de construire une URL avec 'undefined' dans le chemin.\nif (!content_id) {\n  return [{ json: { ok: false, statusCode: 422, error: 'Missing required field: content_id' } }];\n}\nif (!gate) {\n  return [{ json: { ok: false, statusCode: 422, error: 'Missing required field: gate' } }];\n}\n\n// content_id = UUID (domaine v2, cutover C) : jamais parseInt, interpolation brute.\nfunction cfApiPost(urlStr, payload, token) {\n  return new Promise((resolve) => {\n    const lib = urlStr.startsWith('https') ? require('https') : require('http');\n    const bodyStr = JSON.stringify(payload || {});\n    const hdrs = {\n      'Content-Type': 'application/json',\n      'Content-Length': Buffer.byteLength(bodyStr),\n      'Authorization': `Bearer ${token}`\n    };\n    const req = lib.request(urlStr, { method: 'POST', headers: hdrs }, (res) => {\n      let d = ''; res.on('data', c => d += c);\n      res.on('end', () => {\n        let parsed;\n        try { parsed = JSON.parse(d); } catch (e) { parsed = d; }\n        // Relai NON-2xx SANS throw : reponse lisible pour l'appelant (bot Telegram /\n        // skill OpenClaw) avec statusCode + corps d'erreur renvoye par cf-api.\n        // Couvre au minimum : 404 (production inconnue), 422 (gate/decision hors\n        // enum, cf. GateIn Literal), 502 (signal Temporal echoue : workflow clos\n        // ou reseau), 503 (Temporal non configure).\n        if (res.statusCode < 200 || res.statusCode >= 300) {\n          resolve({ ok: false, statusCode: res.statusCode, error: parsed });\n        } else {\n          const extra = (typeof parsed === 'object' && parsed !== null) ? parsed : { body: parsed };\n          resolve({ ok: true, statusCode: res.statusCode, ...extra });\n        }\n      });\n    });\n    req.on('error', (err) => {\n      // Panne reseau (cf-api injoignable) : meme forme de reponse lisible que les\n      // erreurs HTTP -- jamais de reject/throw ici non plus.\n      resolve({ ok: false, statusCode: 0, error: `network error: ${err.message}` });\n    });\n    req.write(bodyStr); req.end();\n  });\n}\n\nconst apiBase = $env.CF_API_BASE_URL || 'http://cf-api:8000';\nconst token = $env.CF_API_TOKEN || '';\nconst resp = await cfApiPost(`${apiBase}/productions/${content_id}/gate`, { gate, decision, note, author }, token);\nreturn [{ json: resp }];\n"
+      },
+      "id": "cfgd-0001-0000-0000-0000-000000000002",
+      "name": "Signal Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "cfgd-0001-0000-0000-0000-000000000003",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        380
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Signal Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signal Gate": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "all",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "content-factory"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2026-07-11T00:00:00.000Z",
+  "versionId": "1",
+  "id": "CfGateDecisionT7a"
+}

@@ -72,19 +72,6 @@
     },
     {
       "parameters": {
-        "jsCode": "// Sync to Kitsu: mark step 9 (Generate Assets) as done\nconst { content_id, content, results, scenes_dispatched } = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\ntry {\n  await $http.request({\n    method: 'POST',\n    url:    'http://localhost:5678/webhook/cf-kitsu-sync',\n    body:   {\n      secret:     expectedSecret,\n      action:     'update_task_status',\n      content_id,\n      step:       9,\n      status:     'done'\n    },\n    json: true\n  });\n} catch (err) {\n  // Non-fatal: Kitsu sync failure should not block the pipeline\n  console.error(`Kitsu sync failed: ${err.message}`);\n}\n\nreturn [{ json: { content_id, results, scenes_dispatched } }];"
-      },
-      "id": "cfga-0001-0000-0000-0000-000000000006",
-      "name": "Sync Kitsu",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1360,
-        300
-      ]
-    },
-    {
-      "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { status: 'ok', content_id: $json.content_id, scenes_dispatched: $json.scenes_dispatched, results: $json.results } }}",
         "options": {
@@ -180,24 +167,7 @@
     },
     "Update Scene Status": {
       "main": [
-        [
-          {
-            "node": "Sync Kitsu",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Sync Kitsu": {
-      "main": [
-        [
-          {
-            "node": "TG: Assets Done",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "TG: Assets Done": {

@@ -85,35 +85,6 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "http://localhost:5678/webhook/cf-kitsu-sync",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ secret: $env.N8N_WEBHOOK_HMAC_SECRET, action: 'update_task_status', content_id: $json.content_id, steps: [6, 7, 8], status: 'done' }) }}",
-        "options": {
-          "timeout": 15000
-        }
-      },
-      "id": "sts-0001-0000-0000-0000-000000000007",
-      "name": "Sync Kitsu",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        1580,
-        380
-      ]
-    },
-    {
-      "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { status: 'ok', content_id: $('Store Results').first().json.content_id, scenes_created: $('Store Results').first().json.scenes_created, steps_completed: [6, 7, 8] } }}",
         "options": {
@@ -220,24 +191,7 @@
     },
     "Store Results": {
       "main": [
-        [
-          {
-            "node": "Sync Kitsu",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Sync Kitsu": {
-      "main": [
-        [
-          {
-            "node": "TG: Storyboard Done",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "TG: Storyboard Done": {

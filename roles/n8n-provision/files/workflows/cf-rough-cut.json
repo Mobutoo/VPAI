@@ -85,19 +85,6 @@
     },
     {
       "parameters": {
-        "jsCode": "// Sync Kitsu: mark step 10 (Rough Cut) as done and upload preview\nconst { content_id, content, composition, render_id, rough_cut_url } = $input.first().json;\nconst expectedSecret = $env.N8N_WEBHOOK_HMAC_SECRET;\n\n// Update task status for step 10\ntry {\n  await $http.request({\n    method: 'POST',\n    url:    'http://localhost:5678/webhook/cf-kitsu-sync',\n    body:   {\n      secret:     expectedSecret,\n      action:     'update_task_status',\n      content_id,\n      step:       10,\n      status:     'done'\n    },\n    json: true\n  });\n} catch (err) {\n  console.error(`Kitsu task status sync failed: ${err.message}`);\n}\n\n// Upload preview if we have a render URL\nif (rough_cut_url) {\n  try {\n    await $http.request({\n      method: 'POST',\n      url:    'http://localhost:5678/webhook/cf-kitsu-sync',\n      body:   {\n        secret:     expectedSecret,\n        action:     'upload_preview',\n        content_id,\n        preview_url: rough_cut_url\n      },\n      json: true\n    });\n  } catch (err) {\n    console.error(`Kitsu preview upload failed: ${err.message}`);\n  }\n}\n\nreturn [{ json: { content_id, render_id, rough_cut_url, composition } }];"
-      },
-      "id": "cfrc-0001-0000-0000-0000-000000000007",
-      "name": "Sync Kitsu and Upload Preview",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        1580,
-        300
-      ]
-    },
-    {
-      "parameters": {
         "respondWith": "json",
         "responseBody": "={{ { status: 'ok', content_id: $json.content_id, render_id: $json.render_id, rough_cut_url: $json.rough_cut_url, composition: $json.composition } }}",
         "options": {
@@ -217,24 +204,7 @@
     },
     "Store Rough Cut URL": {
       "main": [
-        [
-          {
-            "node": "Sync Kitsu and Upload Preview",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Sync Kitsu and Upload Preview": {
-      "main": [
-        [
-          {
-            "node": "Deliver to Drop",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Deliver to Drop": {

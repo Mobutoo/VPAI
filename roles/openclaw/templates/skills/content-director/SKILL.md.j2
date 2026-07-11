@@ -298,11 +298,14 @@ Verrouille les etapes 1-5 (Pre-production).
 **Workflow:**
 1. Lire le contenu via cf-read-content
 2. Verifier que les etapes 1-5 sont toutes en "done"
-3. Appeler cf-update-content: phases 1-5 -> "locked"
-4. Appeler cf-kitsu-sync: taches 1-5 -> "locked"
-5. Presenter le resultat
+3. Appeler cf-gate-decision (T7a, webhook n8n -> cf-api -> signal Temporal) :
+   `{content_id, gate: "lock_preprod", decision: "approve"}` -- remplace
+   l'ancien pilotage `cf-update-content` (phases 1-5 -> "locked") +
+   `cf-kitsu-sync` (taches 1-5 -> "locked") qui ne signalait rien au
+   `ContentWorkflow` reel
+4. Presenter le resultat
 
-**Effet:** NocoDB phases 1-5 -> "locked", Kitsu taches 1-5 -> "locked".
+**Effet:** `ContentWorkflow` signale gate `lock_preprod` / decision `approve`.
 
 #### /lock-script
 
@@ -313,10 +316,11 @@ Verrouille les etapes 6-8 (Ecriture).
 **Workflow:**
 1. Verifier que /lock-preprod a ete valide
 2. Verifier que les etapes 6-8 sont en "done"
-3. Appeler cf-update-content: phases 6-8 -> "locked"
-4. Appeler cf-kitsu-sync: taches 6-8 -> "locked"
+3. Appeler cf-gate-decision (T7a) : `{content_id, gate: "lock_script", decision: "approve"}`
+   -- remplace l'ancien pilotage `cf-update-content` (phases 6-8 -> "locked")
+   + `cf-kitsu-sync` (taches 6-8 -> "locked")
 
-**Effet:** NocoDB phases 6-8 -> "locked", nombre de scenes fige.
+**Effet:** `ContentWorkflow` signale gate `lock_script` / decision `approve`, nombre de scenes fige.
 
 #### /ok-rough
 
@@ -327,40 +331,52 @@ Valide le rough cut (etape 10).
 **Workflow:**
 1. Verifier que /lock-script a ete valide
 2. Verifier que l'etape 10 est en "done"
-3. Appeler cf-update-content: rough_cut_validated -> true
-4. Appeler cf-kitsu-sync: tache 10 -> "approved"
+3. Appeler cf-gate-decision (T7a) : `{content_id, gate: "approve_rough", decision}`
+   -- `decision` = `"approve"` par defaut, `"retake"` ou `"adjust"` si la
+   commande precise un ajustement (ex: `/ok-rough retake`) ; remplace l'ancien
+   pilotage `cf-update-content` (rough_cut_validated -> true) + `cf-kitsu-sync`
+   (tache 10 -> "approved")
 
-**Effet:** structure du montage figee, ajustements restants = cosmetiques.
+**Effet:** `ContentWorkflow` signale gate `approve_rough`. Si `decision: "approve"` :
+structure du montage figee, ajustements restants = cosmetiques.
 
-#### /ok-final
+#### /ok-final — DEPRECIEE (v2, T7a)
 
-Valide le montage final (etape 12 review).
+**DEPRECIEE / no-op advisory en v2.** Le `ContentWorkflow` Temporal n'expose que
+4 gates (`lock_preprod`, `lock_script`, `approve_rough`, `published` -- cf.
+`GateIn.gate` dans `apps/api/app/main.py`), pas de 5e gate "final". Cette
+commande NE route PLUS ni vers `cf-update-content` ni vers `cf-gate-decision`
+-- router vers l'un ou l'autre mentirait sur l'etat reel du workflow (aucun
+gate Temporal ne correspond a "final_validated").
 
-**Pre-requis:** gate rough verrouillee + etape 12 en "done".
+**Comportement v2 :** l'etape de review (12) est **advisory seulement** --
+l'agent presente un recapitulatif du montage et rappelle que la validation qui
+compte reellement pour la suite du pipeline est `/published` (gate
+`published`), pas `/ok-final`. Aucun appel webhook n'est declenche par cette
+commande.
 
-**Workflow:**
-1. Verifier que /ok-rough a ete valide
-2. Verifier que l'etape 12 est en "done"
-3. Appeler cf-update-content: final_validated -> true
-4. Appeler cf-kitsu-sync: tache 12 -> "approved"
-5. Lancer l'export haute qualite via n8n
-
-**Effet:** export haute qualite lance.
+**Effet:** aucun (informationnel uniquement, aucun gate Temporal signale).
+L'export haute qualite reste porte par la phase IV du `ContentWorkflow`, pas
+par cette commande.
 
 #### /published
 
 Marque le contenu comme publie.
 
-**Pre-requis:** gate final validee + etape 14 en "done".
+**Pre-requis:** etape 12 (review) traitee -- `/ok-final` est advisory
+seulement en v2 et ne bloque plus rien -- + etape 14 en "done".
 
 **Workflow:**
-1. Verifier que /ok-final a ete valide
+1. Verifier que l'etape 12 (review) a ete traitee (advisory : `/ok-final` ne
+   verrouille plus rien depuis le cutover T7a)
 2. Verifier que l'etape 14 est en "done"
-3. Appeler cf-update-content: status -> "published"
-4. Appeler cf-kitsu-sync: projet archive
-5. Embedder le script valide dans Qdrant brand-voice (memoire creative)
+3. Appeler cf-gate-decision (T7a) : `{content_id, gate: "published", decision: "approve"}`
+   -- remplace l'ancien pilotage `cf-update-content` (status -> "published")
+   + `cf-kitsu-sync` (projet archive)
+4. Embedder le script valide dans Qdrant brand-voice (memoire creative)
 
-**Effet:** NocoDB status -> "published", Kitsu projet archive, embedding script -> Qdrant.
+**Effet:** `ContentWorkflow` signale gate `published` / decision `approve`.
+Embedding script -> Qdrant (etape Qdrant inchangee, hors perimetre Temporal).
 
 **Reponse gate validee:**
 ```
@@ -397,7 +413,7 @@ Etapes manquantes: <liste etapes pas en "done">.
 2. **Pas d'action sans confirmation**: /back et les unlocks montrent l'impact AVANT d'agir
 3. **Versioning**: chaque modification incremente la version du livrable (NocoDB + Kitsu)
 4. **Brand voice**: consulter Qdrant brand-voice avant toute generation de texte
-5. **Format des IDs**: les content_id et scene_id sont des entiers NocoDB (pas des UUIDs)
+5. **Format des IDs**: content_id = UUID (domaine v2, cf. cutover C) ; scene_id reste un entier NocoDB (primitive cf-scene, hors perimetre du cutover T7a)
 6. **Telegram topic 7**: ce skill n'est actif que dans le topic contenu
 7. **Enchainement auto**: les etapes automatisables (2, 3, 9, 10) se lancent sans attendre apres /ok
 8. **Gates sequentielles**: une gate ne peut pas etre verrouillee si la precedente ne l'est pas

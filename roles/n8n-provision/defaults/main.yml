@@ -11,6 +11,20 @@
 # webhook node path + the Caddy public handle).
 memory_bot_webhook_url: "https://{{ n8n_subdomain }}.{{ domain_name }}/webhook/memory-telegram-bot"
 
+# === Workflows décommissionnés (retrait runtime) ===
+# Le rôle provisionne les workflows PRÉSENTS (listes inline tasks/main.yml) mais
+# n'a PAS de notion de « workflow retiré » : un workflow sorti des listes reste
+# ACTIF en base n8n (zombie — cf. cf-kitsu-sync resté active=t après le retrait
+# repo D6). Cette liste force le retrait runtime (deactivate → archive → delete
+# via /rest) par NOM EXACT. Idempotent : un nom absent de n8n = SKIP (ABSENT).
+# T7b (cutover F) : reliques v1 dormantes (0 exec / 14 j, pipeline v2 = Studio+
+# ContentWorkflow natif). NE PAS y mettre un workflow encore appelé.
+n8n_workflows_decommission:
+  - "CF Brief to Concept"
+  - "CF Invalidation Engine"
+  - "CF Calendar Sync"
+  - "CF Kitsu Sync"
+
 # Desired "/" command menu. Order + fields must mirror what Telegram returns
 # from getMyCommands so the idempotence compare is exact (no needless re-push).
 memory_bot_commands:

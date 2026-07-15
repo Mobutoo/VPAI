@@ -1,3 +1,5 @@
+> ⚠️ **RÉFÉRENCES PÉRIMÉES (memory_v1)** — La doctrine active est **memory_v3** (BM25+RRF hybride, hook R0-Continu). Ce runbook d'opérations décrit l'ère v1 ; noms de collection, chemins et procédures peuvent être caducs. Source à jour : mémoire `project_rag_v3_hybrid` + `docs/runbooks/MANIFESTE-CREATION-PROJET.md`. Vérifier avant de s'y fier. _(bandeau audit RAG 2026-07-15, P1-5)_
+
 # Runbook — AI Memory Operations
 
 Date: 2026-04-10

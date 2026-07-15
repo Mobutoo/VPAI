@@ -1,3 +1,5 @@
+> ⚠️ **VERSION PÉRIMÉE (memory_v2)** — La collection active est **memory_v3** (BM25+RRF hybride). Le **modèle de taxonomie** (wing/room/doc_kind, dérivation) décrit ici reste la référence et est cité par `MANIFESTE-CREATION-PROJET.md` ; en revanche les noms de collection, scores et détails d'implémentation v2 sont caducs — se référer à `project_rag_v3_hybrid` pour l'état courant. _(bandeau audit RAG 2026-07-15, P1-5)_
+
 # Manifeste Taxonomie Mémoire — memory_v2
 
 **Statut** : source canonique de la taxonomie wing/room/doc_kind pour `memory_v2`.

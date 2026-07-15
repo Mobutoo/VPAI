@@ -92,7 +92,11 @@ memory_worker_discovery:
     - refdocs
   require_git: true
   # basenames exclus (curation/coût) — ajouter ici un repo à NE PAS indexer.
-  exclude_names: []
+  # content-factory-m1 : git worktree de content-factory (en retard sur main) —
+  # indexé comme repo séparé -> duplication + risque de contenu périmé remonté
+  # en résultat (audit RAG 2026-07-15, P1-5). Exclure de la découverte.
+  exclude_names:
+    - content-factory-m1
   # globs sur chemin absolu (ex. "*/saas/archive-*")
   exclude_globs: []
   # garde-fou coût : abort si total dépassé (LOI no-silent-caps). 20 repos actuels.

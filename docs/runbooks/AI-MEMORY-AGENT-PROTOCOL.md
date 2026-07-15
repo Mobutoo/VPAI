@@ -1,3 +1,5 @@
+> ⚠️ **RÉFÉRENCES PÉRIMÉES (memory_v1)** — La doctrine active est **memory_v3** (BM25+RRF hybride, hook R0-Continu, floor de score v3). Ce protocole d'usage v1 est **superseded par la LOI OPÉRATIONNELLE R0** (`docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md`) et la mémoire projet `project_rag_v3_hybrid`. Collection, scores et protocole décrits ci-dessous peuvent être caducs — vérifier avant de s'y fier. _(bandeau audit RAG 2026-07-15, P1-5)_
+
 # Runbook — Protocole d'usage de la memoire IA par les agents
 
 Date: 2026-04-11

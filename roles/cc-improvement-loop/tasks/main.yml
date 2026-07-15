@@ -1,0 +1,53 @@
+---
+# cc-improvement-loop — versionne + déploie le planificateur systemd-user de la
+# boucle P4-1 (mode observation, read-only). Prérequis linger : assuré par le
+# rôle llamaindex-memory-worker (exécuté avant dans workstation.yml).
+
+- name: Ensure user systemd unit dir exists
+  ansible.builtin.file:
+    path: "{{ cc_improvement_user_unit_dir }}"
+    state: directory
+    owner: "{{ cc_improvement_user }}"
+    group: "{{ cc_improvement_user }}"
+    mode: "0755"
+  become: true
+  tags: [cc-improvement-loop, workstation, services]
+
+- name: Deploy continuous-improvement USER units (oneshot + timer mensuel)
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ cc_improvement_user_unit_dir }}/{{ item.dest }}"
+    owner: "{{ cc_improvement_user }}"
+    group: "{{ cc_improvement_user }}"
+    mode: "0644"
+  become: true
+  loop:
+    - { src: "cc-improvement-loop.service.user.j2", dest: "{{ cc_improvement_service_name }}.service" }
+    - { src: "cc-improvement-loop.timer.user.j2", dest: "{{ cc_improvement_service_name }}.timer" }
+  notify: Reload systemd (user)
+  tags: [cc-improvement-loop, workstation, services]
+
+- name: Ensure the user systemd instance is running (XDG runtime dir for scope=user)
+  ansible.builtin.systemd:
+    name: "user@{{ cc_improvement_uid }}.service"
+    state: started
+  become: true
+  tags: [cc-improvement-loop, workstation, services]
+
+- name: Flush handlers so daemon-reload happens before enable
+  ansible.builtin.meta: flush_handlers
+  tags: [cc-improvement-loop, workstation, services]
+
+- name: Enable + start continuous-improvement USER timer (mensuel — désactivable via cc_improvement_enabled)
+  ansible.builtin.systemd:
+    name: "{{ cc_improvement_service_name }}.timer"
+    scope: user
+    enabled: "{{ cc_improvement_enabled | bool }}"
+    state: "{{ 'started' if cc_improvement_enabled | bool else 'stopped' }}"
+    daemon_reload: true
+  become: true
+  become_user: "{{ cc_improvement_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ cc_improvement_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ cc_improvement_uid }}/bus"
+  tags: [cc-improvement-loop, workstation, services]

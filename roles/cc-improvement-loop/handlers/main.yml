@@ -1,0 +1,11 @@
+---
+# cc-improvement-loop — handlers
+- name: Reload systemd (user)
+  ansible.builtin.systemd:
+    daemon_reload: true
+    scope: user
+  become: true
+  become_user: "{{ cc_improvement_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ cc_improvement_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ cc_improvement_uid }}/bus"

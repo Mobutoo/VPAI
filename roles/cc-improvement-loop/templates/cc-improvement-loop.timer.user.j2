@@ -1,0 +1,12 @@
+[Unit]
+Description=Timer mensuel — boucle d'amélioration continue Claude Code (mode observation)
+# Cadence mensuelle (governance.md §2) : plus long intervalle cohérent avec la
+# purge quotidienne de ~/.claude/projects/*.jsonl sans rouvrir de trou d'analyse.
+
+[Timer]
+OnCalendar={{ cc_improvement_oncalendar }}
+Persistent=true
+RandomizedDelaySec={{ cc_improvement_randomized_delay }}
+
+[Install]
+WantedBy=timers.target

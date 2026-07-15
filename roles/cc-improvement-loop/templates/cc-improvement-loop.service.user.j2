@@ -1,0 +1,17 @@
+[Unit]
+Description=Claude Code — boucle d'amélioration continue (mode observation, read-only)
+# Aucun accès réseau : collecte = rsync local ~/.claude → data/raw ; tout le
+# pipeline (sanitize/normalize/metrics/compare) est local. Aucun appel modèle.
+
+[Service]
+Type=oneshot
+WorkingDirectory={{ cc_improvement_lab_dir }}
+ExecStart=/bin/bash {{ cc_improvement_lab_dir }}/prototypes/scripts/continuous-improvement.sh observe
+Nice=19
+IOSchedulingClass=idle
+# Doctrine waza (REX 2026-06-05) : tout job batch borné en mémoire, OOM-kill le
+# job avant d'affamer le réseau/networkd. loop_error_scan charge ~3200 JSONL.
+MemoryMax={{ cc_improvement_memory_max }}
+OOMScoreAdjust={{ cc_improvement_oom_score_adjust }}
+
+# Pas de [Install] : déclenché par le timer (Type=oneshot).

@@ -1,0 +1,18 @@
+---
+# cc-improvement-loop — planificateur systemd-user de la boucle d'amélioration
+# continue Claude Code (P4-1, mode observation, read-only). Le script vit dans le
+# lab git-local ; ce rôle ne versionne QUE les units systemd + leur activation.
+
+cc_improvement_user: "{{ workstation_pi_user | default('mobuone') }}"
+cc_improvement_uid: 1000                                   # uid mobuone (XDG_RUNTIME_DIR)
+cc_improvement_user_unit_dir: "/home/{{ cc_improvement_user }}/.config/systemd/user"
+
+# Lab git-local (jamais poussé) hébergeant continuous-improvement.sh
+cc_improvement_lab_dir: "/home/{{ cc_improvement_user }}/work/ops/claude-code-improvement-lab"
+
+cc_improvement_service_name: "cc-improvement-loop"
+cc_improvement_oncalendar: "*-*-01 05:00:00"               # mensuel (governance.md §2)
+cc_improvement_randomized_delay: "30m"
+cc_improvement_memory_max: "2G"                            # job batch borné (REX 2026-06-05)
+cc_improvement_oom_score_adjust: 1000                      # OOM-kill le job en 1er
+cc_improvement_enabled: true                               # false = timer stoppé/désactivé

@@ -38,7 +38,7 @@ Agent LLM (Claude Code / n8n / OpenClaw)  ── intents only ──►  EXÉCUT
 |---|---|---|
 | **Skyvern** (OSS AGPL, Docker) | Executor navigateur : fetch cred → inject DOM → discard, placeholder tokens, **bridge Vaultwarden natif** + TOTP/2FA. « never enters an LLM prompt » | LXC `skyvern` sur X58 |
 | **Vaultwarden** (déjà) | source unique credentials (Seko) | en place |
-| **Stripe Issuing « for agents »** | carte virtuelle **single-use** (`cancel_after {payment_count:1}`), merchant-lock **MCC**, amount-limit — couvre **EEA/UK** | API (gate éligibilité) |
+| **Couche paiement (funding borné)** — outils user = **Revolut + Wise** (PAS Stripe) | **I2 par funding, pas par feature-carte** : poche/compte Revolut dédié « agent » **préfinancé d'un petit solde** + carte virtuelle pilotée par l'Exécuteur (create→plafond→freeze/delete). Le **solde borné = le plafond dur** (agent compromis ≤ solde). Wise = transferts/multi-devises/payouts à côté (pas checkout). Stripe Issuing = alternative si un jour éligible (single-use natif plus fin). | Revolut Business API (à vérifier R8) + poche préfinancée |
 | **Polos** (OSS, self-host) *ou* Temporal Signal / LangGraph `interrupt()` | **gate HITL** : suspend le workflow → notif **Telegram** (bot monitoring déjà en place) → approuve/refuse | LXC `hitl-gate` |
 | **AP2 SDK** (Apache-2.0, mandats VC signés ES256 : `amount_range`/`budget`/`agent_recurrence`/`execution_date`/`allowed_payees`/`cnf`) | *optionnel* : autorisation cryptographique portable au lieu de tout gérer en spend-controls carte | à évaluer |
 | **x402** (Coinbase, GA) | *optionnel* : micropaiements agent↔service (API machine-to-machine, USDC), PAS un checkout humain | à évaluer (agent-to-service) |

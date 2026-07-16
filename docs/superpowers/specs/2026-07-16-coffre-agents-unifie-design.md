@@ -1,110 +1,143 @@
 # Design unifié — Coffre agents (Vaultwarden) + migration secrets config
 
 > **Date** : 2026-07-16
-> **Statut** : design (spec) — approbation humaine requise avant tout plan d'exécution.
+> **Statut** : design (spec) — v2 post-revue adversariale (NEEDS-REWORK → corrigé). Approbation humaine requise avant tout plan d'exécution.
 > **Base architecture** : `docs/plans/PLAN-COFFRE-AGENTS-2026-06-10.md` (Fable) — fact-check `docs/reference/VERIF-COFFRE-AGENTS-2026-06-10.md` (12 claims vérifiés).
 > **Origine** : chantier P0-1 du lab Claude (`~/work/ops/claude-code-improvement-lab`) — fuite de secrets en clair, étendu par la demande « Vaultwarden comme coffre + accès quotidien Claude ».
+> **Décisions humaines 2026-07-16** : (1) accès = *utiliser sans jamais lire* ; (2) invariant **dégradé assumé** pour les vars que Claude Code lit lui-même ; (3) creds PROD (pg/django) = **retirer les règles allow** (pas de tiering).
 
 ---
 
-## 1. Invariant gouvernant (non négociable)
+## 1. Invariants gouvernants (deux régimes — honnêteté requise)
 
-> **La valeur d'un secret n'apparaît JAMAIS dans le contexte LLM** (prompt, tool result, transcript JSONL). **Le LLM décide, l'exécuteur détient.**
+La revue a établi qu'un invariant unique absolu est **infaisable** pour les secrets que Claude Code résout dans son propre process. Deux régimes distincts :
 
-Décision humaine 2026-07-16 : « accès quotidien » = **utiliser sans jamais lire**. Claude lance `secret-run <ref> -- <cmd>` ; la valeur va dans l'env du process enfant, jamais en sortie. Lire le plaintext (`rbw get` → tool result) est **interdit** : ça re-crée exactement la fuite P0-1 qu'on répare. Montrer une valeur à l'humain = canal HITL explicite tracé (différable, Tier 2), jamais automatique.
+**A. Invariant FORT** (Tier 1 `secret-run` + Tier 2 résolveur) — *secrets utilisés dans des commandes* :
+> La valeur n'apparaît **jamais** : ni sur disque en clair, ni dans argv (`ps`), ni dans le contexte LLM (prompt/tool result/transcript). Injectée dans l'env du process enfant uniquement, stdout filtré. Le LLM décide, l'exécuteur détient.
+
+**B. Invariant DÉGRADÉ assumé** (vars lues par Claude Code / hooks **au démarrage**) — clés MCP (`mcp.json ${VAR}`), `TELEGRAM_BOT_TOKEN`/`AF_WEBHOOK_SECRET` des hooks :
+> La valeur n'est **plus en clair sur disque** (sortie de Vaultwarden au unlock) MAIS **vit dans l'env de la session** (lisible `/proc/PID/environ` **même-user**). C'est une dégradation explicite : `secret-run` est **structurellement inapplicable** ici (Claude Code résout `${VAR}` au boot des serveurs MCP, avant tout wrapper per-commande). Gain réel = hors-disque + centralisé + rotable + ACL ; **résiduel assumé** = exposition env same-user, réservée aux **tokens renouvelables** (jamais un non-renouvelable).
+
+Décision humaine : régime B accepté pour la sous-classe config, à condition d'étendre les guards (§P2.2) aux vecteurs env-dump.
 
 ## 2. Reframe P0-1 (établi cette session, preuves primaires)
 
-La fuite JSONL n'est **pas** une exfiltration externe active — contrairement au cadrage initial du backlog :
+La fuite JSONL n'est **pas** une exfiltration externe active :
 
 | Maillon vérifié | Constat |
 |---|---|
-| `session-analyst.py` (pipeline nommé dans la note d'avril) | dormant depuis le 12 avr, **0 egress** (0 import langfuse / 0 loki) dans `src/` — Track A Langfuse jamais construit |
+| `session-analyst.py` | dormant depuis 12 avr, **0 egress** (0 langfuse / 0 loki) dans `src/` — Track A jamais construit |
 | n8n `session-complete` | forwarde chemin + métriques, **jamais le contenu** ; pas de nœud Langfuse ; `active:false` |
-| consommateur spool `ai-memory-worker/index.py` | n'ingère que fichiers repo par `relative_path` ; payload `session_summary` (sans `repo`) → jamais ingéré, `session_file` jamais lu |
+| spool `ai-memory-worker/index.py` | n'ingère que fichiers repo par `relative_path` ; payload `session_summary` jamais ingéré, `session_file` jamais lu |
 
-⇒ P0-1 réel = **exposition disque locale en clair** : (S2) ~11 secrets dans les fichiers de config + (S1) 46 876 dans les transcripts JSONL. *« Local » ≠ bénin* : creds PROD (Postgres/LiteLLM/Qdrant), `Read(**)` global, subagents qui `cat`, near-miss vault S5 → tout agent qui dérive les relit et ça re-rentre dans un JSONL frais.
-*Résidu R10 à revérifier* : node-set **live** de `session-complete` sur mayi (MCP n8n session expirée au moment de l'audit).
+⇒ P0-1 réel = **exposition disque locale en clair**. *« Local » ≠ bénin* : creds PROD, `Read(**)` global, subagents qui `cat`, near-miss vault S5. *Résidu R10* : revérifier le node-set live de `session-complete` sur mayi.
 
-## 3. État des lieux (2026-07-16)
+## 3. État des lieux (2026-07-16, vérifié)
 
-- **Vaultwarden tourne** sur Seko-VPN : `fongola.ewutelo.cloud`, VPN-only via Caddy (repo `~/work/infra/Seko-VPN`, pas VPAI). Déjà routé (headscale + telegram_bot).
-- **Plan Fable = jamais exécuté** : 0 rôle `vaultwarden`/`secret-*` dans VPAI, pas de `RUNBOOK-COFFRE-AGENTS.md`, `rbw` absent de waza, absent de `versions.yml`.
-- **Doctrine CLI** (VERIF §CLI) : `rbw` (Rust, hors npm) pour le chemin Tier 1 partout ; `bw serve` (npm pinné + checksum, jamais auto-update) uniquement dans le conteneur résolveur Tier 2 — réponse directe à la compromission `@bitwarden/cli` v2026.4.0 (22/04/2026).
+- **Vaultwarden déjà déployé ET running sur Seko-VPN** : rôle `Seko-VPN/roles/vaultwarden/` complet, `vaultwarden_version: 1.35.1-alpine` **pinné**, `domain_vaultwarden: fongola.ewutelo.cloud`, Caddy `import vpn_only` + `vpn_error_page` (VPN-only confirmé), HSTS/nosniff/SAMEORIGIN. ⚠️ **P0 ne reconstruit PAS l'instance** — il ajoute backup/collections/comptes machine.
+- **Backup Vaultwarden = absent** : grep restic/backup sur le rôle = 0 → offsite réellement à faire (P0.3 fondé).
+- **Plan Fable jamais exécuté côté VPAI** : 0 rôle `secret-*`, pas de `RUNBOOK-COFFRE-AGENTS.md`, `rbw` absent de waza, absent de `versions.yml`.
+- **Doctrine CLI** : `rbw` (Rust, hors npm) pour Tier 1 ; `bw serve` (npm pinné + checksum) uniquement dans le conteneur résolveur Tier 2 — réponse à la compromission `@bitwarden/cli` v2026.4.0 (22/04/2026).
 
-## 4. Architecture cible (reprise Fable, condensée)
+## 4. Architecture cible (reprise Fable)
 
 ```
 waza (Pi5) — agent SANS secrets       Sese-AI — jobs/services        Seko-VPN — zone coffre (aucun shell agent)
-  Claude Code / hooks : refs only        n8n (cred store natif)         Vaultwarden (IaC, backup restic offsite)
+  Claude Code / hooks : refs only        n8n (cred store natif)         Vaultwarden 1.35.1 (running, +backup)
   ├─ secret-run (Tier 1, rbw)            OpenClaw                        └─ RÉSOLVEUR (Tier 2, conteneur)
   ├─ deny-list + secret-guard hook       worker (user dédié)                bw serve 127.0.0.1 (pinné+checksum)
   └─ redactor PostToolUse                 secret-run (Tier 1)               politique.yaml · audit→Loki · actions only
 ```
 
-| Tier | Secrets | Mécanisme | Garantie |
+| Tier | Secrets | Mécanisme | Régime invariant |
 |---|---|---|---|
-| **1** | tokens renouvelables quotidiens (HF, RUNPOD, QDRANT, PAT, Headscale, **+ les 11 secrets config ci-dessous**) | `secret-run` local (rbw) + politique + user séparé + redaction | non-accidentelle (rotation = filet) |
-| **2** | secrets forts, logins web, non-renouvelables | résolveur isolé Seko-VPN, actions only | forte (frontière shell physique) |
-| n8n / LiteLLM | credentials workflows / clés providers | stores natifs (référence par id / virtual keys) | déjà en place — ne rien changer |
+| **1-cmd** | tokens renouvelables utilisés en **commande** (HF, RUNPOD, PAT, Headscale) | `secret-run <ref> -- <cmd>` (env enfant, jamais argv) | **A (fort)** |
+| **1-cfg** | vars lues par Claude Code/hooks au démarrage (clés MCP qdrant/plane/canva/n8n-docs, TELEGRAM_BOT/AF pour hooks) | bootstrap unlock → env de session (Vaultwarden via rbw) | **B (dégradé assumé)** |
+| **2** | secrets forts, **non-renouvelables**, logins web | résolveur isolé Seko-VPN, actions only | **A (fort, frontière shell physique)** |
+| n8n / LiteLLM | credentials workflows / clés providers | stores natifs (id / virtual keys) | déjà en place — ne rien changer |
+| **RETIRÉS** | pwd Postgres PROD partagé, pwd admin Django | **suppression des règles allow** (re-prompt au besoin) | hors coffre — cf §5 |
 
-## 5. Intégration du chantier (a) — migration des secrets config
+## 5. Inventaire des secrets en clair sur waza (par secret unique — refait post-revue)
 
-Le chantier (a) du lab (sortir les littéraux des fichiers de config Claude Code) **est la première tranche concrète du Tier 1** de Fable (sa tâche P1.5 + P2.1). Périmètre inventorié (valeurs jamais affichées) :
+Valeurs **jamais** affichées. Sources vérifiées : `~/.claude/mcp.json`, `~/.claude/settings.json`, `VPAI/.claude/settings.local.json`, `~/.bashrc`, `~/.profile`.
 
-| Fichier | Littéraux | Traitement (doc-vérifié Claude Code v2.1.x) |
+| Secret unique | Emplacement(s) en clair | Destination | Régime |
+|---|---|---|---|
+| `QDRANT_API_KEY` | mcp.json (env) **+** .bashrc:131 **+** .profile:37 **+** settings.local allow | Vaultwarden `infra-agents` | 1-cfg |
+| `TELEGRAM_BOT_TOKEN` | settings.json (env) **+** .bashrc:123 **+** .profile:33 | Vaultwarden `infra-agents` | 1-cfg |
+| `STITCH_API_KEY` | mcp.json (env `${VAR}`) **valeur** dans .bashrc:157 | Vaultwarden `infra-agents` | 1-cfg |
+| `AF_WEBHOOK_SECRET` | settings.json (env) + settings.json allow (2 règles webhook Telegram) | Vaultwarden `infra-agents` | 1-cfg |
+| `NOCODB_TOKEN` | .bashrc:129 + .profile:45 | Vaultwarden `infra-agents` | 1-cmd |
+| `MACGYVER_BOT_TOKEN` | .bashrc:132 | Vaultwarden `infra-agents` | 1-cmd |
+| `HCLOUD_TOKEN` | .profile:40 | Vaultwarden `infra-agents` | 1-cmd |
+| `NAMECHEAP_API_KEY` | .profile:44 | Vaultwarden `infra-agents` | 1-cmd |
+| n8n-docs `Authorization` (Bearer) | mcp.json (headers) | Vaultwarden `infra-agents` | 1-cfg |
+| canva-connect `x-api-key` | mcp.json (headers) | Vaultwarden `infra-agents` | 1-cfg |
+| `PLANE_API_KEY` | mcp.json (env) | Vaultwarden `infra-agents` | 1-cfg |
+| `LITELLM_API_KEY` (`sk-lm-…`) | settings.local allow (×3) | Vaultwarden `infra-agents` | 1-cmd (via secret-run env) |
+| **pwd Postgres PROD partagé** | settings.local allow:99 | **RETIRÉ** (règles allow supprimées) | — |
+| **pwd admin Django** (×2) | settings.local allow:104,106 | **RETIRÉ** (règles allow supprimées) | — |
+
+> **Note attribution (corrige v1)** : le `settings.json` **global** ne contient PAS le pwd Postgres en clair — il le récupère dynamiquement via `docker exec … printenv`. Le pwd PROD littéral est uniquement dans `settings.local.json` (règles allow). Les « 2 » du global = les 2 occurrences du hex webhook Telegram (`AF_WEBHOOK_SECRET`).
+> `TELEGRAM_CHAT_ID` (settings.json:9) + canva `connected_account_id` = faible sensibilité, **ignorés volontairement**.
+
+### Mécanique de migration (doc-vérifiée, source citée)
+
+Source : agent `claude-code-guide` sur docs `code.claude.com/docs/en/{mcp,settings,env-vars}.md` (v2.1.x, confidence HIGH sauf où noté).
+
+| Cible | Traitement |
+|---|---|
+| **mcp.json** (4 littéraux) | → `${VAR}` **inline** (documenté : `headers`/`env`/`url`/`args`/`command`, ex. `Bearer ${VAR}`, `${VAR:-def}`). Var résolue depuis l'env de session (régime 1-cfg). |
+| **settings.json** `env` (2) | le bloc `env` **n'interpole PAS** `${VAR}` (littéral only, MEDIUM confidence — à reconfirmer) et **override le shell** → **supprimer les clés** ; valeurs fournies par l'env de session. |
+| **settings.json allow** (2) + **settings.local allow** avec secrets | **NE PAS** réécrire en `$VAR` inline (mettrait la valeur en **argv**, visible `ps` — viole l'invariant fort). → soit **retirer** la règle (pg/django : décision humaine), soit router la commande via `secret-run <ref> -- <cmd>` (injection env). Jamais `$VAR` dans une règle allow. |
+| **.bashrc / .profile** (7 exports secrets) | **retirer les exports en clair** ; remplacés par le bootstrap unlock (rbw → env de session). Sinon la migration des configs est **cosmétique** pour les 3 valeurs dupliquées (QDRANT/TELEGRAM/STITCH). |
+
+## 6. Séquencement unifié
+
+Ordre strict Fable. Détail des tâches = `PLAN-COFFRE-AGENTS-2026-06-10.md` §P0-P4 (corrigé §7).
+
+| Phase | Contenu | Gate 🔒 |
 |---|---|---|
-| `~/.claude/mcp.json` | n8n-docs `Authorization`, canva `x-api-key`, plane `PLANE_API_KEY`, qdrant `QDRANT_API_KEY` (4) | → `${VAR}` **inline supporté** dans `headers`/`env`/`url`/`args`/`command` (`Bearer ${VAR}`, `${VAR:-def}`) |
-| `~/.claude/settings.json` env (2) | `TELEGRAM_BOT_TOKEN`, `AF_WEBHOOK_SECRET` | ⚠️ le bloc `env` **n'interpole pas** `${VAR}` (littéral only) ET override le shell → **supprimer les clés** ; valeurs fournies par l'env shell (peuplé rbw) |
-| `~/.claude/settings.json` allow (2) + VPAI `settings.local.json` allow (6) | webhook Telegram, postgres URL pwd, django ×3, telegram hex | `permissions.allow` = **match littéral** (substitution non documentée) → réécrire règle **+** commande en `$VAR` (match littéral `$VAR`↔`$VAR`), smoke-test chacun |
+| **P0** | Vaultwarden : **backup restic offsite** (l'instance existe déjà), organisation/collections (`infra-agents`/`strong-secrets`/`canary`), 3 comptes machine, sibling test `rbw` ARM64, item canary. **NE reconstruit PAS l'instance.** | P0.1 export préalable |
+| **P1** | Tier 1 : rôle `secret-broker` (rbw + `secret-run` + politique + bootstrap unlock + user séparé) ; **migration** des secrets config + `.bashrc`/`.profile` → refs Vaultwarden ; **suppression** des règles allow pg/django ; puis rotation | P1.3 unlock · P1.5 rotation |
+| **P2** | Harness : deny-list `Read(.env*/secrets*/*.pem)`, hook `secret-guard.js` **étendu env-dump** (`env`/`printenv`/`set`/`cat /proc/*/environ` en plus de `rbw get`/`cat` secrets), `redactor.js` PostToolUse, scrubber JSONL batch (chantier (b), les 46 876 existants). **Fin de P2 = set config sécurisé** (les non-renouvelables sont retirés, pas reportés en P3). | — |
+| **P3** | Tier 2 : résolveur isolé (`bw serve` pinné, token/agent, rate-limit type Cerberus, politique v2 anti-injection, `run_authenticated_call` MCP, `secure_fill` web) — pour **futurs** secrets forts/logins web | P3.2 politique HITL |
+| **P4** | `rotate-secrets.yml` v2 (écrit dans Vaultwarden, `no_log`), alerte intégrité `bw serve`, mode dégradé, test d'intrusion ami (**doit inclure les vecteurs env-dump du régime B**) | P4.4 intrusion |
 
-**Mécanique de peuplement de l'env** (résout la contrainte « pas de `.env` natif Claude Code ») : Claude Code hérite de l'env du shell interactif au lancement (prouvé : `STITCH_API_KEY` exporté depuis `~/.bashrc` = SET). Donc :
-1. Bootstrap unlock humain (Fable P1.3) : `rbw-agent` déverrouillé au SSH/boot, timeout, jamais de master password sur disque.
-2. `secret-run <ref> -- <cmd>` injecte la valeur dans l'env de l'enfant uniquement (jamais argv/`ps`), stdout/stderr filtrés en streaming.
-3. Pour les vars que **Claude Code lui-même** doit voir (`${QDRANT_API_KEY}` dans mcp.json résolu au démarrage MCP) : au lieu d'un `secrets.env` statique, un bootstrap exporte depuis Vaultwarden (rbw) dans l'env de la session Claude au unlock. **Décision ouverte O1** ci-dessous.
+> **Correction v1** : « quotidien sécurisé dès P2 » ne tient QUE parce que les non-renouvelables (pg/django) sont **retirés** (pas tierés en P3). Sans cette décision, P2 n'aurait pas suffi.
 
-## 6. Séquencement unifié (P0→P4 Fable, ancré sur le quotidien)
+## 7. Ce qui change vs Fable 2026-06-10 (+ post-revue)
 
-Reprend l'ordre strict de Fable — **le quotidien est sécurisé dès P2**. Détail des tâches = `PLAN-COFFRE-AGENTS-2026-06-10.md` §P0-P4 (inchangé sauf corrections §7).
+1. **Deux régimes d'invariant** (fort / dégradé) au lieu d'un absolu — régime B = admission honnête que `secret-run` n'atteint pas les vars de démarrage Claude Code.
+2. **Re-tiering** : pg PROD + django (non-renouvelables) **retirés** (règles allow supprimées), pas mis en Tier 1.
+3. **Scope élargi** : `.bashrc`/`.profile` (7 secrets, dont 3 dupliqués config) entrent dans P1.5 — sinon migration cosmétique.
+4. **Guards étendus** (P2.2) aux vecteurs env-dump ; le **canary ne couvre PAS** l'env-dump → à documenter.
+5. **Anti-argv** : migration allow via `secret-run` env, jamais `$VAR` inline.
+6. **Mécanique `${VAR}` doc-sourcée** (claude-code-guide) ; env-block-literal à reconfirmer (MEDIUM).
+7. **P0 = backup/collections/comptes**, pas rebuild (instance Seko-VPN existe).
+8. **Urgence recalibrée** par le reframe P0-1 (hygiène disque prioritaire, pas incident actif).
 
-| Phase | Contenu | Gate humain 🔒 | « (a) » dedans |
-|---|---|---|---|
-| **P0** | Fondations Vaultwarden : rôle IaC VPAI (image pinnée, VPN-only, backup restic offsite, healthcheck), organisation/collections (`infra-agents`/`strong-secrets`/`canary`), 3 comptes machine, sibling test rbw ARM64, item canary | P0.1 export préalable | — |
-| **P1** | Tier 1 : rôle `secret-broker` (rbw + `secret-run` + `politique.yml`), bootstrap unlock, séparation user, **migration des 11 secrets config → refs Vaultwarden** puis rotation | P1.3 design unlock · P1.5 rotation | **cœur de (a)** |
-| **P2** | Couches harness : deny-list `Read(.env*/secrets*/*.pem)`, hook `secret-guard.js` (bloque `rbw get`/`cat` secrets), `redactor.js` PostToolUse, scrubber JSONL (batch les 46 876 existants = chantier (b) différé du lab) | — | finalise (a) + (b) |
-| **P3** | Tier 2 : résolveur isolé (`bw serve` pinné, token/agent, rate-limit type Cerberus, `politique.yaml` v2 anti-injection, `run_authenticated_call` en MCP, `secure_fill` web) | P3.2 politique HITL | — |
-| **P4** | Exploitation : `rotate-secrets.yml` v2 (écrit dans Vaultwarden, `no_log`), alerte intégrité `bw serve`, mode dégradé documenté, test d'intrusion ami | P4.4 validation intrusion | — |
+## 8. Décisions ouvertes restantes (au plan)
 
-**Rotation** (décision humaine 2026-07-16) : le lab avait choisi « pas de rotation » pour la tranche (a) locale ; **mais** dès que les secrets passent en Vaultwarden (P1.5), Fable impose la rotation immédiate des anciennes valeurs (elles ont vécu en clair). À reconfirmer à P1.5 (gate 🔒).
+- **O2 — ADR Ansible** (Fable P1.6) : statu quo `ansible-vault` (deploy) + Vaultwarden (runtime agents). À commiter.
+- **O3 — rotation P1.5** : les creds passant en Vaultwarden (QDRANT/LITELLM/NOCODB/PAT…) ont vécu en clair → rotation immédiate (Fable P1.5). Note : les creds PROD pg/django ne sont pas concernés (retirés, pas migrés) — leur exposition cesse par suppression des règles.
 
-## 7. Ce qui change vs le plan Fable du 2026-06-10
+## 9. Validation & critères de succès (renforcés post-revue)
 
-1. **Cible de (a) précisée** : les 11 secrets des fichiers config Claude Code entrent explicitement dans le périmètre P1.5 (le plan Fable listait pod-ingest/memory-worker/RUNPOD/PAT mais pas mcp.json/settings.json).
-2. **Mécanique `${VAR}` doc-vérifiée** (v2.1.x) : settings.json `env` = littéral only (supprimer, pas `${VAR}`) ; `permissions.allow` = match littéral (réécrire les 2 côtés) ; mcp.json inline OK. À intégrer dans P1.5/P2.1.
-3. **Urgence recalibrée par le reframe P0-1** : pas d'exfil externe → P0-1 n'est pas un incident actif, c'est de l'hygiène disque prioritaire. Ne change pas le contenu, informe l'ordonnancement (P0→P2 suffit pour clore le risque réel ; P3-P4 = durcissement).
-4. **Résidu R10** : revérifier le workflow `session-complete` live (add-on à P2 scrubber).
+- **Migration** : `grep -E '(token|secret|key|password)\s*[:=]\s*[A-Za-z0-9]{16,}'` sur **les 5 fichiers** (`mcp.json`, `settings.json`, `settings.local.json`, `.bashrc`, `.profile`) = **0** hors `${VAR}`. *(v1 ne ciblait que 3 fichiers → pouvait passer vert avec .bashrc encore en clair.)*
+- **Régime A (fort)** : secret planté → `grep` transcript = **0** occurrence de valeur ; commande hors politique refusée ; jamais dans `ps`/argv.
+- **Régime B (dégradé)** : la valeur N'est PAS sur disque en clair ; guard bloque `env`/`printenv`/`set`/`/proc/*/environ` (test : tentative de dump → exit 2 + message). *Assumé* : la valeur reste dans l'env de session — non testable comme « absente ».
+- **Guards P2** : bypass `rbw get`/env-dump tenté → bloqué ; secret planté en sortie → `[REDACTED:type]`.
+- **P3/P4** : appel authentifié bout-en-bout grep=0 ; test d'intrusion — chaque vecteur (env-dump inclus) bloqué ou détecté.
 
-## 8. Décisions ouvertes (à trancher dans le plan)
+## 10. Risques résiduels assumés
 
-- **O1 — peuplement de l'env Claude Code** : (i) bootstrap au unlock qui exporte les N vars config depuis Vaultwarden dans la session (simple, mais les vars vivent en clair dans l'env du process shell le temps de la session) ; (ii) wrapper qui relance Claude Code sous `secret-run` multi-ref. Impact : (i) = env-exposure locale résiduelle (ps/environ same-user), mitigée user séparé + canary ; (ii) plus pur mais plus lourd. *Reco provisoire : (i) pour les refs Tier 1 renouvelables, cohérent avec le risque résiduel #1 assumé de Fable.*
-- **O2 — ADR Ansible** (Fable P1.6) : statu quo `ansible-vault` (deploy) + Vaultwarden (runtime agents), un seul système par usage. À commiter en ADR.
-- **O3 — rotation P1.5** : confirmer la rotation des 11 (creds PROD Postgres/LiteLLM/Qdrant) au moment du passage en Vaultwarden.
-
-## 9. Validation & critères de succès
-
-- **(a)/P1.5** : `grep -E '(token|secret|key|password)\s*[:=]\s*[A-Za-z0-9]{16,}'` sur mcp.json/settings.json/settings.local.json = **0** hors `${VAR}`/`$VAR` ; smoke : serveur MCP qdrant résout via rbw-bootstrap ; hook `session-memory-writer` voit `AF_WEBHOOK_SECRET`.
-- **Invariant** : `grep` sur un transcript de session = **0** occurrence de valeur de secret (test avec secret planté).
-- **P2** : secret planté dans une sortie simulée → `[REDACTED:type]` ; bypass `rbw get` tenté → bloqué + message « utilise secret-run ».
-- **P3** : appel API authentifié bout-en-bout, grep transcript = 0 ; token A ne résout pas les refs de B.
-- **P4** : test d'intrusion — chaque vecteur (env, ps, bypass wrapper) bloqué ou détecté (canary/audit).
-
-## 10. Risques résiduels assumés (Fable + session)
-
-1. **Tier 1 même-user** : agent shell déterminé sur waza peut viser le cache rbw de son user → mitigé user séparé + canary + rotation ; non-renouvelables interdits en Tier 1.
-2. **Seko-VPN = coffre + backups (SPOF)** : compensé offsite S3 + mode dégradé (Tier 1 continue via cache rbw chiffré, Tier 2 fail-closed).
-3. **Supply chain bw** : surface réduite au seul conteneur résolveur (pinné + checksum + alerte) ; rbw partout ailleurs.
-4. **O1 (i) env-exposure** : les vars config vivent en clair dans l'env de la session le temps de son unlock — accepté pour les refs renouvelables Tier 1, à ne jamais utiliser pour des non-renouvelables.
+1. **Régime B env-dump** : un agent shell déterminé same-user peut dumper l'env de session (mitigé : guards P2.2 + user séparé pour les jobs, MAIS la session Claude elle-même porte les vars 1-cfg). **Réservé aux renouvelables** ; rotation = filet. Jamais un non-renouvelable en 1-cfg.
+2. **Tier 1 même-user** (cache rbw) : mitigé user séparé + canary + rotation.
+3. **Seko-VPN = coffre + backups (SPOF)** : offsite S3 + mode dégradé (Tier 1 continue via cache rbw, Tier 2 fail-closed).
+4. **Supply chain bw** : surface = seul conteneur résolveur (pinné + checksum + alerte) ; rbw ailleurs.
+5. **Canary aveugle à l'env-dump** : documenté ; ne pas s'en remettre au canary pour le régime B.
 
 ## 11. Estimation
 
-Fable : 6-7 sessions, ordre strict P0→P1→P2 (quotidien sécurisé dès P2), P3 après, P4 clôture. La tranche (a) est absorbée dans P1.5/P2.1 — pas de session supplémentaire.
+Fable : 6-7 sessions, P0→P2 = quotidien sécurisé (grâce au retrait pg/django), P3-P4 = durcissement + futurs secrets forts. Scope (a)+`.bashrc`/`.profile` absorbé dans P1.5/P2 — **possible léger dépassement** vu l'ajout `.bashrc`/`.profile` + extension guards (revu à la hausse vs « pas de session supplémentaire » de v1).

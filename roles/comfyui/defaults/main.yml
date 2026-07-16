@@ -89,8 +89,12 @@ comfyui_studio_install_dir: "/opt/workstation/comfyui-studio"
 
 # Git versioning
 comfyui_git_enabled: true
-comfyui_git_remote: "git@seko-vpn:mobuone/comfyui-workflows.git"
+# Remote = SSH interne Gitea (loopback Seko :2222) via ProxyJump — jamais le sshd hôte.
+# L'alias 'seko-git' est géré par blockinfile dans tasks/main.yml (jamais 'git@seko-vpn:' :
+# le git@ écrase User mobuone -> "Invalid user git" -> ban fail2ban en boucle, REX 2026-07-16).
+comfyui_git_remote: "seko-git:mobuone/comfyui-workflows.git"
 comfyui_git_push_interval: 5  # minutes
+comfyui_git_push_log: "$HOME/.comfyui-git-push.log"
 
 # LiteLLM (embeddings for doc search)
 litellm_api_key: "{{ litellm_master_key }}"

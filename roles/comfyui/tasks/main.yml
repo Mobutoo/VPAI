@@ -314,11 +314,34 @@
   become: true
   when: not (common_molecule_mode | default(false))
 
+- name: Configure SSH alias seko-git (Gitea loopback via ProxyJump)
+  ansible.builtin.blockinfile:
+    path: "/home/{{ workstation_pi_user }}/.ssh/config"
+    create: true
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0600"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK seko-git"
+    block: |
+      Host seko-git
+          HostName 127.0.0.1
+          Port 2222
+          User git
+          ProxyJump seko
+          IdentityFile ~/.ssh/seko-vpn-deploy
+          IdentitiesOnly yes
+          StrictHostKeyChecking accept-new
+          UserKnownHostsFile ~/.ssh/known_hosts.seko-git
+  become: true
+
 - name: Set up git push cron job
   ansible.builtin.cron:
     name: "comfyui-workflows-git-push"
     minute: "*/{{ comfyui_git_push_interval }}"
-    job: "cd {{ comfyui_workflows_dir }} && git push --quiet origin main 2>/dev/null || git push --quiet -u origin main 2>/dev/null || true"
+    job: >-
+      cd {{ comfyui_workflows_dir }} &&
+      [ "$(git rev-list --count origin/main..main 2>/dev/null || echo 1)" != "0" ] &&
+      git push --quiet -u origin main >> {{ comfyui_git_push_log }} 2>&1 || true
     user: "{{ workstation_pi_user }}"
   become: true
 

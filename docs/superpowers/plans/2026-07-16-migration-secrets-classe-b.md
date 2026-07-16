@@ -112,11 +112,14 @@ for bak in sh_baks:
         k,v=m.group(1), m.group(2).strip().strip('"').strip("'")
         if k in SHELL_KEYS and k not in out and v: out[k]=v
 # B2 fix : écriture QUOTÉE (espaces/spéciaux sûrs au sourcing `. file`)
+# Revue : écriture ATOMIQUE (temp + rename) — jamais de store à moitié écrit qui
+# passerait le guard/gate en cas de crash mid-write.
 os.umask(0o077)
-with open(env,'w') as f:
+tmp=env+'.tmp'
+with open(tmp,'w') as f:
     for k,v in out.items(): f.write(f'{k}={shlex.quote(v)}\n')
-os.chmod(env,0o600)
-print(f"{len(out)} secrets écrits (quotés). clés:", ' '.join(sorted(out)))
+os.chmod(tmp,0o600); os.rename(tmp,env)
+print(f"{len(out)} secrets écrits (quotés, atomique). clés:", ' '.join(sorted(out)))
 PY
 ```
 
@@ -330,7 +333,8 @@ Expected: gate exit=0 ; le run sur backup montre ≥1 VIOLATION (détecteur touj
 ⚠️ **Suspect n°1 (revue m4)** : aucun `${VAR}` en **header** n'existe dans ce mcp.json aujourd'hui (tous les `${VAR}` actuels sont en `env`) — l'interpolation header est doc-MEDIUM sans précédent local. Donc à la **prochaine session `claude`** (les `${VAR}` se lisent au boot MCP, pas à chaud), valider explicitement que **n8n-docs** et **canva-connect** s'authentifient (les 2 serveurs à header migré, et canva = cible du fix B1). Si l'un échoue → suspecter d'abord l'interpolation header, puis la valeur canva.
 
 Documenter (spec/STATUS) :
-- **Classe A en interim** : NOCODB/MACGYVER/HCLOUD/NAMECHEAP/LITELLM vivent temporairement dans `secrets.env` (m3 : LITELLM tiré de P1b dans P1a = réduction d'exposition assumée) → à **promouvoir vers Vaultwarden + retirer du store + roter** au plan P1b.
+- **Classe A en interim (store)** : NOCODB/MACGYVER/HCLOUD/NAMECHEAP (issus des exports shell) vivent temporairement dans `secrets.env` → à **promouvoir vers Vaultwarden + retirer du store + roter** au plan P1b.
+- **LITELLM = RETIRÉ (pas stocké)** : `LITELLM_API_KEY` n'existe que dans des règles allow `settings.local` supprimées par Task 4 → il n'entre PAS dans le store (aucun chemin d'extraction). C'est *plus correct* vis-à-vis de la doctrine classe A (ne doit pas vivre dans l'env de session). P1b le récupère depuis le **backup Task 0** (pas depuis le store) pour l'importer dans Vaultwarden + rotation.
 - **O4 tranché (m1)** : `claude` est lancé **interactivement** (`/home/mobuone/.local/bin/claude`, chaîne `.profile`→`.bashrc` confirmée) → sourcing `.bashrc` **suffit**, aucun consommateur MCP systemd (`cc-improvement-loop` lance un script sans réseau). `EnvironmentFile=` = **différé** jusqu'à ce qu'un `claude` headless systemd existe (aucun aujourd'hui).
 
 - [ ] **Step 3: Commit final côté VPAI (détecteur + toute doc mise à jour)**

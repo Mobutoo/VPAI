@@ -32,7 +32,9 @@ SHELL_SECRET_KEYS=(QDRANT_API_KEY TELEGRAM_BOT_TOKEN STITCH_API_KEY NOCODB_TOKEN
 # Règles allow porteuses de secret qui doivent être retirées.
 # 'Telegram-Bot-Api-Secret-Token' = header AF_WEBHOOK (2 règles settings.json,
 # discriminant propre — pas de collision SHA git, cf revue n2). 'sk-lm-' = LITELLM.
-REMOVED_ALLOW_PATTERNS=(postgresql:// 'is_email_verified' 'DJANGO_SUPERUSER' \
+# Motifs regex (grep -E). postgres = forme AVEC creds user:pw@ (pas une URL nue,
+# évite un faux-positif latent si une URL sans creds apparaît un jour, cf revue nit3).
+REMOVED_ALLOW_PATTERNS=('postgresql://[^:]*:[^@]*@' 'is_email_verified' 'DJANGO_SUPERUSER' \
                         'sk-lm-' 'Telegram-Bot-Api-Secret-Token')
 
 VIOL=0
@@ -96,7 +98,7 @@ check_removed_allow(){
   for f in "$SETTINGS" "$SLOCAL"; do
     [ -f "$f" ] || continue
     for p in "${REMOVED_ALLOW_PATTERNS[@]}"; do
-      if grep -qF "$p" "$f" 2>/dev/null; then
+      if grep -qE "$p" "$f" 2>/dev/null; then
         viol "$(basename "$f") contient encore une règle allow '$p' (doit être RETIRÉE)"
       fi
     done

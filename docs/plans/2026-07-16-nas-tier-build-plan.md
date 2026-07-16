@@ -1,98 +1,81 @@
-# Plan de montage — Tier NAS (Proxmox + TrueNAS + 3060) & backup 3-2-1-1-0
+# Plan de montage — Tier X58 « home datacenter » (execution-ready)
 
-> **Statut** : plan (design décidé). Matériel : Supermicro **P6X58D-E** (X58, Xeon 55/56xx), **RTX 3060 12Go**, **32Go DDR3 → 48Go** (16Go commandés), 8×8To. Montage week-end.
-> **Décisions humaines 2026-07-16** : hyperviseur **Proxmox VE** → **TrueNAS SCALE en VM** ; **garder zerobyte** comme pilote de backup ; **embeddings restent sur waza** (données déjà là + 24/7) ; NAS pour le week-end.
-> **Base** : `docs/2026-07-16-feuille-de-route-infra-sota.md` (SOTA) + audit Seko `Seko-VPN/docs/audits/2026-07-16-...`.
+> **Statut** : plan figé (décisions humaines prises). Matériel : Supermicro **P6X58D-E**, Xeon 55/56xx, **32→48Go DDR3**, 8×8To, **RTX 3060 12Go**. Montage week-end.
+> **Archi & rationale** : `docs/2026-07-16-architecture-x58-home-datacenter.md`.
+> **Décisions humaines 2026-07-16** : **Option B — ZFS sur l'hôte Proxmox** (pas de HBA/TrueNAS-VM) · **GPU en LXC** (pas de passthrough VM) · **test/dev hybride** (VMs locales X58 au quotidien + Hetzner éphémère pour ce qui exige une IP publique) · zerobyte gardé · embeddings restent sur waza.
 
-## Architecture cible du nœud
-
-```
-X58 bare-metal
-└─ Proxmox VE (hyperviseur)
-   ├─ VM "truenas"    : TrueNAS SCALE — HBA/disques en passthrough → ZFS RAIDZ2 (8×8To ~48To)
-   │                     sert NFS/SMB au reste ; datasets: backups/ , media/ , qdrant/
-   ├─ LXC/VM "infer"  : Debian + llama.cpp (CUDA) + RTX 3060 en passthrough VT-d
-   │                     LLM 7-14B local (LiteLLM local-first) + Whisper + ComfyUI léger
-   └─ LXC "zerobyte"  : zerobyte (pilote restic) — repo local sur dataset ZFS truenas (NFS)
-                        + offsite Hetzner Object-Lock ; PULL depuis Sese/Seko/Waza
-```
-
-> **Pourquoi Proxmox+TrueNAS et pas Debian+ZFS nu** (choix humain, tradeoff assumé) : flexibilité VM/LXC + GUI TrueNAS pour le pool + isolation GPU. Coût : passthrough disques (HBA IT-mode idéal) + passthrough GPU (VT-d) = 2 points durs X58 ; TrueNAS pilotable Ansible via module communautaire (moins first-class que Debian). Overhead virtualisation acceptable sur X58 (VT-x présent).
+## Conséquence des choix : ZÉRO passthrough → 1 seul gate GPU
+ZFS sur l'hôte + GPU en LXC ⇒ **aucun VT-d/IOMMU/VFIO requis**. Le seul point matériel restant côté GPU = **Above-4G / ReBAR** (le driver de l'hôte doit voir les 12Go de VRAM).
 
 ---
 
-## Phase 0 — Gates matériels (AVANT tout, sinon la stratégie tombe)
+## Phase 0 — Gates matériels (réduits)
 
-- [ ] **G1 — VT-d / IOMMU** (passthrough GPU + HBA) : BIOS P6X58D-E → activer *Intel Virtualization Technology* + *VT-d*. Vérifier après boot Proxmox : `dmesg | grep -e DMAR -e IOMMU` doit montrer l'IOMMU actif ; `find /sys/kernel/iommu_groups/ -type l` non vide. ⚠️ X58 = groupes IOMMU souvent grossiers → la 3060 peut partager un groupe avec d'autres devices (blocage passthrough propre). Plan B si KO : `pcie_acs_override` (moins sûr) OU GPU sur l'hôte Proxmox directement (pas de VM infer, llama.cpp sur l'hôte).
-- [ ] **G2 — Above 4G Decoding / ReBAR** (12Go VRAM) : cf feuille de route. Sans ça, 3060 dégradée/invisible même en passthrough. Patch `xCuri0/X58Above4G` si absent.
-- [ ] **G3 — HBA / mode disques** : pour ZFS en VM, passer le contrôleur SATA/HBA **entier** en passthrough à la VM TrueNAS (jamais du RDM disque par disque = fragile). Si pas de HBA dédié : envisager ZFS géré par Proxmox hôte + partage, plutôt que TrueNAS-en-VM sur le contrôleur de boot.
-- [ ] **G4 — ECC** : Xeon 55/56xx supportent souvent l'ECC unbuffered → activer BIOS avant de recevoir les 16Go (gratuit).
-- [ ] **G5 — PSU/PCIe 8-pin/airflow** pour la 3060 (170W).
-- [ ] **G6 — RAM interim** : 32Go OK pour démarrer (TrueNAS 8Go+1Go/disque ≈ 16Go, reste pour infer+zerobyte). Les 16Go finaux desserrent le GPU-VM. Dedup ZFS **OFF**.
-
-**Décision de bifurcation** : si G1 (IOMMU propre pour le GPU) échoue → **llama.cpp sur l'hôte Proxmox** (pas de VM infer), TrueNAS reste en VM pour le stockage. Documenter le résultat des gates avant de continuer.
+- [ ] **G1 — Above 4G Decoding / ReBAR** (BIOS P6X58D-E) : sans ça, la 3060 12Go boote dégradée/invisible pour le driver hôte. Activer l'option BIOS ; sinon patch [`xCuri0/X58Above4G`](https://github.com/xCuri0/X58Above4G) ou DSDT Linux. **Seul gate bloquant pour l'IA.**
+- [ ] **G2 — ECC** : Xeon 55/56xx supportent souvent l'ECC unbuffered → activer BIOS avant de monter les 16Go finaux (gratuit, fail-safe anti-corruption ZFS).
+- [ ] **G3 — PSU** (watts + connecteur PCIe 8-pin pour la 3060, 170W) + **airflow** (carte grand public en boîtier serveur).
+- [ ] **G4 — Disque système** : SSD/NVMe dédié pour Proxmox (JAMAIS un des 8×8To).
+> Plus de gate VT-d ni HBA — supprimés par les choix Option B + GPU-LXC.
 
 ---
 
-## Phase 1 — Socle Proxmox + stockage (week-end J1)
+## Phase 1 — Proxmox + ZFS hôte (J1)
 
-- [ ] Installer Proxmox VE (dernier stable) sur un SSD/disque système (PAS un des 8×8To).
-- [ ] IOMMU kernel cmdline : `intel_iommu=on iommu=pt` ; vfio-pci pour la 3060 (`lspci -nn | grep NVIDIA` → bind vendor:device) + blacklist nouveau.
-- [ ] VM **truenas** : HBA en passthrough (G3), TrueNAS SCALE, pool **RAIDZ2** (8×8To), datasets `backups`, `qdrant`, `media`. Scrub mensuel planifié. Partage NFS de `backups` (et `qdrant` si besoin) au réseau interne Proxmox.
-- [ ] Snapshots ZFS auto (sanoid) sur `backups` — protège la copie locale contre corruption/suppression.
+- [ ] Installer **Proxmox VE** (dernier stable) sur le SSD système.
+- [ ] **Pool ZFS sur l'hôte** : `zpool create tank raidz2 <8 disques by-id>` (par `/dev/disk/by-id`, jamais `sdX`). Datasets : `tank/backups`, `tank/qdrant`, `tank/media`, `tank/vmdata`.
+- [ ] ZFS hygiène : `ashift=12`, compression `lz4`, **dedup OFF**, scrub mensuel (cron), snapshots auto **sanoid** sur `tank/backups`.
+- [ ] **Partage NAS** : LXC `samba`/Cockpit (ou `cockpit-file-sharing`) exposant `tank/media` (+ SMB/NFS interne). Pas de TrueNAS.
+- [ ] Driver **NVIDIA sur l'hôte** Proxmox (headless) + `nvidia-container-toolkit` ; vérifier `nvidia-smi` voit **12Go** (preuve que G1 est OK).
 
 ---
 
-## Phase 2 — Backup 3-2-1-1-0 avec zerobyte (PRIORITÉ — répare le manque #1)
+## Phase 2 — Backup 3-2-1-1-0 avec zerobyte (LIVRABLE CRITIQUE, indépendant du GPU)
 
-> zerobyte **conservé** comme pilote (restic sous le capot). Corrige ses 2 défauts actuels : (a) il ne voyait aucune donnée, (b) offsite non immuable.
-
-- [ ] **LXC zerobyte** sur Proxmox, repo restic **local** sur le dataset NFS `truenas:backups` (= copie « 2 » locale).
-- [ ] **Modèle PULL** : zerobyte/restic tire depuis les nœuds via **SSH restreint forced-command** (clé dédiée par nœud, `command="restic serve --append-only"` ou rsync read-only) → un nœud compromis ne peut pas effacer le repo NAS.
+- [ ] **LXC `zerobyte`** : repo restic **local** sur `tank/backups` (= copie « 2 » locale).
+- [ ] **Modèle PULL** : zerobyte tire depuis les nœuds via **SSH restreint forced-command** (clé dédiée/nœud) → un nœud compromis ne peut pas effacer le repo NAS.
 - [ ] **Sources cohérentes** (jamais copie brute d'une DB) :
-  - Sese-AI : `pg_dump`/`pg_dumpall` + snapshot Qdrant + export n8n (dumps existants `roles/backup-config`, à étendre).
-  - Seko-VPN : **Vaultwarden `docker exec vaultwarden /vaultwarden backup`** (natif ≥1.32.1) + **Headscale `.backup`/`VACUUM INTO`** (⚠️ WAL depuis 0.23 → **jamais** `stop+cp`).
-  - Waza : `~/work` (hors gros binaires/caches), config `~/.claude` (secrets exclus/redigés).
-- [ ] **Offsite « 1 » immuable** : **nouveau bucket Hetzner Object Storage, Object Lock mode COMPLIANCE activé à la création** (non rétroactif) → ré-init repo restic dédié. zerobyte réplique NAS→offsite. Seul mécanisme fermant « Seko compromis + creds volés efface tout » (append-only seul ne suffit pas).
-- [ ] **+0 vérifié** : healthchecks.io (dead-man switch cron) + `restic check --read-data-subset=5%` mensuel + drill restore trimestriel (déjà dans `DISASTER-RECOVERY.md`, réviser Option C « miroir mensuel » → **copie quotidienne**). Échec de vérif = **stop backups vers ce repo** + alerte, pas juste log.
-- [ ] Pinner les versions dans `versions.yml` (restic, zerobyte, proxmox templates) — anti-drift.
+  - Sese : `pg_dump`/`pg_dumpall` + snapshot Qdrant + export n8n (dumps `roles/backup-config` à étendre).
+  - Seko : Vaultwarden `docker exec vaultwarden /vaultwarden backup` (≥1.32.1) + **Headscale `.backup`/`VACUUM INTO`** (⚠️ WAL depuis 0.23 → **jamais** `stop+cp`).
+  - Waza : `~/work` (hors gros caches/binaires) + `~/.claude` (secrets exclus).
+- [ ] **Offsite « 1 » immuable** : **nouveau bucket Hetzner Object Storage, Object Lock mode COMPLIANCE à la création** (non rétroactif) + repo restic dédié ; zerobyte réplique NAS→offsite. Seul mécanisme fermant « Seko compromis + creds volés efface tout ».
+- [ ] **+0 vérifié** : healthchecks.io (dead-man cron) + `restic check --read-data-subset=5%` mensuel + drill restore trimestriel. Échec vérif = **stop backups vers ce repo** + alerte.
+- [ ] Pinner restic + images dans `versions.yml`.
 
-**Definition of done P2** : un `restic restore` prouvé (Vaultwarden + Headscale + pg) depuis le NAS ET depuis l'offsite, contenu vérifié (`count(users)` VW/HS ≥ attendu), heartbeat vert. **C'est le livrable qui referme le risque #1.**
-
----
-
-## Phase 3 — Nœud d'inférence GPU (si G1/G2 OK)
-
-- [ ] LXC/VM **infer** : Debian + driver NVIDIA + CUDA ; **llama.cpp compilé from-source** (pas Ollama précompilé = AVX2 → crash Westmere ; flags CPU réels + CUDA).
-- [ ] Modèles : Gemma 4 E4B / Qwen3.5-8B (Q4_K_M) ; servir en OpenAI-compat (`llama-server`).
-- [ ] **LiteLLM (Sese) route local-first** : nouveau backend `http://<nas-tailnet>:8080` prioritaire, cloud en fallback/overflow → vide moins le cap 5$/j. NAS doit être **sur le tailnet** (cf infra mesh).
-- [ ] Whisper (STT) + ComfyUI léger (SDXL/Flux-schnell) pour gen locale légère (content-factory : léger local, lourd = RunPod).
-- [ ] **Wake-on-LAN / démarrage à la demande** du nœud infer (X58 80-150W idle → pas 24/7 ; démarrer pour batchs + fenêtre de pull).
-
-> **Embeddings = restent sur waza** (décision : données déjà sur waza, 24/7 ; fix racine = `MemoryMax` systemd déjà en place). Option future différée : NAS expose une API d'embedding GPU que le worker waza appelle sur le mesh (les fichiers restent sur waza, seuls les textes transitent) — à évaluer seulement si la vitesse d'embedding devient un problème.
+**DoD P2** : `restic restore` prouvé (Vaultwarden + Headscale + pg) **depuis le NAS ET depuis l'offsite**, contenu vérifié (`count(users)` VW/HS). = referme le risque #1.
 
 ---
 
-## Phase 4 — Intégration mesh & offload (après week-end)
+## Phase 3 — Inférence IA en LXC (si G1 Above-4G OK)
 
-- [ ] **NAS sur le tailnet** (client tailscale → headscale Seko) — prérequis pour LiteLLM local-first + pull backups sur IP 100.64.x.
-- [ ] Décharger de Sese vers le NAS (allège OVH → downgrade visé) : héberger la collection **Qdrant** sur dataset ZFS + observabilité **Loki/Grafana** (rétention lourde). Câbler **Alloy→Loki** (aujourd'hui `alloy_loki_url:""`).
-- [ ] Headscale : sa DB (WAL) désormais sauvegardée sur NAS (P2) + versionner `config.yaml` → SPOF mitigé.
+- [ ] **LXC `infer`** (unprivileged si possible + device cgroup NVIDIA, sinon privileged) : bind `/dev/nvidia*`, `nvidia-container-toolkit`. **Pas de VT-d.**
+- [ ] **llama.cpp compilé from-source** (Ollama précompilé = AVX2 → *illegal instruction* Westmere) + CUDA. `llama-server` OpenAI-compat.
+- [ ] Modèles Q4_K_M : Gemma 4 E4B / Qwen3.5-8B (3060 : 7-8B ~40 tok/s, 14B ~20 tok/s).
+- [ ] **LiteLLM (Sese) route LOCAL-FIRST** : backend `http://<x58-tailnet>:8080` prioritaire, cloud=fallback → vide moins le cap 5$/j. (Prérequis : X58 sur tailnet, Phase 4.)
+- [ ] Whisper (STT) + ComfyUI léger (gen locale légère ; lourd = RunPod).
+- [ ] **On-demand** : LXC infer démarré pour batchs/requêtes (hook LiteLLM ou start/stop Proxmox) — pas 24/7.
+
+> **Embeddings = restent sur waza** (données déjà là + 24/7 ; fix = `MemoryMax` en place). Option future : API embedding GPU sur le mesh appelée par le worker waza.
 
 ---
 
-## IaC — ce que je peux préparer AVANT le matériel (testable à blanc)
+## Phase 4 — Mesh & offload Sese (après week-end)
 
-- [ ] Rôle Ansible **`nas`** (cible : hôte Proxmox / LXC) : IOMMU cmdline, vfio, LXC zerobyte, montages NFS TrueNAS, tailscale. Molecule en dry.
-- [ ] Étendre **`roles/backup-config`** : sources Vaultwarden (`/vaultwarden backup`) + Headscale (`.backup` WAL-safe) + Waza ; cible pull NAS + offsite Object-Lock ; healthchecks.io ; `restic check` mensuel.
-- [ ] Réviser **`docs/DISASTER-RECOVERY.md`** : Option C mensuel → quotidien pull-based + Object Lock + restore-test.
-- [ ] `versions.yml` : pinner restic + images du tier NAS.
+- [ ] **X58 sur le tailnet** (tailscale LXC/hôte → Headscale Seko) — prérequis LiteLLM local-first + pull backups sur 100.64.x. Jamais d'IP publique.
+- [ ] **LXC `observ`** : Loki + Grafana (rétention lourde) sur `tank` ; câbler **Alloy→Loki** (aujourd'hui `alloy_loki_url:""`).
+- [ ] Décharger **Qdrant** (collection sur `tank/qdrant`) de Sese → allège OVH → downgrade visé.
+- [ ] **VMs test-* (hybride)** : templates KVM pour dev/test local (flash-suite/story-engine/fantrad au quotidien) ; garder Hetzner éphémère pour ce qui exige IP publique (CI, ACME public).
+
+---
+
+## IaC — préparable AVANT le matériel (testable à blanc, molecule dry)
+
+- [ ] Rôle Ansible **`x58-proxmox`** : ZFS hôte (datasets), driver NVIDIA + toolkit, LXC (samba, zerobyte, infer, observ), tailscale, sanoid.
+- [ ] Étendre **`roles/backup-config`** : sources Vaultwarden/Headscale WAL-safe + Waza ; cible pull NAS + offsite Object-Lock ; healthchecks.io ; `restic check` mensuel.
+- [ ] Réviser **`docs/DISASTER-RECOVERY.md`** : Option C mensuel → **copie quotidienne pull-based** + Object Lock + restore-test.
+- [ ] `versions.yml` : pinner restic + images tier X58.
 
 ## Ordre d'exécution
-**J1 week-end** : Gates matériels (Phase 0) → Proxmox + TrueNAS/ZFS (Phase 1) → **Phase 2 backup** (le livrable critique). **J2** : Phase 3 infer si gates GPU OK. **Après** : Phase 4 + IaC durci. **Lot 0 Seko** (vaultwarden 1.35.8, indépendant) dès ban levé.
+**J1** : G0 gates → Proxmox + ZFS hôte (P1) → **P2 backup** (livrable critique, sans GPU). **J2** : P3 infer si G1 OK. **Après** : P4 mesh/offload + IaC durci. **Lot 0 Seko** (vaultwarden 1.35.8) dès ban levé.
 
-## Risques / bifurcations
-1. **IOMMU X58 grossier** (G1) → GPU sur hôte Proxmox au lieu d'une VM (documenté Phase 0).
-2. **Pas de HBA dédié** (G3) → ZFS géré par l'hôte Proxmox, TrueNAS écarté ou en simple front NFS.
-3. **Above-4G absent** (G2) → GPU inutilisable → tier NAS = stockage+backup only (Phase 2 reste 100% valable), IA locale reportée.
-4. Backup (Phase 2) ne dépend d'AUCUN gate GPU → **livrable garanti** même si tout le volet IA échoue.
+## Filet
+P2 (backup) ne dépend d'AUCUN gate → **garanti** même si Above-4G échoue (dans ce cas : X58 = NAS+backup+VMs test, IA locale reportée jusqu'au fix BIOS/ReBAR).

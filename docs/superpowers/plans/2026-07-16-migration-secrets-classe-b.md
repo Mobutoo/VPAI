@@ -66,48 +66,58 @@ git commit -m "chore(secrets): gate migration + plan P1a (baseline 19 violations
 - Create: `~/.config/claude/secrets.env`
 - Modify: `~/.bashrc` (ajoute le sourcing en tête)
 
-- [ ] **Step 1: Écrire le store 600 avec TOUS les secrets runtime**
+- [ ] **Step 1: Écrire le store 600 avec TOUS les secrets runtime (depuis les BACKUPS)**
 
-Récupérer chaque valeur depuis sa source actuelle (jamais l'afficher au terminal). Script d'extraction (écrit directement dans le store) :
+Extraction robuste (corrige revue B1/B2/M1) : lit les **backups** Task 0 (pas les fichiers live → re-run sûr même après Task 2/5) ; **guard idempotent** (n'écrase pas un store peuplé) ; headers ciblés **par nom** (pas last-wins → évite le bug canva `Accept`) ; écriture **quotée** `shlex.quote` (valeurs à espace comme `Bearer …` sourçables sans bug/fuite). Valeurs jamais affichées.
 
 ```bash
-umask 077
-ENV=~/.config/claude/secrets.env
-: > "$ENV"   # part vide, perms 600 via umask
-# Depuis mcp.json (env) et .bashrc (valeurs) — extraction programmatique sans echo :
-python3 - "$ENV" <<'PY'
-import json,sys,re,os
-env=sys.argv[1]
-out={}
-# mcp.json : env littéraux + headers
-d=json.load(open(os.path.expanduser('~/.claude/mcp.json')))
-srv=d.get('mcpServers',{})
+python3 - <<'PY'
+import json, os, re, glob, shlex, sys
+home=os.path.expanduser('~')
+env=os.path.join(home,'.config','claude','secrets.env')
+os.makedirs(os.path.dirname(env), exist_ok=True)
+# M1 : guard idempotent — ne JAMAIS écraser un store déjà peuplé (re-run sûr).
+if os.path.exists(env) and os.path.getsize(env)>0:
+    print("store déjà peuplé — skip (idempotent)"); sys.exit(0)
+def newest(pat):
+    fs=sorted(glob.glob(pat), key=os.path.getmtime); return fs[-1] if fs else None
+mcp_bak=newest(home+'/.claude/mcp.json.bak-P1a-*')
+set_bak=newest(home+'/.claude/settings.json.bak-P1a-*')
+sh_baks=[b for b in (newest(home+'/.bashrc.bak-P1a-*'), newest(home+'/.profile.bak-P1a-*')) if b]
+assert mcp_bak and set_bak, "backups Task 0 introuvables — relancer Task 0"
 def lit(v): return isinstance(v,str) and '${' not in v
+out={}
+# mcp.json : env littéraux (KEY/TOKEN/SECRET) + headers ciblés PAR NOM (B1 fix)
+d=json.load(open(mcp_bak)); srv=d.get('mcpServers',{})
 for name,c in srv.items():
     for k,v in (c.get('env') or {}).items():
         if lit(v) and re.search(r'KEY|TOKEN|SECRET',k): out[k]=v
-    for hk,hv in (c.get('headers') or {}).items():
-        if lit(hv) and len(hv)>=16:
-            # nom de var dérivé du serveur (n8n-docs→N8N_DOCS_AUTH, canva→CANVA_X_API_KEY)
-            vn={'n8n-docs':'N8N_DOCS_AUTHORIZATION','canva-connect':'CANVA_X_API_KEY'}.get(name)
-            if vn: out[vn]=hv
+HDR={'n8n-docs':('Authorization','N8N_DOCS_AUTHORIZATION'),
+     'canva-connect':('x-api-key','CANVA_X_API_KEY')}   # header EXACT, jamais 'Accept'
+for name,(hname,vn) in HDR.items():
+    h=(srv.get(name,{}).get('headers') or {})
+    if hname in h and lit(h[hname]): out[vn]=h[hname]
 # settings.json env
-s=json.load(open(os.path.expanduser('~/.claude/settings.json')))
-for k,v in (s.get('env') or {}).items():
-    if isinstance(v,str) and re.search(r'TOKEN|SECRET',k): out[k]=v
-with open(env,'a') as f:
-    for k,v in out.items(): f.write(f'{k}={v}\n')
-print(f"{len(out)} secrets config écrits dans le store")
+s=json.load(open(set_bak))
+for k in ('TELEGRAM_BOT_TOKEN','AF_WEBHOOK_SECRET'):
+    v=(s.get('env') or {}).get(k)
+    if isinstance(v,str) and v: out[k]=v
+# exports shell (depuis backups)
+SHELL_KEYS={'QDRANT_API_KEY','TELEGRAM_BOT_TOKEN','STITCH_API_KEY','NOCODB_TOKEN',
+            'MACGYVER_BOT_TOKEN','HCLOUD_TOKEN','NAMECHEAP_API_KEY'}
+for bak in sh_baks:
+    for line in open(bak):
+        m=re.match(r'\s*export\s+([A-Z0-9_]+)=(.*)',line)
+        if not m: continue
+        k,v=m.group(1), m.group(2).strip().strip('"').strip("'")
+        if k in SHELL_KEYS and k not in out and v: out[k]=v
+# B2 fix : écriture QUOTÉE (espaces/spéciaux sûrs au sourcing `. file`)
+os.umask(0o077)
+with open(env,'w') as f:
+    for k,v in out.items(): f.write(f'{k}={shlex.quote(v)}\n')
+os.chmod(env,0o600)
+print(f"{len(out)} secrets écrits (quotés). clés:", ' '.join(sorted(out)))
 PY
-# Ajouter les exports shell (.bashrc/.profile) au store, valeur préservée :
-for k in QDRANT_API_KEY TELEGRAM_BOT_TOKEN STITCH_API_KEY NOCODB_TOKEN \
-         MACGYVER_BOT_TOKEN HCLOUD_TOKEN NAMECHEAP_API_KEY; do
-  grep -q "^$k=" "$ENV" && continue
-  val=$(grep -hE "^\s*export\s+$k=" ~/.bashrc ~/.profile 2>/dev/null | head -1 | sed -E "s/^\s*export\s+$k=//; s/^[\"']//; s/[\"']\s*$//")
-  [ -n "$val" ] && printf '%s=%s\n' "$k" "$val" >> "$ENV"
-done
-chmod 600 "$ENV"
-echo "clés dans le store (noms only):"; grep -oE '^[A-Z0-9_]+' "$ENV" | sort -u
 ```
 
 - [ ] **Step 2: Vérifier perms 600 + n° de clés attendu (≥11 uniques)**
@@ -124,10 +134,20 @@ grep -q 'claude/secrets.env' ~/.bashrc || sed -i '1i # Claude secrets store (600
 head -3 ~/.bashrc
 ```
 
-- [ ] **Step 4: Smoke — un shell frais résout les vars depuis le store**
+- [ ] **Step 4: Smoke — sourcing PROPRE + intégrité des valeurs (fix M2/B2)**
 
-Run: `bash -lc 'echo "QDRANT set? ${QDRANT_API_KEY:+yes}; TELEGRAM set? ${TELEGRAM_BOT_TOKEN:+yes}; PLANE set? ${PLANE_API_KEY:+yes}"'`
-Expected: `QDRANT set? yes; TELEGRAM set? yes; PLANE set? yes` (valeurs jamais affichées, juste le drapeau `:+yes`).
+Run (3 assertions ; valeurs jamais affichées) :
+```bash
+# (a) B2 : sourcing sans erreur (0 "command not found" = pas de valeur à espace mal quotée)
+CNF=$(bash -lc 'true' 2>&1 1>/dev/null | grep -c 'command not found' || true)
+[ "$CNF" = "0" ] && echo "a) sourcing propre (0 command-not-found)" || { echo "a) ÉCHEC : fuite/parse-bug au sourcing"; exit 1; }
+# (b) B2 : la valeur à espace est intègre (commence par 'Bearer ')
+bash -lc '[ "${N8N_DOCS_AUTHORIZATION#Bearer }" != "$N8N_DOCS_AUTHORIZATION" ] && echo "b) N8N Authorization = Bearer ... ok" || { echo "b) ÉCHEC : N8N vide/cassé"; exit 1; }'
+# (c) toutes les vars résolvent (drapeau :+set, jamais la valeur ; inclut CANVA fix B1)
+bash -lc 'for v in QDRANT_API_KEY TELEGRAM_BOT_TOKEN PLANE_API_KEY CANVA_X_API_KEY N8N_DOCS_AUTHORIZATION AF_WEBHOOK_SECRET; do echo "c) $v ${!v:+set}"; done'
+```
+Expected : `a) sourcing propre` ; `b) N8N Authorization = Bearer ... ok` ; chaque ligne `c) <VAR> set`.
+> Note B1 (canva) : l'intégrité de `CANVA_X_API_KEY` (valeur correcte, pas celle d'`Accept`) n'est prouvable qu'en **session `claude` fraîche** (auth canva réelle) — cf Task 6 §validation session fraîche. Le drapeau `set` ne garantit que la présence.
 
 - [ ] **Step 5: Commit (~/.claude n'est pas concerné ici ; .bashrc hors git → backup seul)**
 
@@ -187,12 +207,16 @@ cd ~/.claude && git add mcp.json && git commit -m "secrets(P1a): mcp.json litté
 
 ```bash
 python3 - <<'PY'
-import json,os,re
+import json,os
 p=os.path.expanduser('~/.claude/settings.json'); d=json.load(open(p))
 for k in ('TELEGRAM_BOT_TOKEN','AF_WEBHOOK_SECRET'):
     (d.get('env') or {}).pop(k,None)
 allow=(d.get('permissions',{}) or {}).get('allow',[])
-d['permissions']['allow']=[a for a in allow if not (isinstance(a,str) and re.search(r'[A-Fa-f0-9]{32,}',a))]
+# n2 fix : discriminant PROPRE (header AF_WEBHOOK), pas un hex large (éviterait un
+# éventuel SHA git). Vérifié : exactement 2 règles portent ce header.
+kept=[a for a in allow if not (isinstance(a,str) and 'Telegram-Bot-Api-Secret-Token' in a)]
+print(f"allow settings.json {len(allow)} -> {len(kept)}")
+d['permissions']['allow']=kept
 json.dump(d,open(p,'w'),indent=2); print("settings.json nettoyé")
 PY
 python3 -c "import json;json.load(open('/home/mobuone/.claude/settings.json'));print('JSON valide')"
@@ -292,17 +316,22 @@ echo "P1a terminé : détecteur 0 violation ; rollback = .bak-P1a-<ts>"
 Run:
 ```bash
 bash /home/mobuone/work/infra/VPAI/scripts/secrets-migration-check.sh; echo "gate exit=$?"
-# Contre-preuve : sur un backup pré-migration, le détecteur doit ENCORE trouver des violations
-CLAUDE_HOME=/tmp/pretest; mkdir -p $CLAUDE_HOME
-cp ~/.claude/mcp.json.bak-P1a-* $CLAUDE_HOME/mcp.json 2>/dev/null && \
-  CLAUDE_HOME=$CLAUDE_HOME bash /home/mobuone/work/infra/VPAI/scripts/secrets-migration-check.sh | grep -c VIOLATION
-rm -rf $CLAUDE_HOME
+# Contre-preuve : sur le backup pré-migration le plus RÉCENT (n1 : jamais un glob
+# multi-source vers un fichier), le détecteur doit ENCORE trouver des violations.
+PT=/tmp/pretest; mkdir -p $PT
+cp "$(ls -t ~/.claude/mcp.json.bak-P1a-* | head -1)" $PT/mcp.json
+CLAUDE_HOME=$PT bash /home/mobuone/work/infra/VPAI/scripts/secrets-migration-check.sh | grep -c VIOLATION
+rm -rf $PT
 ```
 Expected: gate exit=0 ; le run sur backup montre ≥1 VIOLATION (détecteur toujours discriminant).
 
-- [ ] **Step 2: Note de reprise pour P1b (classe A → Vaultwarden)**
+- [ ] **Step 2: Validation SESSION FRAÎCHE (obligatoire) + note reprise P1b**
 
-Documenter dans le spec / STATUS que la classe A (NOCODB/MACGYVER/HCLOUD/NAMECHEAP/LITELLM) vit en **interim** dans `secrets.env` et doit être promue vers Vaultwarden + retirée du store au plan P1b, avec rotation. Smoke MCP complet (qdrant/plane/canva/n8n-docs résolvent) = à la **prochaine session `claude`** (les `${VAR}` se lisent au boot des serveurs MCP, pas rechargeables à chaud).
+⚠️ **Suspect n°1 (revue m4)** : aucun `${VAR}` en **header** n'existe dans ce mcp.json aujourd'hui (tous les `${VAR}` actuels sont en `env`) — l'interpolation header est doc-MEDIUM sans précédent local. Donc à la **prochaine session `claude`** (les `${VAR}` se lisent au boot MCP, pas à chaud), valider explicitement que **n8n-docs** et **canva-connect** s'authentifient (les 2 serveurs à header migré, et canva = cible du fix B1). Si l'un échoue → suspecter d'abord l'interpolation header, puis la valeur canva.
+
+Documenter (spec/STATUS) :
+- **Classe A en interim** : NOCODB/MACGYVER/HCLOUD/NAMECHEAP/LITELLM vivent temporairement dans `secrets.env` (m3 : LITELLM tiré de P1b dans P1a = réduction d'exposition assumée) → à **promouvoir vers Vaultwarden + retirer du store + roter** au plan P1b.
+- **O4 tranché (m1)** : `claude` est lancé **interactivement** (`/home/mobuone/.local/bin/claude`, chaîne `.profile`→`.bashrc` confirmée) → sourcing `.bashrc` **suffit**, aucun consommateur MCP systemd (`cc-improvement-loop` lance un script sans réseau). `EnvironmentFile=` = **différé** jusqu'à ce qu'un `claude` headless systemd existe (aucun aujourd'hui).
 
 - [ ] **Step 3: Commit final côté VPAI (détecteur + toute doc mise à jour)**
 

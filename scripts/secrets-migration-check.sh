@@ -29,8 +29,11 @@ CFG_SETTINGS_ENV_KEYS=(TELEGRAM_BOT_TOKEN AF_WEBHOOK_SECRET)  # → à SUPPRIMER
 # Secrets qui NE doivent plus apparaître en clair NULLE PART (déplacés/ retirés).
 SHELL_SECRET_KEYS=(QDRANT_API_KEY TELEGRAM_BOT_TOKEN STITCH_API_KEY NOCODB_TOKEN \
                    MACGYVER_BOT_TOKEN HCLOUD_TOKEN NAMECHEAP_API_KEY)
-# Règles allow qui doivent être retirées (creds PROD non-renouvelables).
-REMOVED_ALLOW_PATTERNS=(postgresql:// 'is_email_verified' 'DJANGO_SUPERUSER')
+# Règles allow porteuses de secret qui doivent être retirées.
+# 'Telegram-Bot-Api-Secret-Token' = header AF_WEBHOOK (2 règles settings.json,
+# discriminant propre — pas de collision SHA git, cf revue n2). 'sk-lm-' = LITELLM.
+REMOVED_ALLOW_PATTERNS=(postgresql:// 'is_email_verified' 'DJANGO_SUPERUSER' \
+                        'sk-lm-' 'Telegram-Bot-Api-Secret-Token')
 
 VIOL=0
 viol(){ echo "  VIOLATION: $1"; VIOL=$((VIOL+1)); }
@@ -88,11 +91,15 @@ check_shell(){
 }
 
 check_removed_allow(){
-  [ -f "$SLOCAL" ] || return
-  for p in "${REMOVED_ALLOW_PATTERNS[@]}"; do
-    if grep -qF "$p" "$SLOCAL" 2>/dev/null; then
-      viol "settings.local.json contient encore une règle allow '$p' (doit être RETIRÉE)"
-    fi
+  # Scanne settings.json ET settings.local.json (m2 : le gate ne doit pas être
+  # muet sur les règles allow à secret retirées par Task 3 ET Task 4).
+  for f in "$SETTINGS" "$SLOCAL"; do
+    [ -f "$f" ] || continue
+    for p in "${REMOVED_ALLOW_PATTERNS[@]}"; do
+      if grep -qF "$p" "$f" 2>/dev/null; then
+        viol "$(basename "$f") contient encore une règle allow '$p' (doit être RETIRÉE)"
+      fi
+    done
   done
 }
 

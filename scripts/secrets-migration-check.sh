@@ -105,7 +105,32 @@ check_removed_allow(){
   done
 }
 
-run_all(){ VIOL=0; check_mcp; check_settings_env; check_shell; check_removed_allow; }
+check_claudejson(){
+  # ~/.claude.json (config CLI, RÉÉCRIT par le CLI) porte aussi des mcpServers —
+  # angle mort découvert en revue P0/P1b (B4) : mêmes secrets que mcp.json en clair.
+  # Générique : toute valeur env secret-like ou header à chiffres len>=16 doit être ${VAR}.
+  local cj="${CLAUDEJSON:-$HOME/.claude.json}"
+  [ -f "$cj" ] || return
+  local bad
+  bad=$(python3 - "$cj" <<'PY'
+import json,sys,re
+d=json.load(open(sys.argv[1]))
+for name,c in (d.get('mcpServers',{}) or {}).items():
+    for k,v in (c.get('env') or {}).items():
+        if isinstance(v,str) and '${' not in v and len(v)>=16 and re.search(r'KEY|TOKEN|SECRET|PASSWORD',k,re.I):
+            print(f"{name}:env.{k}")
+    for hk,hv in (c.get('headers') or {}).items():
+        if isinstance(hv,str) and '${' not in hv and len(hv)>=16 and any(ch.isdigit() for ch in hv):
+            print(f"{name}:headers.{hk}")
+PY
+)
+  local line
+  while IFS= read -r line; do
+    [ -n "$line" ] && viol "~/.claude.json mcpServers[$line] = littéral (attendu \${VAR})"
+  done <<< "$bad"
+}
+
+run_all(){ VIOL=0; check_mcp; check_settings_env; check_shell; check_removed_allow; check_claudejson; }
 
 if [ "${1:-}" = "--self-test" ]; then
   # Contrôle positif : sur l'état ACTUEL (pré-migration), le détecteur DOIT trouver ≥1 violation.

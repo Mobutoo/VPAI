@@ -25,11 +25,14 @@
 
 - [ ] **Step 1: Dépendances hôte** (M1) : tâches apt `restic` + `sqlite3` (présents dans Debian 13 ; versions apt = OK, noter dans defaults).
 - [ ] **Step 2: Script `vw-backup.sh.j2`** (`set -euo pipefail`) :
-  1. `docker exec vaultwarden /vaultwarden backup` → produit `/data/db_<ts>.sqlite3` (builtin, dump cohérent) ; récupérer le nom exact (`ls -t /data/db_*.sqlite3 | head -1` via `docker exec sh -c`).
-  2. Tar via **shell CONTENEUR** (B2 — jamais de glob côté hôte) :
-     `docker run --rm -v vaultwarden_data:/data:ro -v <staging>:/out alpine sh -c 'cd /data && tar czf /out/vw-data.tgz $(ls -d db_*.sqlite3 config.json rsa_key* attachments sends 2>/dev/null)'` — garde d'existence : `attachments`/`sends` absents live (vérifié) → jamais fatal.
+  0. **Purge des dumps périmés en DÉBUT de run** (MINOR-4 : un run mort entre dump et cleanup laisserait des `db_*.sqlite3` accumulés → tar ambigu au restore) : `docker exec vaultwarden sh -c 'rm -f /data/db_*.sqlite3'`.
+  0b. **Résoudre le nom RÉEL du volume** (MINOR-3 : compose non-external sans `name:` → préfixé projet, ex. `<projet>_vaultwarden_data`) : `VOL=$(docker volume ls -q | grep vaultwarden_data)` + assert 1 seul match.
+  1. `docker exec vaultwarden /vaultwarden backup` → produit `/data/db_<YYYYMMDD_HHMMSS>.sqlite3` (builtin ≥1.32.1, nom vérifié dans le source `src/db/mod.rs` ; le glob `db_*.sqlite3` ne matche PAS `db.sqlite3`).
+  2. Tar via **shell CONTENEUR** (B2 — jamais de glob côté hôte), image **pinnée** (MINOR-2, précédent `alpine:3.21` versions.yml flash-suite) :
+     `docker run --rm -v "$VOL":/data:ro -v <staging>:/out alpine:3.21 sh -c 'cd /data && tar czf /out/vw-data.tgz $(ls -d db_*.sqlite3 config.json rsa_key* attachments sends 2>/dev/null)'` — gardes : `attachments`/`sends` absents live → jamais fatal ; `$(…)` vide impossible (dump frais + config.json), tar refuse une archive vide = fail-loud.
   3. `restic backup` (env creds fichier 600 root) ; `restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 6 --prune`.
-  4. Nettoyage : supprimer le dump `db_*.sqlite3` du volume (hygiène, nit revue) ; audit JSON journald.
+  4. Nettoyage : supprimer le dump `db_*.sqlite3` du volume ; audit JSON journald.
+  > Réf qui marche (R5, chemin absolu) : `/home/mobuone/work/saas/flash-studio/flash-infra/ansible/roles/vaultwarden/templates/vaultwarden-backup.sh.j2`.
 - [ ] **Step 3: Timer** `OnCalendar=daily` + `RandomizedDelaySec=1h` + `Nice=19`.
 - [ ] **Step 4: Déployer + run** → `restic snapshots` = 1 snapshot > 0. Commit Seko-VPN.
 
@@ -57,15 +60,15 @@
 
 ---
 
-## Phase P1a-bis — Fermer `~/.claude.json` (B4, détecteur déjà étendu = 8 violations prouvées)
+## Phase P1a-bis — Fermer `~/.claude.json` (B4 + MAJOR-1, détecteur étendu = **9 violations prouvées** dont postgres DSN)
 
-### Task 6: Migration `~/.claude.json` → `${VAR}`
-**Files:** Modify `~/.claude.json` (hors git) ; Modify `~/.config/claude/secrets.env` (+2 clés) ; backup `~/.claude.json.bak-P1abis-<ts>`.
+### Task 6: Migration `~/.claude.json` → `${VAR}` (9 entrées)
+**Files:** Modify `~/.claude.json` (hors git) ; Modify `~/.config/claude/secrets.env` (+3 clés) ; backup `~/.claude.json.bak-P1abis-<ts>`.
 
-- [ ] **Step 1:** Backup + **ajouter au store** (extraction scriptée depuis `~/.claude.json`, valeurs jamais affichées, écriture atomique quotée) : `GITHUB_PERSONAL_ACCESS_TOKEN` (c'est ICI que vit le PAT que mcp.json référence sans source), `TREK_AUTHORIZATION`. (qdrant/plane/canva/stitch/n8n-docs/nocodb = déjà au store.)
-- [ ] **Step 2:** Édition scriptée JSON : les 8 entrées → refs (`${QDRANT_API_KEY}`, `${PLANE_API_KEY}`, `${CANVA_X_API_KEY}`, `${STITCH_API_KEY}`, `${N8N_DOCS_AUTHORIZATION}`, env `NOCODB_API_TOKEN`→`${NOCODB_TOKEN}`, `${GITHUB_PERSONAL_ACCESS_TOKEN}`, `${TREK_AUTHORIZATION}`). **Hazard clobber** : le CLI réécrit ce fichier → éditer idéalement sessions fermées ; sinon accepter le risque + **re-vérifier le fichier après le prochain boot** (gate détecteur re-run).
-- [ ] **Step 3:** `secrets-migration-check.sh` → **0 violation** ; contre-preuve sur backup (`CLAUDEJSON=<bak>`) → 8.
-- [ ] **Step 4:** Validation session fraîche (avec celle de P1a) : qdrant/nocodb/github/trek MCP s'authentifient au prochain boot.
+- [ ] **Step 1:** Backup + **ajouter au store** (extraction scriptée, valeurs jamais affichées, écriture atomique quotée) : `GITHUB_PERSONAL_ACCESS_TOKEN` (c'est ICI que vit le PAT que mcp.json référence sans source), `TREK_AUTHORIZATION`, **`POSTGRES_CONNECTION_STRING`** (MAJOR-1 : DSN à creds embarqués — probablement le pwd partagé PROD, cf `wiki/postgresql.md` — classe B, consommé au boot par le serveur MCP postgres). (qdrant/plane/canva/stitch/n8n-docs/nocodb = déjà au store.)
+- [ ] **Step 2:** Édition scriptée JSON : les **9** entrées → refs (`${QDRANT_API_KEY}`, `${PLANE_API_KEY}`, `${CANVA_X_API_KEY}`, `${STITCH_API_KEY}`, `${N8N_DOCS_AUTHORIZATION}`, env `NOCODB_API_TOKEN`→`${NOCODB_TOKEN}`, `${GITHUB_PERSONAL_ACCESS_TOKEN}`, `${TREK_AUTHORIZATION}`, `${POSTGRES_CONNECTION_STRING}`). **Hazard clobber** : le CLI réécrit ce fichier → éditer idéalement sessions fermées ; sinon accepter le risque + **le « 0 violation » définitif = le re-run post-boot** (NOTE-2 revue — celui in-session est transitoire).
+- [ ] **Step 3:** `secrets-migration-check.sh` → **0 violation** (transitoire) ; contre-preuve sur backup (`CLAUDEJSON=<bak>`) → 9.
+- [ ] **Step 4:** Validation session fraîche (avec celle de P1a) : qdrant/nocodb/github/trek/**postgres** MCP s'authentifient au prochain boot + **re-run détecteur post-boot = le gate définitif**. Caveat résiduel documenté : la règle headers exige un chiffre (un token 100 % alpha passerait) — assumé.
 
 ---
 
@@ -75,7 +78,7 @@
 **Files:** Create `VPAI/roles/secret-broker/files/{secret-run,politique.yml,test_secret_run.sh}` + tasks (déploie `/usr/local/bin/` + `/etc/secret-run/`).
 
 - [ ] **Step 1: 9 tests d'abord** (faux rbw en PATH, hermétique) : (1) ref+cmd autorisées → exit 0, valeur dans env enfant, **absente d'argv/`/proc/*/cmdline`** ; (2) valeur dans stdout enfant → `[REDACTED]` ; (3) **valeur dans stderr → `[REDACTED]`** ; (4) ref hors politique → exit 2 ; (5) cmd hors politique → exit 2 ; (6) ref absente du coffre → exit ≠0 message clair ; (7) **coffre verrouillé (faux rbw exit≠0) → fail-closed propre** ; (8) **code de sortie de l'enfant propagé** (enfant exit 7 → secret-run exit 7 — critique : sibling tests = `curl -sf`) ; (9) audit JSON sans valeur.
-- [ ] **Step 2:** FAIL 9/9. **Step 3: Implémenter** — design corrigé M5 : `export VAR="$(rbw get …)"` puis **sous-process pipé** (PAS `env VAR=… cmd` — l'assignation serait dans l'argv de `env` ; PAS `exec` — incompatible avec le filtre) ; stdout ET stderr à travers un redacteur **littéral** (python line-buffered, `str.replace`, pas de regex → métacaractères sûrs) ; exit = code enfant (`PIPESTATUS[0]`/`wait`). **Limites documentées en tête de script** : valeur coupée entre chunks/lignes non garantie ; sortie binaire passthrough ; c'est un filet, l'invariant premier = la valeur n'est jamais un argument.
+- [ ] **Step 2:** FAIL 9/9. **Step 3: Implémenter** — design corrigé M5 : ⚠️ **piège bash (NOTE-1)** : `export VAR="$(rbw get …)"` masque l'échec de rbw sous `set -e` (export retourne 0) → forme correcte = assignation `VAR="$(rbw get …)"` (rc testé) PUIS `export VAR` — le test 7 (fail-closed) doit casser la forme fusionnée, ne pas le contourner. Puis **sous-process pipé** (PAS `env VAR=… cmd` — l'assignation serait dans l'argv de `env` ; PAS `exec` — incompatible avec le filtre) ; stdout ET stderr à travers un redacteur **littéral** (python line-buffered, `str.replace`, pas de regex → métacaractères sûrs) ; exit = code enfant (`PIPESTATUS[0]`/`wait`). **Limites documentées en tête de script** : valeur coupée entre chunks/lignes non garantie ; sortie binaire passthrough ; c'est un filet, l'invariant premier = la valeur n'est jamais un argument.
 - [ ] **Step 4:** 9/9 PASS. **Step 5:** politique : `MACGYVER_BOT_TOKEN→{curl}`, `HCLOUD_TOKEN→{hcloud,curl}`, `NAMECHEAP_API_KEY→{curl}`, `LITELLM_API_KEY→{curl}` (NOCODB retiré — classe B). **Step 6:** rôle Ansible (tags `[secret_broker, phase4]`, checklist) + commit.
 
 ### Task 8: Migration classe A → Vaultwarden (4 refs)
@@ -89,7 +92,7 @@
 - [ ] **Step 2:** Re-run 4 sibling tests + boot MCP nocodb OK.
 
 ### Task 10: Clôture
-- [ ] Runbook `RUNBOOK-COFFRE-AGENTS.md` (unlock/lock_timeout décidé T5b, mode dégradé fail-closed, restore, rotation, canary, **différé : user séparé P1.4 → P4**) ; **MàJ plan P1a** : l'attente « NOCODB/HCLOUD résolvent en shell frais » devient « NOCODB seul » (m4) ; MàJ spec/STATUS/mémoire ; vérif finale : gate 0, `rbw lock && secret-run MACGYVER_BOT_TOKEN -- true` → échec propre ; commits VPAI + Seko-VPN.
+- [ ] Runbook `RUNBOOK-COFFRE-AGENTS.md` (unlock/lock_timeout décidé T5b, mode dégradé fail-closed, restore, rotation, canary, **différé : user séparé P1.4 → P4**, **NOTE-3 : post-rotation les `.bak-P1a*/P1b*` contiennent des creds RÉVOQUÉS — un rollback via .bak restaure des valeurs mortes, MàJ store/Vaultwarden requise après**) ; MàJ spec §4/§6 (NOCODB classe B, inventaire +`~/.claude.json` 9 entrées) ; **MàJ plan P1a** : l'attente « NOCODB/HCLOUD résolvent en shell frais » devient « NOCODB seul » (m4) ; MàJ spec/STATUS/mémoire ; vérif finale : gate 0, `rbw lock && secret-run MACGYVER_BOT_TOKEN -- true` → échec propre ; commits VPAI + Seko-VPN.
 
 ---
 

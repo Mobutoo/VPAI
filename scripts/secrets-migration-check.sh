@@ -115,9 +115,11 @@ check_claudejson(){
   bad=$(python3 - "$cj" <<'PY'
 import json,sys,re
 d=json.load(open(sys.argv[1]))
+DSN=re.compile(r'postgres(ql)?://[^:/@]+:[^@]+@')  # DSN à creds embarqués (MAJOR-1 revue)
 for name,c in (d.get('mcpServers',{}) or {}).items():
     for k,v in (c.get('env') or {}).items():
-        if isinstance(v,str) and '${' not in v and len(v)>=16 and re.search(r'KEY|TOKEN|SECRET|PASSWORD',k,re.I):
+        if not (isinstance(v,str) and '${' not in v): continue
+        if (len(v)>=16 and re.search(r'KEY|TOKEN|SECRET|PASSWORD',k,re.I)) or DSN.search(v):
             print(f"{name}:env.{k}")
     for hk,hv in (c.get('headers') or {}).items():
         if isinstance(hv,str) and '${' not in hv and len(hv)>=16 and any(ch.isdigit() for ch in hv):

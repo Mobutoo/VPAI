@@ -36,3 +36,9 @@ Repo IaC : `~/work/infra/Seko-VPN` (14 rôles, molecule partout, `docs/05-troubl
 
 ## ⛔ CADUC 2026-07-16 (même jour)
 SSH était un FAUX NÉGATIF (ban fail2ban transitoire, pas de panne). Seko-VPN SAIN : SSH ok port 22, 33j uptime, box HTTPS 200. **Réinstallation ANNULÉE** (décision humaine). Doc conservé comme runbook de secours si vraie panne future. Le bug restant = création org web-vault (front JS), traité en session courante via version web-vault.
+
+## ✅ CLÔTURE nuit 2026-07-16 (session test-ban)
+- **Vraie cause des bans récurrents** : crontab waza `*/5 * * * * git push` (workflows ComfyUI) vers `git@seko-vpn:` → user `git` inexistant sur Seko → 2 échecs/5 min → ban 1h en boucle (depuis mars). **Cron désactivé** (`#DISABLED-2026-07-16-ban-seko-invalid-user-git#`). Le push était mort-né : repo absent de Gitea + SSH Gitea loopback-only (127.0.0.1:2222).
+- Secours anti-ban prouvé : `ssh -J sese-ai seko` (jamais `-i` brut sur le hop).
+- fail2ban validé par test contrôlé (banip/unbanip TEST-NET 192.0.2.1, règle nft vérifiée). Waza débanni.
+- **Vaultwarden convergé 1.35.8-alpine** (= pin IaC, fix bug org #6638) — healthy, `/alive` 200. Reste : valider création org en navigation privée (humain, master password) → puis T3.

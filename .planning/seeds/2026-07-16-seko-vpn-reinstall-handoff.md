@@ -31,3 +31,8 @@ Repo IaC : `~/work/infra/Seko-VPN` (14 rôles, molecule partout, `docs/05-troubl
 2. Si réinstall : sauvegarder les volumes (headscale + vaultwarden) AVANT (tar depuis console), puis IaC replay.
 3. Post-réinstall : T3 (retester le bug org sur version fraîche) → T1/T2 (avec creds S3) → T5 → reprise P1b.
 4. En parallèle (waza, indépendant) : re-run `scripts/secrets-migration-check.sh` post-boot + vérifier auth MCP = clôture définitive P1a/P1a-bis.
+
+---
+
+## ⛔ CADUC 2026-07-16 (même jour)
+SSH était un FAUX NÉGATIF (ban fail2ban transitoire, pas de panne). Seko-VPN SAIN : SSH ok port 22, 33j uptime, box HTTPS 200. **Réinstallation ANNULÉE** (décision humaine). Doc conservé comme runbook de secours si vraie panne future. Le bug restant = création org web-vault (front JS), traité en session courante via version web-vault.

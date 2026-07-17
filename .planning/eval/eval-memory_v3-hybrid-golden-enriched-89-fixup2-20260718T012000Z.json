@@ -1,0 +1,1799 @@
+{
+  "schema_version": "eval-v1",
+  "collection": "memory_v3",
+  "mode": "hybrid",
+  "limit": 10,
+  "golden": "/home/mobuone/work/infra/VPAI/scripts/memory/eval/golden.yml",
+  "questions": 89,
+  "ran_at": "2026-07-17T23:09:38.000126+00:00",
+  "params": {
+    "prefetch_limit": 30,
+    "fusion": "dbsf",
+    "manual_fusion": false,
+    "rrf_k": null,
+    "dense_weight": null,
+    "sparse_weight": null,
+    "rerank_light": false,
+    "exact": true,
+    "scope_field": null,
+    "scope_file": null,
+    "scope_mode": null,
+    "scope_boost_weight": null,
+    "scope_boost_candidates": null
+  },
+  "filter_miss_rate": null,
+  "rerank_timings": null,
+  "timings": {
+    "encode_s": 22.26,
+    "search_s": 5.94
+  },
+  "metrics": {
+    "n": 89,
+    "recall@1": 0.6629,
+    "recall@5": 0.9775,
+    "mrr@10": 0.7897
+  },
+  "by_doc_kind": {
+    "doc": {
+      "n": 72,
+      "recall@1": 0.625,
+      "recall@5": 0.9722,
+      "mrr@10": 0.7644
+    },
+    "rex": {
+      "n": 17,
+      "recall@1": 0.8235,
+      "recall@5": 1.0,
+      "mrr@10": 0.8971
+    }
+  },
+  "misses": [
+    {
+      "query": "Quel champ utiliser pour le login API n8n 2.7 à la place de email ?",
+      "expected": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-02-25.md",
+        "wiki:n8n.md",
+        "simubot:.planning/phases/01-fondations-auth-db-branding/01-RESEARCH.md",
+        "vps:.planning/phases/07.3-design-refresh-stitch-2026/07.3-03-PLAN.md",
+        "powerbank:docs/plans/2026-07-03-DESIGN-V4E-MODE-HOTE.md"
+      ]
+    },
+    {
+      "query": "Comment accéder au body d'un webhook n8n v2 dans un Code node ?",
+      "expected": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "top_files": [
+        "wiki:n8n.md",
+        "VPAI:roles/n8n-provision/files/workflows/ig-comment-reply.json",
+        "VPAI:roles/openclaw/templates/skills/delegate-n8n/SKILL.md.j2",
+        "VPAI:roles/n8n-provision/files/workflows/cf-kitsu-inbound.json",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.webhook/index.md"
+      ]
+    }
+  ],
+  "details": [
+    {
+      "query": "Quelle variable d'environnement n8n autorise require() des modules builtin fs path crypto dans les Code nodes ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "n8n-docs:docs/hosting/configuration/configuration-examples/modules-in-code-node.md",
+        "n8n-docs:docs/hosting/configuration/environment-variables/nodes.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "n8n-docs:docs/hosting/configuration/configuration-examples/modules-in-code-node.md",
+        "wiki:n8n.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "n8n-docs:_snippets/integrations/builtin/core-nodes/code-node.md",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.code/common-issues.md",
+        "n8n-docs:docs/hosting/configuration/environment-variables/nodes.md",
+        "n8n-docs:docs/2-0-breaking-changes.md",
+        "n8n-docs:docs/integrations/builtin/cluster-nodes/root-nodes/n8n-nodes-langchain.code.md",
+        "n8n-docs:docs/hosting/configuration/environment-variables/security.md",
+        "riposte:.planning/milestones/v1.0-phases/03-core-g-n-ration-variables-typ-es-p2/03-RESEARCH.md"
+      ],
+      "note": "exact — NODE_FUNCTION_ALLOW_BUILTIN=fs,path,crypto (§9.2 ; doc officielle n8n acceptée)",
+      "in_scope": null
+    },
+    {
+      "query": "Which volume mount path does PostgreSQL 18 use in Docker compared to PG 17?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 3,
+      "top_files": [
+        "flash-studio:.planning/research/STACK.md",
+        "wiki:postgresql.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "flash-studio:.planning/research/PITFALLS.md",
+        "flash-studio:docs/RUNBOOK-major-version-upgrades.md",
+        "flash-studio:.planning/phases/08-postgresql-17-portal-vm/08-01-PLAN.md",
+        "flash-studio:.planning/phases/09-postgresql-17-control-vm/09-01-PLAN.md"
+      ],
+      "note": "exact — /var/lib/postgresql vs /var/lib/postgresql/data (§3.1)",
+      "in_scope": null
+    },
+    {
+      "query": "ROUND on double precision PostgreSQL function does not exist — how to fix the SQL?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "hawkeye:db/migrations/repeatable/R__fn_score_trend.sql",
+        "wiki:postgresql.md",
+        "hawkeye:.planning/phases/14-backup-gate-rgpd/14-01-SUMMARY.md",
+        "hawkeye:db/tests/test_projet_write_surface.sql",
+        "VPAI:roles/docker-stack/templates/provision-postgresql.sh.j2",
+        "VPAI:docs/audits/2026-05-29-execution-plan.md",
+        "n8n-docs:docs/integrations/builtin/app-nodes/n8n-nodes-base.postgres/common-issues.md",
+        "simubot:.svelte-kit/output/server/chunks/auth.js"
+      ],
+      "note": "exact — cast ::numeric avant ROUND() (§3.4)",
+      "in_scope": null
+    },
+    {
+      "query": "Redis 8 crash au démarrage avec rename-command FLUSHDB dans redis.conf",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "flash-studio:.planning/phases/10-redis-8-portal-vm/ROLLBACK-RUNBOOK.md",
+        "flash-studio:docs/REX-v2.0-major-version-upgrades.md",
+        "VPAI:roles/redis/templates/redis.conf.j2",
+        "flash-studio:flash-infra/docs/REX-2026-04-09-provisioning-session3.md",
+        "flash-studio:.planning/phases/10-redis-8-portal-vm/10-02-PLAN.md",
+        "flash-studio:.planning/phases/10-redis-8-portal-vm/10-01-PLAN.md",
+        "flash-studio:.planning/research/STACK.md"
+      ],
+      "note": "exact — rename-command supprimé, utiliser ACL (§4.1)",
+      "in_scope": null
+    },
+    {
+      "query": "Healthcheck Qdrant sans wget ni curl dans l'image Docker",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 4,
+      "top_files": [
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "Seko-VPN:docs/05-troubleshooting.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:TECHNICAL-SPEC.md",
+        "flash-studio:flash-infra/docs/REX-2026-03-22-litellm-skypilot-deploy.md",
+        "fantrad:docs/AUDIT-DEVOPS-REPO-2026.md"
+      ],
+      "note": "exact — bash -c ':> /dev/tcp/localhost/6333' (§5.1)",
+      "in_scope": null
+    },
+    {
+      "query": "Quelle variable d'environnement passer pour l'API key Qdrant au lieu du YAML ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:roles/qdrant/templates/qdrant.env.j2",
+        "flash-studio:docs/REX-v2.0-major-version-upgrades.md",
+        "VPAI:scripts/README-PLANE-DOCS.md",
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "litellm-docs:docs/my-website/docs/proxy/caching.md",
+        "VPAI:docs/rex/FIRST-DEPLOY.md",
+        "VPAI:docs/rex/REX-SESSION-2026-03-04.md",
+        "hawktrade:infra/grafana/README.md",
+        "Seko-VPN:docs/03-gitops.md"
+      ],
+      "note": "exact — QDRANT__SERVICE__API_KEY (§5.1)",
+      "in_scope": null
+    },
+    {
+      "query": "Caddy crash loop unrecognized directive: 200 after heredoc respond",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "wiki:caddy.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-18.md",
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md",
+        "hawkeye:.planning/phases/00-infrastructure-decision-gates/00-RESEARCH.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-23.md"
+      ],
+      "note": "exact — code HTTP sur la même ligne que le marqueur heredoc (§6.2.1)",
+      "in_scope": null
+    },
+    {
+      "query": "Why do Tailscale HTTP/3 QUIC connections show client_ip 172.20.1.1 and get blocked by the Caddy VPN ACL?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md",
+        "mediahall:.claude/worktrees/agent-a26683c9/.planning/phases/01-infrastructure-d-ploiement/01-RESEARCH.md",
+        "mediahall:.planning/phases/01-infrastructure-d-ploiement/01-RESEARCH.md",
+        "wiki:caddy.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-18.md"
+      ],
+      "note": "exact — caddy_docker_frontend_cidr 172.20.1.0/24 obligatoire (§6.2)",
+      "in_scope": null
+    },
+    {
+      "query": "n8n webhook returns HTTP 200 with empty body responseMode responseNode no visible error",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.respondtowebhook.md",
+        "VPAI:roles/n8n-provision/files/workflows/ig-dm-reply.json",
+        "VPAI:scripts/n8n-workflows/mop-search-v1.json",
+        "VPAI:roles/n8n-provision/files/workflows/cf-update-content.json",
+        "VPAI:roles/n8n-provision/files/workflows/cf-read-content.json",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.webhook/index.md",
+        "VPAI:roles/n8n-provision/files/workflows/cf-create-content.json",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.webhook/common-issues.md"
+      ],
+      "note": "sémantique — échec silencieux task runner sandbox (§9.2)",
+      "in_scope": null
+    },
+    {
+      "query": "Pourquoi n8n exige un sous-domaine dédié et ne supporte pas le sub-path ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:FS/domain-strategy.md",
+        "wiki:n8n.md",
+        "n8n-docs:docs/hosting/installation/server-setups/docker-compose.md",
+        "n8n-docs:docs/glossary.md",
+        "VPAI:docs/superpowers/specs/2026-04-11-mop-machinery-design.md",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.webhook/index.md"
+      ],
+      "note": "exact — GitHub issue #19635, variable n8n_subdomain (§9.1)",
+      "in_scope": null
+    },
+    {
+      "query": "LiteLLM health checks cost $11 in 16 hours on Perplexity — which setting disables them?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "VPAI:.planning/codebase/CONCERNS.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "wiki:litellm.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-18.md",
+        "litellm-docs:docs/my-website/docs/proxy/health.md",
+        "litellm-docs:docs/my-website/docs/proxy/config_settings.md",
+        "openclaw-docs:docs/gateway/health.md"
+      ],
+      "note": "exact — health_check_interval: 0 (§10.4)",
+      "in_scope": null
+    },
+    {
+      "query": "Erreur 402 not enough credits OpenRouter à cause de la réservation max_tokens",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-18.md",
+        "wiki:litellm.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-23b.md",
+        "VPAI:docs/plans/2026-02-24-credit-error-alerting-design.md",
+        "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md",
+        "VPAI:docs/RUNBOOK.md"
+      ],
+      "note": "exact — max_tokens: 4096 dans litellm_params (§10.5)",
+      "in_scope": null
+    },
+    {
+      "query": "ERR_ERL_UNEXPECTED_X_FORWARDED_FOR error in n8n logs behind Caddy",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "wiki:n8n.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-18.md",
+        "flash-studio:flash-infra/.planning/phases/19-n8n-proxy-security/19-RESEARCH.md",
+        "VPAI:docs/superpowers/specs/2026-03-23-comfyui-v050-series-engine-design.md",
+        "n8n-docs:docs/hosting/installation/server-setups/hetzner.md",
+        "flash-studio:flash-infra/.planning/phases/19-n8n-proxy-security/19-01-PLAN.md",
+        "VPAI:docs/rex/REX-SESSION-2026-04-12b.md",
+        "VPAI:.planning/research/mop-gotenberg-n8n.md"
+      ],
+      "note": "exact — N8N_PROXY_HOPS=1 (§10.6)",
+      "in_scope": null
+    },
+    {
+      "query": "Pourquoi utiliser 127.0.0.1 et pas localhost dans les healthchecks Docker Alpine ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "wiki:docker.md",
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md",
+        "fantrad:docker-compose.yml",
+        "flash-studio:.planning/phases/10-redis-8-portal-vm/10-01-PLAN.md"
+      ],
+      "note": "exact — Alpine résout localhost en IPv6 [::1] (§2.1)",
+      "in_scope": null
+    },
+    {
+      "query": "Which Docker capabilities are required for a container writing to root-owned mounted volumes?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md",
+        "riposte:.planning/milestones/v1.0-phases/01-scaffolding-p0/01-REVIEW.md",
+        "VPAI:roles/docker-stack/templates/compose/apps-core.yml.j2",
+        "n8n-docs:docs/hosting/securing/hardening-task-runners.md",
+        "hawkeye:.planning/phases/09-stabilisation-du-pivot/09-01-SUMMARY.md",
+        "flash-studio:.planning/research/PITFALLS.md",
+        "riposte:docker-compose.yml",
+        "hawkeye:.planning/phases/13-hardening-observabilite/13-RESEARCH.md",
+        "dcsuit:apps/ronde-dc/docker-compose.dev.yml"
+      ],
+      "note": "exact — DAC_OVERRIDE + FOWNER (§2.3)",
+      "in_scope": null
+    },
+    {
+      "query": "dig n'est pas installé sur les images Debian minimales, quelle alternative pour résoudre un domaine dans un script ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "Seko-VPN:docs/03-gitops.md",
+        "Seko-VPN:docs/07-glossaire.md",
+        "Seko-VPN:docs/05-troubleshooting.md"
+      ],
+      "note": "exact — getent hosts | awk (§2.4)",
+      "in_scope": null
+    },
+    {
+      "query": "n8n import:workflow does not update workflow_entity.nodes, code stays old after restart",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 3,
+      "top_files": [
+        "VPAI:.planning/research/mop-gotenberg-n8n.md",
+        "wiki:n8n.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-04-11.md",
+        "VPAI:docs/rex/REX-SESSION-2026-04-12b.md",
+        "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md",
+        "VPAI:docs/rex/REX-MOP-DEPLOY-2026-04-11.md",
+        "hawktrade:infra/n8n/README.md",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.n8n.md",
+        "VPAI:scripts/mop/deploy-mop-generator.sh"
+      ],
+      "note": "exact — UPDATE workflow_entity SET nodes via PostgreSQL (§9.4)",
+      "in_scope": null
+    },
+    {
+      "query": "Quel champ utiliser pour le login API n8n 2.7 à la place de email ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": null,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-02-25.md",
+        "wiki:n8n.md",
+        "simubot:.planning/phases/01-fondations-auth-db-branding/01-RESEARCH.md",
+        "vps:.planning/phases/07.3-design-refresh-stitch-2026/07.3-03-PLAN.md",
+        "powerbank:docs/plans/2026-07-03-DESIGN-V4E-MODE-HOTE.md",
+        "n8n-docs:docs/api/authentication.md",
+        "n8n-docs:docs/integrations/builtin/credentials/zulip.md",
+        "VPAI:docs/rex/REX-SESSION-2026-04-12b.md",
+        "trek:client/src/i18n/translations/fr.ts",
+        "n8n-docs:docs/integrations/builtin/credentials/zendesk.md"
+      ],
+      "note": "exact — emailOrLdapLoginId (§9.4)",
+      "in_scope": null
+    },
+    {
+      "query": "n8n workflow DELETE returns 400 — what is the required deletion sequence in 2.7+?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/plans/2026-02-25-palais-ui-phase2.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-25.md",
+        "VPAI:roles/n8n-provision/tasks/main.yml",
+        "flash-studio:flash-infra/docs/superpowers/plans/2026-03-21-provisioning-offboarding-pipelines.md",
+        "wiki:n8n.md",
+        "n8n-docs:docs/integrations/builtin/app-nodes/n8n-nodes-base.postgres/index.md",
+        "flash-studio:flash-infra/ops/n8n-workflows/w11-offboard-vm.json",
+        "n8n-docs:docs/user-management/manage-users.md",
+        "flash-studio:flash-infra/docs/superpowers/plans/2026-03-21-control-api-public-endpoints.md"
+      ],
+      "note": "exact — Deactivate -> Archive -> Delete (§9.4)",
+      "in_scope": null
+    },
+    {
+      "query": "Locale ICU PostgreSQL 18 Docker fr-FR initdb options",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 3,
+      "top_files": [
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:roles/postgresql/templates/postgresql.env.j2",
+        "flash-studio:flash-infra/docker/control/docker-compose.yml",
+        "dcsuit:apps/ronde-dc/vendor/easycorp/easyadmin-bundle/doc/fields/LocaleField.rst",
+        "n8n-docs:docs/data/expression-reference/number.md",
+        "dcsuit:apps/ronde-dc/vendor/easycorp/easyadmin-bundle/doc/fields/LanguageField.rst",
+        "flash-studio:.planning/research/STACK.md",
+        "riposte:.planning/research/PITFALLS.md"
+      ],
+      "note": "exact — --locale-provider=icu --icu-locale=fr-FR --locale=C (§3.1)",
+      "in_scope": null
+    },
+    {
+      "query": "Grafana datasource PostgreSQL provisioning format piège datasources.yaml",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "VPAI:roles/monitoring/templates/grafana/provisioning/datasources.yaml.j2",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "flash-studio:flash-infra/docker/core/grafana/provisioning/datasources/datasources.yaml",
+        "fantrad:config/grafana/provisioning/datasources/datasources.yml",
+        "flash-studio:flash-infra/docker/control/grafana/provisioning/datasources/loki.yml",
+        "flash-studio:flash-infra/docker/control/grafana/provisioning/datasources/victoriametrics.yml",
+        "flash-studio:flash-infra/ansible/roles/observability/tasks/grafana-provisioning.yml",
+        "VPAI:docs/GOLDEN-PROMPT.md"
+      ],
+      "note": "exact — format correct datasources.yaml.j2 (§8.5)",
+      "in_scope": null
+    },
+    {
+      "query": "yamllint UnicodeDecodeError utf-8 codec can't decode byte 0x97 — quelle est la cause ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "Seko-VPN:CLAUDE.md",
+        "VPAI:docs/rex/REX-SESSION-2026-04-11-repo-refacto.md",
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "VPAI:docs/rex/FIRST-DEPLOY.md"
+      ],
+      "note": "exact — em dash U+2014 encodé Windows-1252 (§1.1)",
+      "in_scope": null
+    },
+    {
+      "query": "ansible-lint schema meta role_name regex underscores",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "Seko-VPN:CLAUDE.md",
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "VPAI:.planning/phases/05-foundation/05-02-SUMMARY.md",
+        "VPAI:docs/superpowers/plans/2026-04-11-mop-machinery-implementation.md",
+        "flash-studio:flash-infra/ansible/roles/maintenance/meta/main.yml",
+        "VPAI:docs/rex/REX-SESSION-2026-04-11-repo-refacto.md",
+        "VPAI:docs/standards/ANSIBLE-ROLE-CHECKLIST.md"
+      ],
+      "note": "exact — ^[a-z][a-z0-9_]+$ (§1.2)",
+      "in_scope": null
+    },
+    {
+      "query": "Comment déployer sur un VPS neuf encore en port SSH 22 alors que l'inventaire est en 804 ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "VPAI:COMMANDES_DEPLOIEMENT.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "VPAI:docs/rex/FIRST-DEPLOY.md",
+        "Seko-VPN:CLAUDE.md",
+        "Seko-VPN:docs/09-uptime-kuma-monitors.md"
+      ],
+      "note": "exact — make deploy-prod EXTRA_VARS=\"ansible_port_override=22\" (§1.5)",
+      "in_scope": null
+    },
+    {
+      "query": "Caddy healthcheck: the admin API on port 2019 does not answer in Docker, what command to use?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 3,
+      "top_files": [
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "flash-studio:flash-infra/docker/control/docker-compose.yml",
+        "flash-studio:docs/superpowers/plans/2026-03-17-flash-admin-docker.md",
+        "flash-suite:.planning/phases/01-interface-contract-shell-skeleton/01-03-PLAN.md",
+        "hawkeye:docker-compose.yml",
+        "VPAI:PRD.md",
+        "VPAI:roles/docker-stack/templates/docker-compose-infra.yml.j2"
+      ],
+      "note": "exact — caddy version (§6.1)",
+      "in_scope": null
+    },
+    {
+      "query": "Page d'erreur quand le backend est down : handle_response ou handle_errors dans Caddy ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "wiki:caddy.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-23.md",
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md",
+        "VPAI:docs/rex/REX-FIRST-DEPLOY-2026-02-15.md",
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "flash-suite:.planning/research/PITFALLS.md"
+      ],
+      "note": "exact — handle_errors capture backend unreachable (§12.7)",
+      "in_scope": null
+    },
+    {
+      "query": "DNS-01 ACME fails with NOTIMP on the Pi ARM64 Caddy — fix?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "wiki:caddy.md",
+        "VPAI:CLAUDE.md",
+        "VPAI:docs/rex/HANDOFF-SONNET-WORKSTATION.md",
+        "mediahall:.planning/phases/01-infrastructure-d-ploiement/01-03-SUMMARY.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-20.md",
+        "Seko-VPN:docs/05-troubleshooting.md"
+      ],
+      "note": "exact — resolvers 8.8.8.8 1.1.1.1 dans le bloc tls (§12.5)",
+      "in_scope": null
+    },
+    {
+      "query": "OpenClaw WebSocket upgrade cassé derrière Caddy HTTP/2, réponse 200 au lieu de 101",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-MISSION-CONTROL-OPENCLAW-2026-02-20.md",
+        "wiki:caddy.md",
+        "VPAI:docs/plans/2026-03-02-openclaw-v2026.3.1-upgrade.md",
+        "VPAI:docs/plans/2026-03-02-openclaw-v2026.3.1-upgrade-design.md"
+      ],
+      "note": "exact — transport http { versions 1.1 } (§11.2b)",
+      "in_scope": null
+    },
+    {
+      "query": "OpenClaw plugin telegram shows disabled bundled by default after upgrade",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md",
+        "VPAI:.planning/codebase/CONCERNS.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-23b.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "openclaw-docs:docs/cli/plugins.md",
+        "wiki:openclaw.md",
+        "openclaw-docs:docs/tools/browser.md"
+      ],
+      "note": "exact — activation plugins obligatoire depuis v2026.2.22 (§11.10)",
+      "in_scope": null
+    },
+    {
+      "query": "Ansible handler state restarted ne relit pas le env_file du container",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 4,
+      "top_files": [
+        "VPAI:docs/standards/ANSIBLE-ROLE-CHECKLIST.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-24.md",
+        "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "mediahall:.planning/phases/01-infrastructure-d-ploiement/01-RESEARCH.md",
+        "mediahall:.claude/worktrees/agent-a26683c9/.planning/phases/01-infrastructure-d-ploiement/01-RESEARCH.md",
+        "wiki:ansible.md",
+        "VPAI:docs/rex/REX-PALAIS-DEPLOIEMENT-PHASE1.md",
+        "wiki:docker.md"
+      ],
+      "note": "exact — state: present + recreate: always (§11.18)",
+      "in_scope": null
+    },
+    {
+      "query": "OpenClaw subagent error spawn docker EACCES in the sandbox",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-23c.md",
+        "openclaw-docs:docs/tools/acp-agents.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-24.md",
+        "VPAI:.planning/codebase/CONCERNS.md",
+        "openclaw-docs:SECURITY.md"
+      ],
+      "note": "exact — ajouter le GID du groupe docker au container (§11.13)",
+      "in_scope": null
+    },
+    {
+      "query": "Headscale preauth key réutilisable ou usage unique ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-02-20.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/FIRST-DEPLOY.md",
+        "VPAI:playbooks/utils/vpn-node-enroll.yml",
+        "Seko-VPN:docs/07-rex-v3.1.md",
+        "hawktrade:docs/CORPUS-TRADING.md",
+        "VPAI:.planning/phases/10-ai-ops/10-RESEARCH.md",
+        "Seko-VPN:roles/headscale/files/README.md"
+      ],
+      "note": "exact — usage unique, régénérer via compose exec (§0.7)",
+      "in_scope": null
+    },
+    {
+      "query": "tailscale up hangs when the Headscale server is down",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:roles/headscale-node/README.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-20.md",
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md",
+        "mediahall:.claude/worktrees/agent-a26683c9/.planning/phases/01-infrastructure-d-ploiement/01-RESEARCH.md",
+        "mediahall:.planning/phases/01-infrastructure-d-ploiement/01-RESEARCH.md",
+        "VPAI:docs/DISASTER-RECOVERY.md",
+        "VPAI:roles/headscale-node/tasks/main.yml"
+      ],
+      "note": "sémantique (§0.6)",
+      "in_scope": null
+    },
+    {
+      "query": "Split DNS Headscale : quelles clés de config pour résoudre les sous-domaines admin vers l'IP Tailscale ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "VPAI:roles/vpn-dns/defaults/main.yml",
+        "VPAI:docs/rex/FIRST-DEPLOY.md",
+        "VPAI:roles/headscale-node/tasks/main.yml",
+        "VPAI:docs/rex/HANDOFF-SONNET-WORKSTATION.md"
+      ],
+      "note": "exact — dns.extra_records + override_local_dns: true (§12.2)",
+      "in_scope": null
+    },
+    {
+      "query": "Dans quelle base PostgreSQL vit la table model_scores et qui la crée ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "powerbank:docs/plans/2026-06-30-PLAN-FLOTTE-INVENTAIRE-RECONCILIATION.md",
+        "riposte:.planning/phases/01-foundation-gate-l-gal/01-RESEARCH.md",
+        "VPAI:docs/RUNBOOK.md",
+        "hawkeye:docs/AUDIT-DEVOPS-TECHNIQUE-2026.md",
+        "dcsuit:docs/specs/CDC-RONDE-DC-v1.4.md",
+        "VPAI:roles/n8n-provision/files/workflows/ai-model-scoring.json",
+        "VPAI:roles/monitoring/files/dashboards/ai-model-scoring.json"
+      ],
+      "note": "exact — base n8n, provision-postgresql.sh (§3.3)",
+      "in_scope": null
+    },
+    {
+      "query": "Formula of the ai-model-scoring score with likeRatio successRate costEfficiency speedScore",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "VPAI:roles/n8n-provision/files/workflows/ai-model-scoring.json",
+        "VPAI:roles/monitoring/files/dashboards/ai-model-scoring.json",
+        "VPAI:roles/openclaw/templates/skills/rate-response/SKILL.md.j2",
+        "hawkeye:.planning/phases/01-schema-core-score-engine/01-RESEARCH.md"
+      ],
+      "note": "exact — (likeRatio*40)+(successRate*30)+(costEfficiency*20)+(speedScore*10) (§9.5)",
+      "in_scope": null
+    },
+    {
+      "query": "Comment accéder au body d'un webhook n8n v2 dans un Code node ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": null,
+      "top_files": [
+        "wiki:n8n.md",
+        "VPAI:roles/n8n-provision/files/workflows/ig-comment-reply.json",
+        "VPAI:roles/openclaw/templates/skills/delegate-n8n/SKILL.md.j2",
+        "VPAI:roles/n8n-provision/files/workflows/cf-kitsu-inbound.json",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.webhook/index.md",
+        "content-factory:docs/superpowers/plans/2026-07-11-t7a-cutover-f-gates.md",
+        "VPAI:roles/openclaw/templates/skills/rate-response/SKILL.md.j2",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.webhook/common-issues.md",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.wait.md"
+      ],
+      "note": "exact — $input.first().json.body (§9.3)",
+      "in_scope": null
+    },
+    {
+      "query": "Mission Control next start vs output standalone next.config.mjs missing file",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-02-20.md",
+        "VPAI:docs/rex/HANDOFF-SONNET-WORKSTATION.md",
+        "VPAI:archive/flash-studio-complete/flash-infra/ansible/roles/sd-service-desk/files/portail/next.config.ts",
+        "flash-studio:flash-infra/docker/control/admin-api/next.config.ts",
+        "flash-studio:flash-infra/docker/control/flash-admin/next.config.ts",
+        "flash-studio:flash-infra/docker/edge/vitrine/next.config.ts",
+        "flash-studio:docs/superpowers/plans/2026-03-17-flash-admin-docker.md",
+        "flash-studio:flash-admin/next.config.ts",
+        "flash-suite:apps/demo/next.config.ts"
+      ],
+      "note": "sémantique (§0.2)",
+      "in_scope": null
+    },
+    {
+      "query": "rate_limit plugin manquant dans l'image caddy alpine",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:.planning/codebase/CONCERNS.md",
+        "flash-studio:flash-infra/docs/superpowers/plans/2026-03-21-control-api-public-endpoints.md",
+        "fantrad:tests/test_p0_ops.py",
+        "podpilot:docs/superpowers/specs/2026-06-08-podpilot-act-rate-limit-spec.md",
+        "powerbank:docs/plans/2026-07-03-DESIGN-V4E-MODE-HOTE.md",
+        "story-engine:.planning/phases/v1.5-04-rate-limiting-llm-quota/v1.5-04-01-SUMMARY.md",
+        "vps:docs/superpowers/specs/2026-04-15-vps-app-design.md",
+        "mediahall:.planning/phases/01-infrastructure-d-ploiement/01-RESEARCH.md"
+      ],
+      "note": "exact — plugin non inclus dans caddy:alpine (§6.1)",
+      "in_scope": null
+    },
+    {
+      "query": "LiteLLM fallbacks config syntax list of dicts model_name",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "litellm-docs:docs/my-website/docs/proxy/reliability.md",
+        "wiki:litellm.md",
+        "litellm-docs:docs/my-website/docs/integrations/letta.md",
+        "litellm-docs:docs/my-website/docs/proxy/model_access_guide.md"
+      ],
+      "note": "exact — [{\"model_name\": [\"fallback_model\"]}] (§10.1)",
+      "in_scope": null
+    },
+    {
+      "query": "Disque à 100% mais docker system df sous-estime, /var/lib/containerd fait 18G",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:roles/disk-guard/README.md",
+        "flash-studio:memory/sessions/issue-68.md",
+        "hawkeye:docs/runbooks/exploitation.md"
+      ],
+      "note": "sémantique — image-store containerd mort invisible à docker system df",
+      "in_scope": null
+    },
+    {
+      "query": "containerd snapshots not garbage collected, pinned by orphan leases — how to free space without restart?",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:roles/disk-guard/README.md",
+        "hawkeye:docs/runbooks/attachments.md"
+      ],
+      "note": "exact — ctr -n moby leases delete --sync",
+      "in_scope": null
+    },
+    {
+      "query": "Pourquoi ne faut-il jamais redémarrer containerd sur un hôte Docker en production ?",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "hawkeye:docker/drill/drill-runner.sh",
+        "hawkeye:docker-compose.staging-override.yml",
+        "mediahall:.planning/phases/01-infrastructure-d-ploiement/01-RESEARCH.md",
+        "mediahall:.claude/worktrees/agent-a26683c9/.planning/phases/01-infrastructure-d-ploiement/01-RESEARCH.md",
+        "wiki:deployment.md",
+        "hawktrade:data/corpus-trading/lessons/freqtrade/004-protections-et-killswitch-externe.md",
+        "powerbank:tools/integration-test.sh"
+      ],
+      "note": "sémantique — restart rebooterait tous les containerd-shim (55 conteneurs)",
+      "in_scope": null
+    },
+    {
+      "query": "make deploy-role timeout ssh connect to host 137.74.114.167 port 804 depuis waza",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md",
+        "VPAI:docs/rex/REX-SESSION-2026-04-12.md",
+        "VPAI:docs/rex/REX-MOP-DEPLOY-2026-04-11.md",
+        "VPAI:COMMANDES_DEPLOIEMENT.md",
+        "Seko-VPN:roles/security/defaults/main.yml",
+        "wiki:deployment.md",
+        "VPAI:docs/plans/2026-02-24-credit-error-alerting.md",
+        "VPAI:.planning/phases/09-integration-fixes/09-RESEARCH.md",
+        "VPAI:.claude/settings.local.json"
+      ],
+      "note": "exact — deploy local via EXTRA_ARGS -e prod_ip=100.64.0.14",
+      "in_scope": null
+    },
+    {
+      "query": "The GPU pod cloned stale code from GitHub even though the commit existed locally",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md",
+        "hawktrade:docs/CORPUS-TRADING.md",
+        "VPAI:scripts/memory/gpu_ingest/stage_sources.sh",
+        "VPAI:.planning/notes/2026-06-06-memory-bulk-rapport.md",
+        "VPAI:scripts/memory/gpu_ingest/provision_pod.sh",
+        "VPAI:.planning/notes/2026-06-06-memory-bulk-pod-handoff.md",
+        "fantrad:scripts/bench-gpu-pod.sh",
+        "fantrad:scripts/compile-multiarch-pod.sh",
+        "VPAI:.planning/notes/2026-06-10-rag-v3-execution-state.md"
+      ],
+      "note": "sémantique — commit local jamais poussé, git ls-remote origin avant launch",
+      "in_scope": null
+    },
+    {
+      "query": "torch cu13 du lock inutilisé : cuda.is_available False, SentenceTransformer retombe sur CPU",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md",
+        "VPAI:scripts/memory/gpu_ingest/bootstrap.sh",
+        "VPAI:scripts/memory/gpu_ingest/requirements.lock.txt",
+        "jarvis:CLAUDE.md",
+        "VPAI:docs/jarvis-CLAUDE.md",
+        "content-factory:scripts/runpod/README.md",
+        "content-factory-m1:scripts/runpod/README.md",
+        "VPAI:scripts/memory/gpu_ingest/README.md"
+      ],
+      "note": "sémantique — détection CUDA driver via nvidia-smi + réinstall torch cuXY",
+      "in_scope": null
+    },
+    {
+      "query": "OOM CUDA on L4 24GB when encoding with batch size 256 — which batch size is safe?",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md",
+        "content-factory-m1:docs/research/2026-07-03-ltx-runtime-facts.md",
+        "content-factory:docs/research/2026-07-03-ltx-runtime-facts.md",
+        "VPAI:scripts/memory/gpu_ingest/pod_ingest.py",
+        "fantrad:scripts/diag-a6000-pod.sh",
+        "litellm-docs:docs/my-website/docs/batches.md"
+      ],
+      "note": "exact — encode_batch=64, bf16",
+      "in_scope": null
+    },
+    {
+      "query": "Quel gain de débit a donné bf16 autocast sur l'ingestion embeddings GPU et quelle dérive ?",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md",
+        "VPAI:.planning/notes/2026-06-06-memory-bulk-rapport.md",
+        "VPAI:scripts/memory/gpu_ingest/pod_ingest.py"
+      ],
+      "note": "exact — 1.64x vs fp32, dérive 0.99992",
+      "in_scope": null
+    },
+    {
+      "query": "Perte SSH waza pendant 6 heures, Pi pas crashé, autre machine de la même box encore en ligne",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/plans/PRD-PALAIS-V2.md",
+        "VPAI:docs/audits/2026-05-29-infra-audit.md"
+      ],
+      "note": "sémantique — OOM worker -> bail DHCP eth0 perdu -> tailscale down",
+      "in_scope": null
+    },
+    {
+      "query": "memory worker 3.2 GB RSS triggers global OOM and starves systemd-networkd",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md",
+        "VPAI:roles/llamaindex-memory-worker/templates/memory-worker.service.user.j2",
+        "VPAI:docs/superpowers/plans/2026-06-05-memory-rebuild-core.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:roles/workstation-common/templates/oom-protect.conf.j2",
+        "VPAI:docs/superpowers/plans/2026-06-04-memory-worker-remote-control.md",
+        "VPAI:roles/llamaindex-memory-worker/defaults/main.yml",
+        "VPAI:docs/superpowers/specs/2026-06-05-memory-system-rebuild-design.md"
+      ],
+      "note": "sémantique — worker non-borné, caps cgroup",
+      "in_scope": null
+    },
+    {
+      "query": "Quelles limites systemd ont été posées sur le worker mémoire après l'incident OOM ?",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md",
+        "VPAI:docs/superpowers/specs/2026-06-05-memory-system-rebuild-design.md",
+        "VPAI:roles/workstation-common/templates/oom-protect.conf.j2",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-06-10-rag-v3-hybrid.md",
+        "flash-studio:docs/REX-v2.0-major-version-upgrades.md"
+      ],
+      "note": "exact — MemoryHigh=3G MemoryMax=4G MemorySwapMax=512M OOMScoreAdjust=1000",
+      "in_scope": null
+    },
+    {
+      "query": "network is unreachable ENETUNREACH from tailscaled — is it the ISP or the host?",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md",
+        "openclaw-docs:docs/platforms/android.md",
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md",
+        "VPAI:roles/llamaindex-memory-worker/templates/memory-worker.service.user.j2",
+        "VPAI:docs/guides/GUIDE-PLANE-PROVISIONING.md"
+      ],
+      "note": "sémantique — route locale perdue sur l'hôte, pas panne amont (§12.9)",
+      "in_scope": null
+    },
+    {
+      "query": "watchdog passerelle réseau : que fait net-watchdog.sh quand la gateway est injoignable ?",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "VPAI:roles/workstation-common/templates/net-watchdog.sh.j2",
+        "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md",
+        "VPAI:roles/workstation-common/templates/net-watchdog.service.j2",
+        "VPAI:roles/workstation-common/tasks/main.yml",
+        "VPAI:roles/workstation-common/templates/net-watchdog.timer.j2",
+        "VPAI:roles/workstation-common/defaults/main.yml",
+        "VPAI:scripts/memory/gpu_ingest/bootstrap.sh",
+        "VPAI:archive/flash-studio-complete/flash-infra/ARCHITECTURE.md",
+        "VPAI:roles/memory-worker-watchdog/templates/memory-worker-watchdog.sh.j2",
+        "powerbank:docs/plans/2026-06-30-PLAN-SUPERVISION-FLOTTE.md"
+      ],
+      "note": "exact — networkctl reconfigure eth0 puis restart tailscaled",
+      "in_scope": null
+    },
+    {
+      "query": "Session de debug de 11 heures avec 806 appels Bash et zéro appel MCP — quel audit ?",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-MOP-AUDIT-2026-04-11.md",
+        "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"
+      ],
+      "rank": 4,
+      "top_files": [
+        "VPAI:docs/audits/2026-04-11-mop-generator-execution-audit.md",
+        "VPAI:docs/audits/2026-04-11-vpai-repo-audit-v2.md",
+        "VPAI:.planning/notes/session-analysis-2026-04-13.md",
+        "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md",
+        "VPAI:.planning/phases/10-ai-ops/10-QUALITY-FRAMEWORK.md",
+        "VPAI:docs/rex/REX-SESSION-2026-04-11.md"
+      ],
+      "note": "sémantique — origine de la LOI OPÉRATIONNELLE",
+      "in_scope": null
+    },
+    {
+      "query": "What protects systemd-networkd and tailscaled from being killed first by the OOM killer?",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "VPAI:roles/workstation-common/templates/oom-protect.conf.j2",
+        "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md",
+        "Seko-VPN:docs/07-glossaire.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "Seko-VPN:docs/01-architecture.md",
+        "VPAI:roles/workstation-common/tasks/main.yml",
+        "openclaw-docs:docs/vps.md"
+      ],
+      "note": "exact — OOMScoreAdjust=-900 drop-in 10-oom-protect.conf",
+      "in_scope": null
+    },
+    {
+      "query": "benchmark embeddings mensonger 137 chunks par seconde, cause et fix",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md",
+        "litellm-docs:docs/my-website/blog/vllm_embeddings_incident/index.md",
+        "VPAI:scripts/memory/gpu_ingest/pod_ingest.py",
+        "VPAI:scripts/memory/gpu_ingest/bootstrap.sh",
+        "VPAI:.planning/notes/2026-07-17-memory-eval-drift-correction.md",
+        "VPAI:docs/plans/2026-04-09-llamaindex-memory-worker-audit.md",
+        "VPAI:.planning/notes/2026-06-06-memory-bulk-rapport.md",
+        "flash-studio:flash-infra/docs/REX-2026-03-22-litellm-skypilot-deploy.md"
+      ],
+      "note": "sémantique — bench sur 512 strings identiques, refait sur vrais fichiers",
+      "in_scope": null
+    },
+    {
+      "query": "Qui a le droit d'écrire dans la collection mémoire Qdrant, les agents ou le worker ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/runbooks/AI-MEMORY-AGENT-PROTOCOL.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/runbooks/AI-MEMORY-AGENT-PROTOCOL.md",
+        "VPAI:docs/runbooks/AI-MEMORY-OPERATIONS.md",
+        "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md",
+        "VPAI:.planning/notes/2026-06-05-memory-system-rebuild-handoff.md",
+        "VPAI:docs/plans/2026-04-09-llamaindex-memory-waza-plan.md",
+        "VPAI:docs/runbooks/SPEC-R0-CONTINU.md"
+      ],
+      "note": "sémantique — seul le worker écrit, les agents produisent des fichiers indexables",
+      "in_scope": null
+    },
+    {
+      "query": "search_memory.py available filter flags repo doc-kind topic",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/runbooks/AI-MEMORY-AGENT-PROTOCOL.md"
+      ],
+      "rank": 3,
+      "top_files": [
+        "VPAI:docs/plans/2026-04-09-llamaindex-memory-waza-plan.md",
+        "VPAI:docs/superpowers/plans/2026-06-05-memory-rebuild-core.md",
+        "VPAI:docs/runbooks/AI-MEMORY-AGENT-PROTOCOL.md",
+        "VPAI:docs/superpowers/specs/2026-06-05-memory-system-rebuild-design.md",
+        "VPAI:roles/llamaindex-memory-worker/templates/search_memory.py.j2",
+        "VPAI:CLAUDE.md",
+        "VPAI:docs/superpowers/plans/2026-06-04-loi-system-bricks-p1.md",
+        "VPAI:docs/superpowers/specs/2026-06-10-rag-v3-contracts.md",
+        "VPAI:docs/superpowers/plans/2026-06-08-topics-portables-cross-projet-p6.md",
+        "VPAI:docs/superpowers/specs/2026-06-05-memory-worker-repo-autodiscovery-design.md"
+      ],
+      "note": "exact — --repo --doc-kind --topic --limit",
+      "in_scope": null
+    },
+    {
+      "query": "Quelle variable Ansible et quelle clé Vault portent le token Hugging Face du worker mémoire ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/runbooks/HUGGINGFACE-TOKEN-BOOTSTRAP.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/runbooks/HUGGINGFACE-TOKEN-BOOTSTRAP.md",
+        "VPAI:docs/superpowers/specs/2026-06-04-memory-worker-remote-control-design.md",
+        "VPAI:PRD.md",
+        "VPAI:docs/guides/GUIDE-NOCODB-TOKEN-AUTOMATION.md",
+        "litellm-docs:docs/my-website/docs/providers/huggingface.md",
+        "VPAI:roles/content-factory/README.md",
+        "VPAI:docs/specs/SPEC-PLANE-DEPLOYMENT.md"
+      ],
+      "note": "exact — huggingface_token / vault_huggingface_token",
+      "in_scope": null
+    },
+    {
+      "query": "Where is the embeddinggemma model cached locally on waza?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/runbooks/HUGGINGFACE-TOKEN-BOOTSTRAP.md"
+      ],
+      "rank": 3,
+      "top_files": [
+        "openclaw-docs:docs/reference/memory-config.md",
+        "VPAI:docs/plans/2026-04-09-llamaindex-memory-waza-plan.md",
+        "VPAI:docs/runbooks/HUGGINGFACE-TOKEN-BOOTSTRAP.md"
+      ],
+      "note": "exact — /opt/workstation/data/ai-memory-worker/hf-cache",
+      "in_scope": null
+    },
+    {
+      "query": "Quels sont les trois axes orthogonaux de la taxonomie mémoire et qui les assigne ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md",
+        "riposte:.planning/research/SUMMARY.md",
+        "VPAI:docs/superpowers/specs/2026-06-05-memory-system-rebuild-design.md",
+        "fantrad:docs/2026-07-02-vision-produit-axes-fonctionnels.md"
+      ],
+      "note": "sémantique — wing (config) / room (dérivé) / doc_kind (dérivé)",
+      "in_scope": null
+    },
+    {
+      "query": "Which payload fields have a Qdrant keyword index in the memory collection?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md"
+      ],
+      "rank": 4,
+      "top_files": [
+        "story-engine:.planning/research/ARCHITECTURE.md",
+        "VPAI:docs/superpowers/plans/2026-06-05-memory-rebuild-core.md",
+        "VPAI:scripts/memory/qdrant_bootstrap_v3.py",
+        "VPAI:docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md",
+        "VPAI:docs/runbooks/AI-MEMORY-OPERATIONS.md",
+        "VPAI:docs/superpowers/specs/2026-06-10-rag-v3-contracts.md",
+        "VPAI:roles/palais/files/app/src/lib/server/memory/qdrant.ts",
+        "VPAI:docs/superpowers/specs/2026-06-05-memory-system-rebuild-design.md"
+      ],
+      "note": "exact — wing, room, doc_kind, repo, topic, tags",
+      "in_scope": null
+    },
+    {
+      "query": "Où placer physiquement un nouveau repo projet sur waza pour qu'il soit auto-indexé ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/runbooks/MANIFESTE-CREATION-PROJET.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/runbooks/MANIFESTE-CREATION-PROJET.md",
+        "VPAI:docs/plans/2026-04-09-llamaindex-memory-waza-plan.md",
+        "VPAI:docs/superpowers/specs/2026-06-05-memory-worker-repo-autodiscovery-design.md",
+        "VPAI:docs/plans/2026-02-28-waza-repo-setup.md",
+        "hawktrade:data/corpus-trading/lessons/mean-reversion/006-danger-tendance-forte.md"
+      ],
+      "note": "exact — ~/work/<wing>/<name> + git init",
+      "in_scope": null
+    },
+    {
+      "query": "Am I allowed to hand-edit the live sources.yml to register a new repo for memory ingestion?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/runbooks/MANIFESTE-CREATION-PROJET.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/runbooks/MANIFESTE-CREATION-PROJET.md",
+        "VPAI:docs/superpowers/specs/2026-06-05-memory-worker-repo-autodiscovery-design.md",
+        "VPAI:docs/runbooks/AI-MEMORY-OPERATIONS.md",
+        "VPAI:roles/llamaindex-memory-worker/defaults/main.yml"
+      ],
+      "note": "sémantique — interdit absolu, auto-découverte LIVE",
+      "in_scope": null
+    },
+    {
+      "query": "Règle R0 de la loi opérationnelle : que faut-il faire avant tout travail sur un sujet connu ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/rex/REX-MOP-AUDIT-2026-04-11.md",
+        "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md",
+        "VPAI:.planning/quick/260412-u5s-impl-menter-option-c-loi-op-rationnelle-/PLAN.md",
+        "powerbank:docs/PROMPT-FABLE-AUTONOME-FINALISATION.md",
+        "VPAI:docs/superpowers/specs/2026-06-04-loi-system-bricks-design.md",
+        "VPAI:.planning/notes/session-analysis-2026-04-13.md",
+        "VPAI:docs/runbooks/SPEC-R0-CONTINU.md",
+        "simubot:CLAUDE.md"
+      ],
+      "note": "sémantique — memory search first (search_memory.py + qdrant-find)",
+      "in_scope": null
+    },
+    {
+      "query": "n8n IF node typeVersion 2 crashes on all conditions — which typeVersion and schema to use?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "hawktrade:infra/n8n/README.md",
+        "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md",
+        "hawktrade:infra/n8n/hawktrade-killswitch.workflow.json",
+        "VPAI:docs/rex/REX-SESSION-2026-04-12b.md",
+        "VPAI:CLAUDE.md",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.if.md",
+        "n8n-docs:docs/_workflows/integrations/builtin/core-nodes/n8n-nodes-base.form/mutually-exclusive-branching.json",
+        "flash-studio:flash-infra/ops/n8n-workflows/chatops-commands.json",
+        "n8n-docs:docs/data/expression-reference/root.md"
+      ],
+      "note": "exact — R9: typeVersion: 1 + fixedCollection",
+      "in_scope": null
+    },
+    {
+      "query": "Quel outil MCP est obligatoire avant tout n8n import:workflow ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md",
+        "flash-studio:docs/legacy-repo-configs/legacy-repo-configs/flash-studio-architecture-skill.md",
+        "VPAI:.firecrawl/n8n-mcp-readme.md",
+        "VPAI:docs/superpowers/specs/2026-06-04-memory-worker-remote-control-design.md",
+        "VPAI:docs/audits/2026-04-11-mop-generator-execution-audit.md",
+        "n8n-docs:docs/advanced-ai/accessing-n8n-mcp-server.md"
+      ],
+      "note": "exact — R1: mcp__n8n-docs__validate_workflow",
+      "in_scope": null
+    },
+    {
+      "query": "What is the primary n8n workflow deploy method according to rule R11?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md",
+        "n8n-docs:docs/hosting/oem-deployment/managing-workflows.md",
+        "VPAI:CLAUDE.md",
+        "VPAI:scripts/deploy-workflow.sh",
+        "VPAI:docs/superpowers/specs/2026-06-04-memory-worker-remote-control-design.md",
+        "VPAI:.planning/phases/07-orchestration/07-RESEARCH.md",
+        "VPAI:docs/superpowers/plans/2026-06-04-loi-system-bricks-p1.md"
+      ],
+      "note": "exact — REST API PUT /api/v1/workflows/:id + scripts/deploy-workflow.sh",
+      "in_scope": null
+    },
+    {
+      "query": "Quels deux CIDRs doivent figurer dans le snippet vpn_only de Caddy et pourquoi ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md",
+        "VPAI:roles/content-factory/README.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/specs/SPEC-PLANE-DEPLOYMENT.md",
+        "wiki:caddy.md",
+        "VPAI:.planning/research/mop-typebot.md",
+        "VPAI:.planning/phases/10-ai-ops/10-RESEARCH.md"
+      ],
+      "note": "exact — caddy_vpn_cidr + caddy_docker_frontend_cidr",
+      "in_scope": null
+    },
+    {
+      "query": "Why is trusted_proxies mandatory in the Caddy VPN-only setup?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "wiki:caddy.md",
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md",
+        "VPAI:.planning/phases/10-ai-ops/10-RESEARCH.md",
+        "VPAI:docs/rex/HANDOFF-SONNET-WORKSTATION.md",
+        "Seko-VPN:roles/caddy/templates/Caddyfile.j2",
+        "VPAI:roles/caddy/templates/Caddyfile.j2",
+        "openclaw-docs:docs/gateway/trusted-proxy-auth.md",
+        "wiki:index.md",
+        "VPAI:CLAUDE.md"
+      ],
+      "note": "sémantique — §5 du guide",
+      "in_scope": null
+    },
+    {
+      "query": "Checklist avant montée de version OpenClaw : que sauvegarder et vérifier avant l'upgrade ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md"
+      ],
+      "rank": 3,
+      "top_files": [
+        "wiki:openclaw.md",
+        "flash-studio:docs/RUNBOOK-major-version-upgrades.md",
+        "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md",
+        "flash-studio:docs/REX-v2.0-major-version-upgrades.md"
+      ],
+      "note": "sémantique — snapshot config, état bot, plugins, agents",
+      "in_scope": null
+    },
+    {
+      "query": "NC_API_TOKEN static token to automate NocoDB API token provisioning",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/guides/GUIDE-NOCODB-TOKEN-AUTOMATION.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/guides/GUIDE-NOCODB-TOKEN-AUTOMATION.md",
+        "VPAI:docs/TROUBLESHOOTING.md"
+      ],
+      "note": "exact — NC_API_TOKEN env var, vault_nocodb_api_token",
+      "in_scope": null
+    },
+    {
+      "query": "Container crashes with Operation not permitted after cap_drop ALL — how to find the missing capability?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md",
+        "flash-studio:flash-infra/docs/REX-2026-04-09-provisioning-session3.md",
+        "flash-studio:.planning/phases/08-postgresql-17-portal-vm/08-01-SUMMARY.md",
+        "flash-studio:docs/REX-v2.0-major-version-upgrades.md",
+        "flash-studio:flash-infra/docs/REX-2026-03-22-litellm-skypilot-deploy.md",
+        "VPAI:docs/standards/ANSIBLE-ROLE-CHECKLIST.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "flash-studio:flash-infra/docs/REX-2026-03-22-portal-security-audit.md"
+      ],
+      "note": "sémantique — ajouter une par une, strace/logs",
+      "in_scope": null
+    },
+    {
+      "query": "Quel user UID utiliser pour VictoriaMetrics ou Prometheus en non-root dans compose ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md",
+        "VPAI:.planning/phases/10-ai-ops/10-TRACK-B-SPEC.md",
+        "flash-studio:flash-infra/docker/core/grafana/provisioning/datasources/datasources.yaml",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "fantrad:tests/test_p0_ops.py",
+        "VPAI:roles/monitoring/files/dashboards/docker-containers.json",
+        "flash-studio:flash-infra/docker/core/grafana/dashboards/node-overview.json",
+        "VPAI:roles/monitoring/files/dashboards/system-overview.json",
+        "dcsuit:apps/ronde-dc/docker-compose.dev.yml"
+      ],
+      "note": "exact — 65534:65534 nobody",
+      "in_scope": null
+    },
+    {
+      "query": "How do I check the actual MagicDNS resolution from a VPN client before blaming Caddy?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md",
+        "wiki:caddy.md",
+        "VPAI:playbooks/utils/vpn-node-enroll.yml",
+        "VPAI:roles/headscale-node/tasks/main.yml",
+        "VPAI:docs/GOLDEN-PROMPT.md",
+        "VPAI:.planning/phases/01-plane-deployment/01-01b-SUMMARY.md",
+        "VPAI:scripts/smoke-test.sh",
+        "VPAI:.planning/codebase/TESTING.md"
+      ],
+      "note": "exact — resolver 100.100.100.100, Use Tailscale DNS = ON",
+      "in_scope": null
+    },
+    {
+      "query": "Où vérifier le tag de la nouvelle image OpenClaw avant de modifier versions.yml ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md",
+        "VPAI:docs/plans/2026-03-02-openclaw-v2026.3.1-upgrade-design.md",
+        "VPAI:docs/audits/2026-05-29-sese-phaseB-diagnostic.md",
+        "flash-studio:docs/REX-v2.0-major-version-upgrades.md",
+        "openclaw-docs:docs/install/kubernetes.md",
+        "hawkeye:web/app/README.md",
+        "VPAI:docs/audits/2026-05-29-remediation-plan.md",
+        "mediahall:.planning/phases/01-infrastructure-d-ploiement/01-03-PLAN.md",
+        "hawkeye:.planning/phases/12-cicd-supply-chain/12-03-PLAN.md"
+      ],
+      "note": "exact — skopeo ou GitHub Container Registry pkgs/container/openclaw",
+      "in_scope": null
+    },
+    {
+      "query": "Quelle variable d'environnement active le mode task runner externe (sidecar séparé) pour n8n, au lieu du mode interne par défaut ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "n8n-docs:docs/hosting/configuration/environment-variables/task-runners.md",
+        "n8n-docs:docs/hosting/configuration/task-runners.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "n8n-docs:docs/hosting/configuration/task-runners.md",
+        "n8n-docs:docs/hosting/securing/hardening-task-runners.md",
+        "n8n-docs:docs/hosting/configuration/environment-variables/task-runners.md",
+        "VPAI:docs/TROUBLESHOOTING.md",
+        "VPAI:docs/rex/REX-SESSION-2026-03-04.md"
+      ],
+      "note": "cross-wing — exact — N8N_RUNNERS_MODE=external (agent VPAI configurant n8n en task runner externe, réponse refdocs n8n-docs)",
+      "in_scope": null
+    },
+    {
+      "query": "En mode queue n8n, quel flag ou variable d'environnement contrôle le nombre de jobs qu'un worker peut exécuter en concurrence ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "n8n-docs:docs/hosting/scaling/concurrency-control.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "n8n-docs:docs/hosting/scaling/concurrency-control.md",
+        "n8n-docs:docs/hosting/scaling/queue-mode.md",
+        "n8n-docs:docs/manage-cloud/concurrency.md",
+        "hawktrade:data/corpus-trading/lessons/blowups/007-krach-1987.md",
+        "n8n-docs:docs/hosting/configuration/environment-variables/queue-mode.md",
+        "content-factory:services/render/worker.py",
+        "content-factory:services/worker-comfy/serverless_start.py",
+        "content-factory-m1:services/worker-comfy/start.sh"
+      ],
+      "note": "cross-wing — exact — --concurrency (worker) / N8N_CONCURRENCY_PRODUCTION_LIMIT",
+      "in_scope": null
+    },
+    {
+      "query": "Which n8n environment variable switches binary data storage from in-memory to filesystem to avoid OOM crashes on large files?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "n8n-docs:docs/hosting/configuration/environment-variables/binary-data.md",
+        "n8n-docs:docs/hosting/scaling/binary-data.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "n8n-docs:docs/hosting/scaling/binary-data.md",
+        "n8n-docs:docs/hosting/configuration/environment-variables/binary-data.md",
+        "n8n-docs:docs/data/specific-data-types/binary-data.md",
+        "n8n-docs:docs/2-0-breaking-changes.md",
+        "n8n-docs:docs/hosting/scaling/external-storage.md",
+        "n8n-docs:docs/hosting/configuration/environment-variables/external-data-storage.md",
+        "n8n-docs:docs/hosting/scaling/queue-mode.md"
+      ],
+      "note": "cross-wing — exact — N8N_DEFAULT_BINARY_DATA_MODE=filesystem",
+      "in_scope": null
+    },
+    {
+      "query": "Comment désactiver les community nodes sur une instance n8n self-hosted, et quelle variable d'environnement le contrôle ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "n8n-docs:docs/integrations/community-nodes/risks.md"
+      ],
+      "rank": 4,
+      "top_files": [
+        "n8n-docs:docs/hosting/configuration/environment-variables/nodes.md",
+        "n8n-docs:docs/integrations/community-nodes/installation/verified-install.md",
+        "typebot-docs:typebot-self-hosted-rex.md",
+        "n8n-docs:docs/integrations/community-nodes/risks.md",
+        "n8n-docs:docs/integrations/community-nodes/installation/index.md",
+        "n8n-docs:docs/privacy-security/what-you-can-do.md",
+        "n8n-docs:docs/integrations/community-nodes/installation/manual-install.md",
+        "n8n-docs:docs/integrations/community-nodes/troubleshooting.md",
+        "flash-studio:docs/blueprint-execution.md"
+      ],
+      "note": "cross-wing — exact — N8N_COMMUNITY_PACKAGES_ENABLED=false",
+      "in_scope": null
+    },
+    {
+      "query": "What are the three 'Respond' options available on the n8n Webhook node — Immediately, When Last Node Finishes, and what's the third?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.webhook/index.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.wait.md",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.webhook/index.md",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-langchain.chattrigger/index.md",
+        "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.respondtowebhook.md"
+      ],
+      "note": "cross-wing — exact — Using 'Respond to Webhook' Node",
+      "in_scope": null
+    },
+    {
+      "query": "Dans LiteLLM proxy, quel paramètre permet de réinitialiser périodiquement le budget d'une clé API virtuelle (ex. quotidien) ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "litellm-docs:docs/my-website/docs/proxy/users.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "litellm-docs:docs/my-website/docs/proxy/users.md",
+        "hawktrade:data/corpus-trading/lessons/backtesting/013-reproductibilite-et-versionnage-donnees.md",
+        "hawktrade:data/corpus-trading/lessons/metriques-performance/001-ratio-de-sharpe.md",
+        "trek:client/src/i18n/translations/fr.ts",
+        "flash-studio:flash-infra/ansible/roles/litellm/defaults/main.yml",
+        "fantrad:docs/superpowers/plans/2026-06-04-cap-budget-gpu.md"
+      ],
+      "note": "cross-wing — exact — budget_duration (ex. '30d','1d') sur /key/generate",
+      "in_scope": null
+    },
+    {
+      "query": "How do I configure LiteLLM proxy to cache LLM responses in Redis via config.yaml?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "litellm-docs:docs/my-website/docs/proxy/caching.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "litellm-docs:docs/my-website/docs/proxy/db_deadlocks.md",
+        "litellm-docs:docs/my-website/docs/proxy/caching.md",
+        "litellm-docs:docs/my-website/docs/tutorials/prompt_caching.md",
+        "litellm-docs:docs/my-website/docs/integrations/letta.md"
+      ],
+      "note": "cross-wing — exact — bloc cache: type: redis + host/port/password",
+      "in_scope": null
+    },
+    {
+      "query": "Quelle valeur de routing_strategy du Router LiteLLM choisit le déploiement avec le temps de réponse le plus bas ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "litellm-docs:docs/my-website/docs/routing.md"
+      ],
+      "rank": 2,
+      "top_files": [
+        "dcsuit:docs/superpowers/specs/2026-06-09-redbook-design.md",
+        "litellm-docs:docs/my-website/docs/routing.md",
+        "hawktrade:data/corpus-trading/lessons/freqtrade/002-table-roi-et-sortie-temporelle.md",
+        "hawktrade:data/corpus-trading/lessons/backtesting/006-couts-de-transaction.md",
+        "hawktrade:infra/grafana/README.md",
+        "hawkeye:.planning/phases/12-cicd-supply-chain/12-03-SUMMARY.md",
+        "hawktrade:data/corpus-trading/lessons/biais-cognitifs/010-cout-irrecuperable.md"
+      ],
+      "note": "cross-wing — exact — routing_strategy: latency-based-routing",
+      "in_scope": null
+    },
+    {
+      "query": "Which LiteLLM guardrail masks PII/PHI in requests using Presidio before they reach the LLM provider?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "litellm-docs:docs/my-website/docs/proxy/guardrails/pii_masking_v2.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "litellm-docs:docs/my-website/docs/proxy/guardrails/pii_masking_v2.md",
+        "litellm-docs:docs/my-website/docs/tutorials/presidio_pii_masking.md"
+      ],
+      "note": "cross-wing — exact — guardrail Presidio PII/PHI, section guardrails de config.yaml",
+      "in_scope": null
+    },
+    {
+      "query": "Quelle commande CLI OpenClaw n'affiche que les plugins actuellement chargés, pas tous les plugins installés ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "openclaw-docs:docs/tools/plugin.md"
+      ],
+      "rank": 5,
+      "top_files": [
+        "vps:.planning/phases/07.1-epi-attestation-core/07.1-04-PLAN.md",
+        "openclaw-docs:docs/cli/index.md",
+        "flash-studio:.planning/phases/11-discourse-2026-x/11-02-PLAN.md",
+        "openclaw-docs:docs/cli/plugins.md",
+        "openclaw-docs:docs/tools/plugin.md",
+        "Seko-VPN:docs/09-uptime-kuma-monitors.md",
+        "powerbank:docs/plans/2026-07-03-DESIGN-V4C-PASSES.md",
+        "powerbank:docs/guides/GUIDE-CONSOLE-OPERATEUR.md",
+        "hawkeye:.planning/phases/19-chemins-ecriture/19-03-SUMMARY.md"
+      ],
+      "note": "cross-wing — exact — openclaw plugins list --enabled",
+      "in_scope": null
+    },
+    {
+      "query": "Which flag on `openclaw hooks list` shows only the hooks whose requirements are actually met, hiding the ineligible ones?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "openclaw-docs:docs/cli/hooks.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "openclaw-docs:docs/cli/hooks.md",
+        "openclaw-docs:docs/automation/hooks.md",
+        "openclaw-docs:docs/cli/plugins.md"
+      ],
+      "note": "cross-wing — exact — openclaw hooks list --eligible (remplace une 1ère version 'botToken' co-répondue par VPAI:docs/TROUBLESHOOTING.md §11.3/§11.6 — relecture superviseur 2026-07-18, cf commit fixup)",
+      "in_scope": null
+    },
+    {
+      "query": "Comment verrouiller le WebSocket du Gateway OpenClaw en local (auth) selon le guide de durcissement sécurité ?",
+      "doc_kind": "doc",
+      "expected_paths": [
+        "openclaw-docs:docs/gateway/security/index.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "openclaw-docs:docs/gateway/security/index.md",
+        "VPAI:docs/rex/REX-MISSION-CONTROL-OPENCLAW-2026-02-20.md",
+        "Seko-VPN:docs/06-v4-roadmap.md",
+        "openclaw-docs:docs/web/control-ui.md",
+        "openclaw-docs:docs/web/dashboard.md",
+        "openclaw-docs:docs/gateway/tailscale.md",
+        "Seko-VPN:docs/02-guide-deploiement.md"
+      ],
+      "note": "cross-wing — sémantique — Gateway auth required by default, section Configuration Hardening",
+      "in_scope": null
+    },
+    {
+      "query": "Pourquoi est-il impossible de désactiver le login Google sur Typebot self-hosted dès que l'intégration Google Sheets est configurée, et quel est le workaround ?",
+      "doc_kind": "rex",
+      "expected_paths": [
+        "typebot-docs:typebot-self-hosted-rex.md"
+      ],
+      "rank": 1,
+      "top_files": [
+        "typebot-docs:typebot-self-hosted-rex.md",
+        "VPAI:.planning/research/mop-typebot.md",
+        "flash-studio:flash-infra/docs/REX-2026-04-05-zammad-discourse-oidc-fix.md",
+        "hawktrade:data/corpus-trading/lessons/fiscalite-fr/010-fiscalite-strategie-paliers.md",
+        "hawktrade:data/corpus-trading/lessons/theorie-marche/010-pourquoi-un-edge-disparait-crowding.md"
+      ],
+      "note": "cross-wing — sémantique — BUG-006, GOOGLE_AUTH_CLIENT_ID/GOOGLE_SHEETS_CLIENT_ID partagent la même variable ; workaround = 2 projets GCP distincts (remplace une 1ère version 'ENCRYPTION_SECRET' co-répondue par VPAI:docs/superpowers/specs/2026-04-11-mop-machinery-design.md l.299 — relecture superviseur 2026-07-18, cf commit fixup #2)",
+      "in_scope": null
+    }
+  ]
+}

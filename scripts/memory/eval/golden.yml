@@ -463,9 +463,9 @@ questions:
     cross_wing: true
     asked_from: "infra/Seko-VPN"
     note: "cross-wing — sémantique — Gateway auth required by default, section Configuration Hardening"
-  - query: "Which Typebot self-hosted environment variable must NEVER be changed after first deploy, or encrypted data becomes unreadable?"
+  - query: "Pourquoi est-il impossible de désactiver le login Google sur Typebot self-hosted dès que l'intégration Google Sheets est configurée, et quel est le workaround ?"
     expected_paths: ["typebot-docs:typebot-self-hosted-rex.md"]
     doc_kind: rex
     cross_wing: true
     asked_from: "infra/VPAI"
-    note: "cross-wing — exact — ENCRYPTION_SECRET, clé 256-bit (32 chars)"
+    note: "cross-wing — sémantique — BUG-006, GOOGLE_AUTH_CLIENT_ID/GOOGLE_SHEETS_CLIENT_ID partagent la même variable ; workaround = 2 projets GCP distincts (remplace une 1ère version 'ENCRYPTION_SECRET' co-répondue par VPAI:docs/superpowers/specs/2026-04-11-mop-machinery-design.md l.299 — relecture superviseur 2026-07-18, cf commit fixup #2)"

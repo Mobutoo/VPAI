@@ -236,9 +236,17 @@ clone riposte      "$PAT_PREFIX/riposte.git"
 # Filet = timeout 300s dans clone() ci-dessus (un hang -> fail+self-stop, plus 1h40 muet).
 clone typebot-docs "https://github.com/baptisteArno/typebot.io.git"
 # Repo corpus supplémentaire (optionnel, ex. hawktrade pour trading_v1) — n'affecte
-# jamais les 7 clones ci-dessus, no-op si CORPUS_REPO_NAME/URL absents (défaut).
-if [ -n "$CORPUS_REPO_URL" ] && [ -n "$CORPUS_REPO_NAME" ]; then
-  clone "$CORPUS_REPO_NAME" "$CORPUS_REPO_URL"
+# jamais les 7 clones ci-dessus, no-op si CORPUS_REPO_NAME absent (défaut).
+# CORPUS_REPO_URL, si fourni, DOIT être HTTPS (jamais git@github-seko:... — cet
+# alias SSH + la clé deploy n'existent QUE sur Waza, pas sur un pod fraîchement
+# provisionné ; un clone SSH échouerait ici, fail+self-stop en G3, constaté par
+# lecture de code lors de l'adaptation trading_v1 2026-07-17). Par défaut (URL
+# absente), construit l'URL HTTPS+PAT sur le MÊME schéma que les 7 clones
+# ci-dessus (repo privé sous GIT_OWNER, PAT déjà en env) — pas besoin que
+# l'opérateur colle le PAT dans une variable.
+if [ -n "$CORPUS_REPO_NAME" ]; then
+  corpus_url="${CORPUS_REPO_URL:-$PAT_PREFIX/$CORPUS_REPO_NAME.git}"
+  clone "$CORPUS_REPO_NAME" "$corpus_url"
 fi
 beacon g3_clone_done
 

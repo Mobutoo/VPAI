@@ -46,9 +46,13 @@ MEMORY_COLLECTION="${MEMORY_COLLECTION:-memory_v2}"
 # ingère silencieusement les 7 repos memory DANS trading_v1 (collection changée, source
 # inchangée). Défaut INCHANGÉ = sources.pod.yml. CORPUS_REPO_NAME/URL (optionnels) :
 # repo supplémentaire à cloner par bootstrap.sh G3 pour un corpus non-memory.
+# CORPUS_REPO_URL (optionnel) : laisser VIDE dans le cas normal (repo privé sous
+# GIT_OWNER) — bootstrap.sh construit alors l'URL HTTPS+PAT lui-même, comme pour
+# les 7 clones memory (PAT déjà en env côté pod). NE JAMAIS y mettre une URL SSH
+# type git@github-seko:... : cet alias + la clé deploy n'existent que sur Waza,
+# pas sur le pod -> échec du clone en G3.
 # Ex : MEMORY_COLLECTION=trading_v1 SOURCES_FILE=sources.trading.yml \
-#      CORPUS_REPO_NAME=hawktrade CORPUS_REPO_URL=git@github-seko:Mobutoo/hawktrade.git \
-#      ./provision_pod.sh --create
+#      CORPUS_REPO_NAME=hawktrade ./provision_pod.sh --create
 SOURCES_FILE="${SOURCES_FILE:-sources.pod.yml}"
 CORPUS_REPO_NAME="${CORPUS_REPO_NAME:-}"
 CORPUS_REPO_URL="${CORPUS_REPO_URL:-}"

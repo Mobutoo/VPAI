@@ -19,8 +19,11 @@
 #
 # Usage (cf hawktrade/docs/CORPUS-TRADING.md pour la procédure complète) :
 #   MEMORY_COLLECTION=trading_v1 SOURCES_FILE=sources.trading.yml \
-#   CORPUS_REPO_NAME=hawktrade CORPUS_REPO_URL=git@github-seko:Mobutoo/hawktrade.git \
+#   CORPUS_REPO_NAME=hawktrade \
 #   ./provision_pod.sh --check   # puis --create après revue du payload
+# NB : ne PAS fixer CORPUS_REPO_URL à une URL SSH (git@github-seko:...) — cet
+# alias n'existe que sur Waza. Laisser vide : bootstrap.sh construit l'URL
+# HTTPS+PAT lui-même (même schéma que les 7 clones memory).
 
 sources:
   - name: "hawktrade-corpus"

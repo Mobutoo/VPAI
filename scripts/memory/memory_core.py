@@ -7,8 +7,10 @@ ZÉRO Jinja2 — importable directement par worker ET batch pod.
 
 Parité absolue : les imports ML (sentence-transformers, llama-index) sont
 lazy-importés à l'intérieur des fonctions/classes qui en ont besoin.
-Les 4 fonctions pures (classify_doc_kind, classify_room, load_wing_room_lookup,
-build_payload) ne dépendent que de stdlib + pyyaml.
+Les fonctions pures (classify_doc_kind, classify_room, load_wing_room_lookup,
+build_payload, derive_scope_from_cwd) ne dépendent que de stdlib (+ pyyaml pour
+load_wing_room_lookup) — derive_scope_from_cwd (retrieval scopé, T1.2) fait
+zéro I/O, même pas stdlib au-delà de pathlib.
 """
 
 from __future__ import annotations
@@ -405,6 +407,62 @@ def resolve_effective_sources(config: dict[str, Any]) -> list[dict[str, Any]]:
     with path.open("r", encoding="utf-8") as fh:
         payload = yaml.safe_load(fh) or {}
     return payload.get("sources", []) or []
+
+
+# ---------------------------------------------------------------------------
+# 3-ter. derive_scope_from_cwd — retrieval scopé (plan 2026-07-17-scoped-
+# retrieval-implementation.md, T1.2). Mappe un CWD -> {repo, wing} pour le
+# BOOST de score (T1.1, jamais un filtre must — contrainte de conception #1).
+#
+# SCOPE_WINGS mirrors config.yml `discovery.wings` (voir aussi la constante
+# WINGS de test_memory_core.py) — DOIT rester synchronisé si un wing est
+# ajouté/retiré côté auto-découverte. Divergence = un CWD sous un wing réel
+# mais absent d'ici retombe silencieusement sur "pas de scope" (dégradé, pas
+# cassé — cf. philosophie fail-open de ce module).
+#
+# Miroir JS (fonction ET table de cas IDENTIQUES) : ~/.claude/hooks/lib/cwd-scope.js
+# (consommateur : hook R0-Continu, T1.3).
+# ---------------------------------------------------------------------------
+SCOPE_WINGS: tuple[str, ...] = ("infra", "saas", "tools", "refdocs")
+DEFAULT_WORKSPACE_ROOT = "~/work"
+
+
+def derive_scope_from_cwd(
+    cwd: str | Path, workspace_root: str | Path = DEFAULT_WORKSPACE_ROOT
+) -> dict[str, str] | None:
+    """Dérive {"repo": ..., "wing": ...} depuis un CWD — PURE, zéro I/O.
+
+    Nomenclature MANIFESTE-CREATION-PROJET (identique à discover_sources) : un
+    repo vit à `<workspace_root>/<wing>/<name>[/...]`. wing = 1er segment sous
+    workspace_root (DOIT être dans SCOPE_WINGS, sinon pas de scope connu — on
+    n'invente jamais un wing). repo = 2e segment (basename du dossier projet),
+    quelle que soit la profondeur du CWD en dessous (ex. .../VPAI/roles/x reste
+    scope VPAI/infra).
+
+    Retourne None (= comportement global actuel, non-régression T1.1) si :
+    - cwd est hors workspace_root ;
+    - cwd a moins de 2 segments sous workspace_root (workspace_root lui-même,
+      ou workspace_root/<wing> seul, sans repo) ;
+    - le 1er segment n'est pas un wing connu (SCOPE_WINGS).
+
+    Volontairement SANS `.resolve()`/`.exists()` : uniquement `expanduser()` +
+    découpage de chemin (lexical). Ni accès disque (chemin chaud d'une
+    recherche), ni dépendance à un CWD réellement existant (testable avec des
+    chemins arbitraires, y compris via tmp_path dans les tests).
+    """
+    cwd_path = Path(cwd).expanduser()
+    root_path = Path(workspace_root).expanduser()
+    try:
+        rel = cwd_path.relative_to(root_path)
+    except ValueError:
+        return None
+    parts = rel.parts
+    if len(parts) < 2:
+        return None
+    wing, repo = parts[0], parts[1]
+    if wing not in SCOPE_WINGS:
+        return None
+    return {"repo": repo, "wing": wing}
 
 
 # ---------------------------------------------------------------------------

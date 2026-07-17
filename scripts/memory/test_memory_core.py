@@ -19,12 +19,14 @@ from memory_core import (
     CHUNKING_STRATEGY_VERSION,
     PROMPT_VERSION,
     SCHEMA_VERSION,
+    SCOPE_WINGS,
     build_doc_prompt,
     build_payload,
     build_sparse_text,
     build_wing_lookup,
     classify_doc_kind,
     classify_room,
+    derive_scope_from_cwd,
     discover_sources,
     extract_structural_meta,
     get_truncation_events,
@@ -786,3 +788,85 @@ class TestBuildWingLookup:
         target = tmp_path / "saas" / "hawkeye" / "docs" / "x.md"
         repo, wing, rel = resolve_source(target, lookup)
         assert (repo, wing, rel) == ("hawkeye", "saas", "docs/x.md")
+
+
+# ===========================================================================
+# derive_scope_from_cwd — retrieval scopé (plan 2026-07-17-scoped-retrieval,
+# T1.2). Table de cas IDENTIQUE au miroir JS
+# ~/.claude/hooks/test/test-cwd-scope.js (mêmes 5 cas cités par le plan +
+# les mêmes cas limites) — les deux implémentations DOIVENT converger.
+# ===========================================================================
+class TestDeriveScopeFromCwd:
+    # --- Les 5 cas cités littéralement par le plan (T1.2 §2) ---------------
+    def test_plan_case_infra_vpai(self):
+        assert derive_scope_from_cwd("~/work/infra/VPAI") == {
+            "repo": "VPAI", "wing": "infra"
+        }
+
+    def test_plan_case_saas_hawkeye(self):
+        assert derive_scope_from_cwd("~/work/saas/hawkeye") == {
+            "repo": "hawkeye", "wing": "saas"
+        }
+
+    def test_plan_case_deep_subdir_still_scopes_to_repo_root(self):
+        assert derive_scope_from_cwd("~/work/infra/VPAI/roles/x") == {
+            "repo": "VPAI", "wing": "infra"
+        }
+
+    def test_plan_case_tmp_no_scope(self):
+        assert derive_scope_from_cwd("/tmp") is None
+
+    def test_plan_case_workspace_root_alone_no_scope(self):
+        assert derive_scope_from_cwd("~/work") is None
+
+    # --- Isolation via tmp_path (indépendant de l'environnement réel) ------
+    def test_isolated_workspace_root_infra(self, tmp_path):
+        got = derive_scope_from_cwd(tmp_path / "infra" / "VPAI", workspace_root=tmp_path)
+        assert got == {"repo": "VPAI", "wing": "infra"}
+
+    def test_isolated_deep_subdir(self, tmp_path):
+        got = derive_scope_from_cwd(
+            tmp_path / "saas" / "hawkeye" / "src" / "db", workspace_root=tmp_path
+        )
+        assert got == {"repo": "hawkeye", "wing": "saas"}
+
+    def test_isolated_all_four_scope_wings(self, tmp_path):
+        for wing in SCOPE_WINGS:
+            got = derive_scope_from_cwd(tmp_path / wing / "proj", workspace_root=tmp_path)
+            assert got == {"repo": "proj", "wing": wing}
+
+    # --- Cas limites ---------------------------------------------------------
+    def test_wing_only_no_repo_segment_is_none(self, tmp_path):
+        # workspace_root/<wing> seul, sans dossier projet -> pas de scope
+        assert derive_scope_from_cwd(tmp_path / "infra", workspace_root=tmp_path) is None
+
+    def test_unknown_wing_segment_is_none(self, tmp_path):
+        # 1er segment sous workspace_root absent de SCOPE_WINGS -> pas de scope
+        # inventé (ex. un dossier ~/work/<autre>/<x> qui n'est pas un wing connu)
+        assert derive_scope_from_cwd(tmp_path / "not-a-wing" / "x", workspace_root=tmp_path) is None
+
+    def test_outside_workspace_root_is_none(self, tmp_path):
+        outside = tmp_path.parent / "elsewhere"
+        assert derive_scope_from_cwd(outside, workspace_root=tmp_path) is None
+
+    def test_sibling_dir_sharing_prefix_is_not_matched(self, tmp_path):
+        # workspace_root="/x/work" ne doit PAS matcher "/x/work2/..." (piège
+        # startswith() sans séparateur — relative_to() de pathlib l'évite déjà,
+        # ce test verrouille la garantie).
+        root = tmp_path / "work"
+        sibling = tmp_path / "work2" / "infra" / "VPAI"
+        assert derive_scope_from_cwd(sibling, workspace_root=root) is None
+
+    def test_no_filesystem_access_required(self, tmp_path):
+        # Chemins qui N'EXISTENT PAS sur disque -> fonctionne quand même (PURE,
+        # zéro .exists()/.resolve()). Contrat explicite de la docstring.
+        ghost = tmp_path / "infra" / "does-not-exist-on-disk"
+        assert derive_scope_from_cwd(ghost, workspace_root=tmp_path) == {
+            "repo": "does-not-exist-on-disk", "wing": "infra"
+        }
+
+    def test_scope_wings_matches_discovery_wings_constant(self):
+        # SCOPE_WINGS DOIT rester synchronisé avec le WINGS de ce fichier de
+        # test (lui-même = config.yml discovery.wings) — cf. commentaire de
+        # synchronisation dans memory_core.py.
+        assert list(SCOPE_WINGS) == WINGS

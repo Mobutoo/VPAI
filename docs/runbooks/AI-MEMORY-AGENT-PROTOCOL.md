@@ -142,6 +142,93 @@ Critere de maintien: `miss_ratio <= 0.30` sur les 20 requetes de
 `benchmark-queries.yml`. Au-dessus, le modele d'embedding est degrade et
 une escalade est necessaire (voir plan section 5.5).
 
+### 3.6 Rerank (cable, OFF par defaut — ne pas activer sur le chemin R0 interactif)
+
+`rerank.py` (bge-reranker-v2-m3 ONNX) est cable derriere `search_memory.py`
+(`--rerank` / env `RERANK_ENABLED`) et `mcp_search.py` (le vrai backend de
+`mcp__qdrant__qdrant-find`, env `RERANK_ENABLED`). **Les deux entrypoints sont
+OFF par defaut** — l'agent qui appelle `mcp__qdrant__qdrant-find` normalement
+ne passe jamais par le reranker.
+
+Benchmark reel (audit 2026-07-17, FIX B, RPi5 waza, `nice -19`, modele charge
+une fois — 27 requetes `benchmark-queries.yml`, 20 candidats re-scores) :
+
+| | Sans rerank (RRF seul) | Avec rerank |
+|---|---|---|
+| Mediane | 0.6s | **10.4s** (+9.8s) |
+| Max | 1.1s | **13.6s** (+13.6s) |
+
+Trop lent pour un usage interactif R0 (budget ~3-5s/requete) — **reste OFF
+par defaut**. Cause: cross-encoder 568M params en inference CPU pure sur
+ARM64, pas de GPU. Le repo HF par defaut de `rerank.py`
+(`BAAI/bge-reranker-v2-m3`) n'a d'ailleurs AUCUN artefact ONNX — l'override
+`MEMORY_RERANK_MODEL_ID=onnx-community/bge-reranker-v2-m3-ONNX` est
+obligatoire pour que le flag fonctionne (sinon fail-open silencieux, warning
+stderr `rerank indisponible`).
+
+Si un jour necessaire (ex. eval hors-ligne, pas R0 interactif): activer via
+`RERANK_ENABLED=true` dans `memory-worker.env` (ou `memory_worker_rerank_enabled:
+true` cote Ansible) — jamais comme defaut du chemin agent tant qu'un modele
+plus leger (ex. cross-encoder MiniLM fastembed, ~90MB) n'a pas ete valide sur
+Pi avec une latence sous budget.
+
+**Modele leger teste et DISQUALIFIE (2026-07-17, restauration recall@1)** :
+`Xenova/ms-marco-MiniLM-L-6-v2` (fastembed `TextCrossEncoder`, ~23M params,
+~90MB ONNX — 25x plus petit que bge-reranker-v2-m3) rerank les meilleurs hits
+fusionnes sur le TEXTE COMPLET du chunk (le snippet 160 car. est aveugle pour
+un cross-encoder). Resultat, sous-echantillon 15 questions, `nice -19`, modele
+charge une fois :
+
+| Texte fourni | Mediane/requete | recall@1 (15 q) |
+|---|---|---|
+| Complet (jusqu'a 1600 car.) | **9.7s** | 0.33 (baseline ~0.60 sur ce sous-ensemble) |
+| Tronque a 400 car. | **2.9s** | 0.27 |
+
+Double disqualification : (1) latence quasi identique au modele lourd malgre
+23M vs 568M params — le cout domine par la longueur de sequence (texte complet
+necessaire), pas le nombre de parametres, et meme tronque reste ~2x le budget
+interactif ; (2) **qualite degradee**, pas seulement neutre — le modele
+(anglais, entraine MS MARCO) sur-note des blobs JSON de workflows n8n sur pur
+chevauchement lexical de noms de champs (`webhook`, `responseNode`), poussant
+un resultat non pertinent au rang 13. Piste rerank leger fermee tant qu'aucun
+autre modele n'est teste (candidat multilingue restant : `jinaai/jina-reranker-
+v2-base-multilingual`, 1.1GB — jamais teste, taille suggere une latence encore
+pire).
+
+### 3.7 Fusion RRF vs DBSF (restauration recall@1, 2026-07-17)
+
+Qdrant RRF utilise **k=2 par defaut** (PAS 60, la valeur "standard" de la
+litterature IR generaliste) — verifie doc officielle
+https://qdrant.tech/documentation/concepts/hybrid-queries/. Fusion rank-only
+tres sensible au bruit de classement introduit par la croissance du corpus
+(24k -> 82k+ pts, 9 -> 27 repos auto-decouverts depuis le ship 2026-06-10,
+cf `docs/audits/2026-07-17-audit-memoire.md` §3).
+
+**DBSF (Distribution-Based Score Fusion, natif Qdrant, ZERO cout de latence
+additionnel)** mesure sur golden 76 questions (memory_v3, collection gelee) :
+
+| Fusion | recall@1 | recall@5 | mrr@10 | Reproductibilite |
+|---|---|---|---|---|
+| RRF (k=2, ancien defaut) | 0.6316 (exact) / 0.6447 (approx) | 0.9737 | ~0.78 | Bruit HNSW +-2 a 4 pts entre runs identiques |
+| **DBSF (nouveau defaut)** | **0.6711** | 0.9737 | 0.7939 | **Identique 2/2 exact ET 2/2 approximatif** |
+
++3 a +4 pts recall@1 vs RRF, recall@5 inchange, ET plus stable que RRF lui-meme
+(0 variance observee sur 4 runs vs jusqu'a 5,3 pts d'ecart RRF run-a-run —
+approximation HNSW, pas un bug). Inspection individuelle : DBSF corrige les cas
+de **decalage de score pur** entre deux documents deja indexes (ex. n8n
+workflow DELETE : rang 2->1) mais ne corrige PAS les cas de **croissance de
+corpus reelle** ou un document nouvellement indexe (`wiki:*.md`,
+`hawktrade:*`) est un concurrent legitimement pertinent qui n'existait pas au
+golden.yml d'origine (ex. PostgreSQL 18 mount path, Caddy heredoc, checklist
+OpenClaw — `wiki:caddy.md`/`wiki:openclaw.md` gagnent legitimement). Ces cas
+ne sont pas un bug de ranking : ils signalent un **golden-set a rafraichir**
+(gate humain — ne jamais editer golden.yml sans validation qu'un nouveau
+document est reellement la meilleure reponse).
+
+**Defaut depuis 2026-07-17** : `MEMORY_FUSION_MODE=dbsf` (env, `mcp_search.py`
++ `search_memory.py` + `run_eval.py --fusion`). Rollback instantane :
+`MEMORY_FUSION_MODE=rrf` (ou `memory_worker_fusion_mode: rrf` cote Ansible).
+
 ## 4. Comment alimenter la memoire
 
 ### 4.1 Le canal legitime

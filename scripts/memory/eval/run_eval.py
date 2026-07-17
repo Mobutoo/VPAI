@@ -134,8 +134,21 @@ def parse_args() -> argparse.Namespace:
                         help=f"Modèle fastembed TextCrossEncoder (défaut {DEFAULT_RERANK_MODEL}).")
     parser.add_argument("--rerank-candidates", type=int, default=20,
                         help="Nombre de hits fusionnés (top-N) soumis au rerank léger (défaut 20).")
+    parser.add_argument("--rerank-max-chars", type=int, default=None,
+                        help="Tronque le texte payload à N caractères avant rerank (défaut : "
+                             "texte complet jusqu'à chunk_size=1600 — coûteux en latence CPU "
+                             "ARM, cf découverte 2026-07-17 : 9-11s/requête à texte complet, "
+                             "quasi identique au modèle lourd malgré 23M vs 568M params).")
     parser.add_argument("--fastembed-cache", default=os.getenv("FASTEMBED_CACHE_PATH", DEFAULT_FASTEMBED_CACHE),
                         help="Cache modèles fastembed (défaut FASTEMBED_CACHE_PATH ou config worker).")
+    parser.add_argument("--exact", action="store_true",
+                        help="Recherche HNSW EXACTE (SearchParams(exact=True), pas d'approximation) "
+                             "sur chaque canal. Découverte 2026-07-17 : deux rejeux identiques "
+                             "(même collection gelée, même code) donnent des recall@1 différents "
+                             "de plusieurs points (8/76 questions instables) — approximation HNSW, "
+                             "PAS un bug de thread ni de corpus. --exact élimine cette source de "
+                             "bruit pour des comparaisons Piste A/B fiables (plus lent, usage éval "
+                             "uniquement, jamais en prod interactif).")
     return parser.parse_args()
 
 
@@ -246,6 +259,7 @@ def run_query(
     prefetch_limit: int = PREFETCH_LIMIT,
     fusion: str = "rrf",
     rrf_k: int | None = None,
+    exact: bool = False,
 ):
     """Une requête top-k. Dense legacy (unnamed) ET v3 (nommé) supportés.
 
@@ -253,10 +267,13 @@ def run_query(
     (un cross-encoder jugé sur le snippet 160 car. est aveugle, cf docstring module).
     Coût : payload plus lourd sur le réseau, négligeable pour un harnais d'éval 76 q.
     """
+    search_params = qmodels.SearchParams(exact=True) if exact else None
     if mode == "hybrid":
         prefetch = [
-            qmodels.Prefetch(query=dense_vector, using="dense", limit=prefetch_limit),
-            qmodels.Prefetch(query=sparse_vector, using="bm25", limit=prefetch_limit),
+            qmodels.Prefetch(query=dense_vector, using="dense", limit=prefetch_limit,
+                              params=search_params),
+            qmodels.Prefetch(query=sparse_vector, using="bm25", limit=prefetch_limit,
+                              params=search_params),
         ]
         if fusion == "dbsf":
             fusion_query: object = qmodels.FusionQuery(fusion=qmodels.Fusion.DBSF)
@@ -283,6 +300,7 @@ def run_query(
             limit=limit,
             with_payload=PAYLOAD_FIELDS,
             with_vectors=False,
+            search_params=search_params,
             **kwargs,
         )
     return response.points
@@ -294,6 +312,7 @@ def run_channel_query(
     using: str,
     vector,
     limit: int,
+    exact: bool = False,
 ):
     """Requête mono-canal (dense OU sparse seul, PAS de fusion serveur) — brique de
     --manual-fusion. Payload complet (cf PAYLOAD_FIELDS) pour permettre le rerank léger
@@ -305,6 +324,7 @@ def run_channel_query(
         limit=limit,
         with_payload=PAYLOAD_FIELDS,
         with_vectors=False,
+        search_params=qmodels.SearchParams(exact=True) if exact else None,
     )
     return response.points
 
@@ -356,10 +376,13 @@ class LightCrossEncoder:
         return list(self.model.rerank(query, documents))
 
 
-def rerank_light_points(encoder: LightCrossEncoder, query: str, points: list, top_n: int):
-    """Rerank les top_n premiers `points` (chunks) sur le texte COMPLET du payload
-    (`text`, fallback `title`) — PAS un snippet tronqué. Retourne les points réordonnés
-    (top_n rerankés en tête, reste inchangé derrière) + la latence mesurée (secondes)."""
+def rerank_light_points(
+    encoder: LightCrossEncoder, query: str, points: list, top_n: int,
+    max_chars: int | None = None,
+):
+    """Rerank les top_n premiers `points` (chunks) sur le texte du payload (`text`,
+    fallback `title`) — PAS le snippet 160 car. de search_memory.py. `max_chars`
+    (optionnel) tronque pour limiter le coût CPU (cf docstring param CLI)."""
     if not points:
         return points, 0.0
     head = points[:top_n]
@@ -367,6 +390,8 @@ def rerank_light_points(encoder: LightCrossEncoder, query: str, points: list, to
     documents = [
         (p.payload or {}).get("text") or (p.payload or {}).get("title") or "" for p in head
     ]
+    if max_chars:
+        documents = [d[:max_chars] for d in documents]
     t0 = time.monotonic()
     scores = encoder.score(query, documents)
     elapsed = time.monotonic() - t0
@@ -499,9 +524,11 @@ def main() -> int:
         if args.manual_fusion:
             dense_points = run_channel_query(
                 client, args.collection, "dense", dense_vector, args.prefetch_limit,
+                exact=args.exact,
             )
             sparse_points = run_channel_query(
                 client, args.collection, "bm25", sparse_vector, args.prefetch_limit,
+                exact=args.exact,
             )
             points = manual_rrf_fusion(
                 dense_points, sparse_points, effective_rrf_k,
@@ -511,12 +538,13 @@ def main() -> int:
             points = run_query(
                 client, args.collection, args.mode, schema, dense_vector, sparse_vector,
                 fetch_limit, prefetch_limit=args.prefetch_limit, fusion=args.fusion,
-                rrf_k=args.rrf_k,
+                rrf_k=args.rrf_k, exact=args.exact,
             )
 
         if args.rerank_light:
             points, rerank_s = rerank_light_points(
                 rerank_encoder, question["query"], points, args.rerank_candidates,
+                max_chars=args.rerank_max_chars,
             )
             rerank_timings.append(rerank_s)
 

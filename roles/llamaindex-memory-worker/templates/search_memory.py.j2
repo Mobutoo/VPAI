@@ -9,6 +9,21 @@ Contrat : docs/superpowers/specs/2026-06-10-rag-v3-contracts.md §Recherche.
   - Format compact : `score | repo/relative_path | section | snippet 1 ligne`.
   - --boost-usage : formula query Qdrant score×(1+ln(1+use_count))×récence(valid_from).
   - --rerank : rerank.py (bge-reranker-v2-m3 ONNX, lazy — skip+warning si absent du cache HF).
+    Défaut piloté par env RERANK_ENABLED (fallback "false" — cf FIX B audit 2026-07-17) ;
+    --rerank/--no-rerank override explicite en CLI. BENCHMARK Pi (RPi5, nice -19, 27
+    requêtes, modèle chargé une fois, 20 candidats) : +9.8s médiane / +13.6s max PAR
+    REQUÊTE — très au-dessus du budget interactif R0 (~3-5s), reste OFF par défaut.
+    Alternative légère fastembed (Xenova/ms-marco-MiniLM-L-6-v2) testée 2026-07-17 :
+    DISQUALIFIÉE aussi (9.7s médiane texte complet requis, 2.9s même tronqué à 400
+    car. — encore 2x le budget — ET dégrade recall@1, modèle anglais MS MARCO mal
+    adapté au corpus FR/code). Piste rerank léger fermée.
+  - --fusion rrf|dbsf : défaut piloté par env MEMORY_FUSION_MODE (fallback **dbsf**
+    depuis 2026-07-17, restauration recall@1). DBSF (natif Qdrant, zéro coût de
+    latence) mesuré +3 à +4 pts recall@1 vs RRF sur golden 76 questions, reproductible
+    2/2 exact ET 2/2 approximatif, recall@5 inchangé. Qdrant RRF k=2 par défaut (pas
+    60 — doc officielle https://qdrant.tech/documentation/concepts/hybrid-queries/),
+    fusion rank-only très sensible au bruit de classement du corpus (82k pts, 27
+    repos). Rollback : MEMORY_FUSION_MODE=rrf ou --fusion rrf.
 """
 
 from __future__ import annotations
@@ -32,6 +47,13 @@ DEFAULT_MIN_SCORE = 0.50
 RECENCY_SCALE_SECONDS = 180 * 86400  # demi-décroissance ~6 mois
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes")
+
+
 def load_config(path: Path) -> dict:
     with path.open("r", encoding="utf-8") as handle:
         return yaml.safe_load(handle)
@@ -51,10 +73,17 @@ def parse_args() -> argparse.Namespace:
                         help="floor sur le score dense cosine ; sous le floor -> 'not found'.")
     parser.add_argument("--boost-usage", action="store_true",
                         help="rescoring formula score×(1+ln(1+use_count))×récence(valid_from).")
-    parser.add_argument("--rerank", action="store_true",
-                        help="rerank top-30 via bge-reranker-v2-m3 ONNX (lazy, skip si absent).")
+    parser.add_argument("--rerank", action=argparse.BooleanOptionalAction,
+                        default=_env_bool("RERANK_ENABLED", False),
+                        help="rerank top-30 via bge-reranker-v2-m3 ONNX (lazy, skip si absent). "
+                             "Défaut = env RERANK_ENABLED (OFF — benchmark Pi ~10s/requête, cf "
+                             "docstring). --no-rerank force OFF même si l'env l'active.")
     parser.add_argument("--json", action="store_true",
                         help="sortie JSON-lines (un hit/ligne) au lieu du format compact.")
+    parser.add_argument("--fusion", choices=["rrf", "dbsf"],
+                        default=os.environ.get("MEMORY_FUSION_MODE", "dbsf").strip().lower(),
+                        help="Stratégie de fusion Qdrant native. Défaut = env MEMORY_FUSION_MODE "
+                             "(fallback dbsf — restauration recall@1 2026-07-17, cf docstring).")
     return parser.parse_args()
 
 
@@ -164,14 +193,15 @@ def search(args: argparse.Namespace, config: dict) -> list[dict]:
             rest.Prefetch(query=rest.SparseVector(indices=sparse_indices, values=sparse_values),
                           using=SPARSE_VECTOR_NAME, limit=PREFETCH_LIMIT, filter=query_filter),
         ]
+        fusion_enum = rest.Fusion.DBSF if args.fusion == "dbsf" else rest.Fusion.RRF
         if args.boost_usage:
-            # RRF dans un prefetch imbriqué, formula de boost par-dessus.
+            # Fusion dans un prefetch imbriqué, formula de boost par-dessus.
             prefetch = [rest.Prefetch(prefetch=prefetch,
-                                      query=rest.FusionQuery(fusion=rest.Fusion.RRF),
+                                      query=rest.FusionQuery(fusion=fusion_enum),
                                       limit=PREFETCH_LIMIT)]
             query: object = build_boost_formula()
         else:
-            query = rest.FusionQuery(fusion=rest.Fusion.RRF)
+            query = rest.FusionQuery(fusion=fusion_enum)
         response = client.query_points(
             collection_name=collection,
             prefetch=prefetch,

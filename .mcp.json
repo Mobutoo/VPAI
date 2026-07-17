@@ -3,13 +3,13 @@
     "docker-waza": {
       "type": "stdio",
       "command": "/home/mobuone/.local/bin/uvx",
-      "args": ["docker-mcp"],
+      "args": ["docker-mcp==0.2.0"],
       "env": { "DOCKER_CONTEXT": "local" }
     },
     "docker-sese": {
       "type": "stdio",
       "command": "/home/mobuone/.local/bin/uvx",
-      "args": ["docker-mcp"],
+      "args": ["docker-mcp==0.2.0"],
       "env": { "DOCKER_CONTEXT": "sese-ai" }
     }
   }

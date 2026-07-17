@@ -1,0 +1,55 @@
+---
+# playbooks/utils/vpn-node-enroll.yml — Enrôle Seko-VPN comme client du tailnet Headscale
+#
+# Contexte : Seko-VPN héberge le serveur Headscale (control server) mais n'était pas
+# lui-même un client du mesh (pas de binaire tailscale, aucune route 100.64.0.0/10).
+# Conséquence : les requêtes HTTP publiques émises depuis Seko vers les vhosts VPN-only
+# (Caddy `import vpn_only` sur Sese-AI) recevaient un 403 constant côté Caddy, avant
+# même d'atteindre le backend applicatif — aveuglant tout monitoring API-level (Uptime
+# Kuma tourne sur Seko). Cf. Seko-VPN/docs/09-uptime-kuma-monitors.md §3 et
+# ~/work/ops/loops/PLAN.md T0.5.
+#
+# Option 1 retenue (gate superviseur, 2026-07-17) : enrôler Seko-VPN via le rôle
+# headscale-node existant (même pattern que prod/Sese-AI et workstation/waza — voir
+# playbooks/stacks/site.yml phase1 et playbooks/hosts/workstation.yml). Zéro changement
+# de la posture Caddy : les extra_records Headscale (déjà vivants sur Seko, cf
+# /opt/services/headscale/config/config.yaml) résolvent déjà work.ewutelo.cloud,
+# llm.ewutelo.cloud, mayi.ewutelo.cloud, qd.ewutelo.cloud vers 100.64.0.14 — une fois
+# Seko sur le mesh avec MagicDNS/override_local_dns, ces domaines résolvent
+# correctement depuis la box elle-même.
+#
+# User Headscale : "mobuone" (id existant, déjà utilisé par les nœuds infra/service —
+# memory-bulk-pod-*), réutilisé pour ne pas créer de user superflu (le user "Sekoul"
+# est réservé aux appareils personnels : waza, iphone, banga, ewutelo).
+#
+# Usage:
+#   ansible-playbook playbooks/utils/vpn-node-enroll.yml -e "headscale_auth_key=<preauth-key>"
+#
+# La clé de pré-auth se génère SUR Seko lui-même (le control server), jamais stockée
+# dans ce repo — clé éphémère (--expiration 1h), à passer en -e uniquement :
+#   ssh seko 'sudo docker exec headscale headscale preauthkeys create --user 2 --expiration 1h'
+# (user 2 = "mobuone", cf `sudo docker exec headscale headscale users list`)
+
+- name: "VPN-NODE-ENROLL | Pre-flight — validate auth key provided"
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: "VALIDATE: headscale_auth_key is set"
+      ansible.builtin.assert:
+        that:
+          - headscale_auth_key is defined
+          - headscale_auth_key | length > 0
+        fail_msg: |
+          Variable headscale_auth_key is required (ephemeral Headscale preauth key).
+          Generate on Seko: ssh seko 'sudo docker exec headscale headscale preauthkeys create --user 2 --expiration 1h'
+          Usage: ansible-playbook playbooks/utils/vpn-node-enroll.yml -e "headscale_auth_key=<key>"
+
+- name: "VPN-NODE-ENROLL | Enroll Seko-VPN as a tailnet client"
+  hosts: vpn
+  gather_facts: true
+
+  roles:
+    - role: headscale-node
+      tags: [headscale-node, vpn-node-enroll]
+      vars:
+        headscale_hostname: "{{ vpn_hostname }}"

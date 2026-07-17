@@ -32,35 +32,10 @@
 {% if monitor.expiryNotification is defined %}
 | TLS Expiry Alert | {{ monitor.expiryNotification }} |
 {% endif %}
-
-{% endfor %}
-
-## Blocked — API-level Monitors (DO NOT CREATE YET)
-
-> **2026-07-17 (T0.5 loops)** — Kuma runs on Seko-VPN, which is the Headscale control
-> server, not a tailnet client. Every URL below is gated by `import vpn_only` in
-> `roles/caddy/templates/Caddyfile.j2`; a public request from Seko-VPN gets Caddy's
-> **403 before it ever reaches the backend** (confirmed by curl from the Seko-VPN box).
-> Creating these monitors today with `accepted_statuscodes` tuned for the backend
-> would read "UP" via the 403 regardless of whether the app is actually alive — a
-> false-positive that hides the exact incident they're meant to catch (Plane frontend
-> 200 / API 500, 2026-07-17). **Do not create these in the Kuma UI until the routing
-> blocker is resolved** — see `~/work/infra/Seko-VPN/docs/09-uptime-kuma-monitors.md`
-> for the two proposed fixes and the human gate required before either ships.
-
-{% for monitor in uptime_kuma_monitors_api_level_blocked | default([]) %}
-### {{ loop.index }}. {{ monitor.name }}
-
-| Setting | Value |
-|---------|-------|
-| Type | {{ monitor.type }} |
-| URL | `{{ monitor.url }}` |
-| Interval | {{ monitor.interval }}s |
-| Max Retries | {{ monitor.maxretries }} |
-| Retry Interval | {{ monitor.retryInterval }}s |
-| Accepted Status | {{ monitor.accepted_statuscodes | join(', ') }} |
+{% if monitor.note is defined %}
 
 {{ monitor.note }}
+{% endif %}
 
 {% endfor %}
 

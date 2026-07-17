@@ -191,6 +191,10 @@
           {{ tailscale_ip }}  {{ caddy_qdrant_domain }}
       {% endif %}
       ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  when: not (common_molecule_mode | default(false))
+  when: >-
+    not (common_molecule_mode | default(false))
+    and caddy_admin_domain is defined
   # caddy_*_domain vars are defined in caddy role defaults, not available
-  # in headscale-node molecule context (caddy role not loaded)
+  # when headscale-node runs standalone (molecule context, or a dedicated
+  # playbook like playbooks/utils/vpn-node-enroll.yml that doesn't load the
+  # caddy role) — informational task only, safe to skip.

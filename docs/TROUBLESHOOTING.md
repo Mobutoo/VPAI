@@ -2213,3 +2213,14 @@ grep -rn "list_lite\|\.list(" ~/.cache/uv/archive-v0/*/plane_mcp/tools/projects.
 (au lieu de `"plane-mcp-server"` seul, qui laisse `uvx` prendre la dernière version publiée). **Recharger la session MCP** (reconnecter le serveur `plane`) pour que le nouvel `args` pinné soit pris en compte — un process déjà démarré garde l'ancienne résolution jusqu'au redémarrage.
 
 **Piège** : `uvx <package> <args>` sans version = toujours "latest" au moment du spawn du process MCP, pas au moment de l'écriture de la config. Un upgrade silencieux de `plane-mcp-server` sur PyPI peut donc casser `list_projects` sans aucun changement côté notre config ou infra. Revérifier après toute mise à jour de ce serveur MCP que l'endpoint utilisé existe bien sur notre version de Plane self-hosted (`docker logs` du conteneur `api` Plane + `curl` direct, cf `docs/GUIDE-PLANE-PROVISIONING.md` §5).
+
+**Piège vérif** : un `curl` direct sur `/projects/` qui renvoie 200 **ne prouve pas** que le client pinné fonctionne — il reste à vérifier que la version pinnée parse la réponse sans erreur (modèle pydantic `PaginatedProjectResponse` peut diverger entre versions du SDK `plane-sdk`, ex. 0.2.16 pour `plane-mcp-server==0.2.9` vs 0.2.19 pour 0.2.10). Vérif de bout en bout = exécuter le vrai chemin client, pas juste l'endpoint HTTP :
+```bash
+uvx --with 'plane-mcp-server==0.2.9' --from plane-mcp-server python3 -c "
+from plane_mcp.client import get_plane_client_context
+from plane.models.query_params import PaginatedQueryParams
+c, slug = get_plane_client_context()
+r = c.projects.list(workspace_slug=slug, params=PaginatedQueryParams())
+print('count:', len(r.results))
+"
+```

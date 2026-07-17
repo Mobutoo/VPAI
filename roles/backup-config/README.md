@@ -9,6 +9,8 @@ Prepares the backup infrastructure on the production VPS (Seko-AI). This include
 - Deploying a cleanup script to remove old local backups
 - Optional heartbeat ping to Uptime Kuma after successful backup
 
+**Qdrant snapshot retention**: local retention is capped at **1 full snapshot**. After each successful `POST /snapshots`, the script lists all full snapshots (`GET /snapshots`) and deletes every one except the one just created (`DELETE /snapshots/{name}`). History lives off-site via Zerobyte, not on local disk. Listing/deletion failures are logged as warnings and never fail the backup.
+
 **Note**: Zerobyte itself runs on Seko-VPN and is configured manually. See `docs/RUNBOOK.md` for the full Zerobyte setup procedure.
 
 ## Variables

@@ -64,6 +64,29 @@ if [ -n "${QDRANT_IP}" ] && SNAPSHOT_RESULT=$(curl -sS --max-time 30 \
   if [ -n "${SNAPSHOT_NAME}" ]; then
     echo "${SNAPSHOT_NAME}" > "${BACKUP_DIR}/qdrant/latest-snapshot-${TIMESTAMP}.txt"
     echo "[$(date)] Qdrant snapshot created: ${SNAPSHOT_NAME}"
+
+    # Rétention locale = 1 full snapshot (l'historique vit off-site via Zerobyte).
+    # Supprime tous les full snapshots SAUF celui qui vient d'être créé. Non
+    # bloquant : un échec de listage/suppression ne doit pas faire échouer le backup.
+    echo "[$(date)] Purge des anciens snapshots Qdrant (rétention locale = 1)..."
+    if LIST_RESULT=$(curl -sS --max-time 30 \
+        "http://${QDRANT_IP}:6333/snapshots" \
+        -H "api-key: {{ qdrant_api_key }}" 2>/dev/null); then
+      ALL_SNAPSHOTS=$(echo "${LIST_RESULT}" | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+      for SNAP in ${ALL_SNAPSHOTS}; do
+        if [ "${SNAP}" != "${SNAPSHOT_NAME}" ]; then
+          if curl -fsS --max-time 30 -X DELETE \
+              "http://${QDRANT_IP}:6333/snapshots/${SNAP}" \
+              -H "api-key: {{ qdrant_api_key }}" >/dev/null 2>&1; then
+            echo "[$(date)] Ancien snapshot Qdrant supprimé: ${SNAP}"
+          else
+            echo "[$(date)] WARNING: suppression snapshot Qdrant échouée: ${SNAP}"
+          fi
+        fi
+      done
+    else
+      echo "[$(date)] WARNING: listage snapshots Qdrant échoué — purge ignorée"
+    fi
   else
     echo "[$(date)] WARNING: Qdrant snapshot name vide"
   fi

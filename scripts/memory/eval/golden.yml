@@ -450,14 +450,13 @@ questions:
     cross_wing: true
     asked_from: "infra/VPAI"
     note: "cross-wing — exact — openclaw plugins list --enabled"
-  - query: "In OpenClaw's gateway configuration, which JSON5 key under channels.telegram holds the bot token from BotFather?"
+  - query: "Which flag on `openclaw hooks list` shows only the hooks whose requirements are actually met, hiding the ineligible ones?"
     expected_paths:
-      - "openclaw-docs:docs/channels/telegram.md"
-      - "openclaw-docs:docs/gateway/configuration-reference.md"
+      - "openclaw-docs:docs/cli/hooks.md"
     doc_kind: doc
     cross_wing: true
     asked_from: "infra/VPAI"
-    note: "cross-wing — exact — channels.telegram.botToken"
+    note: "cross-wing — exact — openclaw hooks list --eligible (remplace une 1ère version 'botToken' co-répondue par VPAI:docs/TROUBLESHOOTING.md §11.3/§11.6 — relecture superviseur 2026-07-18, cf commit fixup)"
   - query: "Comment verrouiller le WebSocket du Gateway OpenClaw en local (auth) selon le guide de durcissement sécurité ?"
     expected_paths: ["openclaw-docs:docs/gateway/security/index.md"]
     doc_kind: doc

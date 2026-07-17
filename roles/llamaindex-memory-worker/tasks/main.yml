@@ -148,6 +148,32 @@
   become: true
   tags: [llamaindex-memory-worker, memory_remote]
 
+# FIX B (audit mémoire 2026-07-17) : le repo HF par défaut de rerank.py
+# (BAAI/bge-reranker-v2-m3) n'a AUCUN artefact ONNX -> pré-DL ciblé (int8 + tokenizer
+# uniquement, ~570MB, PAS les autres variantes fp16/q4/bnb4 du repo onnx-community).
+# Ne tourne QUE si le flag est activé (OFF par défaut, cf defaults/main.yml) — sinon
+# aucun téléchargement, aucun octet ajouté à un déploiement standard.
+- name: Pre-download rerank model (bge-reranker ONNX int8) into persistent HF cache
+  ansible.builtin.command:
+    cmd: >-
+      {{ memory_worker_venv_dir }}/bin/python -c
+      "from huggingface_hub import snapshot_download;
+      snapshot_download(repo_id='{{ memory_worker_rerank_model_id }}',
+      allow_patterns=['config.json', 'tokenizer.json', 'tokenizer_config.json',
+      'special_tokens_map.json', 'onnx/model_int8.onnx'])"
+  args:
+    creates: "{{ memory_worker_hf_home }}/hub/models--{{ memory_worker_rerank_model_id | replace('/', '--') }}/snapshots"
+  environment:
+    HF_HOME: "{{ memory_worker_hf_home }}"
+    HF_HUB_OFFLINE: "0"
+    HF_TOKEN: "{{ memory_worker_huggingface_token }}"
+  become: true
+  become_user: "{{ memory_worker_user }}"
+  when: memory_worker_rerank_enabled | bool
+  changed_when: true  # `creates:` gate = ne s'exécute que si absent -> exécution = changement réel
+  failed_when: false  # best-effort : rerank.py est fail-open si le modèle finit absent (réseau HS)
+  tags: [llamaindex-memory-worker, memory_remote]
+
 - name: Deploy qdrant_bootstrap_v3 helper (création idempotente collection hybrid v3)
   ansible.builtin.copy:
     src: "{{ role_path }}/../../scripts/memory/qdrant_bootstrap_v3.py"

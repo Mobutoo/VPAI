@@ -97,6 +97,13 @@ cf_litellm_base_url: "http://litellm:4000/v1"
 # Modèle du gap : alias qwen-cf = pod RunPod serverless cf-llm (décision user
 # 2026-07-17 — pas de solde Anthropic à maintenir ; cold ~157 s, timeout app 240 s).
 cf_gap_model: "qwen-cf"
+# Bloc 3 gate 2 — auto-QC (services/conductor/activities_qc.py:140-143) : "0" par
+# défaut => qc_take reste un NO-OP structuré, ZÉRO réseau (ni PodPilot, ni RunPod,
+# ni cf-api). Seul cf-conductor lit ce gate (pas de dispatch cf-api/cf-render). Live=1
+# => boucle décrit(vision)+juge(LLM) : policies PodPilot cf-vision-describe (vision,
+# Qwen2.5-VL) et cf-llm-decompose (judge, RÉUTILISÉE — RunPod serverless, pas LiteLLM).
+# Flip prod = group_vars/prod (persistant), même doctrine que cf_gap_live.
+cf_qc_live: "0"
 cf_podpilot_project: "content-factory"
 cf_podpilot_policy: "cf-video-draft"
 cf_gpu_poll_interval_s: "5"

@@ -42,6 +42,11 @@ cf_vision_live: "1"
 # (litellm:4000, claude-haiku, sibling test OK). Budget $5/j cap proxy. Persistant :
 # -e-only désarmerait le gate au prochain redeploy (même doctrine que CF_GPU_LIVE).
 cf_gap_live: "1"
+# Bloc 3 gate 2 (2026-07-17) — auto-QC LIVE : boucle vision(cf-vision-describe)+
+# judge(cf-llm-decompose) sur RunPod serverless (activities_qc.py, cf-conductor
+# uniquement). Persistant : -e-only désarmerait le gate au prochain redeploy
+# (même doctrine que cf_gap_live/cf_gpu_live).
+cf_qc_live: "1"
 # T5/T6.8 — cf-render : 3 activities concurrentes (polls LLM/vision 840s +
 # ffmpeg nice) ; mem bump CONJOINT obligatoire (512m = OOM-kill du conteneur
 # avec 3 ffmpeg re-encode simultanes — revue plan T5 D7).

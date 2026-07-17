@@ -91,10 +91,38 @@ python pod_ingest.py --sources sources.pod.yml                          # BULK
 - Terminer le pod RunPod.
 - **Révoquer** la clé Headscale éphémère sur le hub.
 
+## Réutilisabilité — autre corpus / autre collection Qdrant
+
+Le pipeline est paramétré, pas câblé en dur sur `memory_v2` :
+- **Collection cible** : `MEMORY_COLLECTION` (env, défaut `memory_v2`) — lu par
+  `pod_ingest.py --collection`, `provision_pod.sh`, `bootstrap.sh`, `qdrant_bootstrap_v3.py`.
+  Toute valeur ≠ `memory_v2` déclenche le bootstrap idempotent du schéma hybride
+  v3 (dense 768d cosine + sparse bm25) AVANT le bulk (gate G5) si la collection
+  n'existe pas déjà.
+- **Sources** : `SOURCES_FILE` (env, défaut `sources.pod.yml`) — DÉCOUPLÉ de
+  `MEMORY_COLLECTION` à dessein : changer la collection SANS changer les sources
+  ferait ingérer silencieusement les 7 repos memory dans la nouvelle collection.
+  `bootstrap.sh` avertit (WARN, non bloquant) si `MEMORY_COLLECTION` est
+  personnalisée alors que `SOURCES_FILE` est resté au défaut.
+- **Repo corpus additionnel** : `CORPUS_REPO_NAME` / `CORPUS_REPO_URL` (env,
+  optionnels) — 1 repo de plus cloné par le gate G3, en plus des 7 repos memory
+  (qui restent clonés mais non référencés par un `sources.*.yml` custom — inutile
+  mais inoffensif).
+- **Parité G7** : le self-check `reference_nodeids.json` ne couvre QUE les 3
+  fichiers de référence du corpus memory (`VPAI/README.md`, `story-engine/README.md`,
+  `typebot-docs/README.md`). Avec un `SOURCES_FILE` non défaut, ce gate est
+  auto-sauté (log explicite) — la parité doit être vérifiée manuellement avant
+  le run via `--verify-sample` (§4 ci-dessus, Waza vs pod, diff).
+
+Exemple concret (corpus trading, collection `trading_v1`, repo `hawktrade`) :
+`sources.trading.yml` dans ce dossier + procédure complète documentée dans
+`hawktrade/docs/CORPUS-TRADING.md` (référence ce README au lieu de le dupliquer).
+
 ## Fichiers
 | Fichier | Rôle |
 |---|---|
 | `pod_ingest.py` | Batch (importe `memory_core`) — preflight / verify-sample / dry-run / bulk |
-| `sources.pod.yml` | Mapping staging root → wing/name (parité defaults worker) |
-| `stage_sources.sh` | Clone git + doc rsync DOCS/podpilot |
+| `sources.pod.yml` | Mapping staging root → wing/name (parité defaults worker), collection `memory_v2`/`memory_v3` |
+| `sources.trading.yml` | Idem, corpus hawktrade → collection `trading_v1` (cf § Réutilisabilité) |
+| `stage_sources.sh` | Clone git + doc rsync DOCS/podpilot (corpus memory — pour un autre corpus, cf `CORPUS_REPO_NAME`/`CORPUS_REPO_URL`) |
 | `requirements.lock.txt` | Pins exacts du venv worker (parité) |

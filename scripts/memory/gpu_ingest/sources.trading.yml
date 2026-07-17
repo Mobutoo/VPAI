@@ -1,0 +1,28 @@
+---
+# sources.trading.yml — mapping staging pod -> (wing, name) pour pod_ingest.py,
+# collection cible trading_v1 (SÉPARÉE de memory_v2/v3, cf hawktrade PLAN.md §8).
+#
+# Contrairement à sources.pod.yml (7 repos memory), CE fichier n'est PAS régi par
+# VPAI/docs/runbooks/MANIFESTE-CREATION-PROJET.md §4.3 (ce manifeste scope
+# sources.pod.yml au rebuild bulk memory_v2/v3 uniquement — hawktrade ne doit
+# jamais y être ajouté, cf lecture faite lors de l'adaptation 2026-07-17).
+#
+# `root` = emplacement de staging sur le pod : SEUL /staging/hawktrade/data/corpus-trading/lessons
+# est staged pour ce corpus (pas tout le repo hawktrade — code Freqtrade/secrets hors
+# périmètre trading_v1). Cloner le repo ENTIER (git clone ... /staging/hawktrade) puis
+# pointer root sur le sous-dossier est valide (root n'a pas à être la racine du clone,
+# seule règle dure = contenu RÉEL présent exactement à `root`, pas de double-nesting
+# au-delà de ce point — la partie du repo hors `root` est simplement ignorée par
+# iter_source_files, qui ne regarde que sous `root`).
+#
+# Consommé par memory_core.load_wing_room_lookup (clés résolues en realpath).
+#
+# Usage (cf hawktrade/docs/CORPUS-TRADING.md pour la procédure complète) :
+#   MEMORY_COLLECTION=trading_v1 SOURCES_FILE=sources.trading.yml \
+#   CORPUS_REPO_NAME=hawktrade CORPUS_REPO_URL=git@github-seko:Mobutoo/hawktrade.git \
+#   ./provision_pod.sh --check   # puis --create après revue du payload
+
+sources:
+  - name: "hawktrade-corpus"
+    wing: "trading"
+    root: "/staging/hawktrade/data/corpus-trading/lessons"

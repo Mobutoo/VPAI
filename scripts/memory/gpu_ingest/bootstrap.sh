@@ -9,13 +9,16 @@
 #   G2 Qdrant joignable (curl healthz via mesh)         [PROBE_ONLY s'arrête ici]
 #   G0 sentinelle ingest_done déjà présente ? -> rien à faire, self-stop
 #      (nom suffixé par collection si != memory_v2 : ingest_done_memory_v3)
-#   G3 clone des 7 sources git (PAT read-only) -> /staging/<name>
+#   G3 clone des 7 sources git (PAT read-only) -> /staging/<name> (+ CORPUS_REPO_NAME/URL
+#      optionnel : 1 repo de plus, pour un corpus non-memory type trading_v1)
 #   G4 venv 3.12 + requirements.lock + punkt nltk
 #   G5 collection cible (env MEMORY_COLLECTION, défaut memory_v2) :
 #      memory_v2 -> existe ; sinon -> bootstrap idempotent qdrant_bootstrap_v3.py
 #      (vecteurs nommés dense+bm25) AVANT bulk — gate dédié, jamais créé par le bulk
-#   G6 preflight (counts fichiers sains)
+#   G6 preflight (counts fichiers sains) — sources: env SOURCES_FILE (défaut sources.pod.yml)
 #   G7 self-check node_id (1 fichier/wing) vs reference_nodeids.json -> ABORT si !=
+#      (SEULEMENT si SOURCES_FILE=sources.pod.yml — reference_nodeids.json n'a pas
+#      d'échantillon pour un autre corpus ; sinon parité manuelle requise, README §4)
 #   G8 bulk ingest
 #   G9 sentinelle 'ingest_done' (PUT collection) + report
 #   G10 self-stop
@@ -38,6 +41,16 @@ export MEMORY_COLLECTION
 # Sentinelle anti re-bulk PAR collection (back-compat : nom historique pour memory_v2).
 SENTINEL="ingest_done"
 [ "$MEMORY_COLLECTION" != "memory_v2" ] && SENTINEL="ingest_done_${MEMORY_COLLECTION}"
+# Sources cible (mapping staging root -> wing/name). Défaut INCHANGÉ = sources.pod.yml
+# (les 7 repos memory). Propagé par provision_pod.sh (SOURCES_FILE) ; DÉCOUPLÉ de
+# MEMORY_COLLECTION (cf commentaire provision_pod.sh) — sinon collection et contenu
+# ingéré peuvent diverger silencieusement (ex. trading_v1 rempli avec les repos memory).
+SOURCES_FILE="${SOURCES_FILE:-sources.pod.yml}"
+CORPUS_REPO_NAME="${CORPUS_REPO_NAME:-}"
+CORPUS_REPO_URL="${CORPUS_REPO_URL:-}"
+if [ "$SOURCES_FILE" = "sources.pod.yml" ] && [ "$MEMORY_COLLECTION" != "memory_v2" ] && [ "$MEMORY_COLLECTION" != "memory_v3" ]; then
+  say "WARN: MEMORY_COLLECTION=$MEMORY_COLLECTION (custom) avec SOURCES_FILE par défaut (sources.pod.yml) — vérifier que c'est voulu (sinon exporter SOURCES_FILE=<mapping dédié>, ex. sources.trading.yml)."
+fi
 STAGING="${STAGING:-/staging}"
 CODE_DIR="$STAGING/VPAI/scripts/memory"
 GPU_DIR="$CODE_DIR/gpu_ingest"
@@ -222,6 +235,11 @@ clone riposte      "$PAT_PREFIX/riposte.git"
 # typebot.io = gros monorepo public : suspect n°1 du hang G3 (clone long sans logs).
 # Filet = timeout 300s dans clone() ci-dessus (un hang -> fail+self-stop, plus 1h40 muet).
 clone typebot-docs "https://github.com/baptisteArno/typebot.io.git"
+# Repo corpus supplémentaire (optionnel, ex. hawktrade pour trading_v1) — n'affecte
+# jamais les 7 clones ci-dessus, no-op si CORPUS_REPO_NAME/URL absents (défaut).
+if [ -n "$CORPUS_REPO_URL" ] && [ -n "$CORPUS_REPO_NAME" ]; then
+  clone "$CORPUS_REPO_NAME" "$CORPUS_REPO_URL"
+fi
 beacon g3_clone_done
 
 say "=== G4 venv + deps + punkt ==="
@@ -359,29 +377,34 @@ $g5_out"
 fi
 beacon g5_collection_ok
 
-PI=("$GPU_DIR/pod_ingest.py" --sources "$GPU_DIR/sources.pod.yml" --collection "$MEMORY_COLLECTION")
+PI=("$GPU_DIR/pod_ingest.py" --sources "$GPU_DIR/$SOURCES_FILE" --collection "$MEMORY_COLLECTION")
 
 say "=== G6 preflight ==="
 timeout 600 python "${PI[@]}" --preflight || fail "preflight (timeout 600s)"
 beacon g6_preflight_done
 
 say "=== G7 self-check node_id (parité) ==="
-REF="$GPU_DIR/reference_nodeids.json"
-check_one() {  # key file
-  local key="$1" file="$2"
-  local got exp
-  got=$(timeout 120 python "${PI[@]}" --verify-sample "$file" 2>/dev/null \
-    | jq -S '{chunk_count, nodes:[.nodes[]|{node_id,chunk_text_sha256}]}')
-  exp=$(jq -S --arg k "$key" '.samples[$k] | {chunk_count, nodes:[.nodes[]|{node_id,chunk_text_sha256}]}' "$REF")
-  if [ "$got" != "$exp" ]; then
-    say "PARITÉ KO sur $key"; diff <(echo "$exp") <(echo "$got") || true
-    return 1
-  fi
-  say "  parité OK $key"
-}
-check_one "VPAI/README.md"            "$STAGING/VPAI/README.md"           || fail "node_id divergent (chunking/pins)"
-check_one "story-engine/README.md"    "$STAGING/story-engine/README.md"   || fail "node_id divergent"
-check_one "typebot-docs/README.md"    "$STAGING/typebot-docs/README.md"   || fail "node_id divergent"
+if [ "$SOURCES_FILE" = "sources.pod.yml" ]; then
+  REF="$GPU_DIR/reference_nodeids.json"
+  check_one() {  # key file
+    local key="$1" file="$2"
+    local got exp
+    got=$(timeout 120 python "${PI[@]}" --verify-sample "$file" 2>/dev/null \
+      | jq -S '{chunk_count, nodes:[.nodes[]|{node_id,chunk_text_sha256}]}')
+    exp=$(jq -S --arg k "$key" '.samples[$k] | {chunk_count, nodes:[.nodes[]|{node_id,chunk_text_sha256}]}' "$REF")
+    if [ "$got" != "$exp" ]; then
+      say "PARITÉ KO sur $key"; diff <(echo "$exp") <(echo "$got") || true
+      return 1
+    fi
+    say "  parité OK $key"
+  }
+  check_one "VPAI/README.md"            "$STAGING/VPAI/README.md"           || fail "node_id divergent (chunking/pins)"
+  check_one "story-engine/README.md"    "$STAGING/story-engine/README.md"   || fail "node_id divergent"
+  check_one "typebot-docs/README.md"    "$STAGING/typebot-docs/README.md"   || fail "node_id divergent"
+else
+  say "SOURCES_FILE=$SOURCES_FILE (non défaut) -> reference_nodeids.json n'a pas d'échantillon pour ce corpus."
+  say "  Parité NON auto-vérifiée ici : faire le spot-check manuel AVANT ce run (gpu_ingest/README.md §4 : verify-sample Waza vs pod, diff)."
+fi
 beacon g7_parity_ok
 
 # Benchmark HONNÊTE : --benchmark itère de VRAIS fichiers clonés et encode PAR FICHIER

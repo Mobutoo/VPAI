@@ -41,6 +41,17 @@ SESE_TAILNET_IP="${SESE_TAILNET_IP:-100.64.0.14}"
 # memory_v3 = hybrid named (bootstrap gate G5 + prompt v2 + sparse BM25).
 # Ex : MEMORY_COLLECTION=memory_v3 ./provision_pod.sh --create-gpu
 MEMORY_COLLECTION="${MEMORY_COLLECTION:-memory_v2}"
+# Sources cible (mapping staging root -> wing/name, cf sources.pod.yml), DÉCOUPLÉ de
+# MEMORY_COLLECTION — sinon `MEMORY_COLLECTION=trading_v1 ./provision_pod.sh --create`
+# ingère silencieusement les 7 repos memory DANS trading_v1 (collection changée, source
+# inchangée). Défaut INCHANGÉ = sources.pod.yml. CORPUS_REPO_NAME/URL (optionnels) :
+# repo supplémentaire à cloner par bootstrap.sh G3 pour un corpus non-memory.
+# Ex : MEMORY_COLLECTION=trading_v1 SOURCES_FILE=sources.trading.yml \
+#      CORPUS_REPO_NAME=hawktrade CORPUS_REPO_URL=git@github-seko:Mobutoo/hawktrade.git \
+#      ./provision_pod.sh --create
+SOURCES_FILE="${SOURCES_FILE:-sources.pod.yml}"
+CORPUS_REPO_NAME="${CORPUS_REPO_NAME:-}"
+CORPUS_REPO_URL="${CORPUS_REPO_URL:-}"
 
 # --- GPU (one-time bulk) ---------------------------------------------------
 # computeType=GPU + fail-fast EXPECT_CUDA=1 (warm-up G4b + bench G7b). Le modèle
@@ -74,12 +85,14 @@ build_env_json() {  # $1 = PROBE_ONLY value
     --arg rpkey "$RUNPOD_API_KEY" --arg sese "$SESE_TAILNET_IP" --arg owner "$GIT_OWNER" \
     --arg hf "$HF_TOKEN" --arg probe "$1" --arg keep "${2:-0}" \
     --arg wd "${WATCHDOG_MAX:-14400}" --arg mcoll "$MEMORY_COLLECTION" \
+    --arg srcfile "$SOURCES_FILE" --arg crepo "$CORPUS_REPO_NAME" --arg cremoteurl "$CORPUS_REPO_URL" \
     --arg cuda "$([ "$COMPUTE_TYPE" = GPU ] && echo 1 || echo 0)" '{
       HEADSCALE_AUTHKEY:$authkey, HEADSCALE_LOGIN_SERVER:$login, GITHUB_PAT:$pat,
       QDRANT_URL:$qurl, QDRANT_API_KEY:$qkey, RUNPOD_API_KEY:$rpkey,
       HF_TOKEN:$hf, HUGGINGFACE_HUB_TOKEN:$hf,
       SESE_TAILNET_IP:$sese, GIT_OWNER:$owner, PROBE_ONLY:$probe, DEBUG_KEEPALIVE:$keep,
-      WATCHDOG_MAX:$wd, EXPECT_CUDA:$cuda, MEMORY_COLLECTION:$mcoll
+      WATCHDOG_MAX:$wd, EXPECT_CUDA:$cuda, MEMORY_COLLECTION:$mcoll,
+      SOURCES_FILE:$srcfile, CORPUS_REPO_NAME:$crepo, CORPUS_REPO_URL:$cremoteurl
     }'
 }
 

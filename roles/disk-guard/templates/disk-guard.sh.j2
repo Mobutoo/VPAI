@@ -5,9 +5,11 @@
 set -euo pipefail
 
 SOFT={{ disk_guard_threshold_soft }}
+MID={{ disk_guard_threshold_mid }}
 HARD={{ disk_guard_threshold_hard }}
 MOUNT="{{ disk_guard_mountpoint }}"
 LEASE_MIN_AGE_DAYS={{ disk_guard_lease_min_age_days }}
+IMAGE_MAX_AGE_HOURS={{ disk_guard_image_max_age_hours }}
 ENV_FILE="{{ disk_guard_env_file }}"
 
 # Secrets Telegram (fichier 0600). Absents = pas de notif.
@@ -75,15 +77,28 @@ else
   log "driver=${DRIVER} — skip nettoyage leases containerd"
 fi
 
-MID="$(usage_pct)"
-log "apres palier SUR: ${MID}%"
+AFTER_SOFT="$(usage_pct)"
+log "apres palier SUR: ${AFTER_SOFT}%"
 
-# ---------- PALIER 2 : AGRESSIF (si toujours >= HARD) ----------
-TIER2=""
-if [ "$MID" -ge "$HARD" ]; then
-  log "toujours ${MID}% >= ${HARD}% — purge AGRESSIVE (image prune -a)"
+# ---------- PALIER 2 : MID (si toujours >= MID) ----------
+# Images inutilisees depuis > IMAGE_MAX_AGE_HOURS uniquement (re-pull possible,
+# mais les images recemment utilisees/pinnees dans versions.yml sont epargnees).
+TIER_MID=""
+if [ "$AFTER_SOFT" -ge "$MID" ]; then
+  log "toujours ${AFTER_SOFT}% >= ${MID}% — purge MID (image prune -a, filtre until=${IMAGE_MAX_AGE_HOURS}h)"
+  docker image prune -a --force --filter "until=${IMAGE_MAX_AGE_HOURS}h" >/dev/null 2>&1 || log "image prune -a (filtre age) skip"
+  TIER_MID=" + image prune -a (>${IMAGE_MAX_AGE_HOURS}h)"
+fi
+
+AFTER_MID="$(usage_pct)"
+log "apres palier MID: ${AFTER_MID}%"
+
+# ---------- PALIER 3 : AGRESSIF (si toujours >= HARD) ----------
+TIER_HARD=""
+if [ "$AFTER_MID" -ge "$HARD" ]; then
+  log "toujours ${AFTER_MID}% >= ${HARD}% — purge AGRESSIVE (image prune -a sans filtre)"
   docker image prune -a --force >/dev/null 2>&1 || log "image prune -a skip"
-  TIER2=" + image prune -a"
+  TIER_HARD=" + image prune -a (sans filtre)"
 fi
 
 AFTER="$(usage_pct)"
@@ -92,4 +107,4 @@ log "FINAL: ${BEFORE}% -> ${AFTER}%"
 # Notif uniquement si une action a eu lieu (on est >= SOFT par construction)
 notify "🧹 <b>disk-guard</b> @ ${HOST}
 Disque ${MOUNT} : <b>${BEFORE}% → ${AFTER}%</b>
-Palier SUR (cache+dangling+leases)${TIER2}"
+Palier SUR (cache+dangling+leases)${TIER_MID}${TIER_HARD}"

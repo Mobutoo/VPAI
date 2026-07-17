@@ -15,11 +15,17 @@ disk_guard_mountpoint: "/"
 
 # Paliers (pourcentage d'usage)
 disk_guard_threshold_soft: 80   # purge SÛRE (cache + dangling + leases orphelines)
-disk_guard_threshold_hard: 90   # ajoute `docker image prune -a` (re-pull possible)
+disk_guard_threshold_mid: 85    # ajoute `docker image prune -a` filtré (images inutilisées > N h, re-pull possible)
+disk_guard_threshold_hard: 90   # ajoute `docker image prune -a` sans filtre (re-pull possible)
 
 # Âge minimal (jours) d'une lease containerd orpheline avant suppression auto.
 # Protège les leases fraîches d'une opération en cours.
 disk_guard_lease_min_age_days: 7
+
+# Âge minimal (heures) d'une image inutilisée avant suppression au palier MID.
+# Les images pinnées dans versions.yml restent re-pullables ; celles récemment
+# utilisées (déploiement en cours) sont épargnées.
+disk_guard_image_max_age_hours: 168
 
 # Cadence du timer
 disk_guard_timer_on_boot_sec: "10min"

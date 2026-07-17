@@ -7,7 +7,8 @@ Purge automatique du disque sous pression. Timer systemd toutes les 15 min ; no-
 | Seuil | Actions |
 |-------|---------|
 | **≥ 80 %** (SOFT) | `docker builder prune -af` + `docker image prune` (dangling) + suppression des **leases containerd orphelines > 7 j** (uniquement si driver = `overlay2`). **Zéro re-pull.** |
-| **≥ 90 %** (HARD, après palier SOFT) | ajoute `docker image prune -a --force` (re-pull au prochain deploy). |
+| **≥ 85 %** (MID, après palier SOFT) | ajoute `docker image prune -a --force --filter "until={{ disk_guard_image_max_age_hours }}h"` — images taguées **inutilisées depuis > 7 j** uniquement (re-pull possible ; les images pinnées dans `versions.yml` restent re-pullables, les images récemment utilisées sont épargnées). |
+| **≥ 90 %** (HARD, après palier MID) | ajoute `docker image prune -a --force` **sans filtre d'âge** (re-pull au prochain deploy). |
 
 Origine : incident 2026-06-02 (disque 100 %). Cause racine = leases containerd orphelines épinglant 9.7 G de snapshots d'un image-store mort, invisibles à `docker system df`. Voir mémoire `sese-disk-containerd-leases`.
 
@@ -17,15 +18,18 @@ Origine : incident 2026-06-02 (disque 100 %). Cause racine = leases containerd o
 - **Garde d'âge leases** (`disk_guard_lease_min_age_days`, défaut 7) : ne touche jamais une lease fraîche d'une opération en cours.
 - **Garde driver** : nettoyage leases uniquement si Docker tourne sur `overlay2` (image-store containerd inactif).
 - **Jamais de restart containerd** (rebooterait les shims). On passe par `ctr leases delete --sync` qui déclenche le GC.
-- `image prune -a` réservé au palier HARD (90 %).
+- `image prune -a --filter until=...` réservé au palier MID (85 %) — épargne les images récemment (re)pullées.
+- `image prune -a` sans filtre réservé au palier HARD (90 %).
 
 ## Variables clés (`defaults/main.yml`)
 
 | Variable | Défaut | Rôle |
 |----------|--------|------|
 | `disk_guard_threshold_soft` | `80` | Seuil palier sûr |
+| `disk_guard_threshold_mid` | `85` | Seuil palier intermédiaire (images anciennes) |
 | `disk_guard_threshold_hard` | `90` | Seuil palier agressif |
 | `disk_guard_lease_min_age_days` | `7` | Âge min lease orpheline |
+| `disk_guard_image_max_age_hours` | `168` | Âge min (h) image inutilisée au palier MID |
 | `disk_guard_timer_on_unit_active_sec` | `15min` | Cadence |
 | `disk_guard_notify_telegram` | `true` | Notif (réutilise `telegram_monitoring_*`) |
 

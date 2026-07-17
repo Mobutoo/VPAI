@@ -84,7 +84,7 @@ groups:
           severity: warning
 
       - uid: disk-high
-        title: "Disk usage > 90%"
+        title: "Disk usage > 85%"
         condition: C
         data:
           - refId: A
@@ -113,10 +113,10 @@ groups:
               conditions:
                 - evaluator:
                     type: gt
-                    params: [90]
+                    params: [85]
         for: 5m
         annotations:
-          summary: "Disk usage is above 90%"
+          summary: "Disk usage is above 85%"
         labels:
           severity: critical
 

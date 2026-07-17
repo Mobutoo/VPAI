@@ -37,7 +37,7 @@ Deploys the complete observability stack: VictoriaMetrics (metrics storage), Lok
 
 - CPU > 80% for 5 min
 - RAM > 85% for 5 min
-- Disk > 90%
+- Disk > 85%
 - Container restarts > 3 in 15 min
 
 ## Dependencies

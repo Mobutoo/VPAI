@@ -48,3 +48,58 @@ uptime_kuma_monitors:
   - name: "{{ project_display_name }} — Backup Heartbeat"
     type: "push"
     interval: 86400
+
+# --- API-level monitors — BLOCKED, do not deploy (2026-07-17, T0.5 loops) ---
+# Incident: Plane frontend returned 200 while its API returned 500 — undetected
+# because none of the monitors above test past the frontend/health surface.
+#
+# These 3 defs are ready but CANNOT be created yet: Uptime Kuma runs on
+# Seko-VPN, which is the Headscale control server, not a tailnet client (no
+# `tailscale` binary, no route to caddy_vpn_cidr). Every one of these URLs is
+# gated by `import vpn_only` in roles/caddy/templates/Caddyfile.j2, so a
+# public request from Seko-VPN gets Caddy's 403 BEFORE reaching the backend —
+# confirmed by curl from the Seko-VPN box itself (2026-07-17). Accepting 403
+# as "up" would make the monitor blind to exactly the incident it exists to
+# catch. See ~/work/infra/Seko-VPN/docs/09-uptime-kuma-monitors.md for the
+# full writeup and the two proposed fixes (enroll Seko-VPN via
+# roles/headscale-node, or extend caddy_trusted_app_ips per-service) — both
+# require a human decision before either monitor or Caddy change ships.
+#
+# n8n API-level check is NOT duplicated here: the existing
+# "{{ project_display_name }} — n8n" monitor above already targets
+# `/healthz`, which is equally blocked today and will start working the
+# moment the blocker is lifted — no new definition needed for it.
+uptime_kuma_monitors_api_level_blocked:
+  - name: "{{ project_display_name }} — Plane API (401-as-up)"
+    type: "http"
+    url: "https://{{ plane_subdomain }}.{{ domain_name }}/api/v1/users/me/"
+    interval: 60
+    retryInterval: 30
+    maxretries: 3
+    accepted_statuscodes: ["401"]
+    note: >-
+      No token sent on purpose: 401 proves API routing + auth middleware are
+      alive; 500/404 = DOWN. Today this always reads 403 from Caddy (VPN
+      block) regardless of Plane's real state — not a valid proxy yet.
+
+  - name: "{{ project_display_name }} — LiteLLM /v1/models"
+    type: "http"
+    url: "https://{{ litellm_subdomain }}.{{ domain_name }}/v1/models"
+    interval: 60
+    retryInterval: 30
+    maxretries: 3
+    accepted_statuscodes: ["401", "200"]
+    note: >-
+      No key sent: 401 (auth required) or 200 (default key path) both prove
+      LiteLLM answered. Same 403-from-Caddy caveat as above.
+
+  - name: "{{ project_display_name }} — Qdrant health"
+    type: "http"
+    url: "https://{{ qdrant_subdomain }}.{{ domain_name }}/healthz"
+    interval: 60
+    retryInterval: 30
+    maxretries: 3
+    accepted_statuscodes: ["200"]
+    note: >-
+      Path (/healthz vs /readyz vs /) not yet confirmed against the live
+      backend — unreachable to verify while Caddy returns a constant 403.

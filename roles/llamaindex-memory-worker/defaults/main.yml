@@ -260,3 +260,33 @@ memory_worker_consolidate_on_calendar: "Sun *-*-* 04:30:00"   # hebdo, fenêtre 
 # La clé est injectée dans memory-worker.env (0600) — jamais en clair dans une unit.
 memory_worker_litellm_base_url: "https://{{ litellm_subdomain | default('llm') }}.{{ domain_name }}/v1"
 memory_worker_litellm_api_key: "{{ litellm_master_key | default('') }}"
+
+# === GARDE-FOU ÉVAL GOLDEN HEBDO (audit mémoire 2026-07-17) ===
+# Rejoue run_eval.py --assert-thresholds 1x/semaine (timer user, cadence hors heures
+# interactives) pour détecter une dérive recall@1/mrr@10 AVANT qu'elle reste invisible
+# des semaines (cf. dérive -13pts non détectée pendant 5 semaines faute d'éval continue).
+# Défaut OFF : au 2026-07-17 memory_v3 est SOUS les deux seuils (recall@1 ~0.64 < 0.70,
+# mrr@10 ~0.79 < 0.80) — un run avec les seuils par défaut échouerait (gate + alerte) dès
+# le 1er tick. Activer seulement une fois memory_v3 réparée, OU accepter consciemment
+# que la 1re alerte soit le signal réel du problème déjà en place.
+# Activation : passer ce flag à true en inventaire puis redéployer
+#   make deploy-role ROLE=llamaindex-memory-worker ENV=<env> --tags memory_eval_golden
+# (equiv. ansible-playbook playbooks/hosts/workstation.yml --tags memory_eval_golden).
+memory_worker_eval_golden_enabled: false
+memory_worker_eval_golden_service_name: "memory-eval-golden"
+# Décalé avant la consolidation REX (04:30) pour ne pas cumuler 2 jobs lourds au
+# même créneau ; les deux restent bornés en mémoire (cf caps cgroup ci-dessous).
+memory_worker_eval_golden_on_calendar: "Sun *-*-* 02:00:00"
+memory_worker_eval_golden_mode: "hybrid"
+memory_worker_eval_golden_min_recall1: 0.70
+memory_worker_eval_golden_min_mrr10: 0.80
+# Sortie datée dans .planning/eval/ côté repo (PAS sous memory_worker_install_dir/opt :
+# REPO_ROOT calculé par run_eval.py y est /opt, non inscriptible). Nom de fichier
+# construit par le wrapper avec le préfixe "eval-<collection>" — couvert par
+# EXCLUDE_DIRS "eval" (dir) ET EXCLUDE_EVAL_FILE_PREFIXES (defense en profondeur,
+# memory_core.py) : le run hebdo ne re-contamine jamais l'index qu'il mesure.
+memory_worker_eval_golden_out_dir: "{{ memory_worker_workspace_root }}/infra/VPAI/.planning/eval"
+memory_worker_eval_golden_env_file: "{{ memory_worker_config_dir }}/memory-eval-golden.env"
+# Notification Telegram — réutilise le bot/canal monitoring existant (cf waza-deadman).
+memory_worker_eval_golden_telegram_bot_token: "{{ telegram_monitoring_bot_token | default('') }}"
+memory_worker_eval_golden_telegram_chat_id: "{{ telegram_monitoring_chat_id | default('') }}"

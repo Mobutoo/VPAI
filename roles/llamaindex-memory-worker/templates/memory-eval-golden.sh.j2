@@ -1,0 +1,84 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# memory-eval-golden — éval golden hebdomadaire, garde-fou anti-dérive silencieuse
+# (audit mémoire 2026-07-17 : recall@1 -13pts resté invisible 5 semaines faute
+# d'éval continue). Lance run_eval.py --assert-thresholds sur la collection active,
+# écrit un rapport daté dans .planning/eval/, alerte Telegram selon le résultat.
+#
+# Nommage sortie = préfixe "eval-<collection>" -> couvert par EXCLUDE_DIRS "eval"
+# (dossier) ET EXCLUDE_EVAL_FILE_PREFIXES (défense en profondeur, memory_core.py) :
+# ce run hebdo ne réingère jamais ses propres artefacts.
+#
+# Alerte Telegram (canal monitoring existant, credentials dans ENV_FILE 0600) :
+#   rc=0            -> log seulement, PAS de notif (anti-spam ; 1 run/semaine)
+#   rc=3            -> seuil franchi -> alerte DÉRIVE avec les métriques mesurées
+#   rc autre (!=0,3)-> run_eval.py n'a pas pu produire de métriques exploitables
+#                      (Qdrant injoignable, schéma incompatible, modèle absent...)
+#                      -> alerte ÉCHEC. Rester muet ici reproduirait exactement le
+#                      point aveugle que ce garde-fou est censé corriger.
+set -euo pipefail
+
+COLLECTION="{{ memory_worker_collection_name }}"
+MODE="{{ memory_worker_eval_golden_mode }}"
+MIN_RECALL1="{{ memory_worker_eval_golden_min_recall1 }}"
+MIN_MRR10="{{ memory_worker_eval_golden_min_mrr10 }}"
+OUT_DIR="{{ memory_worker_eval_golden_out_dir }}"
+PY="{{ memory_worker_venv_dir }}/bin/python"
+RUN_EVAL="{{ memory_worker_eval_dir }}/run_eval.py"
+ENV_FILE="{{ memory_worker_eval_golden_env_file }}"
+SERVICE_NAME="{{ memory_worker_eval_golden_service_name }}"
+
+# Secrets Telegram (fichier 0600, jamais dans ps). Absents = pas de notif (script continue).
+TG_BOT=""
+TG_CHAT=""
+# shellcheck disable=SC1090
+[ -r "$ENV_FILE" ] && . "$ENV_FILE"
+
+log() { echo "[memory-eval-golden] $*"; }
+
+notify() {
+  local msg="$1"
+  [ -n "$TG_BOT" ] && [ -n "$TG_CHAT" ] || { log "pas de creds telegram, notif ignorée"; return 0; }
+  curl -fsS --max-time 20 \
+    "https://api.telegram.org/bot${TG_BOT}/sendMessage" \
+    -d chat_id="${TG_CHAT}" \
+    -d parse_mode="HTML" \
+    --data-urlencode text="$msg" >/dev/null 2>&1 || log "notify telegram échec (non bloquant)"
+}
+
+mkdir -p "$OUT_DIR"
+STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+OUT_FILE="${OUT_DIR}/eval-${COLLECTION}-${MODE}-golden-weekly-${STAMP}.json"
+
+log "run: collection=$COLLECTION mode=$MODE min_recall1=$MIN_RECALL1 min_mrr10=$MIN_MRR10 -> $OUT_FILE"
+
+set +e
+"$PY" "$RUN_EVAL" \
+  --collection "$COLLECTION" --mode "$MODE" \
+  --assert-thresholds --min-recall1 "$MIN_RECALL1" --min-mrr10 "$MIN_MRR10" \
+  --out "$OUT_FILE"
+rc=$?
+set -e
+
+case "$rc" in
+  0)
+    log "gate OK (rc=0) -> $OUT_FILE"
+    ;;
+  3)
+    log "GATE FAIL (rc=3, dérive détectée) -> $OUT_FILE"
+    recall1=$("$PY" -c "import json; print(json.load(open('$OUT_FILE'))['metrics'].get('recall@1','?'))" 2>/dev/null || echo "?")
+    mrr10=$("$PY" -c "import json; print(json.load(open('$OUT_FILE'))['metrics'].get('mrr@10','?'))" 2>/dev/null || echo "?")
+    notify "🟠 <b>Dérive mémoire détectée</b> — éval golden hebdo (${COLLECTION}/${MODE})
+recall@1 = ${recall1} (seuil ${MIN_RECALL1})
+mrr@10   = ${mrr10} (seuil ${MIN_MRR10})
+Rapport : ${OUT_FILE}"
+    ;;
+  *)
+    log "ÉCHEC run_eval.py (rc=$rc) — l'éval n'a pas pu tourner"
+    notify "🔴 <b>Éval golden hebdo — échec d'exécution</b> (rc=${rc}, ${COLLECTION}/${MODE})
+run_eval.py n'a pas produit de métriques exploitables (Qdrant injoignable, schéma incompatible, ou autre panne).
+Voir : journalctl --user -u ${SERVICE_NAME}.service"
+    ;;
+esac
+
+exit "$rc"

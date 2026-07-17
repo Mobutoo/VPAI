@@ -1,0 +1,26 @@
+[Unit]
+Description=Éval golden hebdo — garde-fou anti-dérive mémoire (recall@1/mrr@10, user)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory={{ memory_worker_install_dir }}
+# QDRANT_URL/QDRANT_API_KEY + FASTEMBED_CACHE_PATH/HF_HOME/HF_HUB_OFFLINE (mode hybrid
+# charge BM25 + dense) — même fichier que le worker principal, déjà correct (REX
+# 2026-06-29 : cache /tmp tmpfs vidé au reboot = crash "Could not load Qdrant/bm25").
+EnvironmentFile={{ memory_worker_env_file }}
+# Pas d'ExecStartPre calm-wait (contrairement au worker 30min qui retente au tick
+# suivant) : à cadence hebdo, un skip sur charge = 1 semaine entière sans éval,
+# silencieusement — exactement le point aveugle que ce garde-fou corrige.
+ExecStart=/bin/bash {{ memory_worker_install_dir }}/memory-eval-golden.sh
+Nice=19
+IOSchedulingClass=idle
+# Mêmes caps que le worker principal (PAS ceux de consolidate-rex/1G) : run_eval.py
+# en mode hybrid charge le même modèle dense (embeddinggemma-300m, ~3.2G pic) + BM25.
+MemoryHigh={{ memory_worker_memory_high }}
+MemoryMax={{ memory_worker_memory_max }}
+MemorySwapMax={{ memory_worker_memory_swap_max }}
+OOMScoreAdjust={{ memory_worker_oom_score_adjust }}
+
+# No [Install] section: timer-triggered Type=oneshot (cf memory-worker.service.user.j2).

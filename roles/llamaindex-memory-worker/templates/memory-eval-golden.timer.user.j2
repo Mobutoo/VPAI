@@ -1,0 +1,10 @@
+[Unit]
+Description=Timer hebdo — éval golden mémoire (garde-fou anti-dérive, 1 run/semaine)
+
+[Timer]
+OnCalendar={{ memory_worker_eval_golden_on_calendar }}
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

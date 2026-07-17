@@ -406,3 +406,79 @@
   changed_when: false
   become: true
   tags: [llamaindex-memory-worker, memory_remote]
+
+# === GARDE-FOU ÉVAL GOLDEN HEBDO (audit mémoire 2026-07-17) ===
+# Rejoue run_eval.py --assert-thresholds 1x/semaine, écrit un rapport daté dans
+# .planning/eval/, alerte Telegram (canal monitoring) selon le résultat. Timer
+# désactivé par défaut (memory_worker_eval_golden_enabled) — cf. defaults/main.yml
+# pour la justification et la commande d'activation.
+
+- name: Ensure eval golden output directory (.planning/eval côté repo)
+  ansible.builtin.file:
+    path: "{{ memory_worker_eval_golden_out_dir }}"
+    state: directory
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+  tags: [llamaindex-memory-worker, memory_eval_golden]
+
+- name: Deploy eval golden Telegram credentials (0600, réutilise le bot monitoring)
+  ansible.builtin.template:
+    src: memory-eval-golden.env.j2
+    dest: "{{ memory_worker_eval_golden_env_file }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0600"
+  become: true
+  no_log: true
+  tags: [llamaindex-memory-worker, memory_eval_golden]
+
+- name: Deploy eval golden wrapper script (gate + alerte Telegram selon rc)
+  ansible.builtin.template:
+    src: memory-eval-golden.sh.j2
+    dest: "{{ memory_worker_install_dir }}/memory-eval-golden.sh"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+  tags: [llamaindex-memory-worker, memory_eval_golden]
+
+- name: Verify eval golden wrapper script syntax (bash -n)
+  ansible.builtin.command:
+    cmd: "bash -n {{ memory_worker_install_dir }}/memory-eval-golden.sh"
+  changed_when: false
+  become: true
+  become_user: "{{ memory_worker_user }}"
+  tags: [llamaindex-memory-worker, memory_eval_golden]
+
+- name: Deploy eval golden USER units (service + timer hebdo)
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ memory_worker_user_unit_dir }}/{{ item.dest }}"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0644"
+  become: true
+  loop:
+    - { src: "memory-eval-golden.service.user.j2", dest: "{{ memory_worker_eval_golden_service_name }}.service" }
+    - { src: "memory-eval-golden.timer.user.j2", dest: "{{ memory_worker_eval_golden_service_name }}.timer" }
+  notify: Reload systemd (user)
+  tags: [llamaindex-memory-worker, memory_eval_golden]
+
+- name: Flush handlers so daemon-reload happens before enable (eval golden)
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable + start eval golden USER timer (désactivable via memory_worker_eval_golden_enabled)
+  ansible.builtin.systemd:
+    name: "{{ memory_worker_eval_golden_service_name }}.timer"
+    scope: user
+    enabled: "{{ memory_worker_eval_golden_enabled | bool }}"
+    state: "{{ 'started' if memory_worker_eval_golden_enabled | bool else 'stopped' }}"
+    daemon_reload: true
+  become: true
+  become_user: "{{ memory_worker_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ memory_worker_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_uid }}/bus"
+  tags: [llamaindex-memory-worker, memory_eval_golden]

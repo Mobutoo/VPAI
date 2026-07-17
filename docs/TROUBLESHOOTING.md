@@ -2184,3 +2184,32 @@ make deploy-role ROLE=<role> ENV=prod EXTRA_ARGS="-e prod_ip={{ vps_tailscale_ip
 ```
 
 **À surveiller** : si le SSH serveur est durci en Tailscale-only, le deploy CI (IP publique) pourrait échouer → vérifier avant un `deploy-prod`. Cf §50 (SSH Lockout) + `hardening_ssh_listen_address`.
+
+## 56. Plane MCP `list_projects` → 404 : `uvx` non pinné résout la dernière version, qui appelle un endpoint absent du self-hosted v1.2.2 (2026-07-17)
+
+**Symptôme** : `mcp__plane__get_me` → 200 OK (auth valide), mais `mcp__plane__list_projects` → `HTTP 404: Not Found: Page not found.` Le slug workspace (`ewutelo`) et `PLANE_BASE_URL` (`https://work.ewutelo.cloud`) dans la config MCP sont corrects — pas un problème de config ni de route Caddy.
+
+**Cause racine** : la commande MCP `uvx plane-mcp-server stdio` (sans version pinnée) résout **`plane-mcp-server` latest = 0.2.10** (PyPI). Cette version appelle `client.projects.list_lite()` → `GET /api/v1/workspaces/{slug}/projects-lite/` pour l'outil `list_projects` (`plane_mcp/tools/projects.py`). Cet endpoint `projects-lite` **n'existe pas** sur notre backend self-hosté **Plane v1.2.2** (confirmé par `curl` direct → 404 `{"error": "Page not found."}`), alors que l'ancien endpoint `GET /api/v1/workspaces/{slug}/projects/` (utilisé par `plane-mcp-server` 0.2.9 via `client.projects.list()`) fonctionne (200, liste réelle). C'est une divergence d'API entre la release cliente la plus récente (probablement pensée pour Plane Cloud / une version backend plus récente) et notre instance self-hosted.
+
+**Diagnostic** :
+```bash
+# Reproduire : appeler l'outil MCP list_projects → 404
+# Isoler : tester le même endpoint en direct
+curl -s -o /dev/null -w "%{http_code}\n" -H "X-Api-Key: ${PLANE_API_KEY}" \
+  https://work.ewutelo.cloud/api/v1/workspaces/ewutelo/projects/       # → 200
+curl -s -o /dev/null -w "%{http_code}\n" -H "X-Api-Key: ${PLANE_API_KEY}" \
+  https://work.ewutelo.cloud/api/v1/workspaces/ewutelo/projects-lite/  # → 404
+```
+Inspecter le code source du outil (cache `uv`) pour confirmer l'endpoint appelé par version :
+```bash
+python3 -c "import importlib.metadata as m; print(m.version('plane-mcp-server'))"
+grep -rn "list_lite\|\.list(" ~/.cache/uv/archive-v0/*/plane_mcp/tools/projects.py
+```
+
+**Fix** : pinner la version dans `~/.claude.json` → `mcpServers.plane.args` :
+```json
+"args": ["plane-mcp-server==0.2.9", "stdio"]
+```
+(au lieu de `"plane-mcp-server"` seul, qui laisse `uvx` prendre la dernière version publiée). **Recharger la session MCP** (reconnecter le serveur `plane`) pour que le nouvel `args` pinné soit pris en compte — un process déjà démarré garde l'ancienne résolution jusqu'au redémarrage.
+
+**Piège** : `uvx <package> <args>` sans version = toujours "latest" au moment du spawn du process MCP, pas au moment de l'écriture de la config. Un upgrade silencieux de `plane-mcp-server` sur PyPI peut donc casser `list_projects` sans aucun changement côté notre config ou infra. Revérifier après toute mise à jour de ce serveur MCP que l'endpoint utilisé existe bien sur notre version de Plane self-hosted (`docker logs` du conteneur `api` Plane + `curl` direct, cf `docs/GUIDE-PLANE-PROVISIONING.md` §5).

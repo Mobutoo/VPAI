@@ -9,6 +9,23 @@
 #
 # Vérification d'existence : tous les chemins VPAI:<p> existent sous
 # /home/mobuone/work/infra/VPAI/<p> (vérifié 2026-06-10).
+#
+# Extension 2026-07-18 (T0.1, plan ops/loops/plans/2026-07-17-scoped-retrieval-
+# implementation.md) : section "CROSS-WING" ajoutée en fin de fichier. Chaque
+# entrée y porte deux champs additionnels (ignorés par run_eval.py — non lus
+# par evaluate()/aggregate(), donc zéro impact sur les 76 questions ci-dessus
+# ni sur le parsing) :
+#   - cross_wing: true   — marqueur explicite (mesure du downside du scoping).
+#   - asked_from: "<wing>/<repo>" — d'où un agent poserait la question (CWD
+#     simulé -> scope dérivé par T1.2), TOUJOURS différent du wing/repo réel
+#     de expected_paths. Objectif : mesurer si un boost in-scope pénaliserait
+#     une réponse hors-scope legitime (contrainte de conception #1 du plan —
+#     boost jamais filtre dur).
+# Toutes les réponses de cette section sont refdocs-only (wing refdocs, repos
+# n8n-docs/litellm-docs/openclaw-docs/typebot-docs, ~26 602 pts) — vérifiées
+# indexées via `client.count()` exact sur (repo, relative_path) le 2026-07-18
+# (cf commit + sortie run T0.1). Aucun chemin VPAI/wiki dupliqué en expected_paths
+# (évite un faux-négatif "cross-wing" si le même fait existe aussi côté VPAI).
 
 questions:
   # ---------------------------------------------------------------
@@ -359,3 +376,97 @@ questions:
     expected_paths: ["VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md"]
     doc_kind: doc
     note: "exact — skopeo ou GitHub Container Registry pkgs/container/openclaw"
+
+  # ---------------------------------------------------------------
+  # CROSS-WING (T0.1, 2026-07-18) — réponse autoritaire dans un wing/repo
+  # DIFFÉRENT de celui d'où un agent la poserait (asked_from). Priorité
+  # refdocs-only (n8n-docs/litellm-docs/openclaw-docs/typebot-docs).
+  # Mesure le DOWNSIDE du boost de score (contrainte #1 : jamais de filtre
+  # must exclusif) — cf plan ops/loops/plans/2026-07-17-scoped-retrieval-
+  # implementation.md §Phase 0/2.
+  # ---------------------------------------------------------------
+  - query: "Quelle variable d'environnement active le mode task runner externe (sidecar séparé) pour n8n, au lieu du mode interne par défaut ?"
+    expected_paths:
+      - "n8n-docs:docs/hosting/configuration/task-runners.md"
+      - "n8n-docs:docs/hosting/configuration/environment-variables/task-runners.md"
+    doc_kind: doc
+    cross_wing: true
+    asked_from: "infra/VPAI"
+    note: "cross-wing — exact — N8N_RUNNERS_MODE=external (agent VPAI configurant n8n en task runner externe, réponse refdocs n8n-docs)"
+  - query: "En mode queue n8n, quel flag ou variable d'environnement contrôle le nombre de jobs qu'un worker peut exécuter en concurrence ?"
+    expected_paths: ["n8n-docs:docs/hosting/scaling/concurrency-control.md"]
+    doc_kind: doc
+    cross_wing: true
+    asked_from: "infra/VPAI"
+    note: "cross-wing — exact — --concurrency (worker) / N8N_CONCURRENCY_PRODUCTION_LIMIT"
+  - query: "Which n8n environment variable switches binary data storage from in-memory to filesystem to avoid OOM crashes on large files?"
+    expected_paths:
+      - "n8n-docs:docs/hosting/scaling/binary-data.md"
+      - "n8n-docs:docs/hosting/configuration/environment-variables/binary-data.md"
+    doc_kind: doc
+    cross_wing: true
+    asked_from: "saas/content-factory"
+    note: "cross-wing — exact — N8N_DEFAULT_BINARY_DATA_MODE=filesystem"
+  - query: "Comment désactiver les community nodes sur une instance n8n self-hosted, et quelle variable d'environnement le contrôle ?"
+    expected_paths: ["n8n-docs:docs/integrations/community-nodes/risks.md"]
+    doc_kind: doc
+    cross_wing: true
+    asked_from: "infra/VPAI"
+    note: "cross-wing — exact — N8N_COMMUNITY_PACKAGES_ENABLED=false"
+  - query: "What are the three 'Respond' options available on the n8n Webhook node — Immediately, When Last Node Finishes, and what's the third?"
+    expected_paths:
+      - "n8n-docs:docs/integrations/builtin/core-nodes/n8n-nodes-base.webhook/index.md"
+    doc_kind: doc
+    cross_wing: true
+    asked_from: "saas/powerbank"
+    note: "cross-wing — exact — Using 'Respond to Webhook' Node"
+  - query: "Dans LiteLLM proxy, quel paramètre permet de réinitialiser périodiquement le budget d'une clé API virtuelle (ex. quotidien) ?"
+    expected_paths: ["litellm-docs:docs/my-website/docs/proxy/users.md"]
+    doc_kind: doc
+    cross_wing: true
+    asked_from: "infra/VPAI"
+    note: "cross-wing — exact — budget_duration (ex. '30d','1d') sur /key/generate"
+  - query: "How do I configure LiteLLM proxy to cache LLM responses in Redis via config.yaml?"
+    expected_paths: ["litellm-docs:docs/my-website/docs/proxy/caching.md"]
+    doc_kind: doc
+    cross_wing: true
+    asked_from: "saas/hawkeye"
+    note: "cross-wing — exact — bloc cache: type: redis + host/port/password"
+  - query: "Quelle valeur de routing_strategy du Router LiteLLM choisit le déploiement avec le temps de réponse le plus bas ?"
+    expected_paths: ["litellm-docs:docs/my-website/docs/routing.md"]
+    doc_kind: doc
+    cross_wing: true
+    asked_from: "infra/VPAI"
+    note: "cross-wing — exact — routing_strategy: latency-based-routing"
+  - query: "Which LiteLLM guardrail masks PII/PHI in requests using Presidio before they reach the LLM provider?"
+    expected_paths: ["litellm-docs:docs/my-website/docs/proxy/guardrails/pii_masking_v2.md"]
+    doc_kind: doc
+    cross_wing: true
+    asked_from: "saas/powerbank"
+    note: "cross-wing — exact — guardrail Presidio PII/PHI, section guardrails de config.yaml"
+  - query: "Quelle commande CLI OpenClaw n'affiche que les plugins actuellement chargés, pas tous les plugins installés ?"
+    expected_paths: ["openclaw-docs:docs/tools/plugin.md"]
+    doc_kind: doc
+    cross_wing: true
+    asked_from: "infra/VPAI"
+    note: "cross-wing — exact — openclaw plugins list --enabled"
+  - query: "In OpenClaw's gateway configuration, which JSON5 key under channels.telegram holds the bot token from BotFather?"
+    expected_paths:
+      - "openclaw-docs:docs/channels/telegram.md"
+      - "openclaw-docs:docs/gateway/configuration-reference.md"
+    doc_kind: doc
+    cross_wing: true
+    asked_from: "infra/VPAI"
+    note: "cross-wing — exact — channels.telegram.botToken"
+  - query: "Comment verrouiller le WebSocket du Gateway OpenClaw en local (auth) selon le guide de durcissement sécurité ?"
+    expected_paths: ["openclaw-docs:docs/gateway/security/index.md"]
+    doc_kind: doc
+    cross_wing: true
+    asked_from: "infra/Seko-VPN"
+    note: "cross-wing — sémantique — Gateway auth required by default, section Configuration Hardening"
+  - query: "Which Typebot self-hosted environment variable must NEVER be changed after first deploy, or encrypted data becomes unreadable?"
+    expected_paths: ["typebot-docs:typebot-self-hosted-rex.md"]
+    doc_kind: rex
+    cross_wing: true
+    asked_from: "infra/VPAI"
+    note: "cross-wing — exact — ENCRYPTION_SECRET, clé 256-bit (32 chars)"

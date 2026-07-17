@@ -137,6 +137,7 @@ Tags: `workstation`, `infra`
 | `workstation-common` | Base Ubuntu, Docker, Tailscale |
 | `workstation-caddy` | Caddy local (proxy outils créatifs) |
 | `workstation-monitoring` | Monitoring local Pi |
+| `secret-broker` | secret-run — broker de secrets classe A (Vaultwarden/rbw, env-only) |
 
 #### tools — CLI IA
 Tags: `workstation`, `tools`

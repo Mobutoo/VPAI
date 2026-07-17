@@ -59,7 +59,7 @@ categories:
     description: "Waza (Raspberry Pi 5) — outils locaux Mission Control"
     phase: "waza"
     subcategories:
-      infra: [workstation-common, workstation-caddy, workstation-monitoring]
+      infra: [workstation-common, workstation-caddy, workstation-monitoring, secret-broker]
       tools: [claude-code, codex-cli, gemini-cli, opencode]
       creative: [comfyui, remotion, opencut, openpencil, videoref-engine]
       services: [metube, n8n-mcp, llamaindex-memory-worker]

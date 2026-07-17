@@ -79,6 +79,7 @@ ROLE_DESCRIPTIONS = {
     "workstation-common":        "Base Ubuntu, Docker, Tailscale",
     "workstation-caddy":         "Caddy local (proxy outils créatifs)",
     "workstation-monitoring":    "Monitoring local Pi",
+    "secret-broker":             "secret-run — broker de secrets classe A (Vaultwarden/rbw, env-only)",
     "claude-code":               "Claude Code CLI",
     "codex-cli":                 "Codex CLI (OpenAI)",
     "gemini-cli":                "Gemini CLI (Google)",

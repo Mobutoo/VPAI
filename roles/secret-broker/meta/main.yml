@@ -1,0 +1,15 @@
+---
+galaxy_info:
+  role_name: secret_broker
+  author: VPAI
+  namespace: mobutoo
+  description: Déploie secret-run (broker de secrets classe A — Vaultwarden/rbw, injection env-only, jamais argv/cmdline)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

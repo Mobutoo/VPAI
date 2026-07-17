@@ -1,0 +1,30 @@
+# politique.yml — Politique secret-run (classe A : commande → coffre direct)
+#
+# Format lu par secret-run (roles/secret-broker/files/secret-run) :
+#   top-level key = REF (nom de l'entrée Vaultwarden, = nom de la variable
+#   d'environnement injectée dans l'enfant), valeur = liste `commands:` des
+#   basenames de commandes autorisées pour cette ref.
+#
+# Toute ref absente d'ici est refusée par secret-run (exit 2), AVANT tout
+# appel à rbw / accès au coffre.
+#
+# Source: Step 5, docs/superpowers/plans/2026-07-16-vaultwarden-p0-p1b.md
+# (ligne 82). NOCODB volontairement absent — classe B, reste au store
+# ~/.config/claude/secrets.env (hors scope de ce rôle).
+
+MACGYVER_BOT_TOKEN:
+  commands:
+    - curl
+
+HCLOUD_TOKEN:
+  commands:
+    - hcloud
+    - curl
+
+NAMECHEAP_API_KEY:
+  commands:
+    - curl
+
+LITELLM_API_KEY:
+  commands:
+    - curl

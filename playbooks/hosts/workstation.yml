@@ -108,6 +108,9 @@
     - role: workstation-monitoring
       tags: [workstation-monitoring, workstation, infra]
 
+    - role: secret-broker
+      tags: [secret-broker, workstation, infra]
+
     - role: obsidian-collector-pi
       tags: [obsidian-collector-pi, workstation, monitoring]
 

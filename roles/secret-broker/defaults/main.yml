@@ -1,0 +1,9 @@
+---
+# secret-broker — defaults
+
+# Emplacement du binaire secret-run sur la Workstation Pi
+secret_broker_bin_dest: "/usr/local/bin/secret-run"
+
+# Emplacement de la politique (classe A : ref -> commandes autorisées)
+secret_broker_policy_dir: "/etc/secret-run"
+secret_broker_policy_dest: "{{ secret_broker_policy_dir }}/politique.yml"

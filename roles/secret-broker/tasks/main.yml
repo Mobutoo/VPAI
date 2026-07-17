@@ -1,0 +1,32 @@
+---
+# secret-broker — tasks
+# Déploie secret-run (broker de secrets classe A — commande -> coffre direct,
+# jamais de secret en argv/cmdline) + sa politique sur la Workstation Pi.
+# Task 7, docs/superpowers/plans/2026-07-16-vaultwarden-p0-p1b.md.
+
+- name: Créer le répertoire de politique secret-run
+  ansible.builtin.file:
+    path: "{{ secret_broker_policy_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+
+- name: Déployer le binaire secret-run
+  ansible.builtin.copy:
+    src: secret-run
+    dest: "{{ secret_broker_bin_dest }}"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0755"
+  become: true
+
+- name: Déployer la politique secret-run (classe A)
+  ansible.builtin.copy:
+    src: politique.yml
+    dest: "{{ secret_broker_policy_dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true

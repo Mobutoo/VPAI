@@ -81,8 +81,10 @@ AFTER_SOFT="$(usage_pct)"
 log "apres palier SUR: ${AFTER_SOFT}%"
 
 # ---------- PALIER 2 : MID (si toujours >= MID) ----------
-# Images inutilisees depuis > IMAGE_MAX_AGE_HOURS uniquement (re-pull possible,
-# mais les images recemment utilisees/pinnees dans versions.yml sont epargnees).
+# Filtre "until=" sur la date de CREATION (build) de l'image, pas sa derniere
+# utilisation. Les images encore referencees par un conteneur existant restent
+# epargnees (comportement -a standard, deploiement en cours protege) ; les
+# images pinnees dans versions.yml restent re-pullables.
 TIER_MID=""
 if [ "$AFTER_SOFT" -ge "$MID" ]; then
   log "toujours ${AFTER_SOFT}% >= ${MID}% — purge MID (image prune -a, filtre until=${IMAGE_MAX_AGE_HOURS}h)"

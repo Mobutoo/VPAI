@@ -22,9 +22,12 @@ disk_guard_threshold_hard: 90   # ajoute `docker image prune -a` sans filtre (re
 # Protège les leases fraîches d'une opération en cours.
 disk_guard_lease_min_age_days: 7
 
-# Âge minimal (heures) d'une image inutilisée avant suppression au palier MID.
-# Les images pinnées dans versions.yml restent re-pullables ; celles récemment
-# utilisées (déploiement en cours) sont épargnées.
+# Âge minimal (heures) d'une image avant suppression au palier MID.
+# `docker image prune --filter until=` filtre sur la date de CRÉATION (build)
+# de l'image, pas sur sa dernière utilisation. Les images encore référencées
+# par un conteneur existant sont toujours épargnées (comportement -a standard,
+# donc un déploiement en cours n'est jamais touché) ; les images pinnées dans
+# versions.yml restent re-pullables au prochain deploy.
 disk_guard_image_max_age_hours: 168
 
 # Cadence du timer

@@ -66,6 +66,48 @@ Qdrant repo/wing/topic, ops/loops/reports/2026-07-17-scoped-retrieval-proof.md) 
     "filtre-miss = la bonne réponse exclue du filtre").
   Défaut (--scope-file absent) : comportement byte-identique à avant (extra_filter
   reste None partout) — sibling test rejoué 2026-07-17 (cf rapport).
+
+Extension 2026-07-18 (T0.2) — --scope-mode {filter,boost} (formalisation,
+ops/loops/plans/2026-07-17-scoped-retrieval-implementation.md) :
+  - --scope-mode filter (DÉFAUT) : comportement pré-existant ci-dessus — `must`
+    Qdrant dur sur --scope-field/--scope-file. Borne haute mesurée (la preuve
+    2026-07-17), mais un `must` exclusif PEUT exclure une réponse hors-scope
+    (downside cross-wing non mesuré sur le golden VPAI-mono actuel, cf rapport
+    §5). N'est PAS la conception retenue pour le pipeline live (cf T1.1).
+  - --scope-mode boost : AUCUN filtre Qdrant. Récupère --scope-boost-candidates
+    résultats GLOBAUX (non filtrés, même requête fusionnée DBSF/RRF que le
+    contrôle) puis ADDITIONNE +--scope-boost-weight au score fusionné de chaque
+    point dont payload[--scope-field] intersecte les valeurs --scope-file de la
+    question, puis retrie (retri stable : égalités gardent l'ordre de fusion
+    d'origine). Simule DANS LE HARNAIS le mécanisme pipeline de T1.1 (bonus
+    additif post-fusion, PAS un filtre) — implémentation pipeline réelle
+    (search_memory.py/mcp_search.py) hors périmètre de ce fichier. Un point
+    hors-scope N'EST JAMAIS EXCLU : sans bonus, il reste classé selon son score
+    fusionné d'origine et peut toujours l'emporter (contrainte de conception #1
+    du plan — boost, jamais `must` exclusif). Une question dont la vraie réponse
+    est hors-scope (in_scope=False) garde donc son rang GLOBAL en boost, alors
+    qu'elle deviendrait un miss forcé en filter — c'est précisément l'écart de
+    downside que ce mode existe pour mesurer plus tard sur un golden cross-wing
+    (T0.1 + T2.1), pas pour l'annuler.
+  - --scope-boost-weight FLOAT (défaut 0.2) : magnitude du bonus additif, à
+    comparer à l'échelle des scores fusionnés DBSF exact=True observée (sonde
+    2026-07-18, 10 questions golden, exact=True) : écarts inter-rangs typiques
+    ~0.05-0.5, scores absolus ~0.5-2.5. 0.2 est un poids MODÉRÉ (peut faire
+    remonter un candidat proche, pas déclasser un score largement dominant) —
+    tuning fin réservé à T2.1 (sweep sur golden enrichi).
+  - --scope-boost-candidates INT (défaut 30 = prefetch_limit contrat) : taille
+    du pool global récupéré avant retri boost (doit être >= --limit pour laisser
+    de la marge de réordonnancement ; sans ça le boost ne peut jamais faire
+    remonter un candidat déjà hors de la fenêtre récupérée).
+  Les DEUX modes rapportent "filter_miss_rate" identiquement (le calcul
+  in_scope/check_in_scope est un ORACLE indépendant du mode de retrieval — même
+  vérité-terrain, cf check_in_scope) ET un recall@1 HONNÊTE : aucun des deux
+  modes ne credite artificiellement une question scope-miss — le rang utilisé
+  pour recall@1/recall@5/mrr@10 est TOUJOURS le rang réel obtenu par la
+  recherche (filtrée ou boostée), jamais un floor/override basé sur in_scope.
+  Défaut (--scope-mode omis, ou --scope-file absent) : comportement byte-
+  identique à avant (extra_filter reste None sauf si scope_mode=filter ET
+  scope-file fourni — càd. l'ancien comportement pré-2026-07-18 exact).
 """
 
 from __future__ import annotations
@@ -178,6 +220,23 @@ def parse_args() -> argparse.Namespace:
                              "module). Défaut absent -> aucun filtre, comportement inchangé.")
     parser.add_argument("--scope-field", choices=["repo", "wing", "topic"], default=None,
                         help="Champ Qdrant ciblé par --scope-file (requis si --scope-file fourni).")
+    parser.add_argument(
+        "--scope-mode", choices=["filter", "boost"], default="filter",
+        help="Mode d'application de --scope-file/--scope-field (T0.2, cf docstring module). "
+             "'filter' (défaut) = must Qdrant dur, comportement pré-existant 2026-07-17. "
+             "'boost' = bonus de score additif post-fusion sur candidats globaux, jamais "
+             "d'exclusion. No-op si --scope-file absent.",
+    )
+    parser.add_argument(
+        "--scope-boost-weight", type=float, default=0.2,
+        help="Bonus additif appliqué au score fusionné des points in-scope en "
+             "--scope-mode boost (défaut 0.2, cf docstring module pour la calibration).",
+    )
+    parser.add_argument(
+        "--scope-boost-candidates", type=int, default=PREFETCH_LIMIT,
+        help=f"Taille du pool global (non filtré) récupéré avant retri boost "
+             f"(défaut {PREFETCH_LIMIT} = prefetch_limit contrat). Doit être >= --limit.",
+    )
     return parser.parse_args()
 
 
@@ -300,7 +359,11 @@ class SparseEncoder:
         )
 
 
-PAYLOAD_FIELDS = ["repo", "relative_path", "doc_kind", "section", "text", "title"]
+PAYLOAD_FIELDS = ["repo", "relative_path", "doc_kind", "section", "text", "title", "wing", "topic"]
+# wing/topic ajoutés 2026-07-18 (T0.2) : requis par apply_scope_boost() pour lire
+# payload[scope_field] quand scope_field != "repo" (repo était déjà présent). N'affecte
+# pas evaluate()/aggregate() (lisent uniquement repo+relative_path) ni le JSON de sortie
+# ("details" ne stocke pas le payload complet) -> non-régression métriques inchangée.
 
 
 def run_query(
@@ -415,6 +478,28 @@ def manual_rrf_fusion(
             point_by_id[pid] = point
     ordered_ids = sorted(scores, key=lambda pid: scores[pid], reverse=True)
     return [point_by_id[pid] for pid in ordered_ids[:limit]]
+
+
+def apply_scope_boost(points: list, scope_field: str, values: list[str], weight: float) -> list:
+    """Bonus de score ADDITIF post-fusion (T0.2, PAS un filtre Qdrant) : les points dont
+    payload[scope_field] intersecte `values` reçoivent +weight, puis retri décroissant.
+    Le tri Python est stable -> à score égal (deux points sans bonus, ou deux points
+    boostés à égalité), l'ordre de fusion DBSF/RRF d'origine est conservé.
+
+    Hors-scope JAMAIS exclus (contrainte de conception #1 du plan) : ils restent dans la
+    liste, non bonifiés, et peuvent toujours dominer si leur score fusionné d'origine est
+    plus haut que in-scope+weight -- c'est le comportement voulu (downside cross-wing
+    évité, contrairement à --scope-mode filter)."""
+    values_set = set(values)
+
+    def bonus(point) -> float:
+        raw = (point.payload or {}).get(scope_field)
+        candidates = raw if isinstance(raw, list) else [raw]
+        return weight if values_set.intersection(v for v in candidates if v is not None) else 0.0
+
+    scored = [(p.score + bonus(p), p) for p in points]
+    scored.sort(key=lambda t: t[0], reverse=True)
+    return [p for _, p in scored]
 
 
 class LightCrossEncoder:
@@ -566,6 +651,8 @@ def main() -> int:
 
     effective_rrf_k = args.rrf_k if args.rrf_k is not None else DEFAULT_RRF_K
     fetch_limit = max(args.limit, args.rerank_candidates) if args.rerank_light else args.limit
+    if scope_map and args.scope_mode == "boost":
+        fetch_limit = max(fetch_limit, args.scope_boost_candidates)
 
     print(f"[eval] collection={args.collection} mode={args.mode} schema="
           f"{'named' if schema['named'] else 'unnamed'} questions={len(questions)} "
@@ -573,7 +660,12 @@ def main() -> int:
           f"manual_fusion={args.manual_fusion} rrf_k={effective_rrf_k if (args.manual_fusion or args.rrf_k) else 'server-default'} "
           f"rerank_light={args.rerank_light}"
           + (f" rerank_model={args.rerank_light_model} rerank_candidates={args.rerank_candidates}"
-             if args.rerank_light else ""))
+             if args.rerank_light else "")
+          + (f" scope_field={args.scope_field} scope_mode={args.scope_mode}"
+             + (f" scope_boost_weight={args.scope_boost_weight} "
+                f"scope_boost_candidates={args.scope_boost_candidates}"
+                if args.scope_mode == "boost" else "")
+             if scope_map else ""))
 
     encoder = DenseEncoder(config)
     t_encode = time.monotonic()
@@ -589,17 +681,24 @@ def main() -> int:
         )
         extra_filter = None
         in_scope = None
+        boost_values: list[str] | None = None  # non-None seulement si scope_mode=boost applicable
         if scope_map:
             values = scope_map.get(question["query"])
             if not values:
                 print(f"  [warn] pas de valeurs scope pour {question['query'][:60]!r} "
                       "-> question non filtrée", file=sys.stderr)
             else:
-                extra_filter = qmodels.Filter(
+                scope_filter = qmodels.Filter(
                     must=[qmodels.FieldCondition(key=args.scope_field, match=qmodels.MatchAny(any=values))]
                 )
-                in_scope = check_in_scope(client, args.collection, extra_filter,
+                # in_scope = oracle indépendant du mode (check_in_scope ne fait qu'un
+                # client.count() sous scope_filter -- même vérité-terrain filter/boost).
+                in_scope = check_in_scope(client, args.collection, scope_filter,
                                            question["expected_paths"])
+                if args.scope_mode == "filter":
+                    extra_filter = scope_filter  # must Qdrant dur (comportement pré-existant)
+                else:
+                    boost_values = values  # scope_mode=boost : pas de filtre, bonus post-fusion
         if args.manual_fusion:
             dense_points = run_channel_query(
                 client, args.collection, "dense", dense_vector, args.prefetch_limit,
@@ -626,6 +725,9 @@ def main() -> int:
                 max_chars=args.rerank_max_chars,
             )
             rerank_timings.append(rerank_s)
+
+        if boost_values is not None:
+            points = apply_scope_boost(points, args.scope_field, boost_values, args.scope_boost_weight)
 
         expected = set(question["expected_paths"])
         outcome = evaluate(points, expected)
@@ -685,8 +787,14 @@ def main() -> int:
             "dense_weight": args.dense_weight if args.manual_fusion else None,
             "sparse_weight": args.sparse_weight if args.manual_fusion else None,
             "rerank_light": args.rerank_light,
+            "exact": args.exact,
             "scope_field": args.scope_field,
             "scope_file": args.scope_file,
+            "scope_mode": args.scope_mode if scope_map else None,
+            "scope_boost_weight": args.scope_boost_weight if (scope_map and args.scope_mode == "boost") else None,
+            "scope_boost_candidates": (
+                args.scope_boost_candidates if (scope_map and args.scope_mode == "boost") else None
+            ),
         },
         "filter_miss_rate": filter_miss_rate,
         "rerank_timings": rerank_stats,

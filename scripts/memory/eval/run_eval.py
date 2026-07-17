@@ -114,8 +114,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--prefetch-limit", type=int, default=PREFETCH_LIMIT,
                         help=f"top-K candidats par canal avant fusion (défaut {PREFETCH_LIMIT}).")
-    parser.add_argument("--fusion", choices=["rrf", "dbsf"], default="rrf",
-                        help="Stratégie de fusion Qdrant native (mode hybrid uniquement).")
+    parser.add_argument(
+        "--fusion", choices=["rrf", "dbsf"],
+        default=os.environ.get("MEMORY_FUSION_MODE", "dbsf").strip().lower(),
+        help="Stratégie de fusion Qdrant native (mode hybrid uniquement). Défaut = "
+             "MEMORY_FUSION_MODE (mcp_search.py/search_memory.py en prod), sinon 'dbsf' "
+             "(restauration recall@1 2026-07-17). Override --fusion rrf pour le sibling "
+             "test / rejeu du gate hebdo côté RRF.",
+    )
     parser.add_argument("--rrf-k", type=int, default=None,
                         help=f"k RRF natif serveur (RrfQuery(rrf=Rrf(k=N))), Qdrant >=1.16. "
                              f"Défaut serveur = {DEFAULT_RRF_K} si omis (pas de override).")

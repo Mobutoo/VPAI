@@ -82,6 +82,18 @@ cf_gpu_live: "0"
 # => decompose_brief tombe en fallback local (1 scène/1 plan), zéro réseau.
 # L'endpoint LLM vient du resolve PodPilot (policy cf-llm-decompose), pas d'une env.
 cf_llm_live: "0"
+# Bloc 3 — gate gap-analysis (apps/api/app/gaps.py) : "0" par défaut => analyze_gaps
+# est un NO-OP ([] déterministe, zéro réseau). Seul cf-api lit ce gate (chemin inline,
+# pas de dispatch conductor/render). Flip prod = group_vars/prod (persistant).
+cf_gap_live: "0"
+# Clé du proxy LiteLLM — master key partagée, même doctrine que n8n/openclaw/opencode
+# (all/main.yml : litellm_master_key -> vault_litellm_master_key). Consommée uniquement
+# par le chemin gap-analysis de cf-api (seul client LiteLLM direct de content-factory).
+cf_litellm_api_key: "{{ litellm_master_key | default('') }}"
+# Base URL LiteLLM vue de cf-api : voie interne javisi_backend (litellm:4000 — sibling
+# test 2026-07-17 : DNS + HTTP 200 depuis cf-api). Le défaut app-side
+# (https://llm.ewutelo.cloud/v1) passerait par Caddy/VPN, inutile intra-host.
+cf_litellm_base_url: "http://litellm:4000/v1"
 cf_podpilot_project: "content-factory"
 cf_podpilot_policy: "cf-video-draft"
 cf_gpu_poll_interval_s: "5"

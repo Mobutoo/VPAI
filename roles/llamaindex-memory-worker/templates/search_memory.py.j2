@@ -24,6 +24,19 @@ Contrat : docs/superpowers/specs/2026-06-10-rag-v3-contracts.md §Recherche.
     60 — doc officielle https://qdrant.tech/documentation/concepts/hybrid-queries/),
     fusion rank-only très sensible au bruit de classement du corpus (82k pts, 27
     repos). Rollback : MEMORY_FUSION_MODE=rrf ou --fusion rrf.
+  - --scope-boost (T1.1, plan ops/loops/plans/2026-07-17-scoped-retrieval-implementation.md) :
+    bonus de score ADDITIF post-fusion, PAS un filtre Qdrant. Un point dont
+    payload['repo']==--scope-repo OU payload['wing']==--scope-wing reçoit
+    +--scope-boost-weight sur son score fusionné puis la liste est retriée
+    (tri stable -> égalité préserve l'ordre DBSF/RRF d'origine). Les hors-scope
+    NE SONT JAMAIS EXCLUS (contrainte de conception #1 : preuve golden VPAI-mono
+    aveugle au downside cross-wing — un `must` dur exclurait une réponse
+    autoritaire vivant dans un autre wing/repo). Défaut OFF (env MEMORY_SCOPE_BOOST,
+    fallback false) ; poids défaut 0.2 (env MEMORY_SCOPE_BOOST_WEIGHT, sera tuné
+    T2.1). scope=None (aucun --scope-repo/--scope-wing) -> comportement byte-
+    identique à avant (non-régression garantie, cf T1.1 verify). Dérivation
+    CWD->repo/wing = T1.2 (hors périmètre ici, ce module reçoit le scope déjà
+    résolu en argument).
 """
 
 from __future__ import annotations
@@ -84,6 +97,22 @@ def parse_args() -> argparse.Namespace:
                         default=os.environ.get("MEMORY_FUSION_MODE", "dbsf").strip().lower(),
                         help="Stratégie de fusion Qdrant native. Défaut = env MEMORY_FUSION_MODE "
                              "(fallback dbsf — restauration recall@1 2026-07-17, cf docstring).")
+    parser.add_argument("--scope-repo", default=None,
+                        help="Repo courant (dérivé CWD, T1.2) pour le boost in-scope (T1.1). "
+                             "Sans --scope-boost actif, no-op.")
+    parser.add_argument("--scope-wing", default=None,
+                        help="Wing courant (dérivé CWD, T1.2) pour le boost in-scope (T1.1). "
+                             "Sans --scope-boost actif, no-op.")
+    parser.add_argument("--scope-boost", action=argparse.BooleanOptionalAction,
+                        default=_env_bool("MEMORY_SCOPE_BOOST", False),
+                        help="Active le bonus additif post-fusion sur les points in-scope "
+                             "(repo/wing). Défaut = env MEMORY_SCOPE_BOOST (OFF). --no-scope-boost "
+                             "force OFF même si l'env l'active, ou si --scope-repo/--scope-wing "
+                             "sont fournis (contrainte #1 : jamais de filtre, boost opt-in only).")
+    parser.add_argument("--scope-boost-weight", type=float,
+                        default=float(os.environ.get("MEMORY_SCOPE_BOOST_WEIGHT", "0.2")),
+                        help="Poids additif appliqué au score fusionné des points in-scope. "
+                             "Défaut = env MEMORY_SCOPE_BOOST_WEIGHT (0.2 — sera tuné T2.1).")
     return parser.parse_args()
 
 
@@ -133,6 +162,48 @@ def build_boost_formula() -> rest.FormulaQuery:
     )
 
 
+def build_scope(args: argparse.Namespace) -> dict | None:
+    """Résout le scope courant depuis les flags CLI (T1.2 injectera --scope-repo/
+    --scope-wing depuis le CWD). None si --scope-boost désactivé (flag global,
+    contrainte #1 : jamais de comportement changé sans opt-in explicite) ou si
+    aucun repo/wing n'est fourni -> non-régression garantie (scope=None ci-après)."""
+    if not args.scope_boost:
+        return None
+    if not args.scope_repo and not args.scope_wing:
+        return None
+    return {"repo": args.scope_repo, "wing": args.scope_wing}
+
+
+def apply_scope_boost(hits: list[dict], scope: dict | None, weight: float) -> list[dict]:
+    """Bonus de score ADDITIF post-fusion (T1.1, PAS un filtre Qdrant) : les hits dont
+    payload['repo']==scope['repo'] OU payload['wing']==scope['wing'] reçoivent +weight
+    sur leur score fusionné (clé "score"), puis la liste est retriée par score
+    décroissant. Tri Python stable -> à score égal, l'ordre de fusion DBSF/RRF
+    d'origine est conservé.
+
+    Hors-scope JAMAIS exclus (contrainte de conception #1 du plan scoped-retrieval) :
+    ils restent dans la liste, non bonifiés, et peuvent toujours dominer si leur
+    score fusionné d'origine dépasse in-scope+weight — c'est le comportement voulu
+    (le downside cross-wing qu'un `must` dur provoquerait est évité par construction).
+
+    scope=None -> no-op, `hits` renvoyé inchangé (non-régression)."""
+    if not scope:
+        return hits
+    repo = scope.get("repo")
+    wing = scope.get("wing")
+    if not repo and not wing:
+        return hits
+
+    def in_scope(hit: dict) -> bool:
+        payload = hit["payload"]
+        return (repo is not None and payload.get("repo") == repo) or \
+               (wing is not None and payload.get("wing") == wing)
+
+    boosted = [dict(h, score=h["score"] + (weight if in_scope(h) else 0.0)) for h in hits]
+    boosted.sort(key=lambda h: h["score"], reverse=True)
+    return boosted
+
+
 def dense_cosine(query_vector: list[float], point_vector) -> float | None:
     """Cosinus client-side (vecteurs normalisés -> produit scalaire). 768d, négligeable."""
     if point_vector is None:
@@ -179,7 +250,11 @@ def search(args: argparse.Namespace, config: dict) -> list[dict]:
         show_progress_bar=False,
     ).tolist()
     query_filter = build_filter(args)
-    fetch_limit = max(args.limit, PREFETCH_LIMIT if args.rerank else args.limit)
+    scope = build_scope(args)
+    # Sur-fetch un pool de candidats quand le boost in-scope est actif (comme --rerank) :
+    # sans ça, un point in-scope classé hors de args.limit par le score fusionné brut
+    # ne pourrait jamais remonter — le prefetch Qdrant l'aurait déjà tronqué.
+    fetch_limit = max(args.limit, PREFETCH_LIMIT if (args.rerank or scope) else args.limit)
 
     if mode == "hybrid":
         # Sparse BM25 : MÊME wrapper que l'ingestion (memory_core, lazy fastembed).
@@ -245,6 +320,10 @@ def search(args: argparse.Namespace, config: dict) -> list[dict]:
             "dense_score": cos,
             "payload": payload,
         })
+
+    # Boost in-scope (T1.1) : post-fusion, avant le floor -> retrie hits par score
+    # boosté ; scope=None laisse `hits` inchangé (non-régression, cf apply_scope_boost).
+    hits = apply_scope_boost(hits, scope, args.scope_boost_weight)
 
     # Floor sur le score dense cosine (contrat : sous le floor -> not found).
     kept = [h for h in hits if h["dense_score"] is not None and h["dense_score"] >= args.min_score]

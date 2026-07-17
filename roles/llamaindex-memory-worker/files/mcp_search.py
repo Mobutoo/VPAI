@@ -36,6 +36,16 @@ Contrat 2026-06-10 (docs/superpowers/specs/2026-06-10-rag-v3-contracts.md §Rech
     vs RRF sur golden 76 questions (0.6316->0.6711 exact, reproductible 2/2 exact
     ET 2/2 approximatif, recall@5 inchangé 0.9737). Rollback instantané :
     MEMORY_FUSION_MODE=rrf.
+  - Boost in-scope (T1.1, plan ops/loops/plans/2026-07-17-scoped-retrieval-implementation.md) :
+    env MEMORY_SCOPE_BOOST (défaut false) + MEMORY_SCOPE_BOOST_WEIGHT (défaut 0.2,
+    sera tuné T2.1). Le tool qdrant-find accepte des arguments optionnels
+    scope_repo/scope_wing (T1.2 les dérivera du CWD de session côté hook). Bonus
+    ADDITIF post-fusion sur le score fusionné des points dont payload['repo'] ou
+    payload['wing'] matche — PAS un filtre Qdrant, les hors-scope restent classés
+    et éligibles (contrainte de conception #1 : la preuve golden VPAI-mono est
+    structurellement aveugle au cas cross-wing, un `must` dur exclurait une
+    réponse autoritaire d'un autre repo/wing). Flag OFF ou scope_repo/scope_wing
+    absents -> comportement byte-identique à avant (non-régression garantie).
 
 Uses same embeddings as the ai-memory-worker (google/embeddinggemma-300m, 768d).
 Model preloads in background thread; tool calls wait up to 120s.
@@ -57,6 +67,9 @@ RERANK_ENABLED = os.environ.get("RERANK_ENABLED", "false").strip().lower() in ("
 RERANK_CANDIDATES = int(os.environ.get("MEMORY_RERANK_CANDIDATES", "20"))
 # Restauration recall@1 (2026-07-17) : DBSF par défaut — cf docstring "Fusion" ci-dessus.
 FUSION_MODE = os.environ.get("MEMORY_FUSION_MODE", "dbsf").strip().lower()
+# Boost in-scope (T1.1) : OFF par défaut (contrainte #1, cf docstring "Boost in-scope").
+SCOPE_BOOST_ENABLED = os.environ.get("MEMORY_SCOPE_BOOST", "false").strip().lower() in ("1", "true", "yes")
+SCOPE_BOOST_WEIGHT = float(os.environ.get("MEMORY_SCOPE_BOOST_WEIGHT", "0.2"))
 
 _model = None
 _client = None
@@ -158,6 +171,8 @@ def _handle(req: dict) -> None:
                     "repo": {"type": "string", "description": "Filter by repo (e.g. VPAI, flash-studio)"},
                     "doc_kind": {"type": "string", "description": "Filter by doc_kind (doc, config, runbook...)"},
                     "topic": {"type": "string", "description": "Filter by topic"},
+                    "scope_repo": {"type": "string", "description": "Current session repo (CWD-derived) for in-scope score boost. No-op unless MEMORY_SCOPE_BOOST=true."},
+                    "scope_wing": {"type": "string", "description": "Current session wing (CWD-derived) for in-scope score boost. No-op unless MEMORY_SCOPE_BOOST=true."},
                 },
                 "required": ["query"],
             },
@@ -204,6 +219,29 @@ def _snippet(payload: dict) -> str:
     return text[:160]
 
 
+def _apply_scope_boost(kept: list[dict], scope: dict, weight: float) -> list[dict]:
+    """Bonus de score ADDITIF post-fusion (T1.1, PAS un filtre) sur le score fusionné
+    (clé "score") des hits dont payload['repo']==scope['repo'] OU
+    payload['wing']==scope['wing'], puis retri décroissant. Tri Python stable ->
+    à score égal, l'ordre de fusion RRF/DBSF d'origine est conservé.
+
+    Hors-scope JAMAIS exclus (contrainte de conception #1, cf plan scoped-retrieval) :
+    restent dans `kept`, non bonifiés, peuvent toujours dominer si leur score
+    fusionné d'origine dépasse in-scope+weight (downside cross-wing évité)."""
+    repo, wing = scope.get("repo"), scope.get("wing")
+    if not repo and not wing:
+        return kept
+
+    def in_scope(hit: dict) -> bool:
+        payload = hit["payload"]
+        return (repo is not None and payload.get("repo") == repo) or \
+               (wing is not None and payload.get("wing") == wing)
+
+    boosted = [dict(h, score=h["score"] + (weight if in_scope(h) else 0.0)) for h in kept]
+    boosted.sort(key=lambda h: h["score"], reverse=True)
+    return boosted
+
+
 def _do_search(args: dict) -> str:
     _ready.wait(timeout=120)
     with _lock:
@@ -228,8 +266,20 @@ def _do_search(args: dict) -> str:
             ))
     query_filter = rest.Filter(must=conditions) if conditions else None
     limit = int(args.get("limit", 5))
-    # Rerank : sur-fetch un pool de candidats avant de re-scorer -> top `limit`.
-    fetch_limit = max(limit, RERANK_CANDIDATES) if RERANK_ENABLED else limit
+    # Boost in-scope (T1.1) : flag global + repo/wing fournis -> sinon no-op
+    # (contrainte #1 : jamais de comportement changé sans opt-in explicite).
+    scope = None
+    if SCOPE_BOOST_ENABLED:
+        scope_repo = args.get("scope_repo")
+        scope_wing = args.get("scope_wing")
+        if scope_repo or scope_wing:
+            scope = {"repo": scope_repo, "wing": scope_wing}
+    # Rerank / boost : sur-fetch un pool de candidats avant de re-scorer -> top `limit`.
+    fetch_limit = limit
+    if RERANK_ENABLED:
+        fetch_limit = max(fetch_limit, RERANK_CANDIDATES)
+    if scope is not None:
+        fetch_limit = max(fetch_limit, PREFETCH_LIMIT)
 
     if named and sparse is not None:
         # Hybrid RRF (contrat §Recherche) : prefetch dense + bm25, fusion serveur.
@@ -262,7 +312,7 @@ def _do_search(args: dict) -> str:
             with_vectors=[DENSE_VECTOR_NAME] if named else False,
         )
 
-    kept = []  # [{"cos": float, "payload": dict}], ordre RRF/dense d'origine
+    kept = []  # [{"score": float, "cos": float, "payload": dict}], ordre RRF/dense d'origine
     best = 0.0
     for pt in resp.points:
         payload = pt.payload or {}
@@ -275,9 +325,14 @@ def _do_search(args: dict) -> str:
         # Floor sur le score dense cosine — hygiène d'injection : pas de hit hors-sujet.
         if cos is None or cos < MIN_SCORE:
             continue
-        kept.append({"cos": cos, "payload": payload})
+        kept.append({"score": float(pt.score), "cos": cos, "payload": payload})
     if not kept:
         return f"not found (best dense score {best:.3f} < floor {MIN_SCORE})"
+
+    # Boost in-scope (T1.1) : post-fusion, avant rerank/troncature -> retrie `kept`
+    # par score boosté ; scope=None (défaut) laisse `kept` inchangé (non-régression).
+    if scope is not None:
+        kept = _apply_scope_boost(kept, scope, SCOPE_BOOST_WEIGHT)
 
     if RERANK_ENABLED:
         if rerank_fn is None:

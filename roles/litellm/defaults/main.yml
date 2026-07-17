@@ -8,6 +8,13 @@ litellm_ui_username: ""
 # litellm_ui_password is in secrets.yml (vault)
 # litellm_salt_key is in secrets.yml (vault)
 
+# --- Alias qwen-cf (gap-analysis content-factory) ---
+# Endpoint RunPod serverless cf-llm (Qwen2.5-14B-AWQ, worker-v1-vllm, scale-to-zero,
+# US-IL-1) — provisionné 2026-07-09, cf. content-factory infra/podpilot/
+# RUNBOOK-LLM-ENDPOINT.md §8-bis. Cold start ~157 s : les clients doivent poser
+# un timeout ≥240 s (cf-api gaps.py le fait).
+litellm_qwen_cf_endpoint_id: "hizahkyaanf2lh"
+
 # --- Routing ---
 # Strategy: usage-based-routing-v2 distributes across providers weighted by capacity
 litellm_routing_strategy: "usage-based-routing-v2"

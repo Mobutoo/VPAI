@@ -102,6 +102,22 @@ model_list:
         tier: "ultra-low"
         tags: ["math", "reasoning-chain", "infra"]
 
+  # Qwen2.5-14B-AWQ — endpoint RunPod serverless cf-llm (content-factory), OpenAI-compatible.
+  # Consommateur : gap-analysis cf-api (CF_GAP_MODEL=qwen-cf). Scale-to-zero : cold ~157 s
+  # → timeout per-model large ; coût = temps GPU (4090 $0.34/h), pas les tokens.
+  - model_name: "qwen-cf"
+    litellm_params:
+      model: "openai/Qwen/Qwen2.5-14B-Instruct-AWQ"
+      api_base: "https://api.runpod.ai/v2/{{ litellm_qwen_cf_endpoint_id }}/openai/v1"
+      api_key: "os.environ/RUNPOD_API_KEY"
+      max_tokens: 4096
+      timeout: 240
+    model_info:
+      max_output_tokens: 4096
+      metadata:
+        tier: "ultra-low"
+        tags: ["json", "gap-analysis", "self-hosted-serverless"]
+
   # DeepSeek V3.2 — General code generation, pipeline gen
   - model_name: "deepseek-v3"
     litellm_params:

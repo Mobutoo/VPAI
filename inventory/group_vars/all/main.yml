@@ -143,6 +143,9 @@ huggingface_token: "{{ vault_huggingface_token | default('') }}"
 byteplus_api_key: "{{ vault_byteplus_api_key | default('') }}"
 brave_search_api_key: "{{ vault_brave_search_api_key | default('') }}"
 fal_ai_api_key: "{{ vault_fal_ai_api_key | default('') }}"
+# RunPod (déjà consommée par content-factory via cf_runpod_api_key ; exposée ici
+# pour le proxy LiteLLM — alias qwen-cf → endpoint serverless cf-llm)
+runpod_api_key: "{{ vault_runpod_api_key | default('') }}"
 
 # OpenClaw
 openclaw_model_profile: "openai"  # OAuth via ChatGPT Plus/Pro subscription

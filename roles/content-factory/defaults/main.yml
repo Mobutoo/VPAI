@@ -94,6 +94,9 @@ cf_litellm_api_key: "{{ litellm_master_key | default('') }}"
 # test 2026-07-17 : DNS + HTTP 200 depuis cf-api). Le défaut app-side
 # (https://llm.ewutelo.cloud/v1) passerait par Caddy/VPN, inutile intra-host.
 cf_litellm_base_url: "http://litellm:4000/v1"
+# Modèle du gap : alias qwen-cf = pod RunPod serverless cf-llm (décision user
+# 2026-07-17 — pas de solde Anthropic à maintenir ; cold ~157 s, timeout app 240 s).
+cf_gap_model: "qwen-cf"
 cf_podpilot_project: "content-factory"
 cf_podpilot_policy: "cf-video-draft"
 cf_gpu_poll_interval_s: "5"

@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: memory_worker_watchdog
+  author: VPAI
+  namespace: mobutoo
+  description: >-
+    Sonde locale de stagnation pour llamaindex-memory-worker (Waza) — timer
+    systemd --user séparé, alerte Telegram si un run reste 'activating' au-delà
+    du seuil (durcissement audit mémoire 2026-07-17, angle mort #4)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

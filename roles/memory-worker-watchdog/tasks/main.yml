@@ -1,0 +1,95 @@
+---
+# memory-worker-watchdog — deploie le script + units systemd --user + active le
+# timer, sur Waza (meme utilisateur que llamaindex-memory-worker). Role separe
+# (pas de fichiers colocalises dans llamaindex-memory-worker) pour rester
+# independant de ce role et pouvoir se deployer seul via --tags.
+
+- name: Ensure memory-worker-watchdog directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ memory_worker_watchdog_user }}"
+    group: "{{ memory_worker_watchdog_user }}"
+    mode: "0750"
+  loop:
+    - "{{ memory_worker_watchdog_install_dir }}"
+    - "{{ memory_worker_watchdog_state_dir }}"
+  become: true
+
+- name: Deploy memory-worker-watchdog env file (Telegram secrets)
+  ansible.builtin.template:
+    src: memory-worker-watchdog.env.j2
+    dest: "{{ memory_worker_watchdog_env_file }}"
+    owner: "{{ memory_worker_watchdog_user }}"
+    group: "{{ memory_worker_watchdog_user }}"
+    mode: "0600"
+  become: true
+  no_log: true
+
+- name: Deploy memory-worker-watchdog script
+  ansible.builtin.template:
+    src: memory-worker-watchdog.sh.j2
+    dest: "{{ memory_worker_watchdog_script }}"
+    owner: "{{ memory_worker_watchdog_user }}"
+    group: "{{ memory_worker_watchdog_user }}"
+    mode: "0750"
+  become: true
+
+- name: Verify memory-worker-watchdog script syntax
+  ansible.builtin.command:
+    cmd: "bash -n {{ memory_worker_watchdog_script }}"
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Ensure user systemd unit dir
+  ansible.builtin.file:
+    path: "{{ memory_worker_watchdog_user_unit_dir }}"
+    state: directory
+    owner: "{{ memory_worker_watchdog_user }}"
+    group: "{{ memory_worker_watchdog_user }}"
+    mode: "0755"
+  become: true
+
+- name: Deploy memory-worker-watchdog USER units
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ memory_worker_watchdog_user_unit_dir }}/{{ item.dest }}"
+    owner: "{{ memory_worker_watchdog_user }}"
+    group: "{{ memory_worker_watchdog_user }}"
+    mode: "0644"
+  loop:
+    - { src: "memory-worker-watchdog.service.user.j2", dest: "{{ memory_worker_watchdog_service_name }}.service" }
+    - { src: "memory-worker-watchdog.timer.user.j2", dest: "{{ memory_worker_watchdog_timer_name }}.timer" }
+  become: true
+  notify: Reload systemd (user, memory-worker-watchdog)
+
+- name: Flush handlers so daemon-reload happens before enable
+  ansible.builtin.meta: flush_handlers
+
+# Idempotent no-ops if llamaindex-memory-worker already did this for the same
+# user (creates: guard) — keeps this role deployable standalone via --tags.
+- name: Enable linger for the watchdog user (runs user units without login)
+  ansible.builtin.command: "loginctl enable-linger {{ memory_worker_watchdog_user }}"
+  become: true
+  args:
+    creates: "/var/lib/systemd/linger/{{ memory_worker_watchdog_user }}"
+
+- name: Ensure the user systemd instance is running (creates the XDG runtime dir after fresh linger)
+  ansible.builtin.systemd:
+    name: "user@{{ memory_worker_watchdog_uid }}.service"
+    state: started
+  become: true
+
+- name: Enable + start memory-worker-watchdog USER timer
+  ansible.builtin.systemd:
+    name: "{{ memory_worker_watchdog_timer_name }}.timer"
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  become_user: "{{ memory_worker_watchdog_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ memory_worker_watchdog_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_watchdog_uid }}/bus"
+  when: not ansible_check_mode

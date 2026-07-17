@@ -66,6 +66,9 @@
     - role: llamaindex-memory-worker
       tags: [llamaindex-memory-worker, workstation, services]
 
+    - role: memory-worker-watchdog
+      tags: [memory-worker-watchdog, workstation, monitoring]
+
     - role: cc-improvement-loop
       tags: [cc-improvement-loop, workstation, services]
 

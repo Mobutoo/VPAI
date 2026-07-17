@@ -1,0 +1,178 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# memory-worker-watchdog.sh — sonde locale de stagnation du worker memoire (Waza).
+#
+# Durcissement audit memoire 2026-07-17, angle mort #4 HIGH : un run peut durer
+# ~27h wall-clock d'affilee (Nice=19 + IOSchedulingClass=idle -> starvation Pi
+# sous charge) sans que rien n'alerte. Cette sonde tourne dans un timer
+# systemd --user SEPARE du worker : elle continue de fonctionner meme si le
+# worker lui-meme est bloque.
+#
+# Detection : {{ memory_worker_watchdog_target_service }} est Type=oneshot SANS
+# RemainAfterExit -> tant qu'un run est en cours, `systemctl --user show`
+# rapporte ActiveState=activating (jamais "active" pour ce type d'unite —
+# verifie en direct sur waza le 2026-07-17 : ActiveEnterTimestamp reste vide
+# tout au long d'un run). InactiveExitTimestamp = instant ou l'unite a quitte
+# "inactive" pour CE run (englobe ExecStartPre=memory-wait-calm.sh, plafonne a
+# 10min, + ExecStart=l'indexation elle-meme) -> c'est le bon proxy du "debut du
+# run", contrairement a ExecMainStartTimestamp qui ignore ExecStartPre.
+#
+# Test sans attendre le seuil reel (cf VERIFY) : surcharger via l'environnement
+#   MEMORY_WATCHDOG_FAKE_ACTIVE_STATE=activating
+#   MEMORY_WATCHDOG_FAKE_INACTIVE_EXIT_EPOCH=<epoch dans le passe>
+set -euo pipefail
+
+# systemctl --user a besoin du bus utilisateur. Un service lance par le
+# gestionnaire --user herite normalement de XDG_RUNTIME_DIR, mais on le fixe
+# quand meme en filet de securite (defensif — cf revue).
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/{{ memory_worker_watchdog_uid }}}"
+
+UNIT="{{ memory_worker_watchdog_target_service }}"
+LOG_FILE="{{ memory_worker_watchdog_target_log_file }}"
+STALL_THRESHOLD_SEC={{ memory_worker_watchdog_stall_threshold_sec }}
+REMINDER_SEC={{ memory_worker_watchdog_reminder_sec }}
+STATE_FILE="{{ memory_worker_watchdog_state_file }}"
+ENV_FILE="{{ memory_worker_watchdog_env_file }}"
+HOST="{{ memory_worker_watchdog_host_origin }}"
+
+# Secrets Telegram (fichier 0600). Absents = pas de notif (mais script continue).
+TG_BOT=""
+TG_CHAT=""
+# shellcheck disable=SC1090
+[ -r "$ENV_FILE" ] && . "$ENV_FILE"
+
+log() { echo "[memory-worker-watchdog] $*"; }
+
+notify() {
+  local msg="$1"
+  [ -n "$TG_BOT" ] && [ -n "$TG_CHAT" ] || { log "pas de creds telegram, notif ignoree"; return 0; }
+  curl -fsS --max-time 20 \
+    "https://api.telegram.org/bot${TG_BOT}/sendMessage" \
+    -d chat_id="${TG_CHAT}" \
+    -d parse_mode="HTML" \
+    --data-urlencode text="$msg" >/dev/null 2>&1 || log "notify telegram echec (non bloquant)"
+}
+
+now() { date +%s; }
+
+# --- Lecture de l'etat de l'unite surveillee (avec point d'injection test) ---
+QUERY_OK=1
+if [ -n "${MEMORY_WATCHDOG_FAKE_ACTIVE_STATE:-}" ]; then
+  ACTIVE_STATE="$MEMORY_WATCHDOG_FAKE_ACTIVE_STATE"
+else
+  if ! ACTIVE_STATE="$(systemctl --user show "$UNIT" --property=ActiveState --value 2>/dev/null)"; then
+    QUERY_OK=0
+    ACTIVE_STATE=""
+  fi
+fi
+
+if [ "$QUERY_OK" -ne 1 ] || [ -z "$ACTIVE_STATE" ]; then
+  # Une sonde qui ne peut pas interroger systemd --user est une sonde AVEUGLE,
+  # pas une sonde "rien a signaler" -> log fort + code de sortie distinct.
+  # Ne JAMAIS retomber silencieusement dans le chemin "rien a faire" ici :
+  # c'est exactement le genre d'angle mort que cette sonde doit fermer.
+  log "ERREUR: impossible d'interroger ${UNIT} via systemctl --user (bus absent ?) — sonde aveugle ce tour"
+  exit 2
+fi
+
+if [ -n "${MEMORY_WATCHDOG_FAKE_INACTIVE_EXIT_EPOCH:-}" ]; then
+  START_EPOCH="$MEMORY_WATCHDOG_FAKE_INACTIVE_EXIT_EPOCH"
+else
+  START_TS_RAW="$(systemctl --user show "$UNIT" --property=InactiveExitTimestamp --value 2>/dev/null || echo "")"
+  if [ -z "$START_TS_RAW" ] || [ "$START_TS_RAW" = "n/a" ]; then
+    START_EPOCH=0
+  else
+    START_EPOCH="$(date -d "$START_TS_RAW" +%s 2>/dev/null || echo 0)"
+  fi
+fi
+
+# --- Etat persistant (survit aux runs de CETTE sonde) ---
+LAST_START_EPOCH=0
+ALERTED=0
+LAST_ALERT=0
+# shellcheck disable=SC1090
+[ -r "$STATE_FILE" ] && . "$STATE_FILE"
+
+write_state() {
+  mkdir -p "$(dirname "$STATE_FILE")"
+  cat > "$STATE_FILE" <<EOF
+LAST_START_EPOCH=$LAST_START_EPOCH
+ALERTED=$ALERTED
+LAST_ALERT=$LAST_ALERT
+EOF
+}
+
+# Nouveau run detecte depuis le dernier passage -> le run precedent (eventuel-
+# lement en alerte) est clos ; on notifie le retablissement si besoin et on
+# reinitialise l'etat pour CE nouveau run.
+if [ "$START_EPOCH" != "0" ] && [ "$START_EPOCH" != "$LAST_START_EPOCH" ]; then
+  if [ "$ALERTED" = "1" ]; then
+    notify "✅ <b>memory-worker</b> @ ${HOST} — run precedent termine (nouveau run demarre $(date '+%F %T'))."
+    log "retablissement notifie (nouveau run detecte)"
+  fi
+  LAST_START_EPOCH="$START_EPOCH"
+  ALERTED=0
+  LAST_ALERT=0
+  write_state
+fi
+
+# Unite pas (ou plus) en cours d'execution -> rien a surveiller ce tour. Si un
+# run etait marque en alerte et redevient inactif (cas le plus courant de
+# retablissement — pas de nouveau InactiveExitTimestamp tant que rien ne
+# redemarre), on notifie aussi ici.
+if [ "$ACTIVE_STATE" != "activating" ] && [ "$ACTIVE_STATE" != "active" ]; then
+  if [ "$ALERTED" = "1" ]; then
+    notify "✅ <b>memory-worker</b> @ ${HOST} — run termine (ActiveState=${ACTIVE_STATE}, $(date '+%F %T'))."
+    log "retablissement notifie (unite redevenue inactive)"
+    ALERTED=0
+    LAST_ALERT=0
+    write_state
+  fi
+  log "${UNIT} inactif (ActiveState=${ACTIVE_STATE}) — pas de run en cours"
+  exit 0
+fi
+
+if [ "$START_EPOCH" -le 0 ]; then
+  log "AVERTISSEMENT: horodatage de demarrage illisible (InactiveExitTimestamp vide/n-a) — sonde ignoree ce tour"
+  exit 0
+fi
+
+ELAPSED=$(( $(now) - START_EPOCH ))
+log "${UNIT} en cours depuis ${ELAPSED}s (seuil ${STALL_THRESHOLD_SEC}s)"
+
+if [ "$ELAPSED" -lt "$STALL_THRESHOLD_SEC" ]; then
+  exit 0
+fi
+
+elapsed_min=$(( ELAPSED / 60 ))
+
+# Signal diagnostique complementaire (pas un declencheur separe) : age de la
+# derniere ecriture du log de progression -> distingue "gros lot legitime qui
+# avance encore" de "vraiment fige" dans le message d'alerte.
+log_mtime_info=""
+if [ -f "$LOG_FILE" ]; then
+  file_mtime="$(stat -c %Y "$LOG_FILE" 2>/dev/null || echo 0)"
+  if [ "$file_mtime" -gt 0 ]; then
+    log_age_min=$(( ( $(now) - file_mtime ) / 60 ))
+    log_mtime_info="Derniere ecriture log il y a ~${log_age_min}min (${LOG_FILE})."
+  fi
+fi
+
+if [ "$ALERTED" = "0" ]; then
+  notify "🟠 <b>memory-worker STAGNATION</b> @ ${HOST}
+Run en cours depuis ~${elapsed_min}min (seuil ${STALL_THRESHOLD_SEC}s / $(( STALL_THRESHOLD_SEC / 60 ))min).
+${log_mtime_info}
+Cause probable : starvation Nice=19+IOSchedulingClass=idle sous charge Pi (audit memoire 2026-07-17 — run de 26h54m deja observe).
+Rien de nouveau n'est indexe pendant la stagnation. Verifier : systemctl --user status ${UNIT}"
+  ALERTED=1
+  LAST_ALERT=$(now)
+  log "ALERTE stagnation envoyee"
+elif [ "$(( $(now) - LAST_ALERT ))" -ge "$REMINDER_SEC" ]; then
+  notify "🟠 <b>memory-worker TOUJOURS bloque</b> @ ${HOST} — ~${elapsed_min}min cumulees ($(date '+%F %T')).
+${log_mtime_info}"
+  LAST_ALERT=$(now)
+  log "RAPPEL stagnation envoye"
+fi
+
+write_state
+exit 0

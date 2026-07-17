@@ -1,0 +1,53 @@
+---
+# memory-worker-watchdog — sonde locale de stagnation du worker memoire (Waza).
+#
+# Durcissement audit memoire 2026-07-17 (angle mort #4 HIGH) : un run du
+# llamaindex-memory-worker peut durer ~27h wall-clock d'affilee sans que rien
+# n'alerte (Nice=19 + IOSchedulingClass=idle -> starvation Pi sous charge ;
+# journalctl : run 2026-07-15T22:00 -> 2026-07-17T00:55, 26h54m wall / 5h21m
+# CPU seulement). Le SLA nominal (OnUnitActiveSec=30min) ne couvre QUE le cas
+# heureux. Cette sonde tourne dans un timer systemd --user SEPARE du worker :
+# elle continue de fonctionner meme si le worker lui-meme est bloque.
+#
+# Tourne sur Waza, scope USER, meme utilisateur que le worker surveille
+# (roles/llamaindex-memory-worker). Reference ses defaults par nom avec
+# fallback explicite -> fonctionne meme si ce role tourne seul (tags cibles).
+
+memory_worker_watchdog_user: "{{ memory_worker_user | default(workstation_pi_user | default('pi')) }}"
+memory_worker_watchdog_uid: "{{ memory_worker_uid | default(1000) }}"
+
+# Unite + log surveilles (llamaindex-memory-worker role).
+memory_worker_watchdog_target_service: "{{ memory_worker_service_name | default('llamaindex-memory-worker') }}.service"
+memory_worker_watchdog_target_log_file: "{{ memory_worker_log_dir | default('/opt/workstation/data/ai-memory-worker/logs') }}/memory-worker.log"
+memory_worker_watchdog_host_origin: "{{ memory_worker_host_origin | default('waza') }}"
+
+memory_worker_watchdog_install_dir: "/opt/workstation/ai-memory-worker-watchdog"
+memory_worker_watchdog_script: "{{ memory_worker_watchdog_install_dir }}/memory-worker-watchdog.sh"
+memory_worker_watchdog_env_file: "{{ memory_worker_watchdog_install_dir }}/memory-worker-watchdog.env"
+memory_worker_watchdog_state_dir: "/opt/workstation/data/ai-memory-worker-watchdog"
+memory_worker_watchdog_state_file: "{{ memory_worker_watchdog_state_dir }}/state"
+
+memory_worker_watchdog_service_name: "memory-worker-watchdog"
+memory_worker_watchdog_timer_name: "memory-worker-watchdog"
+memory_worker_watchdog_user_unit_dir: "/home/{{ memory_worker_watchdog_user }}/.config/systemd/user"
+
+# Seuil de stagnation : run en 'activating' depuis plus longtemps que ca ->
+# alerte. Consigne de durcissement : >2x l'intervalle nominal du timer worker
+# (OnUnitActiveSec=30min -> 2x = 60min) ; 90min par defaut = la marge donnee
+# en exemple par la consigne (evite les faux positifs sur un run legitime mais
+# lent d'un gros lot incremental).
+memory_worker_watchdog_stall_threshold_sec: 5400
+
+# Cadence de la sonde : << seuil pour detecter rapidement une fois franchi, et
+# INDEPENDANTE du timer worker (30min) — ne depend jamais de l'unite qu'elle
+# surveille pour se declencher.
+memory_worker_watchdog_timer_on_boot_sec: "10min"
+memory_worker_watchdog_timer_on_unit_active_sec: "15min"
+
+# Anti-spam : rappel si toujours bloque (pattern waza-deadman/disk-guard) — 3h.
+memory_worker_watchdog_reminder_sec: 10800
+
+# Notification Telegram (reutilise le bot monitoring existant — meme canal que
+# waza-deadman/disk-guard/diun, cf inventory/group_vars/all/main.yml).
+memory_worker_watchdog_telegram_bot_token: "{{ telegram_monitoring_bot_token | default('') }}"
+memory_worker_watchdog_telegram_chat_id: "{{ telegram_monitoring_chat_id | default('') }}"

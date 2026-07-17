@@ -166,6 +166,57 @@ Signal de derive cote `memory-healthcheck`:
   insere, donc le healthcheck remontera `stale:last_run_Xh_ago` apres
   `MEMORY_HEALTHCHECK_MAX_AGE_HOURS` heures (defaut: 2h)
 
+### 4.1.2 Watchdog de stagnation (`memory-worker-watchdog`)
+
+Durcissement audit memoire 2026-07-17 (angle mort #4 HIGH) : un run peut rester
+`Type=oneshot` **en cours** (`ActiveState=activating`) pendant des heures sans
+jamais echouer ni se terminer — `journalctl` a documente un run
+2026-07-15T22:00 -> 2026-07-17T00:55 (26h54m wall-clock, 5h21m CPU seulement,
+starvation Pi sous `Nice=19`+`IOSchedulingClass=idle`). Le SLA nominal
+(`OnUnitActiveSec=30min`) ne dit rien sur ce cas puisque le timer ne redeclenche
+qu'**apres** la fin du run precedent.
+
+Role: `roles/memory-worker-watchdog/` (deploye avec `llamaindex-memory-worker`
+dans `playbooks/hosts/workstation.yml`). Sonde INDEPENDANTE (timer
+`systemd --user` separe, meme utilisateur) : continue de tourner meme si le
+worker lui-meme est bloque.
+
+- unite: `memory-worker-watchdog.service` + `.timer` (`~/.config/systemd/user/`)
+- script: `/opt/workstation/ai-memory-worker-watchdog/memory-worker-watchdog.sh`
+- etat persistant: `/opt/workstation/data/ai-memory-worker-watchdog/state`
+- cadence sonde: 15min (`memory_worker_watchdog_timer_on_unit_active_sec`)
+- seuil stagnation: 90min par defaut (`memory_worker_watchdog_stall_threshold_sec=5400`)
+- detection: `systemctl --user show llamaindex-memory-worker.service
+  --property=InactiveExitTimestamp` (englobe `ExecStartPre`=calm-wait +
+  `ExecStart`) compare a maintenant, uniquement si `ActiveState=activating`
+- alerte + rappel (anti-spam 3h) + notif de retablissement via Telegram (bot
+  monitoring existant, meme pattern que `waza-deadman`/`disk-guard`)
+
+Verification:
+
+```bash
+systemctl --user is-enabled memory-worker-watchdog.timer
+systemctl --user list-timers memory-worker-watchdog.timer
+journalctl --user -u memory-worker-watchdog.service -n 20 --no-pager
+```
+
+Test sans attendre le seuil reel (n'affecte pas le worker) :
+
+```bash
+MEMORY_WATCHDOG_FAKE_ACTIVE_STATE=activating \
+MEMORY_WATCHDOG_FAKE_INACTIVE_EXIT_EPOCH=$(( $(date +%s) - 6000 )) \
+  /opt/workstation/ai-memory-worker-watchdog/memory-worker-watchdog.sh
+```
+
+Complementaire (pas redondant) au Cron 1h `memory-healthcheck` cote n8n
+(`stale_incremental:last_run_Xh_ago`, cf 4.2) : ce dernier n'observe QUE les
+runs **termines** (aucun report n'est POSTe tant que le run n'a pas fini), et
+depend du chemin reseau Waza -> Sese. La sonde locale, elle, voit directement
+l'etat systemd du run **en cours** et fonctionne meme hors-ligne. L'etat
+actif/inactif du workflow n8n `memory-healthcheck` n'a pas ete reverifie en
+direct lors de ce durcissement (session MCP n8n expiree) — a confirmer via
+l'UI n8n si on veut s'appuyer dessus comme filet redondant.
+
 ### 4.2 n8n
 
 Verifier:

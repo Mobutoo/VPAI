@@ -1,0 +1,15 @@
+[Unit]
+Description=memory-worker-watchdog — sonde stagnation llamaindex-memory-worker (user)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory={{ memory_worker_watchdog_install_dir }}
+ExecStart={{ memory_worker_watchdog_script }}
+Nice=19
+IOSchedulingClass=idle
+
+# No [Install] section: this is a timer-triggered Type=oneshot. Only the timer
+# is enabled (systemctl --user enable …timer) — mirrors llamaindex-memory-worker
+# so a stray `enable …service` never runs the probe at every login.

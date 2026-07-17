@@ -1,0 +1,44 @@
+{# ============================================================================
+   STATUS: REFERENCE ONLY. This file is NEVER loaded by Claude Code CLI 2.1.x.
+
+   Verified 2026-07-17 (ops/loops/mcp-versions.md): the CLI's real user-scope
+   MCP config lives in `~/.claude.json` (top-level "mcpServers" key) — a live
+   file mutated by the CLI itself (also holds session cache, per-project
+   state, feature flags). Ansible MUST NOT template or overwrite that file.
+
+   `~/.claude/mcp.json` (legacy path, no ".reference" suffix) is a SEPARATE,
+   hand-curated file on this host (stitch/canva/github/postgres/freepik/
+   icons8/hugeicons/heroicons/unsplash/pexels/plane/qdrant/context7/
+   filesystem/n8n-docs, versions pinned per ops/loops/mcp-versions.md).
+   Whether it is ever loaded by any CLI code path is UNRESOLVED (see that
+   catalogue's "DRIFT" §4) — but it is real, maintained-by-hand content.
+
+   This role used to render 9 servers (context7/filesystem/n8n/firefly/
+   n8n-docs/playwright/openpencil/penpot/qdrant) straight to that legacy
+   path. That set matches neither ~/.claude.json nor ~/.claude/mcp.json
+   anymore, so the next `make deploy-workstation` would have silently
+   clobbered the hand-curated file with 9 stale/fictional entries. Fix: the
+   deploy task now writes to `mcp.json.reference` instead — a clearly-named,
+   inert artifact — so Ansible never touches the active config again.
+   Per-server claude_code_mcp_*_enabled toggles in defaults/main.yml are
+   intentionally left as-is (they still gate the related npm-install tasks
+   further down in tasks/main.yml) but no longer drive any generated server
+   list here — reproducing that list would just move the staleness problem,
+   not fix it.
+
+   Sources of truth (read, don't regenerate from Ansible):
+     - Live user-scope config : ~/.claude.json ("mcpServers" key)
+     - Legacy hand-curated    : ~/.claude/mcp.json
+     - Version pin catalogue  : ~/work/ops/loops/mcp-versions.md
+     - Project-scope config   : VPAI/.mcp.json (repo root; separate mechanism,
+       IS loaded by the CLI for this project — docker-waza/docker-sese today)
+   ============================================================================ #}
+{
+  "_comment": [
+    "REFERENCE ONLY - not loaded by Claude Code CLI 2.1.x.",
+    "Real user-scope MCP servers live in ~/.claude.json (\"mcpServers\" key); never edit that file via Ansible.",
+    "Legacy hand-curated file: ~/.claude/mcp.json - do not regenerate from this role.",
+    "Version pin catalogue: ~/work/ops/loops/mcp-versions.md",
+    "Project-scope MCP config (loaded by the CLI for this repo): VPAI/.mcp.json"
+  ]
+}

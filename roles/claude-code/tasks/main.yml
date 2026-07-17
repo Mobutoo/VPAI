@@ -55,10 +55,19 @@
   become: true
 
 # --- Deploy MCP configuration ---
-- name: Deploy MCP servers configuration (mcp.json)
+# NOTE (2026-07-17): Claude Code CLI 2.1.x does NOT load ~/.claude/mcp.json —
+# real user-scope MCP config lives in ~/.claude.json (CLI-managed, never
+# templated by Ansible). ~/.claude/mcp.json is a separate, hand-curated file
+# on this host with 15+ pinned servers (see ops/loops/mcp-versions.md). This
+# task used to overwrite that legacy path with a stale 9-server template on
+# every deploy, which would have clobbered the hand-curated content. It now
+# writes a clearly-named, inert reference artifact instead — see the header
+# comment in mcp.json.reference.j2 for the full rationale and sources of
+# truth. Ansible must not manage ~/.claude.json or ~/.claude/mcp.json.
+- name: Deploy MCP servers reference file (mcp.json.reference — NOT loaded by the CLI)
   ansible.builtin.template:
-    src: mcp.json.j2
-    dest: "{{ claude_code_config_dir }}/mcp.json"
+    src: mcp.json.reference.j2
+    dest: "{{ claude_code_config_dir }}/mcp.json.reference"
     owner: "{{ claude_code_user }}"
     group: "{{ claude_code_user }}"
     mode: "0600"

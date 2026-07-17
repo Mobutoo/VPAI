@@ -1,0 +1,65 @@
+{
+  "name": "Canary — Coffre Vaultwarden",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "canary-alert-e60df3725bf8ffce27fdeacc2152c0a8a22582d4",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "ca-0001-0000-0000-0000-000000000001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Canary déclenché — l'item Vaultwarden canary-apikey a été utilisé\nconst payload = $input.first().json;\nconst timestamp = new Date().toISOString();\n\nconst message = [\n  '🚨 *CANARY DÉCLENCHÉ* — l\\'item Vaultwarden `canary-apikey` a été utilisé.',\n  '',\n  'Le coffre est *potentiellement compromis*.',\n  'Vérifier immédiatement les accès `agent-waza`/`resolver`.',\n  '',\n  `Horodatage : ${timestamp}`\n].join('\\n');\n\nreturn [{ json: { message, timestamp } }];"
+      },
+      "id": "ca-0001-0000-0000-0000-000000000002",
+      "name": "Format alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_MONITORING_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "chat_id",    "value": "={{ $env.TELEGRAM_MONITORING_CHAT_ID }}" },
+            { "name": "text",       "value": "={{ $json.message }}" },
+            { "name": "parse_mode", "value": "Markdown" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ca-0001-0000-0000-0000-000000000003",
+      "name": "Send to Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [700, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": { "main": [[{ "node": "Format alert", "type": "main", "index": 0 }]] },
+    "Format alert": { "main": [[{ "node": "Send to Telegram", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "tags": [{ "name": "canary" }, { "name": "security" }, { "name": "telegram" }],
+  "triggerCount": 0,
+  "updatedAt": "2026-07-17T00:00:00.000Z",
+  "versionId": "1"
+}

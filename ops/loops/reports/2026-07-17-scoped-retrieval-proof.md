@@ -105,21 +105,47 @@ pas une bascule de config.
 
 | Granularité | Gain recall@1 | Coût mesuré | Dérivable aujourd'hui ? | Verdict |
 |---|---|---|---|---|
-| REPO | +8.9 pts (0.6711→0.7500) | 0% miss (mais sous-mesuré, cf biais golden §2) | Oui (CWD) | **PROBANT, actionnable immédiatement** |
+| REPO | +8.9 pts (0.6711→0.7500) | 0% miss (**sous-mesuré**, cf §2 et nuance ci-dessous) | Oui (CWD) | **PROBANT en upside, downside non mesuré** |
 | WING | +8.9 pts (identique ici) | 0% miss (idem) | Oui (CWD) | Probant, mais strictement ≤ REPO (agrège plus large) — préférer REPO |
-| TOPIC | +32.9 pts (0.6711→1.0000) | 0% miss (oracle) | **Non** — taxonomie incompatible avec `topic-extract.js` | Plafond réel, **non actionnable** sans nouveau chantier d'alignement |
+| TOPIC | +32.9 pts (0.6711→1.0000) | 0% miss (oracle) | **Non** — taxonomie incompatible avec `topic-extract.js` | Borne supérieure **dégénérée**, pas actionnable |
 
-**Verdict global : PROBANT pour le scoping REPO** (avec WING en repli si le CWD ne
-mappe pas franc à un seul repo). Seuil du protocole (≥0.72) largement dépassé (0.75).
-Le scoping TOPIC prouve qu'il existe encore ~25 points de recall@1 sur la table
-(0.75→1.00) mais ce gain reste **hors de portée sans construire l'alignement de
-taxonomie** — à traiter comme piste future, pas comme partie de ce chantier.
+**Nuance importante sur TOPIC=1.0000** : ce n'est pas un "plafond réel" au sens d'un
+gain de ranking — `topic` ≈ identité de fichier (TROUBLESHOOTING.md = 156 chunks, 1 seul
+topic), donc filtrer sur le topic-oracle revient à filtrer directement sur le fichier
+réponse, et `evaluate()` matche par fichier. Le score 1.0000 est **garanti par
+construction**, indépendamment du classement vectoriel. Ce chiffre montre seulement qu'il
+existe *en théorie* de la marge si un signal document-level fiable existait au moment de
+la requête — pas qu'un tel plafond soit atteignable.
 
-**Recommandation de granularité** : construire le scoping **repo** (dérivé du CWD),
-avec repli sur **wing** si l'agent n'est pas dans un repo précis (session multi-repo,
-recherche transverse). Avant d'industrialiser, étoffer `golden.yml` avec des questions
-**volontairement cross-repo** (le set actuel est VPAI-only à 75/76 — le 0% de
-filtre-miss mesuré ici est optimiste, pas une garantie de production).
+**Nuance critique sur REPO/WING (upside mesuré ≠ downside mesuré)** : ce qui est prouvé
+ici est le plafond d'un filtre Qdrant **dur** (`must` exclusif) sur un golden set où
+75/76 questions ont une réponse VPAI-only. Le référentiel opérationnel du projet
+(CLAUDE.md, R0 : n8n/Caddy/LiteLLM/Kitsu…) envoie régulièrement un agent **dans VPAI**
+poser une question dont la réponse fait autorité dans `refdocs` (26 602 points —
+`litellm-docs`, `n8n-docs`, `openclaw-docs`) : un filtre dur `repo=VPAI` **exclurait
+cette réponse d'office**, transformant un hit global actuel en filtre-miss forcé. Le
+golden set actuel ne contient **aucune** question dont la vérité-terrain est
+exclusivement hors-VPAI (`refdocs`-only) — le "0% miss" mesuré est donc **structurellement
+aveugle à ce cas**, pas une preuve de sécurité en production.
+
+**Verdict global : PROBANT pour l'upside du scoping REPO, mais PAS pour un filtre dur en
+l'état.** Seuil du protocole (≥0.72) dépassé sur l'upside mesuré (0.75). Deux
+conséquences concrètes :
+
+1. **Instanciation à construire ≠ filtre dur.** Le chantier actionnable est un **boost de
+   score** (repo CWD = bonus, pas exclusion — pattern déjà existant dans
+   `search_memory.py --boost-usage`) ou un **fallback CWD-repo ∪ global** (chercher
+   scopé d'abord, retomber sur le global si vide/faible score) — capture l'essentiel du
+   +8.9 pts sans la falaise cross-repo décrite ci-dessus. Un `must` Qdrant pur n'est
+   **pas** ce que ce résultat autorise à construire tel quel.
+2. **Précondition dure avant tout filtre dur** : étoffer `golden.yml` avec des questions
+   dont la vérité-terrain est **volontairement `refdocs`-only** (ex. une question
+   LiteLLM/n8n/OpenClaw posée depuis VPAI dont la seule bonne réponse vit dans
+   `litellm-docs`/`n8n-docs`/`openclaw-docs`, sans doublon VPAI) et remesurer le
+   filtre-miss sur CE sous-ensemble. Sans ça, le coût réel du hard-filter reste inconnu.
+
+TOPIC reste hors scope de tout chantier immédiat (aucune dérivation query-time
+disponible, cf §4).
 
 ## Pièges rencontrés
 

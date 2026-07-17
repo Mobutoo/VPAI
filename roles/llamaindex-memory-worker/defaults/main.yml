@@ -202,6 +202,9 @@ memory_worker_exclude_dirs:
   - .pytest_cache
   - .playwright-mcp
   - coverage
+  # Artefacts harnais d'éval (audit 2026-07-17-audit-memoire.md §1 FIX A) : nom
+  # EXACT "eval" — jamais de sous-chaîne (matcherait "retrieval", contenu RAG légitime).
+  - eval
 
 memory_worker_max_file_bytes: 1048576
 memory_worker_chunk_size: 1600

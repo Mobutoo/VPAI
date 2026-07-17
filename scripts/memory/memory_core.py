@@ -59,8 +59,31 @@ INCLUDE_EXTENSIONS = {
 EXCLUDE_DIRS = {
     ".git", "node_modules", "dist", "build", ".next", ".turbo", ".venv", "venv",
     "__pycache__", ".mypy_cache", ".pytest_cache", ".playwright-mcp", "coverage",
+    # Artefacts du harnais d'éval (audit 2026-07-17-audit-memoire.md §1 FIX A) :
+    # rejeu de run_eval.py ingérait .planning/eval/*.json + scripts/memory/eval/*
+    # dans memory_v3, polluant le corpus que l'éval mesure elle-même (boucle
+    # auto-aggravante). Nom EXACT ("eval"), jamais de match sous-chaîne — un
+    # sous-chaîne "eval" matcherait aussi "retrieval" (RAG, contenu légitime).
+    "eval",
 }
 MAX_FILE_BYTES = 1048576
+
+# Défense en profondeur : rapports d'éval nommés explicitement, au cas où ils
+# atterriraient hors d'un dossier `eval/` (ex. écrits directement sous
+# `.planning/`). Complète EXCLUDE_DIRS ci-dessus, ne le remplace pas.
+# Comparaison sur le NOM DE FICHIER (basename) uniquement, jamais sur un
+# sous-chemin — même discipline "EXACT" que EXCLUDE_DIRS.
+EXCLUDE_EVAL_FILE_PREFIXES = ("eval-memory_v3", "baseline-memory_v2")
+
+
+def is_eval_artifact_filename(filename: str) -> bool:
+    """True si `filename` (basename) est un rapport généré par run_eval.py.
+
+    Défense en profondeur pour FIX A (audit 2026-07-17) — le cas nominal est
+    déjà couvert par EXCLUDE_DIRS ("eval"), ceci couvre le cas où un rapport
+    échapperait à un dossier `eval/`.
+    """
+    return filename.startswith(EXCLUDE_EVAL_FILE_PREFIXES)
 
 
 # ---------------------------------------------------------------------------
@@ -983,6 +1006,8 @@ def iter_source_files(
         for filename in files:
             path = current / filename
             if path.suffix.lower() not in inc:
+                continue
+            if is_eval_artifact_filename(filename):
                 continue
             try:
                 if path.stat().st_size > max_file_bytes:

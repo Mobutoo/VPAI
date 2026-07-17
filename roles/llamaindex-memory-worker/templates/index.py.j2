@@ -45,6 +45,7 @@ from memory_core import (
     extract_topic,
     get_truncation_events,
     git_commit_sha,
+    is_eval_artifact_filename,
     load_wing_room_lookup,
     ref_doc_id,
     reset_truncation_events,
@@ -123,6 +124,8 @@ def iter_repo_files(repo_root: Path, include_ext: set[str], exclude_dirs: set[st
         for filename in files:
             path = current_path / filename
             if path.suffix.lower() not in include_ext:
+                continue
+            if is_eval_artifact_filename(filename):
                 continue
             try:
                 if path.stat().st_size > max_file_bytes:

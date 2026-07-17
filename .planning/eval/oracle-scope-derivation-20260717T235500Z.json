@@ -1,0 +1,1827 @@
+[
+  {
+    "query": "Quelle variable d'environnement n8n autorise require() des modules builtin fs path crypto dans les Code nodes ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md",
+      "n8n-docs:docs/hosting/configuration/configuration-examples/modules-in-code-node.md",
+      "n8n-docs:docs/hosting/configuration/environment-variables/nodes.md"
+    ],
+    "repos": [
+      "VPAI",
+      "n8n-docs"
+    ],
+    "wings": [
+      "infra",
+      "refdocs"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX",
+      "configuration examples",
+      "environment variables"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ],
+      "n8n-docs:docs/hosting/configuration/configuration-examples/modules-in-code-node.md": [
+        "configuration examples"
+      ],
+      "n8n-docs:docs/hosting/configuration/environment-variables/nodes.md": [
+        "environment variables"
+      ]
+    },
+    "ambiguous_repo": true,
+    "ambiguous_wing": true,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "Which volume mount path does PostgreSQL 18 use in Docker compared to PG 17?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "ROUND on double precision PostgreSQL function does not exist — how to fix the SQL?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Redis 8 crash au démarrage avec rename-command FLUSHDB dans redis.conf",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Healthcheck Qdrant sans wget ni curl dans l'image Docker",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Quelle variable d'environnement passer pour l'API key Qdrant au lieu du YAML ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Caddy crash loop unrecognized directive: 200 after heredoc respond",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md",
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)",
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ],
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md": [
+        "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "Why do Tailscale HTTP/3 QUIC connections show client_ip 172.20.1.1 and get blocked by the Caddy VPN ACL?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md",
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)",
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ],
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md": [
+        "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "n8n webhook returns HTTP 200 with empty body responseMode responseNode no visible error",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Pourquoi n8n exige un sous-domaine dédié et ne supporte pas le sub-path ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "LiteLLM health checks cost $11 in 16 hours on Perplexity — which setting disables them?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Erreur 402 not enough credits OpenRouter à cause de la réservation max_tokens",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "ERR_ERL_UNEXPECTED_X_FORWARDED_FOR error in n8n logs behind Caddy",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Pourquoi utiliser 127.0.0.1 et pas localhost dans les healthchecks Docker Alpine ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Which Docker capabilities are required for a container writing to root-owned mounted volumes?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md",
+      "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide — Docker Security Hardening",
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ],
+      "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md": [
+        "Guide — Docker Security Hardening"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "dig n'est pas installé sur les images Debian minimales, quelle alternative pour résoudre un domaine dans un script ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "n8n import:workflow does not update workflow_entity.nodes, code stays old after restart",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Quel champ utiliser pour le login API n8n 2.7 à la place de email ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "n8n workflow DELETE returns 400 — what is the required deletion sequence in 2.7+?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Locale ICU PostgreSQL 18 Docker fr-FR initdb options",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Grafana datasource PostgreSQL provisioning format piège datasources.yaml",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "yamllint UnicodeDecodeError utf-8 codec can't decode byte 0x97 — quelle est la cause ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "ansible-lint schema meta role_name regex underscores",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Comment déployer sur un VPS neuf encore en port SSH 22 alors que l'inventaire est en 804 ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Caddy healthcheck: the admin API on port 2019 does not answer in Docker, what command to use?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Page d'erreur quand le backend est down : handle_response ou handle_errors dans Caddy ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md",
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)",
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ],
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md": [
+        "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "DNS-01 ACME fails with NOTIMP on the Pi ARM64 Caddy — fix?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "OpenClaw WebSocket upgrade cassé derrière Caddy HTTP/2, réponse 200 au lieu de 101",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "OpenClaw plugin telegram shows disabled bundled by default after upgrade",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md",
+      "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide : Montee en Version OpenClaw (One Shot)",
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ],
+      "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md": [
+        "Guide : Montee en Version OpenClaw (One Shot)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "Ansible handler state restarted ne relit pas le env_file du container",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "OpenClaw subagent error spawn docker EACCES in the sandbox",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Headscale preauth key réutilisable ou usage unique ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "tailscale up hangs when the Headscale server is down",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Split DNS Headscale : quelles clés de config pour résoudre les sous-domaines admin vers l'IP Tailscale ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md",
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)",
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ],
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md": [
+        "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "Dans quelle base PostgreSQL vit la table model_scores et qui la crée ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Formula of the ai-model-scoring score with likeRatio successRate costEfficiency speedScore",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Comment accéder au body d'un webhook n8n v2 dans un Code node ?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Mission Control next start vs output standalone next.config.mjs missing file",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "rate_limit plugin manquant dans l'image caddy alpine",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "LiteLLM fallbacks config syntax list of dicts model_name",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Disque à 100% mais docker system df sous-estime, /var/lib/containerd fait 18G",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md",
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Disque saturé Sese AI + automatisation disk guard (2026 06 02)",
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md": [
+        "REX Session — Disque saturé Sese AI + automatisation disk guard (2026 06 02)"
+      ],
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "containerd snapshots not garbage collected, pinned by orphan leases — how to free space without restart?",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Disque saturé Sese AI + automatisation disk guard (2026 06 02)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md": [
+        "REX Session — Disque saturé Sese AI + automatisation disk guard (2026 06 02)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Pourquoi ne faut-il jamais redémarrer containerd sur un hôte Docker en production ?",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Disque saturé Sese AI + automatisation disk guard (2026 06 02)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md": [
+        "REX Session — Disque saturé Sese AI + automatisation disk guard (2026 06 02)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "make deploy-role timeout ssh connect to host 137.74.114.167 port 804 depuis waza",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md",
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Disque saturé Sese AI + automatisation disk guard (2026 06 02)",
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-02-disk-containerd-leases.md": [
+        "REX Session — Disque saturé Sese AI + automatisation disk guard (2026 06 02)"
+      ],
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "The GPU pod cloned stale code from GitHub even though the commit existed locally",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Bulk mémoire sur pod GPU + optimisation bf16 (2026 06 06)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md": [
+        "REX Session — Bulk mémoire sur pod GPU + optimisation bf16 (2026 06 06)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "torch cu13 du lock inutilisé : cuda.is_available False, SentenceTransformer retombe sur CPU",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Bulk mémoire sur pod GPU + optimisation bf16 (2026 06 06)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md": [
+        "REX Session — Bulk mémoire sur pod GPU + optimisation bf16 (2026 06 06)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "OOM CUDA on L4 24GB when encoding with batch size 256 — which batch size is safe?",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Bulk mémoire sur pod GPU + optimisation bf16 (2026 06 06)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md": [
+        "REX Session — Bulk mémoire sur pod GPU + optimisation bf16 (2026 06 06)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Quel gain de débit a donné bf16 autocast sur l'ingestion embeddings GPU et quelle dérive ?",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Bulk mémoire sur pod GPU + optimisation bf16 (2026 06 06)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md": [
+        "REX Session — Bulk mémoire sur pod GPU + optimisation bf16 (2026 06 06)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Perte SSH waza pendant 6 heures, Pi pas crashé, autre machine de la même box encore en ligne",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md",
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Panne SSH waza : OOM worker → bail DHCP eth0 perdu (2026 06 05)",
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md": [
+        "REX Session — Panne SSH waza : OOM worker → bail DHCP eth0 perdu (2026 06 05)"
+      ],
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "memory worker 3.2 GB RSS triggers global OOM and starves systemd-networkd",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Panne SSH waza : OOM worker → bail DHCP eth0 perdu (2026 06 05)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md": [
+        "REX Session — Panne SSH waza : OOM worker → bail DHCP eth0 perdu (2026 06 05)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Quelles limites systemd ont été posées sur le worker mémoire après l'incident OOM ?",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Panne SSH waza : OOM worker → bail DHCP eth0 perdu (2026 06 05)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md": [
+        "REX Session — Panne SSH waza : OOM worker → bail DHCP eth0 perdu (2026 06 05)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "network is unreachable ENETUNREACH from tailscaled — is it the ISP or the host?",
+    "expected_paths": [
+      "VPAI:docs/TROUBLESHOOTING.md",
+      "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Panne SSH waza : OOM worker → bail DHCP eth0 perdu (2026 06 05)",
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ],
+      "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md": [
+        "REX Session — Panne SSH waza : OOM worker → bail DHCP eth0 perdu (2026 06 05)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "watchdog passerelle réseau : que fait net-watchdog.sh quand la gateway est injoignable ?",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Panne SSH waza : OOM worker → bail DHCP eth0 perdu (2026 06 05)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md": [
+        "REX Session — Panne SSH waza : OOM worker → bail DHCP eth0 perdu (2026 06 05)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Session de debug de 11 heures avec 806 appels Bash et zéro appel MCP — quel audit ?",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-MOP-AUDIT-2026-04-11.md",
+      "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Audit MOP Machinery v1.0 — VPAI Compliance — 2026 04 11",
+      "LOI OPÉRATIONNELLE — MCP first, file first, doc first"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-MOP-AUDIT-2026-04-11.md": [
+        "Audit MOP Machinery v1.0 — VPAI Compliance — 2026 04 11"
+      ],
+      "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md": [
+        "LOI OPÉRATIONNELLE — MCP first, file first, doc first"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "What protects systemd-networkd and tailscaled from being killed first by the OOM killer?",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Panne SSH waza : OOM worker → bail DHCP eth0 perdu (2026 06 05)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-05-waza-ssh-dhcp-oom.md": [
+        "REX Session — Panne SSH waza : OOM worker → bail DHCP eth0 perdu (2026 06 05)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "benchmark embeddings mensonger 137 chunks par seconde, cause et fix",
+    "expected_paths": [
+      "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "REX Session — Bulk mémoire sur pod GPU + optimisation bf16 (2026 06 06)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/rex/REX-SESSION-2026-06-06-memory-bulk-gpu-bf16.md": [
+        "REX Session — Bulk mémoire sur pod GPU + optimisation bf16 (2026 06 06)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Qui a le droit d'écrire dans la collection mémoire Qdrant, les agents ou le worker ?",
+    "expected_paths": [
+      "VPAI:docs/runbooks/AI-MEMORY-AGENT-PROTOCOL.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Runbook — Protocole d'usage de la memoire IA par les agents"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/runbooks/AI-MEMORY-AGENT-PROTOCOL.md": [
+        "Runbook — Protocole d'usage de la memoire IA par les agents"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "search_memory.py available filter flags repo doc-kind topic",
+    "expected_paths": [
+      "VPAI:docs/runbooks/AI-MEMORY-AGENT-PROTOCOL.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Runbook — Protocole d'usage de la memoire IA par les agents"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/runbooks/AI-MEMORY-AGENT-PROTOCOL.md": [
+        "Runbook — Protocole d'usage de la memoire IA par les agents"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Quelle variable Ansible et quelle clé Vault portent le token Hugging Face du worker mémoire ?",
+    "expected_paths": [
+      "VPAI:docs/runbooks/HUGGINGFACE-TOKEN-BOOTSTRAP.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Hugging Face Token Bootstrap"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/runbooks/HUGGINGFACE-TOKEN-BOOTSTRAP.md": [
+        "Hugging Face Token Bootstrap"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Where is the embeddinggemma model cached locally on waza?",
+    "expected_paths": [
+      "VPAI:docs/runbooks/HUGGINGFACE-TOKEN-BOOTSTRAP.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Hugging Face Token Bootstrap"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/runbooks/HUGGINGFACE-TOKEN-BOOTSTRAP.md": [
+        "Hugging Face Token Bootstrap"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Quels sont les trois axes orthogonaux de la taxonomie mémoire et qui les assigne ?",
+    "expected_paths": [
+      "VPAI:docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Manifeste Taxonomie Mémoire — memory v2"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md": [
+        "Manifeste Taxonomie Mémoire — memory v2"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Which payload fields have a Qdrant keyword index in the memory collection?",
+    "expected_paths": [
+      "VPAI:docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Manifeste Taxonomie Mémoire — memory v2"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/runbooks/MEMORY-TAXONOMY-MANIFEST.md": [
+        "Manifeste Taxonomie Mémoire — memory v2"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Où placer physiquement un nouveau repo projet sur waza pour qu'il soit auto-indexé ?",
+    "expected_paths": [
+      "VPAI:docs/runbooks/MANIFESTE-CREATION-PROJET.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Manifeste de Création de Projet — placement workspace + ingestion Qdrant"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/runbooks/MANIFESTE-CREATION-PROJET.md": [
+        "Manifeste de Création de Projet — placement workspace + ingestion Qdrant"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Am I allowed to hand-edit the live sources.yml to register a new repo for memory ingestion?",
+    "expected_paths": [
+      "VPAI:docs/runbooks/MANIFESTE-CREATION-PROJET.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Manifeste de Création de Projet — placement workspace + ingestion Qdrant"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/runbooks/MANIFESTE-CREATION-PROJET.md": [
+        "Manifeste de Création de Projet — placement workspace + ingestion Qdrant"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Règle R0 de la loi opérationnelle : que faut-il faire avant tout travail sur un sujet connu ?",
+    "expected_paths": [
+      "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md",
+      "VPAI:docs/rex/REX-MOP-AUDIT-2026-04-11.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Audit MOP Machinery v1.0 — VPAI Compliance — 2026 04 11",
+      "LOI OPÉRATIONNELLE — MCP first, file first, doc first"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md": [
+        "LOI OPÉRATIONNELLE — MCP first, file first, doc first"
+      ],
+      "VPAI:docs/rex/REX-MOP-AUDIT-2026-04-11.md": [
+        "Audit MOP Machinery v1.0 — VPAI Compliance — 2026 04 11"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "n8n IF node typeVersion 2 crashes on all conditions — which typeVersion and schema to use?",
+    "expected_paths": [
+      "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "LOI OPÉRATIONNELLE — MCP first, file first, doc first"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md": [
+        "LOI OPÉRATIONNELLE — MCP first, file first, doc first"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Quel outil MCP est obligatoire avant tout n8n import:workflow ?",
+    "expected_paths": [
+      "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "LOI OPÉRATIONNELLE — MCP first, file first, doc first"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md": [
+        "LOI OPÉRATIONNELLE — MCP first, file first, doc first"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "What is the primary n8n workflow deploy method according to rule R11?",
+    "expected_paths": [
+      "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "LOI OPÉRATIONNELLE — MCP first, file first, doc first"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md": [
+        "LOI OPÉRATIONNELLE — MCP first, file first, doc first"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Quels deux CIDRs doivent figurer dans le snippet vpn_only de Caddy et pourquoi ?",
+    "expected_paths": [
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md",
+      "VPAI:docs/TROUBLESHOOTING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)",
+      "TROUBLESHOOTING.md — Pieges Connus et REX"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md": [
+        "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)"
+      ],
+      "VPAI:docs/TROUBLESHOOTING.md": [
+        "TROUBLESHOOTING.md — Pieges Connus et REX"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": true
+  },
+  {
+    "query": "Why is trusted_proxies mandatory in the Caddy VPN-only setup?",
+    "expected_paths": [
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md": [
+        "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Checklist avant montée de version OpenClaw : que sauvegarder et vérifier avant l'upgrade ?",
+    "expected_paths": [
+      "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide : Montee en Version OpenClaw (One Shot)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md": [
+        "Guide : Montee en Version OpenClaw (One Shot)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "NC_API_TOKEN static token to automate NocoDB API token provisioning",
+    "expected_paths": [
+      "VPAI:docs/guides/GUIDE-NOCODB-TOKEN-AUTOMATION.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "GUIDE — Automatisation du token NocoDB (NC API TOKEN)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/guides/GUIDE-NOCODB-TOKEN-AUTOMATION.md": [
+        "GUIDE — Automatisation du token NocoDB (NC API TOKEN)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Container crashes with Operation not permitted after cap_drop ALL — how to find the missing capability?",
+    "expected_paths": [
+      "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide — Docker Security Hardening"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md": [
+        "Guide — Docker Security Hardening"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Quel user UID utiliser pour VictoriaMetrics ou Prometheus en non-root dans compose ?",
+    "expected_paths": [
+      "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide — Docker Security Hardening"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/guides/GUIDE-DOCKER-SECURITY-HARDENING.md": [
+        "Guide — Docker Security Hardening"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "How do I check the actual MagicDNS resolution from a VPN client before blaming Caddy?",
+    "expected_paths": [
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/guides/GUIDE-CADDY-VPN-ONLY.md": [
+        "Guide — Mise sous VPN d'un Caddy en Docker (Headscale/Tailscale)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  },
+  {
+    "query": "Où vérifier le tag de la nouvelle image OpenClaw avant de modifier versions.yml ?",
+    "expected_paths": [
+      "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md"
+    ],
+    "repos": [
+      "VPAI"
+    ],
+    "wings": [
+      "infra"
+    ],
+    "topics": [
+      "Guide : Montee en Version OpenClaw (One Shot)"
+    ],
+    "per_path_topics": {
+      "VPAI:docs/guides/GUIDE-OPENCLAW-UPGRADE.md": [
+        "Guide : Montee en Version OpenClaw (One Shot)"
+      ]
+    },
+    "ambiguous_repo": false,
+    "ambiguous_wing": false,
+    "ambiguous_topic": false
+  }
+]

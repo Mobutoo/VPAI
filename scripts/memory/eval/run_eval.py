@@ -49,6 +49,23 @@ Extensions 2026-07-17 (restauration recall@1, ops/loops/reports/2026-07-17-*) :
   serveur, prefetch=30, pas de rerank) — sibling test de non-régression obligatoire
   après modif de ce fichier (LOI R4/R6) : rejouer sans flag doit reproduire le
   dernier rapport commité au point près.
+
+Extension 2026-07-17 (bis) — retrieval SCOPÉ par métadonnée (expérience filtre
+Qdrant repo/wing/topic, ops/loops/reports/2026-07-17-scoped-retrieval-proof.md) :
+  - --scope-file PATH : JSON [{"query": str, "values": [str, ...]}, ...] — filtre
+    PAR QUESTION (contrairement à --repo/--doc-kind/--topic globaux inexistants ici,
+    volontairement absents avant cette extension). Valeurs vides/absentes -> pas de
+    filtre pour cette question (log warning, comportement = variante globale).
+  - --scope-field {repo,wing,topic} : champ Qdrant ciblé par --scope-file (requis
+    conjointement). Filtre appliqué aux DEUX canaux du prefetch hybrid (dense+bm25),
+    même pattern que search_memory.py build_filter().
+  - Par question filtrée, calcule empiriquement "in_scope" (bool) via client.count()
+    AVANT la recherche vectorielle : au moins un expected_path (repo+relative_path)
+    a-t-il un point dans la collection sous ce filtre ? Rapport JSON expose
+    "filter_miss_rate" (fraction de questions où in_scope=False, cf protocole
+    "filtre-miss = la bonne réponse exclue du filtre").
+  Défaut (--scope-file absent) : comportement byte-identique à avant (extra_filter
+  reste None partout) — sibling test rejoué 2026-07-17 (cf rapport).
 """
 
 from __future__ import annotations
@@ -155,7 +172,39 @@ def parse_args() -> argparse.Namespace:
                              "PAS un bug de thread ni de corpus. --exact élimine cette source de "
                              "bruit pour des comparaisons Piste A/B fiables (plus lent, usage éval "
                              "uniquement, jamais en prod interactif).")
+    parser.add_argument("--scope-file", default=None,
+                        help="JSON [{\"query\":str,\"values\":[str,...]}] — filtre Qdrant PAR "
+                             "QUESTION sur --scope-field (expérience retrieval scopé, cf docstring "
+                             "module). Défaut absent -> aucun filtre, comportement inchangé.")
+    parser.add_argument("--scope-field", choices=["repo", "wing", "topic"], default=None,
+                        help="Champ Qdrant ciblé par --scope-file (requis si --scope-file fourni).")
     return parser.parse_args()
+
+
+def load_scope_map(path: str) -> dict[str, list[str]]:
+    """Charge --scope-file -> dict query(str) -> values(list[str]). Pure — pas de Qdrant."""
+    entries = json.loads(Path(path).read_text(encoding="utf-8"))
+    return {e["query"]: e.get("values") or [] for e in entries}
+
+
+def check_in_scope(client: QdrantClient, collection: str, scope_filter: "qmodels.Filter",
+                    expected_paths: list[str]) -> bool:
+    """True si AU MOINS UN expected_path (repo:relative_path) a >=1 point dans la
+    collection sous scope_filter — vérité empirique (count exact), indépendante du
+    classement retourné par la recherche vectorielle. Lecture seule (client.count)."""
+    for ep in expected_paths:
+        repo, _, rel_path = ep.partition(":")
+        conditions = list(scope_filter.must or [])
+        conditions.append(qmodels.FieldCondition(key="repo", match=qmodels.MatchValue(value=repo)))
+        conditions.append(qmodels.FieldCondition(key="relative_path", match=qmodels.MatchValue(value=rel_path)))
+        result = client.count(
+            collection_name=collection,
+            count_filter=qmodels.Filter(must=conditions),
+            exact=True,
+        )
+        if result.count > 0:
+            return True
+    return False
 
 
 def check_thresholds(metrics: dict, min_recall1: float, min_mrr10: float) -> list[str]:
@@ -266,20 +315,25 @@ def run_query(
     fusion: str = "rrf",
     rrf_k: int | None = None,
     exact: bool = False,
+    extra_filter: "qmodels.Filter | None" = None,
 ):
     """Une requête top-k. Dense legacy (unnamed) ET v3 (nommé) supportés.
 
     with_payload inclut désormais `text` (chunk complet) — nécessaire au rerank léger
     (un cross-encoder jugé sur le snippet 160 car. est aveugle, cf docstring module).
     Coût : payload plus lourd sur le réseau, négligeable pour un harnais d'éval 76 q.
+
+    extra_filter (extension 2026-07-17 bis) : filtre appliqué aux DEUX canaux du
+    prefetch hybrid (dense+bm25) — expérience retrieval scopé. None par défaut
+    (comportement inchangé).
     """
     search_params = qmodels.SearchParams(exact=True) if exact else None
     if mode == "hybrid":
         prefetch = [
             qmodels.Prefetch(query=dense_vector, using="dense", limit=prefetch_limit,
-                              params=search_params),
+                              params=search_params, filter=extra_filter),
             qmodels.Prefetch(query=sparse_vector, using="bm25", limit=prefetch_limit,
-                              params=search_params),
+                              params=search_params, filter=extra_filter),
         ]
         if fusion == "dbsf":
             fusion_query: object = qmodels.FusionQuery(fusion=qmodels.Fusion.DBSF)
@@ -307,6 +361,7 @@ def run_query(
             with_payload=PAYLOAD_FIELDS,
             with_vectors=False,
             search_params=search_params,
+            query_filter=extra_filter,
             **kwargs,
         )
     return response.points
@@ -500,6 +555,11 @@ def main() -> int:
         print("--manual-fusion requiert --mode hybrid", file=sys.stderr)
         return 2
 
+    if bool(args.scope_file) != bool(args.scope_field):
+        print("--scope-file et --scope-field vont ensemble (les deux ou aucun)", file=sys.stderr)
+        return 2
+    scope_map: dict[str, list[str]] = load_scope_map(args.scope_file) if args.scope_file else {}
+
     rerank_encoder = None
     if args.rerank_light:
         rerank_encoder = LightCrossEncoder(args.rerank_light_model, args.fastembed_cache)
@@ -527,6 +587,19 @@ def main() -> int:
         sparse_vector = (
             sparse_encoder.encode_query(question["query"]) if sparse_encoder else None
         )
+        extra_filter = None
+        in_scope = None
+        if scope_map:
+            values = scope_map.get(question["query"])
+            if not values:
+                print(f"  [warn] pas de valeurs scope pour {question['query'][:60]!r} "
+                      "-> question non filtrée", file=sys.stderr)
+            else:
+                extra_filter = qmodels.Filter(
+                    must=[qmodels.FieldCondition(key=args.scope_field, match=qmodels.MatchAny(any=values))]
+                )
+                in_scope = check_in_scope(client, args.collection, extra_filter,
+                                           question["expected_paths"])
         if args.manual_fusion:
             dense_points = run_channel_query(
                 client, args.collection, "dense", dense_vector, args.prefetch_limit,
@@ -544,7 +617,7 @@ def main() -> int:
             points = run_query(
                 client, args.collection, args.mode, schema, dense_vector, sparse_vector,
                 fetch_limit, prefetch_limit=args.prefetch_limit, fusion=args.fusion,
-                rrf_k=args.rrf_k, exact=args.exact,
+                rrf_k=args.rrf_k, exact=args.exact, extra_filter=extra_filter,
             )
 
         if args.rerank_light:
@@ -564,11 +637,13 @@ def main() -> int:
                 "rank": outcome["rank"],
                 "top_files": outcome["top_files"],
                 "note": question.get("note", ""),
+                "in_scope": in_scope,
             }
         )
         status = f"rank={outcome['rank']}" if outcome["rank"] else "MISS"
+        scope_suffix = "" if in_scope is None else (" [OUT-OF-SCOPE]" if not in_scope else "")
         rerank_suffix = f" ({rerank_timings[-1]:.2f}s)" if args.rerank_light else ""
-        print(f"  [{status:>8}]{rerank_suffix} {question['query'][:80]}")
+        print(f"  [{status:>8}]{rerank_suffix}{scope_suffix} {question['query'][:80]}")
     search_s = time.monotonic() - t_search
 
     by_kind: dict[str, list[dict]] = {}
@@ -588,6 +663,12 @@ def main() -> int:
             "min_s": round(min(sorted_t), 3),
         }
 
+    scoped_results = [r for r in results if r["in_scope"] is not None]
+    filter_miss_rate = (
+        round(sum(1 for r in scoped_results if r["in_scope"] is False) / len(scoped_results), 4)
+        if scoped_results else None
+    )
+
     report = {
         "schema_version": "eval-v1",
         "collection": args.collection,
@@ -604,7 +685,10 @@ def main() -> int:
             "dense_weight": args.dense_weight if args.manual_fusion else None,
             "sparse_weight": args.sparse_weight if args.manual_fusion else None,
             "rerank_light": args.rerank_light,
+            "scope_field": args.scope_field,
+            "scope_file": args.scope_file,
         },
+        "filter_miss_rate": filter_miss_rate,
         "rerank_timings": rerank_stats,
         "timings": {"encode_s": round(encode_s, 2), "search_s": round(search_s, 2)},
         "metrics": aggregate(results),
@@ -636,6 +720,10 @@ def main() -> int:
 
     metrics = report["metrics"]
     print(f"\n=== {args.collection} / {args.mode} — {metrics['n']} questions ===")
+    if filter_miss_rate is not None:
+        n_miss = sum(1 for r in scoped_results if r["in_scope"] is False)
+        print(f"  filter_miss_rate = {filter_miss_rate:.4f} ({n_miss}/{len(scoped_results)} questions "
+              f"scope={args.scope_field})")
     print(f"  recall@1 = {metrics['recall@1']:.4f}")
     print(f"  recall@5 = {metrics['recall@5']:.4f}")
     print(f"  mrr@10   = {metrics['mrr@10']:.4f}")

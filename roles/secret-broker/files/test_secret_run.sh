@@ -120,6 +120,12 @@ case "$mode" in
     path="${1:?marker path required}"
     : > "$path"
     ;;
+  env-to-file)
+    varname="${1:?varname required}"
+    outfile="${2:?output file required}"
+    val="${!varname:-<UNSET>}"
+    printf '%s' "$val" > "$outfile"
+    ;;
   *)
     echo "child-helper: unknown mode '$mode'" >&2
     exit 64
@@ -203,14 +209,15 @@ contains() { # haystack_file needle
 # son argv et de /proc/<pid>/cmdline.
 # ---------------------------------------------------------------------------
 test_1() {
+  # Call A: ARGV/CMDLINE must never contain the raw secret value. These lines
+  # only ever carry the REF's NAME (e.g. "ARGV:TEST_REF_OK"), never its
+  # value, so they remain valid checks even though secret-run's redactor
+  # scrubs stdout unconditionally (see test_2/test_3) — unchanged from
+  # before.
   run_secret_run TEST_REF_OK -- child-helper env-and-cmdline TEST_REF_OK
 
   if [ "$LAST_RC" != "0" ]; then
     report 1 "ref+cmd autorisées -> exit 0 + env only" 0 "exit code was $LAST_RC (expected 0); stderr: $(cat "$LAST_STDERR" 2>/dev/null)"
-    return
-  fi
-  if ! contains "$LAST_STDOUT" "ENV:${SECRET_VAL_OK}"; then
-    report 1 "ref+cmd autorisées -> exit 0 + env only" 0 "child did not see the secret in its own env (expected 'ENV:${SECRET_VAL_OK}' in stdout: $(cat "$LAST_STDOUT" 2>/dev/null))"
     return
   fi
   if grep '^ARGV:' "$LAST_STDOUT" 2>/dev/null | grep -qF -- "$SECRET_VAL_OK"; then
@@ -221,6 +228,31 @@ test_1() {
     report 1 "ref+cmd autorisées -> exit 0 + env only" 0 "secret value leaked into /proc/<pid>/cmdline of the child"
     return
   fi
+
+  # Call B: the child's env must have received the RAW secret value. Checked
+  # via an out-of-band FILE, never via stdout/stderr — secret-run's redactor
+  # unconditionally scrubs the value from both of those streams by design
+  # (that is exactly what test_2/test_3 require), so stdout is structurally
+  # the wrong channel to prove env-injection on; a file untouched by the
+  # child's own stdout/stderr is the right one.
+  local envfile
+  envfile="$TMPROOT/test1-env-value.out"
+  rm -f "$envfile"
+  run_secret_run TEST_REF_OK -- child-helper env-to-file TEST_REF_OK "$envfile"
+
+  if [ "$LAST_RC" != "0" ]; then
+    report 1 "ref+cmd autorisées -> exit 0 + env only" 0 "exit code was $LAST_RC on the env-injection check (expected 0); stderr: $(cat "$LAST_STDERR" 2>/dev/null)"
+    return
+  fi
+  if [ ! -f "$envfile" ]; then
+    report 1 "ref+cmd autorisées -> exit 0 + env only" 0 "out-of-band env file was not created — child-helper env-to-file mode did not run as expected"
+    return
+  fi
+  if [ "$(cat "$envfile")" != "$SECRET_VAL_OK" ]; then
+    report 1 "ref+cmd autorisées -> exit 0 + env only" 0 "child did not see the secret in its own env (expected file content '${SECRET_VAL_OK}', got: '$(cat "$envfile" 2>/dev/null)') — '<UNSET>' would mean secret-run never injected it into the child's environment"
+    return
+  fi
+
   report 1 "ref+cmd autorisées -> exit 0 + env only" 1
 }
 

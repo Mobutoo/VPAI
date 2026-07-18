@@ -414,9 +414,18 @@
     cmd: |
       set -euo pipefail
       cd /opt/{{ project_name }}
-      DEFINED=$(docker compose -f docker-compose.yml config --services | sort)
-      RUNNING=$(docker compose -f docker-compose.yml ps --status running --services 2>/dev/null | sort)
-      MISSING=$(comm -23 <(echo "$DEFINED") <(echo "$RUNNING"))
+      DEFINED=$(docker compose -f docker-compose.yml config --services | sort -u)
+      # Un service est sain s'il tourne (running) OU s'il a terminé proprement (exited 0).
+      # Le second cas couvre les conteneurs init one-shot (restart:no) — n8n-init produit
+      # l'arbre patché puis sort en 0, il n'est donc JAMAIS "running" et un filtre
+      # --status running seul le comptait à tort comme manquant (échec cutover Sidecar 2026-07-18).
+      HEALTHY=$(docker compose -f docker-compose.yml ps -a --format json 2>/dev/null | python3 -c '
+      import sys, json
+      rows = [json.loads(l) for l in sys.stdin if l.strip().startswith("{")]
+      ok = sorted({r.get("Service", "") for r in rows if r.get("State") == "running" or (r.get("State") == "exited" and r.get("ExitCode", 1) == 0)})
+      print("\n".join(ok))
+      ')
+      MISSING=$(comm -23 <(echo "$DEFINED") <(echo "$HEALTHY"))
       if [ -n "$MISSING" ]; then
         echo "MISSING_SERVICES:${MISSING}"
       else

@@ -79,6 +79,34 @@ memory_worker_rerank_model_id: "onnx-community/bge-reranker-v2-m3-ONNX"
 # médiane (encore 2x le budget) ET recall@1 dégradé (modèle anglais MS MARCO mal
 # adapté au corpus FR/code, sur-note les blobs JSON n8n). Piste rerank léger fermée.
 
+# === SCOPE BOOST (retrieval scopé, T1.1/T2.1/T2.2 — plan
+# ops/loops/plans/2026-07-17-scoped-retrieval-implementation.md) ===
+# Bonus additif de score POST-fusion (jamais un filtre `must` — contrainte de
+# conception #1 du plan : un filtre dur exclurait une réponse autoritaire vivant
+# dans un autre wing/repo, downside cross-wing structurel) pour les points dont
+# repo/wing matche le scope dérivé du CWD de session (T1.2 derive_scope_from_cwd,
+# T1.3 hook r0-topic-injector.js/lib/cwd-scope.js). Mécanisme câblé et testé
+# (mcp_search.py::_apply_scope_boost + search_memory.py --scope-boost) mais flag
+# global OFF par défaut ici — DÉCISION T2.2, règle du plan (recall@1 total >= 0.72
+# ET cross-wing >= baseline) NON remplie : sweep T2.1 (golden enrichi 89q, 76
+# originales + 13 cross-wing, DBSF+exact, ops/loops/reports/2026-07-18-scoped-
+# retrieval-t2.1-boost-sweep.md) mesure un PLAFOND du mécanisme à recall@1 global
+# 0.6966 (poids 0.2, meilleur point) < 0.72 — objectif non atteint, pas un effet
+# de la contrainte cross-wing (celle-ci est tenue : recall@1 cross-wing 0.6154 =
+# baseline exacte à poids <= 0.3). A/B live (T2.2, 8 requêtes réelles CWD VPAI,
+# subprocess isolé hors MCP live) confirme le sens du mécanisme (rank1 in-scope
+# 2/6->4/6 à poids 0.2) et l'absence de régression cross-wing (2/2->2/2) — mais
+# ne change pas la décision de gate (le plafond global reste < 0.72).
+# Activation manuelle (une fois le besoin réévalué — ex. golden élargi, ou gain
+# net jugé suffisant malgré le plafond mesuré) : poids déjà au meilleur point
+# T2.1 (0.2), donc un seul flag à basculer puis redéployer :
+#   memory_worker_scope_boost_enabled: true
+#   make deploy-role ROLE=llamaindex-memory-worker ENV=<env> --tags memory_worker
+# Effectif au PROCHAIN spawn du serveur MCP qdrant-find (mcp_search.py lit l'env
+# une fois au démarrage) — pas rétroactif sur une session déjà ouverte.
+memory_worker_scope_boost_enabled: false
+memory_worker_scope_boost_weight: 0.2
+
 # === FUSION (restauration recall@1, 2026-07-17) ===
 # Qdrant RRF k=2 par défaut (PAS 60 — doc officielle
 # https://qdrant.tech/documentation/concepts/hybrid-queries/), fusion rank-only très

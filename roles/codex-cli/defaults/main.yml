@@ -22,3 +22,9 @@ codex_cli_credential_storage: "file"
 
 # Modèle par défaut (via ChatGPT Plus)
 codex_cli_default_model: "o4-mini"
+
+# Reasoning effort par défaut — politique de routage 2026-07-18 (action A6) :
+# codex reste sur "medium" par défaut ; seule l'escalade explicite (findings
+# HIGH, cf. ops/loops/scripts/review-pr.sh) doit monter à "xhigh", via
+# override par invocation (-c model_reasoning_effort="xhigh"), jamais ici.
+codex_cli_reasoning_effort: "medium"

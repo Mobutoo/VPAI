@@ -1,0 +1,447 @@
+[
+  {
+    "query": "Quelle variable d'environnement n8n autorise require() des modules builtin fs path crypto dans les Code nodes ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Which volume mount path does PostgreSQL 18 use in Docker compared to PG 17?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "ROUND on double precision PostgreSQL function does not exist — how to fix the SQL?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Redis 8 crash au démarrage avec rename-command FLUSHDB dans redis.conf",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Healthcheck Qdrant sans wget ni curl dans l'image Docker",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Quelle variable d'environnement passer pour l'API key Qdrant au lieu du YAML ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Caddy crash loop unrecognized directive: 200 after heredoc respond",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Why do Tailscale HTTP/3 QUIC connections show client_ip 172.20.1.1 and get blocked by the Caddy VPN ACL?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "n8n webhook returns HTTP 200 with empty body responseMode responseNode no visible error",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Pourquoi n8n exige un sous-domaine dédié et ne supporte pas le sub-path ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "LiteLLM health checks cost $11 in 16 hours on Perplexity — which setting disables them?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Erreur 402 not enough credits OpenRouter à cause de la réservation max_tokens",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "ERR_ERL_UNEXPECTED_X_FORWARDED_FOR error in n8n logs behind Caddy",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Pourquoi utiliser 127.0.0.1 et pas localhost dans les healthchecks Docker Alpine ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Which Docker capabilities are required for a container writing to root-owned mounted volumes?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "dig n'est pas installé sur les images Debian minimales, quelle alternative pour résoudre un domaine dans un script ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "n8n import:workflow does not update workflow_entity.nodes, code stays old after restart",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Quel champ utiliser pour le login API n8n 2.7 à la place de email ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "n8n workflow DELETE returns 400 — what is the required deletion sequence in 2.7+?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Locale ICU PostgreSQL 18 Docker fr-FR initdb options",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Grafana datasource PostgreSQL provisioning format piège datasources.yaml",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "yamllint UnicodeDecodeError utf-8 codec can't decode byte 0x97 — quelle est la cause ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "ansible-lint schema meta role_name regex underscores",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Comment déployer sur un VPS neuf encore en port SSH 22 alors que l'inventaire est en 804 ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Caddy healthcheck: the admin API on port 2019 does not answer in Docker, what command to use?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Page d'erreur quand le backend est down : handle_response ou handle_errors dans Caddy ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "DNS-01 ACME fails with NOTIMP on the Pi ARM64 Caddy — fix?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "OpenClaw WebSocket upgrade cassé derrière Caddy HTTP/2, réponse 200 au lieu de 101",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "OpenClaw plugin telegram shows disabled bundled by default after upgrade",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Ansible handler state restarted ne relit pas le env_file du container",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "OpenClaw subagent error spawn docker EACCES in the sandbox",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Headscale preauth key réutilisable ou usage unique ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "tailscale up hangs when the Headscale server is down",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Split DNS Headscale : quelles clés de config pour résoudre les sous-domaines admin vers l'IP Tailscale ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Dans quelle base PostgreSQL vit la table model_scores et qui la crée ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Formula of the ai-model-scoring score with likeRatio successRate costEfficiency speedScore",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Comment accéder au body d'un webhook n8n v2 dans un Code node ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Mission Control next start vs output standalone next.config.mjs missing file",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "rate_limit plugin manquant dans l'image caddy alpine",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "LiteLLM fallbacks config syntax list of dicts model_name",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Disque à 100% mais docker system df sous-estime, /var/lib/containerd fait 18G",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "containerd snapshots not garbage collected, pinned by orphan leases — how to free space without restart?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Pourquoi ne faut-il jamais redémarrer containerd sur un hôte Docker en production ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "make deploy-role timeout ssh connect to host 137.74.114.167 port 804 depuis waza",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "The GPU pod cloned stale code from GitHub even though the commit existed locally",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "torch cu13 du lock inutilisé : cuda.is_available False, SentenceTransformer retombe sur CPU",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "OOM CUDA on L4 24GB when encoding with batch size 256 — which batch size is safe?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Quel gain de débit a donné bf16 autocast sur l'ingestion embeddings GPU et quelle dérive ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Perte SSH waza pendant 6 heures, Pi pas crashé, autre machine de la même box encore en ligne",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "memory worker 3.2 GB RSS triggers global OOM and starves systemd-networkd",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Quelles limites systemd ont été posées sur le worker mémoire après l'incident OOM ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "network is unreachable ENETUNREACH from tailscaled — is it the ISP or the host?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "watchdog passerelle réseau : que fait net-watchdog.sh quand la gateway est injoignable ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Session de debug de 11 heures avec 806 appels Bash et zéro appel MCP — quel audit ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "What protects systemd-networkd and tailscaled from being killed first by the OOM killer?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "benchmark embeddings mensonger 137 chunks par seconde, cause et fix",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Qui a le droit d'écrire dans la collection mémoire Qdrant, les agents ou le worker ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "search_memory.py available filter flags repo doc-kind topic",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Quelle variable Ansible et quelle clé Vault portent le token Hugging Face du worker mémoire ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Where is the embeddinggemma model cached locally on waza?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Quels sont les trois axes orthogonaux de la taxonomie mémoire et qui les assigne ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Which payload fields have a Qdrant keyword index in the memory collection?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Où placer physiquement un nouveau repo projet sur waza pour qu'il soit auto-indexé ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Am I allowed to hand-edit the live sources.yml to register a new repo for memory ingestion?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Règle R0 de la loi opérationnelle : que faut-il faire avant tout travail sur un sujet connu ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "n8n IF node typeVersion 2 crashes on all conditions — which typeVersion and schema to use?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Quel outil MCP est obligatoire avant tout n8n import:workflow ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "What is the primary n8n workflow deploy method according to rule R11?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Quels deux CIDRs doivent figurer dans le snippet vpn_only de Caddy et pourquoi ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Why is trusted_proxies mandatory in the Caddy VPN-only setup?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Checklist avant montée de version OpenClaw : que sauvegarder et vérifier avant l'upgrade ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "NC_API_TOKEN static token to automate NocoDB API token provisioning",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Container crashes with Operation not permitted after cap_drop ALL — how to find the missing capability?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Quel user UID utiliser pour VictoriaMetrics ou Prometheus en non-root dans compose ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "How do I check the actual MagicDNS resolution from a VPN client before blaming Caddy?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Où vérifier le tag de la nouvelle image OpenClaw avant de modifier versions.yml ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Quelle variable d'environnement active le mode task runner externe (sidecar séparé) pour n8n, au lieu du mode interne par défaut ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "En mode queue n8n, quel flag ou variable d'environnement contrôle le nombre de jobs qu'un worker peut exécuter en concurrence ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Which n8n environment variable switches binary data storage from in-memory to filesystem to avoid OOM crashes on large files?",
+    "repo": "content-factory",
+    "wing": "saas"
+  },
+  {
+    "query": "Comment désactiver les community nodes sur une instance n8n self-hosted, et quelle variable d'environnement le contrôle ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "What are the three 'Respond' options available on the n8n Webhook node — Immediately, When Last Node Finishes, and what's the third?",
+    "repo": "powerbank",
+    "wing": "saas"
+  },
+  {
+    "query": "Dans LiteLLM proxy, quel paramètre permet de réinitialiser périodiquement le budget d'une clé API virtuelle (ex. quotidien) ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "How do I configure LiteLLM proxy to cache LLM responses in Redis via config.yaml?",
+    "repo": "hawkeye",
+    "wing": "saas"
+  },
+  {
+    "query": "Quelle valeur de routing_strategy du Router LiteLLM choisit le déploiement avec le temps de réponse le plus bas ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Which LiteLLM guardrail masks PII/PHI in requests using Presidio before they reach the LLM provider?",
+    "repo": "powerbank",
+    "wing": "saas"
+  },
+  {
+    "query": "Quelle commande CLI OpenClaw n'affiche que les plugins actuellement chargés, pas tous les plugins installés ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Which flag on `openclaw hooks list` shows only the hooks whose requirements are actually met, hiding the ineligible ones?",
+    "repo": "VPAI",
+    "wing": "infra"
+  },
+  {
+    "query": "Comment verrouiller le WebSocket du Gateway OpenClaw en local (auth) selon le guide de durcissement sécurité ?",
+    "repo": "Seko-VPN",
+    "wing": "infra"
+  },
+  {
+    "query": "Pourquoi est-il impossible de désactiver le login Google sur Typebot self-hosted dès que l'intégration Google Sheets est configurée, et quel est le workaround ?",
+    "repo": "VPAI",
+    "wing": "infra"
+  }
+]

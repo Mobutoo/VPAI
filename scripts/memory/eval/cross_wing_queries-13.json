@@ -1,0 +1,15 @@
+[
+  "Quelle variable d'environnement active le mode task runner externe (sidecar séparé) pour n8n, au lieu du mode interne par défaut ?",
+  "En mode queue n8n, quel flag ou variable d'environnement contrôle le nombre de jobs qu'un worker peut exécuter en concurrence ?",
+  "Which n8n environment variable switches binary data storage from in-memory to filesystem to avoid OOM crashes on large files?",
+  "Comment désactiver les community nodes sur une instance n8n self-hosted, et quelle variable d'environnement le contrôle ?",
+  "What are the three 'Respond' options available on the n8n Webhook node — Immediately, When Last Node Finishes, and what's the third?",
+  "Dans LiteLLM proxy, quel paramètre permet de réinitialiser périodiquement le budget d'une clé API virtuelle (ex. quotidien) ?",
+  "How do I configure LiteLLM proxy to cache LLM responses in Redis via config.yaml?",
+  "Quelle valeur de routing_strategy du Router LiteLLM choisit le déploiement avec le temps de réponse le plus bas ?",
+  "Which LiteLLM guardrail masks PII/PHI in requests using Presidio before they reach the LLM provider?",
+  "Quelle commande CLI OpenClaw n'affiche que les plugins actuellement chargés, pas tous les plugins installés ?",
+  "Which flag on `openclaw hooks list` shows only the hooks whose requirements are actually met, hiding the ineligible ones?",
+  "Comment verrouiller le WebSocket du Gateway OpenClaw en local (auth) selon le guide de durcissement sécurité ?",
+  "Pourquoi est-il impossible de désactiver le login Google sur Typebot self-hosted dès que l'intégration Google Sheets est configurée, et quel est le workaround ?"
+]

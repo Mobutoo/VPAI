@@ -108,6 +108,25 @@ ops/loops/plans/2026-07-17-scoped-retrieval-implementation.md) :
   Défaut (--scope-mode omis, ou --scope-file absent) : comportement byte-
   identique à avant (extra_filter reste None sauf si scope_mode=filter ET
   scope-file fourni — càd. l'ancien comportement pré-2026-07-18 exact).
+
+Extension 2026-07-18 (T2.1) — --scope-field repo_wing (sweep MEMORY_SCOPE_BOOST_
+WEIGHT sur golden enrichi, ops/loops/plans/2026-07-17-scoped-retrieval-
+implementation.md §Phase 2) :
+  - --scope-field repo_wing : --scope-file a le schéma [{"query":str,
+    "repo":str|null,"wing":str|null}] (PAS "values") — le scope de CHAQUE
+    question, dérivé de son asked_from (T1.2 derive_scope_from_cwd simulé), pas
+    de la réponse attendue. Réplique FIDÈLEMENT mcp_search.py::_apply_scope_boost
+    (T1.1, prod live) : bonus UNIQUE (+weight, pas +2*weight) si payload['repo']
+    == repo OU payload['wing'] == wing, jamais les deux cumulés. Un scope-field
+    "repo" seul (le mode pré-existant) sous-mesurerait le downside cross-wing —
+    en prod le bonus wing profite à TOUT repo du même wing, plus large qu'un
+    match repo exact (cf revue superviseur 2026-07-18 avant implémentation).
+  - Fonctions dédiées (parallèles aux génériques existantes, aucune régression
+    sur --scope-field {repo,wing,topic}) : load_scope_map_repo_wing,
+    check_in_scope_repo_wing (oracle OR), apply_scope_boost_repo_wing (bonus OR).
+  - Sibling test 2026-07-18 : rejeu sans --scope-file sur le golden 89q
+    reproduit exactement le rapport committé (fixup2, 2026-07-17T23:09) —
+    recall@1 0.6629 / recall@5 0.9775 / mrr@10 0.7897.
 """
 
 from __future__ import annotations
@@ -218,8 +237,11 @@ def parse_args() -> argparse.Namespace:
                         help="JSON [{\"query\":str,\"values\":[str,...]}] — filtre Qdrant PAR "
                              "QUESTION sur --scope-field (expérience retrieval scopé, cf docstring "
                              "module). Défaut absent -> aucun filtre, comportement inchangé.")
-    parser.add_argument("--scope-field", choices=["repo", "wing", "topic"], default=None,
-                        help="Champ Qdrant ciblé par --scope-file (requis si --scope-file fourni).")
+    parser.add_argument("--scope-field", choices=["repo", "wing", "topic", "repo_wing"], default=None,
+                        help="Champ Qdrant ciblé par --scope-file (requis si --scope-file fourni). "
+                             "'repo_wing' (T2.1) : --scope-file a le schéma "
+                             "[{\"query\":str,\"repo\":str|null,\"wing\":str|null}] — OR repo/wing, "
+                             "réplique fidèlement le boost prod (mcp_search.py::_apply_scope_boost).")
     parser.add_argument(
         "--scope-mode", choices=["filter", "boost"], default="filter",
         help="Mode d'application de --scope-file/--scope-field (T0.2, cf docstring module). "
@@ -246,6 +268,22 @@ def load_scope_map(path: str) -> dict[str, list[str]]:
     return {e["query"]: e.get("values") or [] for e in entries}
 
 
+def load_scope_map_repo_wing(path: str) -> dict[str, dict]:
+    """Charge --scope-file (schéma --scope-field repo_wing) -> dict query(str) ->
+    {"repo": str|None, "wing": str|None}. Pure — pas de Qdrant.
+
+    Extension T2.1 (sweep boost, plan ops/loops/plans/2026-07-17-scoped-retrieval-
+    implementation.md §Phase 2) : réplique FIDÈLEMENT le scope tel que dérivé par
+    T1.2 (memory_core.derive_scope_from_cwd) et consommé par T1.1
+    (mcp_search.py::_apply_scope_boost) — repo ET wing, PAS un seul champ. Un
+    scope-field unique ("repo" seul) sous-mesurerait le downside cross-wing : en
+    prod, le bonus wing (plus large qu'un repo) profite à TOUT le wing d'où la
+    question est posée, pas seulement au repo exact — cf. revue superviseur
+    2026-07-18 (advisor, avant implémentation)."""
+    entries = json.loads(Path(path).read_text(encoding="utf-8"))
+    return {e["query"]: {"repo": e.get("repo"), "wing": e.get("wing")} for e in entries}
+
+
 def check_in_scope(client: QdrantClient, collection: str, scope_filter: "qmodels.Filter",
                     expected_paths: list[str]) -> bool:
     """True si AU MOINS UN expected_path (repo:relative_path) a >=1 point dans la
@@ -256,6 +294,39 @@ def check_in_scope(client: QdrantClient, collection: str, scope_filter: "qmodels
         conditions = list(scope_filter.must or [])
         conditions.append(qmodels.FieldCondition(key="repo", match=qmodels.MatchValue(value=repo)))
         conditions.append(qmodels.FieldCondition(key="relative_path", match=qmodels.MatchValue(value=rel_path)))
+        result = client.count(
+            collection_name=collection,
+            count_filter=qmodels.Filter(must=conditions),
+            exact=True,
+        )
+        if result.count > 0:
+            return True
+    return False
+
+
+def check_in_scope_repo_wing(
+    client: QdrantClient, collection: str, repo: str | None, wing: str | None,
+    expected_paths: list[str],
+) -> bool:
+    """Variante OR de check_in_scope pour --scope-field repo_wing (T2.1) : True si
+    AU MOINS UN expected_path a >=1 point sous (repo==repo OU wing==wing) — même
+    sémantique OR que mcp_search.py::_apply_scope_boost (in_scope()), pour que
+    filter_miss_rate reste une mesure honnête de ce que le boost considère
+    in-scope (pas juste le repo)."""
+    if not repo and not wing:
+        return False
+    should: list[qmodels.FieldCondition] = []
+    if repo:
+        should.append(qmodels.FieldCondition(key="repo", match=qmodels.MatchValue(value=repo)))
+    if wing:
+        should.append(qmodels.FieldCondition(key="wing", match=qmodels.MatchValue(value=wing)))
+    for ep in expected_paths:
+        ep_repo, _, rel_path = ep.partition(":")
+        conditions = [
+            qmodels.FieldCondition(key="repo", match=qmodels.MatchValue(value=ep_repo)),
+            qmodels.FieldCondition(key="relative_path", match=qmodels.MatchValue(value=rel_path)),
+            qmodels.Filter(should=should),
+        ]
         result = client.count(
             collection_name=collection,
             count_filter=qmodels.Filter(must=conditions),
@@ -502,6 +573,26 @@ def apply_scope_boost(points: list, scope_field: str, values: list[str], weight:
     return [p for _, p in scored]
 
 
+def apply_scope_boost_repo_wing(points: list, repo: str | None, wing: str | None, weight: float) -> list:
+    """Port FIDÈLE de mcp_search.py::_apply_scope_boost (T1.1, prod live) : bonus
+    additif UNIQUE (+weight, PAS +2*weight) aux points dont payload['repo']==repo
+    OU payload['wing']==wing, puis retri stable décroissant. Utilisé par T2.1
+    (--scope-field repo_wing) pour que le sweep mesure exactement le mécanisme
+    qui sera déployé — un scope_field unique ('repo' seul via apply_scope_boost)
+    sous-mesurerait le downside cross-wing (bonus wing plus large qu'un repo)."""
+    if not repo and not wing:
+        return points
+
+    def in_scope(point) -> bool:
+        payload = point.payload or {}
+        return (repo is not None and payload.get("repo") == repo) or \
+               (wing is not None and payload.get("wing") == wing)
+
+    scored = [(p.score + (weight if in_scope(p) else 0.0), p) for p in points]
+    scored.sort(key=lambda t: t[0], reverse=True)
+    return [p for _, p in scored]
+
+
 class LightCrossEncoder:
     """Rerank cross-encoder léger (fastembed TextCrossEncoder, ONNX CPU) — alternative
     à rerank.py (bge-reranker-v2-m3, 568M params, 9.8s médiane/requête sur Pi — cf
@@ -643,15 +734,22 @@ def main() -> int:
     if bool(args.scope_file) != bool(args.scope_field):
         print("--scope-file et --scope-field vont ensemble (les deux ou aucun)", file=sys.stderr)
         return 2
-    scope_map: dict[str, list[str]] = load_scope_map(args.scope_file) if args.scope_file else {}
+    is_repo_wing = args.scope_field == "repo_wing"
+    if is_repo_wing:
+        scope_map_rw: dict[str, dict] = load_scope_map_repo_wing(args.scope_file) if args.scope_file else {}
+        scope_map: dict[str, list[str]] = {}  # non utilisé en repo_wing, garde le type existant intact
+    else:
+        scope_map = load_scope_map(args.scope_file) if args.scope_file else {}
+        scope_map_rw = {}
 
     rerank_encoder = None
     if args.rerank_light:
         rerank_encoder = LightCrossEncoder(args.rerank_light_model, args.fastembed_cache)
 
+    has_scope = bool(scope_map) or bool(scope_map_rw)
     effective_rrf_k = args.rrf_k if args.rrf_k is not None else DEFAULT_RRF_K
     fetch_limit = max(args.limit, args.rerank_candidates) if args.rerank_light else args.limit
-    if scope_map and args.scope_mode == "boost":
+    if has_scope and args.scope_mode == "boost":
         fetch_limit = max(fetch_limit, args.scope_boost_candidates)
 
     print(f"[eval] collection={args.collection} mode={args.mode} schema="
@@ -665,7 +763,7 @@ def main() -> int:
              + (f" scope_boost_weight={args.scope_boost_weight} "
                 f"scope_boost_candidates={args.scope_boost_candidates}"
                 if args.scope_mode == "boost" else "")
-             if scope_map else ""))
+             if has_scope else ""))
 
     encoder = DenseEncoder(config)
     t_encode = time.monotonic()
@@ -682,7 +780,28 @@ def main() -> int:
         extra_filter = None
         in_scope = None
         boost_values: list[str] | None = None  # non-None seulement si scope_mode=boost applicable
-        if scope_map:
+        boost_repo_wing: tuple[str | None, str | None] | None = None  # idem, variante repo_wing
+        if is_repo_wing and scope_map_rw:
+            entry = scope_map_rw.get(question["query"])
+            repo_val = (entry or {}).get("repo")
+            wing_val = (entry or {}).get("wing")
+            if not repo_val and not wing_val:
+                print(f"  [warn] pas de repo/wing scope pour {question['query'][:60]!r} "
+                      "-> question non filtrée", file=sys.stderr)
+            else:
+                # in_scope = oracle OR (repo OU wing) — même vérité-terrain que le boost.
+                in_scope = check_in_scope_repo_wing(client, args.collection, repo_val, wing_val,
+                                                     question["expected_paths"])
+                if args.scope_mode == "filter":
+                    should: list[qmodels.FieldCondition] = []
+                    if repo_val:
+                        should.append(qmodels.FieldCondition(key="repo", match=qmodels.MatchValue(value=repo_val)))
+                    if wing_val:
+                        should.append(qmodels.FieldCondition(key="wing", match=qmodels.MatchValue(value=wing_val)))
+                    extra_filter = qmodels.Filter(should=should)  # OR dur (borne haute repo_wing)
+                else:
+                    boost_repo_wing = (repo_val, wing_val)  # scope_mode=boost : bonus OR post-fusion
+        elif scope_map:
             values = scope_map.get(question["query"])
             if not values:
                 print(f"  [warn] pas de valeurs scope pour {question['query'][:60]!r} "
@@ -726,7 +845,11 @@ def main() -> int:
             )
             rerank_timings.append(rerank_s)
 
-        if boost_values is not None:
+        if boost_repo_wing is not None:
+            points = apply_scope_boost_repo_wing(
+                points, boost_repo_wing[0], boost_repo_wing[1], args.scope_boost_weight
+            )
+        elif boost_values is not None:
             points = apply_scope_boost(points, args.scope_field, boost_values, args.scope_boost_weight)
 
         expected = set(question["expected_paths"])
@@ -790,10 +913,10 @@ def main() -> int:
             "exact": args.exact,
             "scope_field": args.scope_field,
             "scope_file": args.scope_file,
-            "scope_mode": args.scope_mode if scope_map else None,
-            "scope_boost_weight": args.scope_boost_weight if (scope_map and args.scope_mode == "boost") else None,
+            "scope_mode": args.scope_mode if has_scope else None,
+            "scope_boost_weight": args.scope_boost_weight if (has_scope and args.scope_mode == "boost") else None,
             "scope_boost_candidates": (
-                args.scope_boost_candidates if (scope_map and args.scope_mode == "boost") else None
+                args.scope_boost_candidates if (has_scope and args.scope_mode == "boost") else None
             ),
         },
         "filter_miss_rate": filter_miss_rate,

@@ -1,12 +1,19 @@
 [Unit]
 Description=Claude Code — boucle d'amélioration continue (mode observation, read-only)
-# Aucun accès réseau : collecte = rsync local ~/.claude → data/raw ; tout le
-# pipeline (sanitize/normalize/metrics/compare) est local. Aucun appel modèle.
+# Aucun accès réseau pour l'observation (rsync local ~/.claude → data/raw ;
+# tout le pipeline sanitize/normalize/metrics/compare est local, aucun appel
+# modèle). Le 2e ExecStart (audit tokens, T1.2) fait UN appel réseau sortant :
+# Telegram api.telegram.org, UNIQUEMENT si la part Opus+Fable dépasse le seuil.
 
 [Service]
 Type=oneshot
 WorkingDirectory={{ cc_improvement_lab_dir }}
+Environment=CC_TOKEN_AUDIT_THRESHOLD_PCT={{ cc_improvement_token_audit_threshold_pct }}
 ExecStart=/bin/bash {{ cc_improvement_lab_dir }}/prototypes/scripts/continuous-improvement.sh observe
+# Audit tokens mensuel (T1.2) : part Opus+Fable du coût notionnel, alerte
+# Telegram si > seuil (silence sinon). Séquentiel après l'observation
+# (ExecStart= multiples = exécution en ordre, doc systemd.service(5)).
+ExecStart=/bin/bash {{ cc_improvement_lab_dir }}/scripts/token_audit_notify.sh
 Nice=19
 IOSchedulingClass=idle
 # Doctrine waza (REX 2026-06-05) : tout job batch borné en mémoire, OOM-kill le

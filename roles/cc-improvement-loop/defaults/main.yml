@@ -16,3 +16,11 @@ cc_improvement_randomized_delay: "30m"
 cc_improvement_memory_max: "2G"                            # job batch borné (REX 2026-06-05)
 cc_improvement_oom_score_adjust: 1000                      # OOM-kill le job en 1er
 cc_improvement_enabled: true                               # false = timer stoppé/désactivé
+
+# Audit tokens mensuel (T1.2) : après l'observation, le service exécute
+# scripts/token_audit_notify.sh (lab git-local, non versionné ici — même
+# doctrine que continuous-improvement.sh). Alerte Telegram (canal établi en
+# T1.1, réutilisé tel quel) si la part Opus+Fable du coût NOTIONNEL (tarif
+# liste, PRICING interne au script) dépasse ce seuil. Silence si sous le
+# seuil (anti-spam).
+cc_improvement_token_audit_threshold_pct: 50

@@ -13,6 +13,16 @@
   become: true
   tags: [cc-improvement-loop, workstation, services]
 
+- name: Ensure lab metrics dir exists (sortie mensuelle token_audit.py, T1.2)
+  ansible.builtin.file:
+    path: "{{ cc_improvement_lab_dir }}/metrics"
+    state: directory
+    owner: "{{ cc_improvement_user }}"
+    group: "{{ cc_improvement_user }}"
+    mode: "0755"
+  become: true
+  tags: [cc-improvement-loop, workstation, services]
+
 - name: Deploy continuous-improvement USER units (oneshot + timer mensuel)
   ansible.builtin.template:
     src: "{{ item.src }}"

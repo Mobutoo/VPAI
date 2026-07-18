@@ -13,6 +13,11 @@
 #   N8N_BASE_URL=https://mayi.ewutelo.cloud N8N_API_KEY=sk-... ./scripts/deploy-workflow.sh <file>
 #
 # References: LOI OP R9 (IF v2 check), R10 (workflow_history), R11 (REST API primary)
+#
+# NOTE R9: ce script DÉPLOIE des workflows existants; il tolère les IF v2 déjà présents
+# (prod 2.7.3 en exécute 79, dont 36 actifs, sans crash — R4). R9 reste un garde-fou
+# d'AUTORING (ne pas ÉCRIRE de nouveaux IF v2) tant que la revalidation staging n'a pas
+# statué (RUNBOOK-N8N-UPGRADE-SIDECAR.md §R9).
 
 set -euo pipefail
 
@@ -37,47 +42,29 @@ if [[ -z "$N8N_API_KEY" ]]; then
   exit 1
 fi
 
+# --id <ID> ou env WF_ID override l'id du fichier (workflow sans id embarqué, ou re-ciblage)
+WF_ID_OVERRIDE="${WF_ID:-}"
+if [[ "${2:-}" == "--id" && -n "${3:-}" ]]; then WF_ID_OVERRIDE="$3"; fi
+
 # ── Step 1: read workflow ID ──────────────────────────────────────────────────
 
 WF_NAME=$(python3 -c "import json; d=json.load(open('$WF_FILE')); print(d.get('name','?'))")
-WF_ID=$(python3 -c "import json,sys; d=json.load(open('$WF_FILE')); v=d.get('id',''); sys.exit(0) if v else sys.exit(1)" 2>/dev/null && \
-  python3 -c "import json; print(json.load(open('$WF_FILE'))['id'])" || true)
+WF_ID=$(python3 -c "import json; d=json.load(open('$WF_FILE')); print(d.get('id',''))" 2>/dev/null || true)
+
+if [[ -n "$WF_ID_OVERRIDE" ]]; then WF_ID="$WF_ID_OVERRIDE"; fi
 
 if [[ -z "$WF_ID" ]]; then
-  echo "Error: 'id' field missing in $WF_FILE. Required for PUT." >&2
+  echo "Error: 'id' absent du JSON et --id non fourni." >&2
   exit 1
 fi
 
 echo "Workflow: $WF_NAME (id=$WF_ID)"
 
-# ── Step 2: structural validation (Python3) ───────────────────────────────────
+# ── Step 2: structural validation (delegated to fallback CLI validator) ───────
 # Fallback R1 (MCP validate_workflow remains the semantic reference)
 
-echo "→ Structural validation..."
-
-python3 - <<PYEOF
-import json, sys
-
-d = json.load(open("$WF_FILE"))
-nodes = {n['name'] for n in d.get('nodes', [])}
-conns = set(d.get('connections', {}).keys())
-missing = conns - nodes
-
-if missing:
-    print(f"ERROR connections: unknown sources: {missing}", file=sys.stderr)
-    sys.exit(1)
-
-# R9: IF node v2 check
-bad_if = [
-    n['name'] for n in d.get('nodes', [])
-    if n.get('type') == 'n8n-nodes-base.if' and n.get('typeVersion', 1) >= 2
-]
-if bad_if:
-    print(f"ERROR R9: IF node v2 detected (n8n 2.7.3 bug) — downgrade typeVersion 2→1: {bad_if}", file=sys.stderr)
-    sys.exit(1)
-
-print(f"  OK — {len(d['nodes'])} nodes, {len(conns)} connections, 0 IF v2")
-PYEOF
+echo "→ Structural validation (fallback CLI)..."
+"$(dirname "$0")/n8n-validate-fallback.sh" "$WF_FILE"   # exit≠0 => set -e stoppe le deploy
 
 # ── Step 3: preflight REST API (detects 404 Caddy) ───────────────────────────
 

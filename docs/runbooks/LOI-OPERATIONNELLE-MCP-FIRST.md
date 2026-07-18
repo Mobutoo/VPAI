@@ -74,6 +74,17 @@ mcp__n8n-docs__validate_workflow avec le contenu du JSON complet
 
 **Si le validateur remonte un champ inconnu** : `mcp__n8n-docs__get_node` + `mcp__n8n-docs__validate_node` pour chaque nœud suspect.
 
+**Doctrine « MCP-preferred, CLI-fallback obligatoire sur le chemin critique » (2026-07-18, chantier `260718-n8n-sidecar`)**
+
+Le gate R1 est satisfait par **l'un ou l'autre** des deux marqueurs frais (< 30 min) :
+
+| Voie | Marqueur | Origine |
+|---|---|---|
+| MCP (préférée) | `/tmp/claude-validate-done` | `mcp__n8n-docs__validate_workflow` réussi (hook `n8n-validate-marker.js`) |
+| CLI (fallback) | `/tmp/claude-validate-cli-done` | `scripts/n8n-validate-fallback.sh` réussi — sentinel `[N8N-VALIDATE-CLI] PASS` (hook `n8n-validate-cli-marker.js`) |
+
+`scripts/n8n-validate-fallback.sh` est l'**autorité structurelle** du fallback (Python : connexions orphelines des deux côtés, noms de nodes dupliqués, détection IF v2 — R6 a disqualifié `yigitkonur/n8n-workflow-validator`, qui rate ces cas). L'appel HTTP vers le n8n-mcp local qu'il tente en best-effort est **informatif seulement** : il n'inverse jamais un PASS structurel en FAIL, et il ne bloque jamais si le service est injoignable. **Le MCP reste la voie préférée** (validation sémantique complète, pas seulement structurelle) — le fallback CLI existe pour ne jamais bloquer le chemin critique (déploiement de workflow) sur une session MCP `-32000` expirée.
+
 **R1-bis — MCP session TTL : réinitialiser si `Session not found or expired`**
 
 Le serveur n8n-docs maintient une session HTTP en `/tmp/n8n-mcp-session`. Elle expire après quelques minutes d'inactivité (erreur `-32000: Session not found or expired` sur ~80% des appels en session longue).
@@ -88,14 +99,7 @@ SID=$(grep -i mcp-session-id /tmp/hdr.txt | awk '{print $2}' | tr -d '\r')
 echo "New session: $SID"
 ```
 
-**Fallback Python3** (validation structurelle uniquement — ne remplace **pas** R1) :
-```python
-import json
-d = json.load(open('scripts/n8n-workflows/<workflow>.json'))
-nodes = {n['name'] for n in d['nodes']}
-conns = set(d['connections'].keys())
-missing = conns - nodes  # doit être vide
-```
+**Si la réinitialisation échoue ou n'est pas souhaitable dans l'instant** : `scripts/n8n-validate-fallback.sh <workflow.json>` — voir doctrine ci-dessus. Contrairement à l'ancien snippet Python ad-hoc (retiré ici, remplacé par ce script versionné), ce fallback **satisfait bien R1** via le marqueur `/tmp/claude-validate-cli-done` — il n'est plus un simple palliatif "structurel seulement, ne compte pas".
 
 **Cause mesurée :** REX 2026-04-11 P6 + REX 2026-04-12 P5 (~80% d'échec en session longue).
 
@@ -223,6 +227,8 @@ ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'hostname'  # doit rép
 > *"tu tournes en rond, utllise les skill n8n et planifie avant de coder. Ce que j'aurais dû faire dès le départ (et que tu m'as demandé) : Lire Form.node.js / FormTrigger.node.js / Code.node.js dans le conteneur AVANT d'écrire le JSON."*
 
 ### R9 — IF node v2 : utiliser typeVersion 1 (bug n8n 2.7.3)
+
+**⏳ EN REVALIDATION post-2.30.7** (`docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md` §8) : ni prouvé corrigé, ni prouvé cassé sur la cible 2.30.7 (aucun commit de fix identifié, mais 79 IF v2 tournent déjà en prod 2.7.3 dont 36 dans des workflows actifs healthy). Procédure de revalidation isolée sur staging décrite dans le runbook §8 — statut à trancher avant de retirer cette règle. **En attendant** : le **déploiement** (`scripts/deploy-workflow.sh`, Lane 3) tolère désormais les IF v2 **existants** (warning NOTE, jamais blocage — R4 prouve qu'ils tournent) ; c'est l'**autoring** (écriture de NOUVEAUX IF v2) que cette règle continue d'interdire tant que le statut n'est pas tranché.
 
 **Déclencheur :** écriture ou révision d'un workflow n8n contenant des nœuds `n8n-nodes-base.if`.
 
@@ -373,3 +379,5 @@ Les skills Superpowers (brainstorming, writing-plans, TDD, etc.) restent les wor
 - `docs/superpowers/plans/2026-04-11-mop-workflow-n8n-multistep.md` — plan focalisé qui applique déjà R1-R8
 - `~/.claude/hooks/loi-op-enforcer.js` — hook qui injecte des rappels automatiques (R0-R11)
 - `scripts/deploy-workflow.sh` — script de déploiement REST API (R11)
+- `scripts/n8n-validate-fallback.sh` — validateur structurel CLI fallback (R1, marqueur `/tmp/claude-validate-cli-done`)
+- `docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md` — upgrade 2.7.3→2.30.7, mécanisme Sidecar, revalidation R9 (§8)

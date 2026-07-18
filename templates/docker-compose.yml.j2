@@ -106,6 +106,27 @@ services:
       retries: 3
 
   # === APPLICATION LAYER ===
+  # ⚠️ NE PAS utiliser ce template pour n8n post-Sidecar (2026-07-18): il déploie un
+  # n8n NON patché. Rollback n8n = suivre docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md.
+  n8n-init:
+    image: {{ n8n_image }}
+    container_name: {{ project_name }}_n8n_init
+    user: root
+    restart: "no"
+    entrypoint: ["/bin/sh", "/enterprise/n8n-enterprise-init.sh"]
+    environment:
+      N8N_TARGET_VERSION: "{{ n8n_upstream_version }}"
+    volumes:
+      - {{ n8n_enterprise_dir }}:/enterprise:ro
+      - {{ n8n_patched_dir }}:/patched
+    networks:
+      - backend
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   n8n:
     image: {{ n8n_image }}
     container_name: {{ project_name }}_n8n
@@ -121,6 +142,7 @@ services:
     env_file:
       - /opt/{{ project_name }}/configs/n8n/n8n.env
     volumes:
+      - {{ n8n_patched_dir }}:/usr/local/lib/node_modules/n8n:ro   # overlay: arbre patché
       - /opt/{{ project_name }}/data/n8n:/home/node/.n8n
     networks:
       - backend
@@ -128,6 +150,8 @@ services:
     depends_on:
       postgresql:
         condition: service_healthy
+      n8n-init:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:

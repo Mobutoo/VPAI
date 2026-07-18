@@ -196,6 +196,20 @@ n8n_webhook_base_url: "http://n8n:5678"
 # API key for OpenClaw dynamic workflow discovery (dedicated OpenClaw key, public-api audience)
 n8n_discovery_api_key: "{{ vault_n8n_openclaw_api_key }}"
 
+# --- n8n Sidecar (patch enterprise runtime, init-container + overlay) ---
+# Vécus ici (group_vars/all, PAS roles/n8n/defaults) car playbooks/ops/rollback.yml rend
+# templates/docker-compose.yml.j2 SANS charger le rôle n8n — un rôle-default n'y serait pas
+# visible (AnsibleUndefinedVariable => rollback cassé pour TOUTE la stack). Revue adversariale
+# 2026-07-18 (SPEC .planning/quick/260718-n8n-sidecar/SPEC.md), finding HIGH #2.
+n8n_enterprise_dir: "/opt/{{ project_name }}/configs/n8n/enterprise"          # scripts init+patch (RO côté init)
+# Répertoire scopé PAR VERSION (pas un chemin fixe réutilisé d'un bump à l'autre) : à un bump
+# de n8n_upstream_version, le nouvel init-container copie/patche dans un répertoire NEUF —
+# il ne touche jamais l'arbre que l'ancien conteneur n8n a encore monté pendant sa propre
+# recréation (finding HIGH #3 — le rm -rf de n8n-enterprise-init.sh ne peut plus jamais viser
+# un arbre servi). Nettoyage des anciens répertoires de version = hygiène manuelle post-cutover
+# (RUNBOOK-N8N-UPGRADE-SIDECAR.md §6), pas une contrainte de correction.
+n8n_patched_dir: "/opt/{{ project_name }}/data/n8n-patched/{{ n8n_upstream_version }}"
+
 # --- Qdrant collections (semantic cache + RAG) ---
 qdrant_cache_collection: "semantic_cache"
 qdrant_rag_collection: "content_index"

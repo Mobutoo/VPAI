@@ -1,12 +1,40 @@
 ---
 # n8n — handlers
 
+# --- Race guard (finding HIGH #3, revue adversariale 2026-07-18) ---
+# Le répertoire scopé-par-version de n8n_patched_dir (group_vars/all/main.yml) protège les
+# BUMPS de version (chemin host neuf, jamais partagé avec l'ancien conteneur). Il ne protège
+# PAS un hotfix de patch-enterprise.sh À VERSION INCHANGÉE : le marqueur détecte le hash du
+# patch qui a changé et n8n-enterprise-init.sh refait `rm -rf "$DST"/* && cp -a` dans LE MÊME
+# répertoire — que l'ancien conteneur n8n (même version, même bind mount host) a encore monté
+# à ce moment précis (n8n-init tourne AVANT n8n via depends_on: service_completed_successfully,
+# mais l'ancien n8n n'est stoppé qu'APRÈS, quand compose le recrée). Un bind mount Linux n'a
+# aucune isolation copy-on-write entre deux montages du même répertoire hôte : un rm -rf ici
+# est visible instantanément dans l'autre conteneur. Fix : arrêter n8n AVANT de laisser
+# n8n-init réécrire l'arbre partagé, uniquement si le conteneur existe déjà (ne JAMAIS laisser
+# docker_container en créer un sans image — 1er déploiement, REX-59).
+- name: Stop n8n before Sidecar re-patch (race guard, finding HIGH 3)
+  become: true
+  when: not (common_molecule_mode | default(false))
+  block:
+    - name: Check n8n container exists before stopping it
+      community.docker.docker_container_info:
+        name: "{{ project_name }}_n8n"
+      register: n8n_stop_guard_info
+
+    - name: Stop the running n8n container (frees the shared patched-tree before n8n-init rewrites it)
+      community.docker.docker_container:
+        name: "{{ project_name }}_n8n"
+        state: stopped
+      when: n8n_stop_guard_info.exists | default(false)
+
 - name: Restart n8n stack
   community.docker.docker_compose_v2:
     project_src: "/opt/{{ project_name }}"
     files:
       - docker-compose.yml
     services:
+      - n8n-init
       - n8n
     state: present
     # REX: recreate: always requis — state: restarted ne relit pas l'env_file.

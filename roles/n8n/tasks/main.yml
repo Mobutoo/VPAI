@@ -1,6 +1,49 @@
 ---
 # n8n — tasks
 
+# --- GATE HUMAIN — bump de version n8n (revue adversariale 2026-07-18, finding CRITICAL) ---
+# versions.yml pose la cible Sidecar (n8n_image/n8n_upstream_version) sans garde technique :
+# n'importe quel déploiement touchant docker-stack (site.yml complet, --tags docker-stack, ou
+# un déploiement motivé par un AUTRE rôle du même diff) recréerait javisi_n8n dans la version
+# cible et déclencherait les migrations TypeORM one-way SANS backup (§3) ni staging (§4) —
+# voir docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md §5/§7. Ce garde bloque tant que l'image
+# cible diffère de l'image du conteneur EN COURS D'EXÉCUTION et que l'opérateur n'a pas
+# explicitement confirmé (-e n8n_upgrade_confirm=yes) avoir suivi §3 (backup) + §4 (staging).
+# Ne fail jamais sur un premier déploiement (conteneur absent, REX-59) ni sur un redeploy de
+# routine à version inchangée.
+# Tag "docker-stack" AJOUTÉ EXPRÈS (en plus de n8n/phase3/apps, revue adversariale 2026-07-18
+# gap #1 sur la 1re correction) : c'est docker-stack qui recrée réellement javisi_n8n avec la
+# nouvelle image (apps-core.yml.j2). `--tags docker-stack` seul (ou `make deploy-role
+# ROLE=docker-stack`) doit AUSSI voir ce garde, pas seulement `--tags n8n` ou un run complet
+# de site.yml — sinon la sélection de tags la plus étroite justement citée par le finding
+# reste un contournement du gate. L'ordre d'exécution (n8n avant docker-stack dans site.yml)
+# est préservé quel que soit le filtre --tags : Ansible ne réordonne jamais les tâches, il ne
+# fait que sauter celles hors filtre.
+- name: Inspect running n8n container (version-drift guard)
+  community.docker.docker_container_info:
+    name: "{{ project_name }}_n8n"
+  become: true
+  register: n8n_running_container
+  changed_when: false
+  tags: [n8n, phase3, apps, docker-stack]
+
+- name: Assert explicit human confirmation before n8n image/version change (GATE HUMAIN)
+  ansible.builtin.assert:
+    that:
+      - n8n_upgrade_confirm | default('') == 'yes'
+    fail_msg: >-
+      GATE HUMAIN n8n : image cible ({{ n8n_image }}) diffère de l'image actuellement en
+      exécution ({{ n8n_running_container.container.Config.Image | default('inconnue') }}).
+      Ce déploiement déclencherait des migrations TypeORM one-way en base SANS backup ni
+      validation staging si on continue. Suivre docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md
+      §3 (backup pg_dump) puis §4 (staging) AVANT de relancer avec -e n8n_upgrade_confirm=yes.
+    quiet: true
+  when:
+    - n8n_running_container.exists | default(false)
+    - n8n_running_container.container.Config.Image | default('') != ''
+    - n8n_running_container.container.Config.Image != n8n_image
+  tags: [n8n, phase3, apps, docker-stack]
+
 - name: Assert n8n webhook HMAC secret is defined (fail-loud — HMAC validation disabled otherwise)
   ansible.builtin.assert:
     that:
@@ -28,6 +71,42 @@
     group: "1000"
     mode: "0755"
   become: true
+
+- name: Create n8n enterprise scripts directory
+  ansible.builtin.file:
+    path: "{{ n8n_enterprise_dir }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  become: true
+  tags: [n8n, phase3, apps]
+
+- name: Deploy n8n enterprise patch + init scripts
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ n8n_enterprise_dir }}/{{ item }}"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0755"
+  loop:
+    - patch-enterprise.sh
+    - n8n-enterprise-init.sh
+  become: true
+  notify:
+    - Stop n8n before Sidecar re-patch (race guard, finding HIGH 3)
+    - Restart n8n stack
+  tags: [n8n, phase3, apps]
+
+- name: Create n8n patched-tree directory (overlay volume target)
+  ansible.builtin.file:
+    path: "{{ n8n_patched_dir }}"
+    state: directory
+    owner: "root"
+    group: "root"
+    mode: "0755"
+  become: true
+  tags: [n8n, phase3, apps]
 
 - name: Deploy n8n environment file
   ansible.builtin.template:

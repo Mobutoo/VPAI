@@ -4,6 +4,17 @@
 n8n_config_dir: "/opt/{{ project_name }}/configs/n8n"
 n8n_data_dir: "/opt/{{ project_name }}/data/n8n"
 
+# --- Sidecar patch enterprise (init-container + overlay volume) ---
+# n8n_enterprise_dir / n8n_patched_dir sont définies dans inventory/group_vars/all/main.yml
+# (PAS ici) : playbooks/ops/rollback.yml rend templates/docker-compose.yml.j2 sans charger ce
+# rôle — un default de rôle n'y serait pas visible. Revue adversariale 2026-07-18, finding HIGH #2.
+
+# GATE HUMAIN — bump de version n8n (voir assert ci-dessous dans tasks/main.yml).
+# -e n8n_upgrade_confirm=yes requis quand n8n_image cible diffère de l'image du conteneur
+# {{ project_name }}_n8n actuellement en cours d'exécution (migrations TypeORM one-way en
+# base — RUNBOOK-N8N-UPGRADE-SIDECAR.md §3/§5). Revue adversariale 2026-07-18, finding CRITICAL.
+n8n_upgrade_confirm: ""
+
 # --- Owner provisioning (first deploy) ---
 n8n_owner_email: ""
 n8n_owner_first_name: ""

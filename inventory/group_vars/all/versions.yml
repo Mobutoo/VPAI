@@ -11,17 +11,22 @@ netbox_local_image: "mediahall-netbox:v4.2.9"
 
 # --- Données ---
 postgresql_image: "postgres:18.4-bookworm"  # CVE-2025-8714/8715 + buffer overflows (fix 18.3, 2026-02-26); patch 18.4
-redis_image: "redis:8.4.0-bookworm"  # CVE-2025-49844 RediShell CVSS 10.0 (fix 8.2.2+, 2025-10). 8.8.0-trixie KO: entrypoint setpriv --bounding-set incompatible cap_drop:ALL+no-new-privileges (REX 2026-05-29). Reste sur 8.4.0 (dernier bookworm).
+# CVE-2025-49844 RediShell CVSS 10.0 (fix 8.2.2+, 2025-10). 8.8.0-trixie KO: entrypoint
+# setpriv --bounding-set incompatible cap_drop:ALL+no-new-privileges (REX 2026-05-29).
+# Reste sur 8.4.0 (dernier bookworm).
+redis_image: "redis:8.4.0-bookworm"
 qdrant_image: "qdrant/qdrant:v1.18.1"
 
 # --- Applications ---
 openclaw_image: "ghcr.io/openclaw/openclaw:2026.5.27"
-# n8n: image custom avec patch enterprise (roles/n8n/files/Dockerfile)
-# Build: cd roles/n8n/files && docker build --build-arg N8N_VERSION=2.7.3 -t ghcr.io/mobutoo/n8n-enterprise:2.7.3 .
-# Push:  docker push ghcr.io/mobutoo/n8n-enterprise:2.7.3
-n8n_image: "ghcr.io/mobutoo/n8n-enterprise:2.7.3"
-n8n_upstream_version: "2.7.3"  # version officielle n8nio/n8n sous-jacente
-litellm_image: "ghcr.io/berriai/litellm:v1.83.3-stable"  # ROLLBACK 2026-05-30: 1.83.14 crash-loop prisma migrate deploy (CREATE INDEX CONCURRENTLY en transaction). 1.83.3 = dernière image sans le bug, présente sur disque sese.
+# n8n: image OFFICIELLE — patch enterprise appliqué au runtime (Sidecar init-container).
+# Voir roles/n8n/files/n8n-enterprise-init.sh + patch-enterprise.sh. PLUS de build custom.
+# Bump = changer ces deux lignes ensemble (image = officielle, version = tag sémantique).
+n8n_image: "n8nio/n8n:2.30.7"
+n8n_upstream_version: "2.30.7"  # doit == le tag de n8n_image
+# ROLLBACK 2026-05-30: 1.83.14 crash-loop prisma migrate deploy (CREATE INDEX CONCURRENTLY
+# en transaction). 1.83.3 = dernière image sans le bug, présente sur disque sese.
+litellm_image: "ghcr.io/berriai/litellm:v1.83.3-stable"
 nocodb_image: "nocodb/nocodb:2026.05.1"  # SQL injection DATEADD + stored XSS + SSRF (fix 0.301.3, 2026-02-27); CalVer depuis 2026.04.1
 plane_web_image: "makeplane/plane-frontend:v1.3.1"  # fix SSRF webhook + X-Frame-Options (2026-04)
 plane_admin_image: "makeplane/plane-admin:v1.3.1"
@@ -127,7 +132,7 @@ penpot_pg_image: "postgres:15-bookworm"
 # 3002 → réservé futur MCP server
 # 3150 → openpencil-mcp (design editor MCP)
 # 4401 → penpot-mcp (Penpot design tool MCP)
-n8n_mcp_image_version_pinned: "2.40.5"  # pinned 2026-03-23 (sans v — Docker metadata semver pattern)
+n8n_mcp_image_version_pinned: "2.65.1"  # bump 2026-07-18: corrige SESSION_TIMEOUT défaut cassé (5min) de 2.40.5 → -32000 (R1 §6.1) + validateur v2.63.0
 n8n_mcp_port_pi: 3001
 
 # --- Flash Suite (unified shell + gamification engine) ---

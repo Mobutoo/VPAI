@@ -1,3 +1,9 @@
+# DEPRECATED 2026-07-18 — n'est plus le chemin de déploiement nominal.
+# Le patch enterprise est désormais appliqué au RUNTIME (Sidecar init-container,
+# voir roles/n8n/files/n8n-enterprise-init.sh). Ce Dockerfile n'est conservé que
+# comme chemin de rollback (c) « build CI hors Pi » documenté dans
+# docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md. NON référencé par versions.yml.
+
 # n8n Enterprise-Unlocked
 # Thin patch layer over official n8n image
 # Unlocks all enterprise features (Projects, Insights, Variables, Log Streaming, etc.)

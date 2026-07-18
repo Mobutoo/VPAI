@@ -8,7 +8,7 @@ n8n_mcp_user: "{{ workstation_pi_user | default('mobuone') }}"
 
 # Docker image — pinned, never :latest
 n8n_mcp_image: "ghcr.io/czlonkowski/n8n-mcp"
-n8n_mcp_image_version: "{{ n8n_mcp_image_version_pinned | default('2.35.5') }}"
+n8n_mcp_image_version: "{{ n8n_mcp_image_version_pinned | default('2.65.1') }}"
 
 # Port hôte — registre dans versions.yml (3001 = n8n-mcp)
 # Bind sur toutes interfaces pour accès Tailscale depuis Windows
@@ -31,3 +31,12 @@ n8n_mcp_api_url: "https://{{ n8n_subdomain }}.{{ domain_name }}"
 n8n_mcp_api_key: "{{ vault_n8n_mcp_api_key | default('') }}"
 # extra_hosts: mayi.ewutelo.cloud → Tailscale IP de Sese (n8n/Caddy y tournent), pas waza
 n8n_mcp_extra_host: "{{ n8n_subdomain }}.{{ domain_name }}:{{ vps_tailscale_ip | default('100.64.0.14') }}"
+
+# --- Fix -32000 (session HTTP) — R1 §3/§6.1 ---
+n8n_mcp_session_timeout_minutes: "30"     # défaut sain rétabli (2.40.5 tournait à 5 = cassé)
+n8n_mcp_max_sessions: "50"                 # plafond explicite (défaut upstream 100)
+n8n_mcp_auth_rate_limit_max: "1000"        # tentatives auth/IP/fenêtre (défaut upstream 20)
+# R1 §6.3: NO-OP en topologie actuelle (accès direct Tailscale, pas de route Caddy vers
+# :3001) — posé par directive, sans effet ni risque tant que pas derrière proxy
+n8n_mcp_trust_proxy: "1"
+n8n_mcp_allow_concurrent_sessions: "true"  # R1 §6.1: 2e cause -32000 = éviction éager de session au reconnect

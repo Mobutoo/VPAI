@@ -2224,3 +2224,47 @@ r = c.projects.list(workspace_slug=slug, params=PaginatedQueryParams())
 print('count:', len(r.results))
 "
 ```
+
+## 57. n8n-mcp `-32000 Session not found or expired` — défaut `SESSION_TIMEOUT_MINUTES` cassé sur le pin 2.40.5 (2026-07-18)
+
+**Symptôme** : ~80% des appels `mcp__n8n-docs__*` échouent en session longue avec `-32000: Session not found or expired` (REX 2026-04-11 P6, REX 2026-04-12 P5). La procédure de réinitialisation de session (`docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md` R1-bis, POST `/mcp` initialize) contourne le symptôme mais doit être répétée en boucle.
+
+**Cause racine** : le pin VPAI de `n8n-mcp` (`2.40.5`, publié 2026-03-22) contient un défaut de `SESSION_TIMEOUT_MINUTES` réduit à **5 minutes** — introduit par `v2.33.5` (2026-01-23, fix d'une fuite mémoire, issue #542 : *"Reduced default session timeout from 30 minutes to 5 minutes"*) et corrigé seulement en `v2.41.3` (2026-03-27, issue #626 : *"Raised SESSION_TIMEOUT_MINUTES default from 5 to 30 minutes"*). Notre pin `2.40.5` a été publié **5 jours avant** ce fix — il tourne donc avec le défaut cassé de 5 min, ce qui explique un timeout en plein milieu d'une séquence multi-étapes (`validate` → `get structure` → `patch` → `re-validate`). Vérifié directement en lisant le code source de la version pinnée : `gh api "repos/czlonkowski/n8n-mcp/contents/src/http-server-single-session.ts?ref=v2.40.5"` → `process.env.SESSION_TIMEOUT_MINUTES || '5'`.
+
+**Fix** : bump `2.40.5 → 2.65.1` (ou tout `≥2.41.3`) — le défaut sain (30 min) redevient effectif sans même positionner `SESSION_TIMEOUT_MINUTES` explicitement. VPAI le positionne quand même explicitement pour la lisibilité (`roles/n8n-mcp/defaults/main.yml`) :
+```yaml
+n8n_mcp_session_timeout_minutes: "30"
+n8n_mcp_max_sessions: "50"
+n8n_mcp_auth_rate_limit_max: "1000"
+n8n_mcp_allow_concurrent_sessions: "true"   # 2e cause possible: éviction éager de session au reconnect
+```
+
+**Piège** : une seconde cause documentée existe en parallèle du timeout court — l'éviction éager de session au reconnect (`MULTI_TENANT_ALLOW_CONCURRENT_SESSIONS=false` par défaut). Le bump seul corrige la cause la plus probable mais n'élimine pas nécessairement 100% des `-32000` — garder R1-bis (réinit session) en filet.
+
+**Vérif post-fix** :
+```bash
+docker exec n8n-mcp printenv SESSION_TIMEOUT_MINUTES   # attendu: 30
+```
+
+## 58. n8n Sidecar — patch enterprise appliqué au runtime (init-container + overlay volume, 2026-07-18)
+
+**Contexte** : depuis le chantier `260718-n8n-sidecar`, le service `n8n` tourne sur l'image **officielle** `n8nio/n8n:<version>` (fini `ghcr.io/mobutoo/n8n-enterprise:<version>`, image custom buildée). Le patch enterprise (`roles/n8n/files/patch-enterprise.sh` — déverrouille Projects/Insights/Variables, masque la bannière NON-PROD) n'est plus intégré à l'image : il est appliqué **au runtime** par un service Compose one-shot.
+
+**Mécanisme** :
+1. `n8n-init` (même image officielle, `user: root`, `restart: "no"`) démarre AVANT `n8n` (`depends_on: condition: service_completed_successfully`).
+2. Il copie l'arbre `/usr/local/lib/node_modules/n8n` de l'image officielle vers un bind persistant (`n8n_patched_dir`, `/opt/<project>/data/n8n-patched`), y applique `patch-enterprise.sh`, puis écrit un marqueur `.enterprise-patched` = `"<version>:<sha256 du script>"`.
+3. Le service `n8n` monte ce répertoire patché **en overlay** (`:ro`) par-dessus son propre `node_modules/n8n`. L'entrypoint stock (`tini` PID 1, user `node`) reste **inchangé**.
+
+**Idempotence** : si le marqueur du bind existant == `<version cible>:<hash du script>` → `n8n-init` skip immédiatement (`exit 0`, aucune copie). Sinon → `rm -rf` de la copie + `cp -a` fraîche depuis l'image pristine + repatch + nouveau marqueur. Ne repatch jamais un arbre déjà patché (pas d'accumulation de blocs `LICENSED_BODY`).
+
+**Fail-loud** : les étapes critiques (1-3 : `license-state.js`, `license.js`, `frontend.service.js`) font échouer `patch-enterprise.sh` en `exit 1` si leur `grep` de vérification échoue → `n8n-init` sort en erreur → `service_completed_successfully` non satisfait → **`n8n` ne démarre jamais** (échec visible à l'orchestrateur, pas un patch silencieusement absent). Les étapes 4 (bundle router minifié) et 5 (texte i18n) restent en warning pur, jamais fatales — l'étape 4 ne matche structurellement jamais le bundle minifié, absorbée fonctionnellement par l'étape 3.
+
+**Diagnostic** :
+```bash
+docker logs javisi_n8n_init --tail 50   # doit finir sur "terminé — marqueur=<ver>:<sha>", jamais "FATAL"
+docker logs javisi_n8n --tail 80        # migrations OK, healthy, bannière NON-PROD absente
+```
+
+**Piège** : ne PAS utiliser `playbooks/ops/rollback.yml` pour n8n — le template legacy `templates/docker-compose.yml.j2` déploie un n8n **non patché** contre une DB potentiellement déjà migrée par une version plus récente. Rollback n8n = suivre exclusivement `docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md` §7 (restaurer le `pg_dump` D'ABORD, jamais commencer par le tag d'image).
+
+**Référence complète** : `docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md`, `.planning/quick/260718-n8n-sidecar/SPEC.md` §0.1.

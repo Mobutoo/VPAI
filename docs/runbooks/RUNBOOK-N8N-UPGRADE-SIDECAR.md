@@ -222,6 +222,86 @@ ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 \
 - **Si non corrigé** → garder R9 scopé précisément au pattern reproduit (comparaison string avec résolution d'expression sur `options`), pas comme interdiction générale si le cas boolean simple s'avère sain.
 - Dans les deux cas, **indépendant** de la tolérance déjà en place côté déploiement (Lane 3) : `scripts/deploy-workflow.sh` tolère déjà les IF v2 **existants** au déploiement (R9 = garde-fou d'autoring, pas de déploiement) — cette décision R9 ne change que la règle d'ÉCRITURE de nouveaux IF v2.
 
+### §8bis — État chantier A « harness autoring » (2026-07-18) — R9 boolean, livrable 4
+
+**Verdict : reporté — staging indisponible.** Vérifié ce jour (`grep -rln "stg_n8n"` sur
+tout le repo, aucun compose file ; le staging éphémère `stg_n8n`/`stg_n8n_pg` ayant
+servi au cutover `REX-N8N-UPGRADE-SIDECAR-2026-07-18.md` a été **entièrement
+démantelé** après le cutover). Aucune instance `$STAGING_HOST` amd64 disponible.
+Ne pas en reprovisionner un pour ce chantier ponctuel : l'incident staging du
+cutover (§Incident staging ci-dessus — fausse alerte Telegram réelle via
+`hawktrade-killswitch`, causée par un boot avec la clé de chiffrement prod réelle)
+montre que reconstituer ce type de staging est une opération à risque non
+négligeable, hors périmètre d'un chantier « quick » mono-agent sans gate humain
+dédié.
+
+**Commande exacte à rejouer** (dès qu'un `$STAGING_HOST` amd64 est provisionné,
+suivre §4.2 boot complet AVANT ceci) :
+```bash
+# Sur $STAGING_HOST, workflow minimal reproduisant "Validate Secret" en boolean
+# (au lieu du pattern string déjà statué fixed) :
+#   IF typeVersion 2, operator: { type: 'boolean', operation: 'true', singleValue: true }
+#   comparaison sur un champ boolean simple issu d'un Code node amont, PAS une
+#   résolution d'expression sur $env (le pattern déjà testé porte sur $env, isoler
+#   la variable "type de comparaison" ici : boolean, pas string).
+# Importer, activer, déclencher une exécution réelle, observer si
+# "Cannot read properties of undefined (reading 'caseSensitive')" se reproduit.
+# Procédure complète : §8 ci-dessus, étapes 1-3.
+```
+
+**Corroboration indirecte obtenue (read-only, sans staging)** : le workflow prod
+`memory-healthcheck` (id `NZZ9Ke6DXJTlkasa`) contient un IF v2 boolean réel
+(`Needs Alert?`, `operator: {type:'boolean', operation:'true', singleValue:true}`,
+`$json.needs_alert` en entrée). Vérifié via `execution_entity` (lecture seule,
+SSH+psql §2.3) : 5 exécutions consécutives `mode=trigger, status=success` le
+2026-07-18 (12h, 13h, 14h, 17h, 18h) sur prod 2.30.7. Le nœud IF traverse
+nécessairement le même chemin de code (`filter-parameter.js`) que le cas string
+déjà statué — un crash y aurait produit `status=error`/`crashed`, pas `success`.
+**Ce n'est pas une preuve substitutive** à la procédure isolée du §8 (pas de
+schéma `options` identique reconstitué à l'identique, pas d'environnement
+contrôlé) — voir `docs/runbooks/GOTCHAS-N8N-2.30.md` §1 pour la nuance complète.
+Faisceau d'indices qui penche vers "corrigé" mais ne tranche pas formellement.
+
+**Diff proposés, NON appliqués (édition LOI = gate humain, SPEC non-buts)** —
+préparés pour éviter de re-dériver le diff une fois le test staging effectivement
+rejoué :
+
+*Branche A — si la revalidation isolée confirme `fixed` sur le cas boolean aussi*
+(R9 devient obsolète en bloc, alignée sur le cas string déjà statué) :
+```diff
+--- a/CLAUDE.md
+-**R9** IF node v2 bug (n8n 2.7.3): ALWAYS use `typeVersion: 1` + `fixedCollection` schema. `typeVersion: 2` crashes on ALL conditions (boolean + string). Detect: `python3 -c "import json; [print(n['name']) for n in json.load(open('wf.json'))['nodes'] if n.get('type')=='n8n-nodes-base.if' and n.get('typeVersion',1)>=2]"` ⏳ En revalidation post-upgrade 2.30.7 (docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md §8). Déploiement d'IF v2 existants toléré ; ne pas ÉCRIRE de nouveaux IF v2 tant que non statué.
++**R9 — RETIRÉE 2.30.7** (historique : bug filter-parameter.js corrigé en amont entre 2.7.3 et 2.30.7, string ET boolean confirmés `fixed` sur staging, REX-SESSION-2026-04-12b.md + RUNBOOK-N8N-UPGRADE-SIDECAR.md §8/§8bis). IF v2 est de nouveau le schéma standard d'autoring.
+
+--- a/docs/runbooks/LOI-OPERATIONNELLE-MCP-FIRST.md
+# Section "R9 — IF node v2" : remplacer le corps de règle par un renvoi historique
+# vers RUNBOOK-N8N-UPGRADE-SIDECAR.md §8/§8bis, retirer la contrainte d'autoring.
+
+--- a/scripts/n8n-validate-fallback.sh
+# Retirer le bloc NOTE IF v2 (devenu non pertinent) — lignes du check `ifv2`.
+
+--- a/~/.claude/hooks/loi-op-enforcer.js
+# Retirer l'advisory d'autoring R9 (le hook n'a pas à re-signaler une règle retirée).
+```
+
+*Branche B — si la revalidation isolée confirme le crash aussi en boolean*
+(R9 reste, texte déjà scopé correctement — pas de retrait, juste lever
+l'ambiguïté "non testé" → "testé, confirmé cassé") :
+```diff
+--- a/CLAUDE.md
+ **R9** IF node v2 bug (n8n 2.7.3): ALWAYS use `typeVersion: 1` + `fixedCollection` schema. `typeVersion: 2` crashes on ALL conditions (boolean + string). Detect: ... ⏳ En revalidation post-upgrade 2.30.7 (docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md §8). Déploiement d'IF v2 existants toléré ; ne pas ÉCRIRE de nouveaux IF v2 tant que non statué.
+-⏳ En revalidation post-upgrade 2.30.7 (docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md §8). Déploiement d'IF v2 existants toléré ; ne pas ÉCRIRE de nouveaux IF v2 tant que non statué.
++String comparison confirmée `fixed` sur 2.30.7 (staging run 3) ; comparaison
++boolean confirmée TOUJOURS cassée sur 2.30.7 (staging §8bis) — règle maintenue
++dans son intégralité pour tout nouveau IF v2, quel que soit le type de
++comparaison, jusqu'à correction upstream n8n.
+# LOI-OP.md, hook enforcer, n8n-validate-fallback.sh : aucun changement.
+```
+
+Aucune de ces deux branches n'est appliquée par ce chantier — gate humain requis
+avant toute édition de `CLAUDE.md`/`LOI-OPERATIONNELLE-MCP-FIRST.md`/hook enforcer,
+et avant cela, exécution effective de la commande de revalidation ci-dessus.
+
 ---
 
 ## Références

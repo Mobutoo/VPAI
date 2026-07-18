@@ -103,12 +103,24 @@ déjà les échecs bruts automatiquement (§4) ; GOTCHAS reste la fiche **curée
 
 ## Statut de validation de ce harness
 
-Preuve E2E (livrable 5, 2026-07-18) : redeploy no-op de `memory-healthcheck`
-(id `NZZ9Ke6DXJTlkasa`) via `deploy-workflow.sh` — contenu local confirmé identique
-au live avant exécution (idempotence), harness exercé de bout en bout. Détail et
-écarts : voir rapport de session (référence `.planning/quick/260718-a-harness-autoring-n8n/SPEC.md`).
-Échec simulé (fixture cassée `tests/fixtures/`) → entrée automatique confirmée dans
-`docs/rex/REX-N8N-AUTORING.md`.
+**Preuve E2E réelle (livrable 5, 2026-07-18)** : redeploy de `memory-healthcheck`
+(id `NZZ9Ke6DXJTlkasa`) via `N8N_API_KEY=<vault_n8n_owner_api_key> scripts/deploy-workflow.sh
+scripts/n8n-workflows/memory-healthcheck.json --id NZZ9Ke6DXJTlkasa` — clé API prod
+lue en lecture seule via `ansible-vault view --vault-password-file=.vault_password`
+(jamais imprimée, jamais commitée). Séquence complète exercée : validate fallback
+PASS (NOTE IF v2 non bloquante) → preflight 200 → PUT 200 → activate 200 → status
+`active`, exit 0. **Idempotence prouvée au niveau DB** (vérification read-only
+`workflow_entity`, SSH+psql documenté §2.3 du runbook Sidecar) :
+`activeVersionId` **identique avant et après** ce redeploy
+(`44d60c86-2885-401e-9787-11a2d72df1e3`) — n8n n'a créé aucune nouvelle version
+puisque le contenu local était byte-identique au live (`nodes`/`connections`
+comparés avant exécution). Aucune exécution parasite déclenchée par le
+déploiement (`execution_entity` : dernière ligne toujours l'exécution cron de
+18h00, aucune nouvelle entrée après le PUT/activate de ~18h25).
+
+Échec simulé (fixture cassée `tests/fixtures/broken-workflow-dangling-connection.json`,
+jamais déployée) → entrée automatique confirmée dans `docs/rex/REX-N8N-AUTORING.md`,
+exit code inchangé avec et sans `REX_CAPTURE=0`.
 
 ## Références
 

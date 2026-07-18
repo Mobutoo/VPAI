@@ -27,4 +27,12 @@ ni gate humain bloquant**.
 
 ## Recommandation d'ordre
 A (prolonge n8n + exploite le MCP tout juste câblé) → C+D (fiabilité n8n, rapides) → B (RAG) →
-E (hygiène) → F (review loop). Périmètre à confirmer avec l'humain avant de lancer.
+E (hygiène) → F (review loop).
+
+## ✅ PÉRIMÈTRE VALIDÉ (humain, 2026-07-18) — à attaquer après redémarrage de `claude`
+Sélection retenue : **A (Volet B autoring n8n)**, **C+D (Fiabilité n8n : webhooks dupliqués +
+healthcheck fa2bffa)**, **E+F (Hygiène disque + review loop Codex)**.
+**Écarté pour l'instant** : B (RAG doc n8n 2.x) — plan reste prêt si besoin.
+Ordre suggéré au démarrage : C+D (rapides, ferment les follow-ups) → A (haute valeur) → E+F.
+⚠️ Prérequis : QUITTER puis relancer `claude` (le MCP `n8n-native` n'est chargé qu'au démarrage
+du process — `/clear` seul ne suffit pas).

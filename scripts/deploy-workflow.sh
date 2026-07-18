@@ -21,16 +21,28 @@
 
 set -euo pipefail
 
+# rex-capture (livrable 2, harness autoring) — best-effort, jamais bloquant,
+# n'affecte jamais le code de sortie de ce script. Opt-out: REX_CAPTURE=0.
+REX_CAPTURE_SCRIPT="$(dirname "$0")/n8n-authoring/rex-capture.sh"
+rex_capture_on_fail() {
+  local wf_ref="$1" step="$2" err="$3"
+  if [[ -x "$REX_CAPTURE_SCRIPT" ]]; then
+    "$REX_CAPTURE_SCRIPT" "$wf_ref" "$step" "$err" || true
+  fi
+}
+
 # ── Parameters ───────────────────────────────────────────────────────────────
 
 WF_FILE="${1:-}"
 if [[ -z "$WF_FILE" ]]; then
   echo "Usage: $0 <workflow_json_file>" >&2
+  rex_capture_on_fail "<argument manquant>" "deploy-usage" "usage: $0 <workflow_json_file>"
   exit 1
 fi
 
 if [[ ! -f "$WF_FILE" ]]; then
   echo "Error: file not found: $WF_FILE" >&2
+  rex_capture_on_fail "$WF_FILE" "deploy-file-missing" "file not found: $WF_FILE"
   exit 1
 fi
 
@@ -39,6 +51,7 @@ N8N_API_KEY="${N8N_API_KEY:-}"
 
 if [[ -z "$N8N_API_KEY" ]]; then
   echo "Error: N8N_API_KEY not set. Export the variable before calling this script." >&2
+  rex_capture_on_fail "$WF_FILE" "deploy-missing-api-key" "N8N_API_KEY not set"
   exit 1
 fi
 
@@ -55,6 +68,7 @@ if [[ -n "$WF_ID_OVERRIDE" ]]; then WF_ID="$WF_ID_OVERRIDE"; fi
 
 if [[ -z "$WF_ID" ]]; then
   echo "Error: 'id' absent du JSON et --id non fourni." >&2
+  rex_capture_on_fail "$WF_FILE" "deploy-missing-id" "'id' absent du JSON et --id non fourni"
   exit 1
 fi
 
@@ -64,7 +78,9 @@ echo "Workflow: $WF_NAME (id=$WF_ID)"
 # Fallback R1 (MCP validate_workflow remains the semantic reference)
 
 echo "→ Structural validation (fallback CLI)..."
-"$(dirname "$0")/n8n-validate-fallback.sh" "$WF_FILE"   # exit≠0 => set -e stoppe le deploy
+# exit≠0 => set -e stoppe le deploy. n8n-validate-fallback.sh appelle DÉJÀ
+# rex-capture.sh sur son propre échec (pas de double capture ici).
+"$(dirname "$0")/n8n-validate-fallback.sh" "$WF_FILE"
 
 # ── Step 3: preflight REST API (detects 404 Caddy) ───────────────────────────
 
@@ -93,11 +109,13 @@ Fallback available: CLI procedure (LOI OP R10):
     n8n publish:workflow --id=$WF_ID
     docker restart javisi_n8n && sleep 20 && docker restart javisi_n8n
 EOF
+  rex_capture_on_fail "$WF_ID" "deploy-preflight-404" "REST API 404 — Caddy ne route pas /api/v1/ vers javisi_n8n:5678"
   exit 1
 fi
 
 if [[ "$PREFLIGHT_HTTP" != "200" ]]; then
   echo "Error preflight: HTTP $PREFLIGHT_HTTP — check N8N_API_KEY and ${N8N_BASE_URL}" >&2
+  rex_capture_on_fail "$WF_ID" "deploy-preflight" "HTTP $PREFLIGHT_HTTP sur GET ${N8N_BASE_URL}/api/v1/workflows"
   exit 1
 fi
 
@@ -126,7 +144,10 @@ PUT_BODY=$(echo "$PUT_RESPONSE" | head -n -1)
 
 if [[ "$PUT_HTTP" != "200" ]]; then
   echo "Error PUT: HTTP $PUT_HTTP" >&2
-  echo "$PUT_BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('message', d))" 2>/dev/null || echo "$PUT_BODY" >&2
+  PUT_MSG=$(echo "$PUT_BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('message', d))" 2>/dev/null || echo "$PUT_BODY")
+  echo "$PUT_MSG" >&2
+  echo "AVERTISSEMENT (GOTCHAS-N8N-2.30.md): un PUT en échec HTTP n'est pas garanti atomique sur 2.30.7 — relire activeVersionId même sur erreur avant de retenter." >&2
+  rex_capture_on_fail "$WF_ID" "deploy-put" "HTTP $PUT_HTTP — $PUT_MSG"
   exit 1
 fi
 

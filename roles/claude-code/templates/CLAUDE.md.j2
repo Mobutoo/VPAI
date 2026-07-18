@@ -54,28 +54,22 @@ Acces VPN uniquement via Tailscale mesh (Headscale).
 Tu fonctionnes en **mode autonome** — pas d'interaction humaine pour le context management.
 Auth: {{ claude_code_auth_mode | default('oauth') }}{% if claude_code_auth_mode | default('oauth') == 'oauth' %} (Max x20, `sonnet[1m]` inclus){% endif %}.
 
-### Model routing (GSD profile: `{{ claude_code_gsd_model_profile | default('balanced') }}`)
+### Model routing (GSD)
 
-| Agent GSD | Modele | Contexte | Usage |
-|---|---|---|---|
-| **Session principale** (toi) | {{ claude_code_default_model }} | 200k | Orchestration, controle, decisions |
-| **gsd-planner** | inherit (Opus) | 200k | Decomposition en taches, architecture |
-{% if claude_code_gsd_model_overrides is defined and claude_code_gsd_model_overrides['gsd-executor'] is defined %}
-| **gsd-executor** | {{ claude_code_gsd_model_overrides['gsd-executor'] }} | **1M** | Ecriture de code, implementation |
-{% else %}
-| **gsd-executor** | inherit | 200k | Ecriture de code, implementation |
-{% endif %}
-| **gsd-verifier** | inherit (Opus) | 200k | Code review, securite, qualite |
-{% if claude_code_gsd_model_overrides is defined and claude_code_gsd_model_overrides['gsd-phase-researcher'] is defined %}
-| **gsd-phase-researcher** | {{ claude_code_gsd_model_overrides['gsd-phase-researcher'] }} | **1M** | Lecture codebase, recherche, analyse |
-{% else %}
-| **gsd-phase-researcher** | inherit | 200k | Lecture codebase, recherche, analyse |
-{% endif %}
-| **gsd-plan-checker** | inherit (Opus) | 200k | Validation du plan avant execution |
+Les overrides de `~/.gsd/defaults.json` ne s'appliquent qu'a la **creation**
+d'un projet GSD. Pour un projet EXISTANT, seul `.planning/config.json`
+(`model_profile` + `model_overrides`) fait foi — ne jamais supposer depuis
+un tableau statique. Verifier le modele reellement resolu avec :
+`node ~/.claude/get-shit-done/bin/gsd-tools.cjs resolve-model <agent>`.
 
-> **Contexte** : Sonnet 4.6 = 200k par defaut. Le suffixe `[1m]` active la fenetre **1M tokens**.
-> **inherit** = le subagent herite du modele parent (Opus via session principale).
-> Config GSD : `~/.gsd/defaults.json` (`model_profile` + `model_overrides`).
+Politique complete (source unique) :
+`~/work/ops/claude-code-improvement-lab/recommendations/2026-07-18-model-routing-policy.md`.
+
+Doctrine : session principale = Opus (Fable reserve au role de garant /
+synthese critique, cap ~50% du quota hebdo) ; subagents d'execution =
+Sonnet ; revue adversariale = Opus ; inventaires / greps massifs = Haiku
+(conclusions **a re-verifier** par l'appelant, jamais prises telles
+quelles) ; verification croisee / refutation de findings = Codex.
 
 ### Gestion du contexte — 100% autonome (CRITIQUE)
 

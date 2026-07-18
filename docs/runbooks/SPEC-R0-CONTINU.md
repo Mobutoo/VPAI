@@ -167,6 +167,20 @@ Cite le chemin/source retenu. Référence LOI R0/R5/R8.
 
 > Implémentation : soit `$source`/`$1` lu dans le hook, soit 2 entrées `SessionStart` avec `matcher: "startup"` vs `matcher: "clear|compact|resume"` dans `settings.json` (matcher par source confirmé supporté).
 
+> **Addendum T1.3-bis (2026-07-18, plan `ops/loops/plans/2026-07-17-scoped-retrieval-implementation.md`)** :
+> contrairement à `r0-topic-injector.js` (qui ne fait que SUGGÉRER l'appel
+> `qdrant-find` au modèle via un nudge textuel), `memory-search-start.sh`
+> EXÉCUTE réellement `search_memory.py` (bloc `emit_topic`/`$SEARCH_CMD`) à
+> chaque `startup`/`clear`/`compact`/`resume`. Le scope CWD->{repo,wing}
+> (`lib/cwd-scope.js`, T1.2 — même source que le hook JS et que
+> `memory_core.derive_scope_from_cwd` côté Python) y est donc passé
+> **directement en argv CLI** (`--scope-repo`/`--scope-wing`, T1.1), sans
+> dépendre de la fidélité d'un modèle à recopier un nudge — mécanisme plus
+> robuste que celui de `r0-topic-injector.js` pour ce chemin, puisqu'il n'y a
+> aucun modèle dans la boucle. No-op côté `search_memory.py` tant que
+> `MEMORY_SCOPE_BOOST=false` (défaut). CWD hors `~/work/*` → invocation
+> `SEARCH_CMD` strictement inchangée (non-régression).
+
 ### 3.9 `loi-op-enforcer.js` & `r0-marker.js` (adaptés)
 
 - `r0-marker.js` : sur search réelle détectée → `ledger.stampTopic(topic,'hit'|'empty','marker')` au lieu d'écrire les markers per-topic fichiers.

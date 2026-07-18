@@ -13,20 +13,27 @@
 # est visible instantanément dans l'autre conteneur. Fix : arrêter n8n AVANT de laisser
 # n8n-init réécrire l'arbre partagé, uniquement si le conteneur existe déjà (ne JAMAIS laisser
 # docker_container en créer un sans image — 1er déploiement, REX-59).
-- name: Stop n8n before Sidecar re-patch (race guard, finding HIGH 3)
+#
+# Ansible ne notifie PAS un handler `block:` par son nom ("handler not found") : les deux étapes
+# sont donc des handlers plats reliés par `listen`. L'ordre d'exécution suit l'ordre de
+# DÉFINITION dans ce fichier (check → stop → Restart), pas l'ordre du notify.
+- name: Check n8n container exists before Sidecar re-patch (race guard, finding HIGH 3)
   become: true
+  community.docker.docker_container_info:
+    name: "{{ project_name }}_n8n"
+  register: n8n_stop_guard_info
+  listen: Stop n8n before Sidecar re-patch
   when: not (common_molecule_mode | default(false))
-  block:
-    - name: Check n8n container exists before stopping it
-      community.docker.docker_container_info:
-        name: "{{ project_name }}_n8n"
-      register: n8n_stop_guard_info
 
-    - name: Stop the running n8n container (frees the shared patched-tree before n8n-init rewrites it)
-      community.docker.docker_container:
-        name: "{{ project_name }}_n8n"
-        state: stopped
-      when: n8n_stop_guard_info.exists | default(false)
+- name: Stop the running n8n container (frees the shared patched-tree before n8n-init rewrites it)
+  become: true
+  community.docker.docker_container:
+    name: "{{ project_name }}_n8n"
+    state: stopped
+  listen: Stop n8n before Sidecar re-patch
+  when:
+    - not (common_molecule_mode | default(false))
+    - n8n_stop_guard_info.exists | default(false)
 
 - name: Restart n8n stack
   community.docker.docker_compose_v2:

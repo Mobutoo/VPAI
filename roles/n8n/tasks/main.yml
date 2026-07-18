@@ -94,7 +94,7 @@
     - n8n-enterprise-init.sh
   become: true
   notify:
-    - Stop n8n before Sidecar re-patch (race guard, finding HIGH 3)
+    - Stop n8n before Sidecar re-patch
     - Restart n8n stack
   tags: [n8n, phase3, apps]
 

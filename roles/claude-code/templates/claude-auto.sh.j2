@@ -20,14 +20,14 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   echo "--- Iteration $i/$MAX_ITERATIONS — $(date) ---"
 
   if [ "$i" -eq 1 ]; then
-    claude --dangerously-skip-permissions -p "$PROMPT
+    claude --dangerously-skip-permissions --model sonnet --max-budget-usd 2.00 -p "$PROMPT
 
 IMPORTANT: If work is incomplete when context runs low:
 1. Update .planning/STATE.md with current progress
 2. Write .continue-here.md in .planning/phases/XX/
 3. Touch /tmp/claude-task-complete when ALL work is done" 2>&1 || true
   else
-    claude --dangerously-skip-permissions --continue -p "Session restarted after context exhaustion.
+    claude --dangerously-skip-permissions --continue --model sonnet --max-budget-usd 2.00 -p "Session restarted after context exhaustion.
 Read .planning/STATE.md and .continue-here.md to restore context.
 Continue from where previous session stopped.
 Original task: $PROMPT

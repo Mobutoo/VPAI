@@ -57,7 +57,7 @@ git checkout -B "$BRANCH"
 
 # Claude Code en mode non-interactif — analyse et fixe l'issue
 # Timeout: 10 minutes max, 25 turns max
-timeout 600 claude --dangerously-skip-permissions --max-turns 25 -p \
+timeout 600 claude --dangerously-skip-permissions --max-turns 25 --model sonnet --max-budget-usd 2.00 -p \
   "Fix GitHub issue #${ISSUE_ID}: ${ISSUE_TITLE}
 
 ${ISSUE_BODY}

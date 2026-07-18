@@ -198,6 +198,22 @@ amont :
 `process` est absent) — `exec()` fonctionne toujours une fois la valeur d'env
 récupérée via un node Set en amont.
 
+**Portée du bug confirmée AU-DELÀ du code ajouté par T4.2** : un test de
+non-régression (execution `33906`, probe curl volontairement ni GitHub ni
+Palais valide, sans header `X-GitHub-Event`) route correctement — comme
+attendu — vers la branche préexistante `Webhook → Classify webhook source →
+GitHub PR event?(false) → Validate payload` (aucun node de la branche GitHub
+ni du SSH n'est exécuté, zéro effet de bord — la non-invasivité de la
+réorganisation est donc prouvée, pas seulement supposée). Mais `Validate
+payload` — un node **préexistant, non modifié par T4.2** — lève la MÊME
+`ReferenceError: process is not defined [line 3]` (il lit
+`process.env.N8N_WEBHOOK_SECRET`). Conclusion : le bug §7/§10 n'est pas
+introduit par la branche GitHub PR, il est déjà présent sur la branche Palais
+d'origine — la totalité du workflow `code-review` est actuellement
+non-fonctionnelle en conditions réelles côté n8n tant que ce bug n'est pas
+corrigé (ou tant que chaque Code node existant n'a pas reçu le même
+contournement IF/Set). Gate humain, hors scope T4.2.
+
 ## 11. `WORKSTATION_SSH_KEY_PATH` — défaut jamais concrétisé (T4.2, 2026-07-18)
 
 Le pattern SSH par `exec()` Code node (`WORKSTATION_SSH_KEY_PATH`/`_PI_USER`/`_PI_IP`,

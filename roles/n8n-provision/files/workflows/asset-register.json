@@ -12,7 +12,8 @@
       "name": "Webhook Trigger",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [260, 300]
+      "position": [260, 300],
+      "webhookId": "ar-0001-0000-0000-0000-000000000001"
     },
     {
       "parameters": {
@@ -123,5 +124,6 @@
   "tags": [{ "name": "assets" }, { "name": "provenance" }],
   "triggerCount": 1,
   "updatedAt": "2026-03-02T00:00:00.000Z",
-  "versionId": "2"
+  "versionId": "2",
+  "id": "y5XPdKQacdT0Bard"
 }

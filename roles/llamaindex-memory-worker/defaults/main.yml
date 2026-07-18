@@ -104,7 +104,7 @@ memory_worker_rerank_model_id: "onnx-community/bge-reranker-v2-m3-ONNX"
 #   make deploy-role ROLE=llamaindex-memory-worker ENV=<env> --tags memory_worker
 # Effectif au PROCHAIN spawn du serveur MCP qdrant-find (mcp_search.py lit l'env
 # une fois au démarrage) — pas rétroactif sur une session déjà ouverte.
-memory_worker_scope_boost_enabled: false
+memory_worker_scope_boost_enabled: true  # ACTIVÉ 2026-07-18 (décision humaine : +3.4 pts recall@1 [0.6629→0.6966], downside borné 1 question cross-wing rang 5→6, surveillé par l'éval hebdo cross-wing)
 memory_worker_scope_boost_weight: 0.2
 
 # === FUSION (restauration recall@1, 2026-07-17) ===

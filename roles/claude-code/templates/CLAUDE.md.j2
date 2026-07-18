@@ -71,19 +71,6 @@ Sonnet ; revue adversariale = Opus ; inventaires / greps massifs = Haiku
 (conclusions **a re-verifier** par l'appelant, jamais prises telles
 quelles) ; verification croisee / refutation de findings = Codex.
 
-### Reviews hors GSD (superpowers) — règles prioritaires sur les skills
-
-1. Quand une skill superpowers demande `Task(subagent_type: "superpowers:code-reviewer")`,
-   dispatcher À LA PLACE `subagent_type: "reviewer"` (agent local, Opus épinglé).
-   Raison : code-reviewer est `model: inherit` → hérite de la session (Fable interdit
-   en subagent de revue — 2x le prix d'Opus).
-2. Avec `executing-plans` : dispatcher une revue (`reviewer`) après chaque batch de
-   tâches, comme le documente requesting-code-review (l'intégration n'existe pas
-   dans la skill — c'est à l'orchestrateur de la faire).
-3. Avant tout merge/PR (`finishing-a-development-branch`) : une revue (`reviewer`
-   local, ou Codex via review-pr.sh si une PR existe) doit avoir eu lieu — les tests
-   seuls ne suffisent pas.
-
 ### Gestion du contexte — 100% autonome (CRITIQUE)
 
 L'utilisateur lance une tache puis part. Tu DOIS gerer ton contexte SEUL, sans interaction humaine.
@@ -148,6 +135,20 @@ Si l'utilisateur est devant l'ecran et que le contexte est tres degrade (3+ comp
 3. Apres le `/clear`, le hook restaurera automatiquement le contexte
 4. Cette option est un **bonus** — le workflow principal ne depend PAS de l'humain
 {% endif %}
+
+### Reviews hors GSD (superpowers) — règles prioritaires sur les skills
+
+1. Quand une skill superpowers demande `Task(subagent_type: "superpowers:code-reviewer")`,
+   dispatcher À LA PLACE `subagent_type: "reviewer"` (agent local, Opus épinglé).
+   Raison : code-reviewer est `model: inherit` → hérite de la session (Fable interdit
+   en subagent de revue — 2x le prix d'Opus).
+2. Avec `executing-plans` : dispatcher une revue (`reviewer`) après chaque batch de
+   tâches, comme le documente requesting-code-review (l'intégration n'existe pas
+   dans la skill — c'est à l'orchestrateur de la faire).
+3. Avant tout merge/PR (`finishing-a-development-branch`) : une revue (`reviewer`
+   local, ou Codex via review-pr.sh si une PR existe) doit avoir eu lieu — les tests
+   seuls ne suffisent pas.
+
 
 ## Workspace
 

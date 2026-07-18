@@ -107,7 +107,7 @@
 # Connecte le container Caddy aux réseaux des stacks externes pour accès Docker DNS.
 # Ex: mediahall_net permet à story-engine-caddy de résoudre netbox:8080 via DNS Docker.
 
-- name: "caddy | Connect caddy container to extra networks"
+- name: "Caddy | Connect caddy container to extra networks"
   community.docker.docker_network:
     name: "{{ item }}"
     connected:

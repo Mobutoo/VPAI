@@ -25,6 +25,7 @@ rules:
 ignore: |
   .github/
   molecule/
+  roles/mop-templates/files/mop-wizy-datafields.yml
   .venv/
   collections/
   roles/*/molecule/

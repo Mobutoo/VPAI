@@ -146,6 +146,17 @@ AVANT d'agir/continuer, dans CET ordre (cascade — ne suppose pas) :
 Cite le chemin/source retenu. Référence LOI R0/R5/R8.
 ```
 
+> **Addendum T1.3 (2026-07-18, plan `ops/loops/plans/2026-07-17-scoped-retrieval-implementation.md`)** :
+> la ligne 1 (`REX froid`) porte désormais, quand le CWD de session est connu
+> (`~/work/<wing>/<repo>`, via `lib/cwd-scope.js`, T1.2), des arguments
+> suggérés `scope_repo="<repo>" scope_wing="<wing>"` pour l'appel
+> `mcp__qdrant__qdrant-find` — consommés par le BOOST de score in-scope
+> (T1.1, `mcp_search.py`/`search_memory.py`), no-op tant que
+> `MEMORY_SCOPE_BOOST=false` (défaut). CWD hors `~/work/*` → ligne
+> strictement identique au texte canonique ci-dessus (non-régression).
+> Contrainte de conception : boost additif, jamais un filtre exclusif — les
+> résultats hors-scope restent classés et éligibles.
+
 ### 3.8 `memory-search-start.sh` (étendu — SessionStart par source)
 
 | `source` | Comportement |

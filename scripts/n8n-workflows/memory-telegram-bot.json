@@ -213,6 +213,7 @@
         60
       ],
       "parameters": {
+        "authentication": "privateKey",
         "resource": "command",
         "operation": "execute",
         "command": "={{ $json.action }}",

@@ -99,6 +99,14 @@ critiques, utiliser SQL direct sur `workflow_entity` **ET** `workflow_history`
 simultanément (voir `LOI-OPERATIONNELLE-MCP-FIRST.md` R3-bis pour la procédure
 exacte), ou préférer `PUT /api/v1/workflows/:id` (R11) qui préserve ces champs.
 
+**Provisioning Ansible (2026-07-18, tâche C6)** : `roles/n8n-provision/tasks/main.yml`
+route désormais automatiquement tout workflow dont le JSON rendu porte un `id`
+top-level vers `PUT /api/v1/workflows/:id` + activate (in-container, même méthode
+que `scripts/deploy-workflow.sh`), en contournant le CLI `import:workflow` — évite
+la régression webhookId sur re-déploiement pour `creative-pipeline`, `plan-dispatch`,
+`asset-register` et 7 autres workflows id-bearing détectés dynamiquement. Les
+workflows sans `id` gardent le chemin CLI legacy, inchangé.
+
 ## 6. Un seul webhook par (path, méthode) — collisions connues en prod
 
 Plusieurs workflows prod partagent aujourd'hui le même path webhook et échouent à

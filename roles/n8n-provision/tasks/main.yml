@@ -382,6 +382,50 @@
       {% endfor %}
   when: n8n_container_check.stdout | default('') | length > 0
 
+# ========================================================================
+# REST-deploy routing (R11, GOTCHAS-N8N-2.30.md §5 / R3-bis)
+# `n8n import:workflow` CLI silently strips node-level `webhookId`. Workflows
+# whose RENDERED JSON carries a top-level "id" are known to n8n by that exact
+# ID already — deploy those via REST PUT /api/v1/workflows/:id (preserves
+# webhookId) instead of the CLI delete/import/activate path below. Workflows
+# without an id keep the CLI path unchanged (identical behaviour to before).
+# ========================================================================
+
+- name: Detect top-level id in rendered workflow JSON (REST-deploy eligibility)
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      FILE="/tmp/n8n-workflow-{{ item.item.file }}.json"
+      WF_ID=$(python3 -c "import json; print(json.load(open('$FILE')).get('id',''))" 2>/dev/null || true)
+      if [ -n "$WF_ID" ]; then
+        echo "ID:$WF_ID"
+      else
+        echo "NO_ID"
+      fi
+  register: n8n_workflow_id_detect
+  changed_when: false
+  become: true
+  loop: "{{ n8n_workflow_check.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
+    - n8n_container_check.stdout | default('') | length > 0
+    - item.stdout | default('') == 'NEEDS_UPDATE'
+
+- name: Build set of REST-deploy-eligible workflow files (id-bearing, R11)
+  ansible.builtin.set_fact:
+    n8n_rest_deploy_files: >-
+      {{ n8n_workflow_id_detect.results
+         | default([])
+         | selectattr('stdout', 'defined')
+         | selectattr('stdout', 'match', '^ID:')
+         | map(attribute='item.item.file')
+         | list }}
+  when: not (common_molecule_mode | default(false))
+
 - name: Copy workflow files into n8n container
   ansible.builtin.command:
     cmd: >-
@@ -473,6 +517,9 @@
     # docker exec / n8n API / docker container not available in molecule
     - n8n_container_check.stdout | default('') | length > 0
     - item.stdout | default('') == 'NEEDS_UPDATE'
+    # id-bearing workflows deploy via REST PUT (targets the ID directly — no
+    # delete/reimport dance needed, see "Deploy id-bearing ..." task below).
+    - item.item.file not in (n8n_rest_deploy_files | default([]))
 
 - name: Import n8n AI workflows via CLI
   ansible.builtin.shell:
@@ -497,6 +544,9 @@
     # docker exec / n8n API / docker container not available in molecule
     - n8n_container_check.stdout | default('') | length > 0
     - item.stdout | default('') == 'NEEDS_UPDATE'
+    # id-bearing workflows deploy via REST PUT — CLI import would strip
+    # webhookId (R3-bis). See "Deploy id-bearing ..." task below.
+    - item.item.file not in (n8n_rest_deploy_files | default([]))
 
 - name: Activate imported n8n AI workflows
   ansible.builtin.shell:
@@ -530,6 +580,112 @@
     # docker exec / n8n API / docker container not available in molecule
     - n8n_container_check.stdout | default('') | length > 0
     - item.stdout | default('') == 'NEEDS_UPDATE'
+    # id-bearing workflows are activated as part of the REST PUT deploy below
+    # (POST /api/v1/workflows/:id/activate) — CLI publish:workflow not needed.
+    - item.item.file not in (n8n_rest_deploy_files | default([]))
+
+- name: Deploy id-bearing n8n workflows via REST API PUT (preserves webhookId — R11/R3-bis)
+  # R11 primary deploy method (scripts/deploy-workflow.sh), adapted for in-container
+  # execution: calls n8n on its own localhost:5678 via docker exec — no dependency
+  # on Caddy routing /api/v1/* (that prereq only applies to deploy-workflow.sh,
+  # which calls from OUTSIDE the docker network).
+  # PUT /api/v1/workflows/:id updates workflow_entity + workflow_history together
+  # (R10) and — unlike `n8n import:workflow` — preserves per-node fields such as
+  # webhookId (GOTCHAS-N8N-2.30.md §5, R3-bis). Payload is stripped to
+  # {name, nodes, connections, settings} (PUT rejects other top-level keys, same
+  # as deploy-workflow.sh). Checksum is written ONLY on confirmed success so a
+  # failed deploy keeps NEEDS_UPDATE and retries next run — does not mask failure.
+  #
+  # API key: reuses the existing owner-scoped n8n key (vault_n8n_openclaw_api_key,
+  # exposed here as n8n_provision_rest_api_key — see role defaults) already
+  # proven for this exact call in
+  # roles/openclaw/templates/agents/concierge/IDENTITY.md.j2. No new vault secret.
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      WORKFLOW_FILE="/tmp/n8n-workflow-{{ item.item.file }}.json"
+      CHECKSUM_DIR="/opt/{{ project_name }}/configs/n8n/workflow-checksums"
+
+      cat > /tmp/n8n-deploy-wf-rest.js << 'DEPLOYSCRIPT'
+      const http = require('http');
+      const fs = require('fs');
+      const [file, apiKey] = process.argv.slice(2);
+
+      function req(method, path, body, headers) {
+        return new Promise((resolve, reject) => {
+          const h = Object.assign({ 'Content-Type': 'application/json' }, headers);
+          const r = http.request({ hostname: '127.0.0.1', port: 5678, path, method, headers: h }, (res) => {
+            let d = ''; res.on('data', c => d += c);
+            res.on('end', () => resolve({ s: res.statusCode, d }));
+          });
+          r.on('error', reject);
+          if (body) r.write(body);
+          r.end();
+        });
+      }
+
+      (async () => {
+        const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const wfId = raw.id;
+        if (!wfId) { console.log('SKIP_NO_ID'); process.exit(0); }
+
+        const keep = {};
+        for (const k of ['name', 'nodes', 'connections', 'settings']) {
+          if (k in raw) keep[k] = raw[k];
+        }
+        const headers = { 'X-N8N-API-KEY': apiKey };
+
+        const put = await req('PUT', '/api/v1/workflows/' + wfId, JSON.stringify(keep), headers);
+        if (put.s !== 200) {
+          console.log('FAIL_PUT:' + put.s + ':' + put.d.substring(0, 300));
+          process.exit(1);
+        }
+
+        const act = await req('POST', '/api/v1/workflows/' + wfId + '/activate', null, headers);
+        if (act.s !== 200) {
+          console.log('WARN_ACTIVATE:' + act.s + ':DEPLOYED_REST:' + wfId);
+          process.exit(0);
+        }
+
+        console.log('DEPLOYED_REST:' + wfId);
+      })().catch(e => { console.log('ERROR:' + e.message); process.exit(1); });
+      DEPLOYSCRIPT
+
+      docker cp /tmp/n8n-deploy-wf-rest.js {{ project_name }}_n8n:/home/node/n8n-deploy-wf-rest.js
+      RESULT=$(docker exec {{ project_name }}_n8n node /home/node/n8n-deploy-wf-rest.js \
+        "$WORKFLOW_FILE" "{{ n8n_provision_rest_api_key }}" 2>&1)
+      echo "$RESULT"
+
+      # Checksum written ONLY on confirmed success — a failed PUT/activate
+      # leaves the checksum stale so the next run retries (no failure masking).
+      if echo "$RESULT" | grep -q 'DEPLOYED_REST:'; then
+        md5sum "$WORKFLOW_FILE" | cut -d' ' -f1 > "$CHECKSUM_DIR/{{ item.item.file }}.md5"
+      fi
+  register: n8n_workflow_deploy_rest
+  changed_when: "'DEPLOYED_REST:' in (n8n_workflow_deploy_rest.stdout | default(''))"
+  failed_when: false
+  no_log: true
+  become: true
+  loop: "{{ n8n_workflow_check.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
+    - n8n_container_check.stdout | default('') | length > 0
+    - item.stdout | default('') == 'NEEDS_UPDATE'
+    - item.item.file in (n8n_rest_deploy_files | default([]))
+
+- name: Display REST-deployed workflow results
+  ansible.builtin.debug:
+    msg: >-
+      {% for result in n8n_workflow_deploy_rest.results | default([]) %}
+      {{ result.item.item.name | default('?') }}: {{ result.stdout | default('skipped') }}
+      {% endfor %}
+  when:
+    - n8n_container_check.stdout | default('') | length > 0
+    - (n8n_rest_deploy_files | default([])) | length > 0
 
 - name: Store workflow checksums after successful deploy
   ansible.builtin.shell:
@@ -584,8 +740,14 @@
     - {file: "cf-scene", name: "CF Scene"}
   loop_control:
     label: "{{ item.name }}"
-  when: not (common_molecule_mode | default(false))
-  # docker exec / n8n API / docker container not available in molecule
+  when:
+    - not (common_molecule_mode | default(false))
+    # docker exec / n8n API / docker container not available in molecule
+    # REST-deployed workflows (top-level id) write their own checksum ONLY on
+    # confirmed success (task "Deploy id-bearing ..." above) — skip here so a
+    # failed REST PUT isn't masked by an unconditional re-stamp. Harmless for
+    # UNCHANGED id-bearing items: their checksum file already matches.
+    - item.file not in (n8n_rest_deploy_files | default([]))
 
 - name: Decommission retired n8n workflows (deactivate -> archive -> delete)
   # Retrait RUNTIME des workflows sortis du provisioning (cf. n8n_workflows_decommission

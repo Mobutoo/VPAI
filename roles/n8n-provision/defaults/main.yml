@@ -1,6 +1,18 @@
 ---
 # n8n-provision — defaults
 
+# === REST API deploy for id-bearing workflows (R11, GOTCHAS-N8N-2.30.md §5) ===
+# `n8n import:workflow` CLI silently strips node-level `webhookId` (R3-bis).
+# Workflows whose rendered JSON carries a top-level "id" deploy instead via
+# PUT /api/v1/workflows/:id + activate (same method as scripts/deploy-workflow.sh,
+# called in-container against localhost:5678 — no Caddy /api/v1 routing needed).
+# Reuses the existing owner-scoped n8n API key (vault_n8n_openclaw_api_key via
+# n8n_discovery_api_key, inventory/group_vars/all/main.yml) — already proven for
+# this exact call in roles/openclaw/templates/agents/concierge/IDENTITY.md.j2
+# ("curl -X PUT $N8N_URL/api/v1/workflows/<id> -H X-N8N-API-KEY: $N8N_API_KEY").
+# No new vault secret introduced.
+n8n_provision_rest_api_key: "{{ n8n_discovery_api_key | default('') }}"
+
 # === memory-telegram-bot (@EkengeBot) Telegram-side provisioning ===
 # Idempotently registers the bot "/" command menu (setMyCommands) and arms the
 # Telegram webhook (setWebhook) so updates reach the n8n workflow. The webhook

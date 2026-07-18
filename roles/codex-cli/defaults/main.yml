@@ -21,7 +21,9 @@ codex_cli_npm_version: "0.106.0"
 codex_cli_credential_storage: "file"
 
 # Modèle par défaut (via ChatGPT Plus)
-codex_cli_default_model: "o4-mini"
+# gpt-5.6 (09/07/2026) : terra = classe gpt-5.5 à 2x moins cher, quota/5h supérieur.
+# Escalade cas durs (archi/sécu) par invocation : -m gpt-5.6-sol -c model_reasoning_effort="xhigh".
+codex_cli_default_model: "gpt-5.6-terra"
 
 # Reasoning effort par défaut — politique de routage 2026-07-18 (action A6) :
 # codex reste sur "medium" par défaut ; seule l'escalade explicite (findings

@@ -253,8 +253,10 @@ suivre §4.2 boot complet AVANT ceci) :
 `memory-healthcheck` (id `NZZ9Ke6DXJTlkasa`) contient un IF v2 boolean réel
 (`Needs Alert?`, `operator: {type:'boolean', operation:'true', singleValue:true}`,
 `$json.needs_alert` en entrée). Vérifié via `execution_entity` (lecture seule,
-SSH+psql §2.3) : 5 exécutions consécutives `mode=trigger, status=success` le
-2026-07-18 (12h, 13h, 14h, 17h, 18h) sur prod 2.30.7. Le nœud IF traverse
+SSH+psql §2.3) : 5 exécutions `mode=trigger, status=success` le
+2026-07-18 (12h, 13h, 14h, 17h, 18h — trou 15h/16h : cron non tiré, aucune
+ligne en base, cause non investiguée, probable indisponibilité pendant la
+fenêtre cutover ; aucune ligne `error` cachée) sur prod 2.30.7. Le nœud IF traverse
 nécessairement le même chemin de code (`filter-parameter.js`) que le cas string
 déjà statué — un crash y aurait produit `status=error`/`crashed`, pas `success`.
 **Ce n'est pas une preuve substitutive** à la procédure isolée du §8 (pas de

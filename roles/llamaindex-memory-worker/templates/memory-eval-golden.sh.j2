@@ -9,24 +9,59 @@
 # (dossier) ET EXCLUDE_EVAL_FILE_PREFIXES (défense en profondeur, memory_core.py) :
 # ce run hebdo ne réingère jamais ses propres artefacts.
 #
+# Mesure = DBSF + exact=True TOUJOURS (--fusion/--exact câblés en dur ci-dessous,
+# PAS de variable inventaire) : contrat non-négociable du plan scoped-retrieval —
+# sans --exact, l'approximation HNSW introduit jusqu'à 5,3 pts de variance entre 2
+# rejeux identiques (cf run_eval.py docstring), plus large que la marge de seuil
+# (recall@1 0.6629 -> seuil 0.64 = 0.023 d'écart) : un gate sans --exact serait du
+# bruit, pas un garde-fou.
+#
+# T3.1 (2026-07-18, ops/loops/plans/2026-07-17-scoped-retrieval-implementation.md
+# §Phase 3) — extension double mesure :
+#   1. Run BASE (toujours) : recall@1/mrr@10 globaux + recall@1 cross-wing (sous-
+#      ensemble golden.yml cross_wing:true, T0.1) — exerce le pipeline RÉEL
+#      (memory_worker_scope_boost_enabled OFF au 2026-07-18, cf defaults/main.yml).
+#   2. Run BOOST (conditionnel, memory_worker_scope_boost_enabled — relu à CHAQUE
+#      tick via cette valeur templatée à la dernière exécution d'Ansible, PAS figée
+#      à l'écriture de ce script) : même golden, --scope-mode boost --scope-field
+#      repo_wing --scope-file <déployé T2.1>. Mesure le mécanisme de boost tel que
+#      T1.1 le implémente réellement en prod (mcp_search.py::_apply_scope_boost).
+#      No-op tant que le flag reste OFF (décision T2.2 : plafond 0.6966 < objectif
+#      0.72 du plan) — s'active automatiquement le jour où le flag bascule ON, sans
+#      retoucher ce fichier.
+#   Alerte Telegram si (a) UN DES DEUX runs franchit son seuil global (recall@1 OU
+#   mrr@10) OU (b) l'un des deux franchit son seuil cross-wing dédié (détecte un
+#   boost — ou une dérive future — qui écrase discrètement les réponses hors-scope
+#   sans faire bouger le recall@1 global, downside structurel de la contrainte de
+#   conception #1 du plan : boost jamais filtre).
+#
 # Alerte Telegram (canal monitoring existant, credentials dans ENV_FILE 0600) :
-#   rc=0            -> log seulement, PAS de notif (anti-spam ; 1 run/semaine)
-#   rc=3            -> seuil franchi -> alerte DÉRIVE avec les métriques mesurées
-#   rc autre (!=0,3)-> run_eval.py n'a pas pu produire de métriques exploitables
-#                      (Qdrant injoignable, schéma incompatible, modèle absent...)
-#                      -> alerte ÉCHEC. Rester muet ici reproduirait exactement le
-#                      point aveugle que ce garde-fou est censé corriger.
+#   les 2 runs rc=0            -> log seulement, PAS de notif (anti-spam ; 1 run/semaine)
+#   au moins 1 run rc=3        -> seuil franchi -> alerte DÉRIVE avec les métriques mesurées
+#   au moins 1 run rc autre    -> run_eval.py n'a pas pu produire de métriques exploitables
+#   (ni 0 ni 3, prioritaire)      (Qdrant injoignable, schéma incompatible, modèle absent...)
+#                                  -> alerte ÉCHEC. Rester muet ici reproduirait exactement le
+#                                  point aveugle que ce garde-fou est censé corriger.
 set -euo pipefail
 
 COLLECTION="{{ memory_worker_collection_name }}"
 MODE="{{ memory_worker_eval_golden_mode }}"
 MIN_RECALL1="{{ memory_worker_eval_golden_min_recall1 }}"
 MIN_MRR10="{{ memory_worker_eval_golden_min_mrr10 }}"
+MIN_RECALL1_CW="{{ memory_worker_eval_golden_min_recall1_cross_wing }}"
 OUT_DIR="{{ memory_worker_eval_golden_out_dir }}"
 PY="{{ memory_worker_venv_dir }}/bin/python"
 RUN_EVAL="{{ memory_worker_eval_dir }}/run_eval.py"
 ENV_FILE="{{ memory_worker_eval_golden_env_file }}"
 SERVICE_NAME="{{ memory_worker_eval_golden_service_name }}"
+
+# Run boost (T3.1) : gaté sur la valeur ACTUELLE de memory_worker_scope_boost_enabled
+# (relue à chaque redéploiement Ansible — pas un état figé à l'écriture du script).
+BOOST_ENABLED="{{ 'true' if memory_worker_scope_boost_enabled | default(false) | bool else 'false' }}"
+BOOST_WEIGHT="{{ memory_worker_scope_boost_weight }}"
+BOOST_MIN_RECALL1="{{ memory_worker_eval_golden_min_recall1_boost }}"
+BOOST_MIN_RECALL1_CW="{{ memory_worker_eval_golden_min_recall1_cross_wing_boost }}"
+SCOPE_FILE="{{ memory_worker_eval_dir }}/scope-repo_wing-asked_from-89.json"
 
 # Secrets Telegram (fichier 0600, jamais dans ps). Absents = pas de notif (script continue).
 TG_BOT=""
@@ -46,39 +81,114 @@ notify() {
     --data-urlencode text="$msg" >/dev/null 2>&1 || log "notify telegram échec (non bloquant)"
 }
 
+# metric OUT_FILE PATH -> valeur au chemin JSON "a.b.c" (dict imbriqué), "?" si absent/illisible.
+metric() {
+  local file="$1" path="$2"
+  "$PY" -c "
+import json
+try:
+    d = json.load(open('$file'))
+except Exception:
+    print('?'); raise SystemExit(0)
+cur = d
+for k in '$path'.split('.'):
+    cur = cur.get(k) if isinstance(cur, dict) else None
+print(cur if cur is not None else '?')
+" 2>/dev/null || echo "?"
+}
+
+# rank RC -> 0=ok 1=gate_fail(seuil franchi) 2=exec_fail(run_eval.py n'a pas pu mesurer)
+rank() {
+  case "$1" in
+    0) echo 0 ;;
+    3) echo 1 ;;
+    *) echo 2 ;;
+  esac
+}
+
 mkdir -p "$OUT_DIR"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
-OUT_FILE="${OUT_DIR}/eval-${COLLECTION}-${MODE}-golden-weekly-${STAMP}.json"
 
-log "run: collection=$COLLECTION mode=$MODE min_recall1=$MIN_RECALL1 min_mrr10=$MIN_MRR10 -> $OUT_FILE"
-
+# --- Run BASE (toujours) : pipeline réel exercé en prod (boost ON/OFF selon flag) ---
+OUT_BASE="${OUT_DIR}/eval-${COLLECTION}-${MODE}-golden-weekly-${STAMP}.json"
+log "run base: collection=$COLLECTION mode=$MODE fusion=dbsf exact=true " \
+    "min_recall1=$MIN_RECALL1 min_mrr10=$MIN_MRR10 min_recall1_cross_wing=$MIN_RECALL1_CW -> $OUT_BASE"
 set +e
 "$PY" "$RUN_EVAL" \
-  --collection "$COLLECTION" --mode "$MODE" \
+  --collection "$COLLECTION" --mode "$MODE" --fusion dbsf --exact \
   --assert-thresholds --min-recall1 "$MIN_RECALL1" --min-mrr10 "$MIN_MRR10" \
-  --out "$OUT_FILE"
-rc=$?
+  --min-recall1-cross-wing "$MIN_RECALL1_CW" \
+  --out "$OUT_BASE"
+rc_base=$?
 set -e
+sev_base=$(rank "$rc_base")
 
-case "$rc" in
+# --- Run BOOST (conditionnel T3.1) : seulement si le flag prod est actif ---
+rc_boost=""
+sev_boost=0
+OUT_BOOST=""
+if [ "$BOOST_ENABLED" = "true" ]; then
+  OUT_BOOST="${OUT_DIR}/eval-${COLLECTION}-${MODE}-boost-golden-weekly-${STAMP}.json"
+  log "run boost (MEMORY_SCOPE_BOOST actif, poids=$BOOST_WEIGHT): " \
+      "min_recall1=$BOOST_MIN_RECALL1 min_recall1_cross_wing=$BOOST_MIN_RECALL1_CW -> $OUT_BOOST"
+  set +e
+  "$PY" "$RUN_EVAL" \
+    --collection "$COLLECTION" --mode "$MODE" --fusion dbsf --exact \
+    --scope-mode boost --scope-field repo_wing --scope-file "$SCOPE_FILE" \
+    --scope-boost-weight "$BOOST_WEIGHT" \
+    --assert-thresholds --min-recall1 "$BOOST_MIN_RECALL1" --min-mrr10 "$MIN_MRR10" \
+    --min-recall1-cross-wing "$BOOST_MIN_RECALL1_CW" \
+    --out "$OUT_BOOST"
+  rc_boost=$?
+  set -e
+  sev_boost=$(rank "$rc_boost")
+else
+  log "boost OFF (memory_worker_scope_boost_enabled=false) -> pas de 2e mesure ce run"
+fi
+
+max_sev=$sev_base
+[ "$sev_boost" -gt "$max_sev" ] && max_sev=$sev_boost
+
+case "$max_sev" in
   0)
-    log "gate OK (rc=0) -> $OUT_FILE"
+    log "gate OK (rc_base=$rc_base rc_boost=${rc_boost:-n/a}) -> $OUT_BASE"
     ;;
-  3)
-    log "GATE FAIL (rc=3, dérive détectée) -> $OUT_FILE"
-    recall1=$("$PY" -c "import json; print(json.load(open('$OUT_FILE'))['metrics'].get('recall@1','?'))" 2>/dev/null || echo "?")
-    mrr10=$("$PY" -c "import json; print(json.load(open('$OUT_FILE'))['metrics'].get('mrr@10','?'))" 2>/dev/null || echo "?")
-    notify "🟠 <b>Dérive mémoire détectée</b> — éval golden hebdo (${COLLECTION}/${MODE})
-recall@1 = ${recall1} (seuil ${MIN_RECALL1})
-mrr@10   = ${mrr10} (seuil ${MIN_MRR10})
-Rapport : ${OUT_FILE}"
+  1)
+    # Au moins 1 run en GATE FAIL (rc=3), aucun exec_fail. Compose l'alerte avec le
+    # détail du/des run(s) fautif(s) — les deux runs sont cités systématiquement
+    # (même OK) pour ne jamais laisser deviner si le 2e a tourné.
+    log "GATE FAIL détecté (rc_base=$rc_base rc_boost=${rc_boost:-n/a})"
+    r1_base=$(metric "$OUT_BASE" "metrics.recall@1")
+    mrr_base=$(metric "$OUT_BASE" "metrics.mrr@10")
+    cw_base=$(metric "$OUT_BASE" "by_cross_wing.cross_wing.recall@1")
+    msg="🟠 <b>Dérive mémoire détectée</b> — éval golden hebdo (${COLLECTION}/${MODE})
+<b>base</b> (rc=${rc_base}) recall@1=${r1_base} (seuil ${MIN_RECALL1}) mrr@10=${mrr_base} (seuil ${MIN_MRR10}) recall@1[cross_wing]=${cw_base} (seuil ${MIN_RECALL1_CW})"
+    if [ -n "$rc_boost" ]; then
+      r1_boost=$(metric "$OUT_BOOST" "metrics.recall@1")
+      cw_boost=$(metric "$OUT_BOOST" "by_cross_wing.cross_wing.recall@1")
+      msg="${msg}
+<b>boost</b> (rc=${rc_boost}) recall@1=${r1_boost} (seuil ${BOOST_MIN_RECALL1}) recall@1[cross_wing]=${cw_boost} (seuil ${BOOST_MIN_RECALL1_CW})"
+    fi
+    msg="${msg}
+Rapports : ${OUT_BASE}${OUT_BOOST:+ ; ${OUT_BOOST}}"
+    notify "$msg"
     ;;
-  *)
-    log "ÉCHEC run_eval.py (rc=$rc) — l'éval n'a pas pu tourner"
-    notify "🔴 <b>Éval golden hebdo — échec d'exécution</b> (rc=${rc}, ${COLLECTION}/${MODE})
-run_eval.py n'a pas produit de métriques exploitables (Qdrant injoignable, schéma incompatible, ou autre panne).
+  2)
+    log "ÉCHEC run_eval.py (rc_base=$rc_base rc_boost=${rc_boost:-n/a}) — au moins 1 run n'a pas pu mesurer"
+    notify "🔴 <b>Éval golden hebdo — échec d'exécution</b> (rc_base=${rc_base}, rc_boost=${rc_boost:-n/a}, ${COLLECTION}/${MODE})
+run_eval.py n'a pas produit de métriques exploitables sur au moins 1 run (Qdrant injoignable, schéma incompatible, ou autre panne).
 Voir : journalctl --user -u ${SERVICE_NAME}.service"
     ;;
 esac
 
-exit "$rc"
+# rc final = pire des deux (0 ok, 3 gate fail, sinon exec fail — rc_base ou rc_boost
+# tel quel, priorité à l'échec d'exécution comme côté sévérité ci-dessus).
+final_rc=0
+if [ "$max_sev" = "1" ]; then
+  final_rc=3
+elif [ "$max_sev" = "2" ]; then
+  final_rc=1
+  [ "$(rank "$rc_base")" = "2" ] && final_rc="$rc_base"
+  [ -n "$rc_boost" ] && [ "$(rank "$rc_boost")" = "2" ] && final_rc="$rc_boost"
+fi
+exit "$final_rc"

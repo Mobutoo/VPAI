@@ -195,6 +195,12 @@
   tags: [llamaindex-memory-worker, memory_remote]
 
 - name: Deploy eval harness (golden.yml + run_eval.py — contrat RAG v3, lecture seule Qdrant)
+  # Tag memory_eval_golden ajouté (T3.1) : le wrapper memory-eval-golden.sh.j2 dépend
+  # de --min-recall1-cross-wing / --scope-mode boost (run_eval.py) ET du scope-file
+  # repo_wing (T2.1) — un déploiement `--tags memory_eval_golden` seul DOIT rafraîchir
+  # ces 3 fichiers, pas seulement les units systemd, sous peine de faire tourner le
+  # timer contre une version obsolète du harnais (argparse exit 2 -> faux "échec
+  # d'exécution" côté wrapper, cf revue avant implémentation).
   ansible.builtin.copy:
     src: "{{ role_path }}/../../scripts/memory/eval/{{ item.name }}"
     dest: "{{ memory_worker_eval_dir }}/{{ item.name }}"
@@ -205,9 +211,10 @@
   loop:
     - { name: "golden.yml", mode: "0644" }
     - { name: "run_eval.py", mode: "0755" }
+    - { name: "scope-repo_wing-asked_from-89.json", mode: "0644" }
   loop_control:
     label: "{{ item.name }}"
-  tags: [llamaindex-memory-worker, memory_remote]
+  tags: [llamaindex-memory-worker, memory_remote, memory_eval_golden]
 
 - name: Deploy REX consolidation script (synthèses hebdo via LiteLLM, contrat RAG v3)
   ansible.builtin.copy:
@@ -431,7 +438,7 @@
     - "{{ memory_worker_consolidate_script }}"
   changed_when: false
   become: true
-  tags: [llamaindex-memory-worker, memory_remote]
+  tags: [llamaindex-memory-worker, memory_remote, memory_eval_golden]
 
 # === GARDE-FOU ÉVAL GOLDEN HEBDO (audit mémoire 2026-07-17) ===
 # Rejoue run_eval.py --assert-thresholds 1x/semaine, écrit un rapport daté dans

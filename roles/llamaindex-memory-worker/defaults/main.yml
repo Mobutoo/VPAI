@@ -316,25 +316,67 @@ memory_worker_consolidate_on_calendar: "Sun *-*-* 04:30:00"   # hebdo, fenêtre 
 memory_worker_litellm_base_url: "https://{{ litellm_subdomain | default('llm') }}.{{ domain_name }}/v1"
 memory_worker_litellm_api_key: "{{ litellm_master_key | default('') }}"
 
-# === GARDE-FOU ÉVAL GOLDEN HEBDO (audit mémoire 2026-07-17) ===
+# === GARDE-FOU ÉVAL GOLDEN HEBDO (audit mémoire 2026-07-17, ACTIVÉ T3.1
+# 2026-07-18, plan ops/loops/plans/2026-07-17-scoped-retrieval-implementation.md
+# §Phase 3) ===
 # Rejoue run_eval.py --assert-thresholds 1x/semaine (timer user, cadence hors heures
 # interactives) pour détecter une dérive recall@1/mrr@10 AVANT qu'elle reste invisible
 # des semaines (cf. dérive -13pts non détectée pendant 5 semaines faute d'éval continue).
-# Défaut OFF : au 2026-07-17 memory_v3 est SOUS les deux seuils (recall@1 ~0.64 < 0.70,
-# mrr@10 ~0.79 < 0.80) — un run avec les seuils par défaut échouerait (gate + alerte) dès
-# le 1er tick. Activer seulement une fois memory_v3 réparée, OU accepter consciemment
-# que la 1re alerte soit le signal réel du problème déjà en place.
-# Activation : passer ce flag à true en inventaire puis redéployer
-#   make deploy-role ROLE=llamaindex-memory-worker ENV=<env> --tags memory_eval_golden
-# (equiv. ansible-playbook playbooks/hosts/workstation.yml --tags memory_eval_golden).
-memory_worker_eval_golden_enabled: false
+memory_worker_eval_golden_enabled: true
 memory_worker_eval_golden_service_name: "memory-eval-golden"
 # Décalé avant la consolidation REX (04:30) pour ne pas cumuler 2 jobs lourds au
 # même créneau ; les deux restent bornés en mémoire (cf caps cgroup ci-dessous).
 memory_worker_eval_golden_on_calendar: "Sun *-*-* 02:00:00"
 memory_worker_eval_golden_mode: "hybrid"
-memory_worker_eval_golden_min_recall1: 0.70
-memory_worker_eval_golden_min_mrr10: 0.80
+# Seuils AJUSTÉS T3.1 (2026-07-18) à la réalité post-chantier scope-boost, PAS aux
+# valeurs d'origine (0.70/0.80, choisies avant que le golden enrichi 89q existe).
+# Mesure fraîche committée à l'activation (Waza, DBSF+exact — cf --exact/--fusion
+# dbsf câblés en dur dans le wrapper, jamais optionnels, contrat mesure du plan) :
+#   memory_v3/hybrid, golden.yml 89q (76 + 13 cross-wing T0.1) :
+#   recall@1=0.6629  mrr@10=0.7888  recall@1[cross_wing]=0.6154 (8/13)
+# T2.1 (sweep MEMORY_SCOPE_BOOST_WEIGHT) a mesuré un PLAFOND du boost à recall@1
+# global 0.6966 < 0.72 (objectif du plan) -> T2.2 a laissé le boost OFF
+# (memory_worker_scope_boost_enabled: false ci-dessus) — donc le pipeline RÉEL
+# exercé par ce timer est le baseline boost-OFF, pas le boost. Mettre les seuils à
+# 0.70/0.80 ferait échouer le TOUT PREMIER run (état déjà connu, pas une régression)
+# -> exactement le point aveugle que ce garde-fou doit corriger (cf audit -13pts).
+# Seuils = marge SOUS la mesure fraîche (régression FUTURE, pas l'état actuel) :
+#   recall@1 : 0.64 (marge 0.023, ~2 questions/89) — prescrit explicitement par le
+#     plan (T3.1 §2 : "si le boost est resté OFF (recall 0.67), mets le seuil à
+#     0.64"). Mesure fraîche 0.6629 > 0.64 : le seuil reste valide (pas au-dessus de
+#     ce qui vient d'être mesuré, cf revue avant activation).
+#   mrr@10 : 0.76 (marge 0.029) — le plan ne nomme QUE recall@1, mais 0.80 (défaut
+#     d'origine) est DÉJÀ au-dessus de la mesure fraîche (0.7888 < 0.80) : le
+#     laisser à 0.80 ferait échouer le 1er run sur mrr@10 même si recall@1 est OK —
+#     même défaut que celui que l'ajustement recall@1 corrige. Extrapolation du même
+#     principe ("seuil global" du plan), pas un chiffre du plan lui-même — documentée
+#     ici comme décision explicite, pas une déviation silencieuse.
+# CIBLE DE REMONTÉE (à viser quand un chantier futur améliore le retrieval, PAS la
+# valeur qui doit passer aujourd'hui) : recall@1 >= 0.72 (Objectif mesurable du
+# plan) et mrr@10 >= 0.80 (seuil d'origine, jamais atteint par le golden enrichi
+# 89q lui-même). Remonter ces 2 seuils vers leur cible dès qu'une mesure future les
+# dépasse durablement (pas un flip = re-régresser le garde-fou dans l'entre-temps).
+memory_worker_eval_golden_min_recall1: 0.64
+memory_worker_eval_golden_min_mrr10: 0.76
+# Seuil DÉDIÉ au sous-ensemble cross_wing:true (13/89, T3.1 §1) — SÉPARÉ du seuil
+# global : un boost (ou toute régression future) qui écrase discrètement les
+# réponses hors-scope pourrait laisser recall@1 global inchangé tout en dégradant
+# ce sous-ensemble (downside structurel de la contrainte de conception #1 du plan,
+# boost jamais filtre). Baseline fraîche = 0.6154 (8/13, w=0.0/boost OFF, identique
+# T2.1). n=13 -> granularité grossière (1 question = ~0.077) : un flip isolé (7/13
+# = 0.5385) est toléré comme bruit (le golden ne bougera que rarement -> tout écart
+# mérite un coup d'oeil, mais UN SEUL flip n'est pas encore "régresse nettement").
+# 2 flips (6/13 = 0.4615, perte de plus d'1/4 du sous-ensemble) déclenche l'alerte.
+# Seuil = 0.50, strictement entre les deux (0.4615 < 0.50 <= 0.5385) — round number
+# volontaire, hors zone de bord flottant des deux bornes exactes.
+memory_worker_eval_golden_min_recall1_cross_wing: 0.50
+# Seuils DÉDIÉS au run "boost" (mesuré UNIQUEMENT si memory_worker_scope_boost_enabled
+# est true — cf wrapper T3.1, no-op tant que le flag reste OFF, cf décision T2.2
+# ci-dessus). Spéculatifs tant que non exercés : T2.1 mesure un plafond recall@1
+# global 0.6966 (poids 0.2) et un recall@1 cross-wing = baseline exacte 0.6154 à ce
+# poids -> marge sous ces deux valeurs mesurées, même logique que les seuils de base.
+memory_worker_eval_golden_min_recall1_boost: 0.68
+memory_worker_eval_golden_min_recall1_cross_wing_boost: 0.50
 # Sortie datée dans .planning/eval/ côté repo (PAS sous memory_worker_install_dir/opt :
 # REPO_ROOT calculé par run_eval.py y est /opt, non inscriptible). Nom de fichier
 # construit par le wrapper avec le préfixe "eval-<collection>" — couvert par

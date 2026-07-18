@@ -169,6 +169,51 @@ Observées lors du cutover 2.7.3 → 2.30.7 (source : `docs/rex/REX-N8N-UPGRADE-
   standard actuel, indépendamment du statut R9 ci-dessus (le schéma existant n'est
   pas la preuve que l'exécution runtime est saine sur tous les cas, cf §1).
 
+## 10. §7 confirmé en exécution réelle + contournement validé (T4.2, 2026-07-18)
+
+**Confirmation directe (pas une corroboration indirecte)** du bug §7 : la branche
+GitHub PR ajoutée au workflow `code-review` (id `TTO6eebHOVboM2MQ`) a levé
+`ReferenceError: process is not defined [line N]` (execution `33896`, `@n8n/task-runner`
+JsTaskRunner) lors d'un premier appel réel via curl, **alors que**
+`roles/n8n/templates/n8n.env.j2` porte `N8N_RUNNERS_ENABLED=false`. Le conteneur
+`javisi_n8n` déployé ne reflète donc pas (ou plus) cette valeur du template repo —
+dérive non expliquée plus loin (root cause hors scope, aucun accès
+inspect/redémarrage conteneur accordé pour ce chantier).
+
+**Contournement qui fonctionne, vérifié en exécution réelle (execution `33899`,
+`status: success`)** : ne JAMAIS lire `process.env`/`$env` à l'intérieur du JS d'un
+Code node sur cette instance. Déplacer la lecture vers une expression n8n
+`{{ $env.VAR }}` évaluée par le moteur principal dans un node **paramétré** en
+amont :
+- Comparaison de secret → node **IF** (`conditions.string`), pas un `if` JS dans
+  le Code node (pattern déjà utilisé par `memory-telegram-bot.json`, node
+  "Validate Telegram Secret").
+- Valeurs à consommer plus loin dans un Code node (ex. `WORKSTATION_SSH_KEY_PATH`
+  avant un `exec()`) → node **Set** (`n8n-nodes-base.set`, typeVersion 3.4,
+  `assignments` avec `value: "={{ $env.VAR }}"`, `includeOtherFields: true`) juste
+  avant le Code node, qui lit alors `$input.first().json.<champ>` — une donnée
+  normale, pas `process.env`.
+
+`require('child_process')` reste utilisable dans ce sandbox (seul le global
+`process` est absent) — `exec()` fonctionne toujours une fois la valeur d'env
+récupérée via un node Set en amont.
+
+## 11. `WORKSTATION_SSH_KEY_PATH` — défaut jamais concrétisé (T4.2, 2026-07-18)
+
+Le pattern SSH par `exec()` Code node (`WORKSTATION_SSH_KEY_PATH`/`_PI_USER`/`_PI_IP`,
+utilisé par 4 workflows : `code-review` branche Palais préexistante,
+`launch-claude-code.json`, `github-autofix.json`, + la branche GitHub PR ajoutée
+par T4.2) échoue en exécution réelle : `Identity file /home/node/.ssh/id_ed25519
+not accessible: No such file or directory` puis `Permission denied
+(publickey,password)` (exit 255, execution `33899`). Cause : aucune variable
+`workstation_ssh_key_path` n'est définie dans `inventory/group_vars/` → le défaut
+Jinja de `n8n.env.j2:184` (`/home/node/.ssh/id_ed25519`) est utilisé tel quel,
+mais aucun volume ne monte de clé privée à ce chemin dans le conteneur `javisi_n8n`.
+Ces 4 workflows ont 0 exécution historique avant ce chantier — le gap n'avait
+jamais été détecté. Non corrigé (gate humain — nécessite un vrai montage de clé +
+enregistrement de la clé publique dans `~/.ssh/authorized_keys` sur waza, hors
+scope autoring pur).
+
 ---
 
 ## Références

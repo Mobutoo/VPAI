@@ -2268,3 +2268,60 @@ docker logs javisi_n8n --tail 80        # migrations OK, healthy, bannière NON-
 **Piège** : ne PAS utiliser `playbooks/ops/rollback.yml` pour n8n — le template legacy `templates/docker-compose.yml.j2` déploie un n8n **non patché** contre une DB potentiellement déjà migrée par une version plus récente. Rollback n8n = suivre exclusivement `docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md` §7 (restaurer le `pg_dump` D'ABORD, jamais commencer par le tag d'image).
 
 **Référence complète** : `docs/runbooks/RUNBOOK-N8N-UPGRADE-SIDECAR.md`, `.planning/quick/260718-n8n-sidecar/SPEC.md` §0.1.
+
+## 59. n8n Sidecar — handler Ansible en `block:` non notifiable (`handler not found`, 2026-07-18)
+
+**Symptôme** : `ERROR! The requested handler '<nom>' was not found in either the main handlers list nor in the listening handlers list` — le playbook s'arrête net juste après la tâche qui a fait le `notify`.
+
+**Cause racine** : Ansible ne résout PAS un handler défini comme `block:` par le `name:` du block — un block n'est pas enregistré comme handler notifiable (seuls les handlers "plats" le sont). Bug dormant depuis l'écriture initiale du rôle : ce chemin de code n'avait jamais tourné en réel, la garde `n8n_upgrade_confirm` bloquant systématiquement tous les essais antérieurs. Ni `make lint` ni `ansible-playbook --syntax-check` ne détectent ce type d'erreur — résolution uniquement au runtime, au moment de la notification effective.
+
+**Fix** : aplatir le `block:` en handlers plats reliés par `listen: <topic>`, et notifier le topic (pas le nom d'un handler individuel) :
+```yaml
+# FAUX — block non notifiable par son name
+- name: Stop n8n before Sidecar re-patch (race guard)
+  block:
+    - name: Check n8n container exists
+      ...
+    - name: Stop the running n8n container
+      ...
+
+# CORRECT — handlers plats reliés par listen, même topic notifié
+- name: Check n8n container exists before Sidecar re-patch (race guard)
+  listen: "Stop n8n before Sidecar re-patch"
+  ...
+
+- name: Stop the running n8n container (frees the shared patched-tree before n8n-init rewrites it)
+  listen: "Stop n8n before Sidecar re-patch"
+  when: n8n_stop_guard_info.exists | default(false)
+  ...
+```
+
+**Piège** : l'ordre d'exécution des handlers suit l'ordre de leur DÉFINITION dans le fichier `handlers/main.yml` — PAS l'ordre dans lequel le `notify` les déclenche côté tasks.
+
+Réf : `roles/n8n/handlers/main.yml`, commit `1c4bee5`.
+
+## 60. n8n Sidecar — conteneur init one-shot compté `MISSING` par la vérif Phase B (2026-07-18)
+
+**Symptôme** : `Phase B: MISSING_SERVICES:<service>-init` (ex. `n8n-init`) et échec du playbook, ALORS QUE le service applicatif visé (ex. `javisi_n8n`) tourne bien `healthy`.
+
+**Cause racine** : la vérification comparait `docker compose config --services` (TOUS les services définis dans le compose) au seul sous-ensemble retourné par `docker compose ps --status running --services`. Un conteneur init one-shot (`restart: "no"`) sort en `exit 0` une fois sa tâche terminée et n'est donc JAMAIS `running` → systématiquement compté manquant par la vérif, faux échec du cutover alors que le service applicatif tournait déjà sainement.
+
+**Fix** : considérer un service comme sain s'il est `running` OU `exited` avec `ExitCode == 0` ; parser `docker compose ps -a --format json` (NDJSON, champs `State`/`ExitCode`) plutôt que `--status running` seul :
+```bash
+# FAUX — ignore les one-shot restart:"no" déjà terminés avec succès
+DEFINED=$(docker compose config --services | sort -u)
+RUNNING=$(docker compose ps --status running --services | sort)
+MISSING=$(comm -23 <(echo "$DEFINED") <(echo "$RUNNING"))
+
+# CORRECT — running OU exited(0), via ps -a --format json
+HEALTHY=$(docker compose ps -a --format json | python3 -c '
+import sys, json
+rows = [json.loads(l) for l in sys.stdin if l.strip().startswith("{")]
+print("\n".join(sorted({r.get("Service","") for r in rows
+    if r.get("State") == "running"
+    or (r.get("State") == "exited" and r.get("ExitCode", 1) == 0)})))
+')
+MISSING=$(comm -23 <(echo "$DEFINED") <(echo "$HEALTHY"))
+```
+
+Réf : `roles/docker-stack/tasks/main.yml` tâche « Verify Phase B », commit `8a6d342`.

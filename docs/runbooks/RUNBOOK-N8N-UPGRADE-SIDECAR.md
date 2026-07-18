@@ -1,7 +1,7 @@
 # RUNBOOK — Upgrade n8n 2.7.3 → 2.30.7 (Sidecar patch enterprise)
 
 **Host prod** : Sese-AI (OVH VPS 8GB) — `100.64.0.14` (Tailscale, R7 — **jamais** `137.74.114.167`)
-**Statut** : Code + procédure livrés (`SPEC.md` 260718-n8n-sidecar). **Exécution §5 (cutover prod) = GATE HUMAIN.** Ne pas lancer sans avoir coché §4 (staging).
+**Statut** : ✅ **CUTOVER EXÉCUTÉ ET VÉRIFIÉ 2026-07-18** — `javisi_n8n` = `n8nio/n8n:2.30.7`, healthy, HTTP 200 via `mayi.ewutelo.cloud`, migrations 142→219 sans erreur, credentials déchiffrés, 57/125 workflows actifs (baseline), re-run idempotent `ok=41 changed=0`. REX : `docs/rex/REX-N8N-UPGRADE-SIDECAR-2026-07-18.md`. Ce runbook reste la procédure de référence pour un futur bump / le rollback §7.
 **Origine** : `ops/loops/plans/2026-07-18-HANDOFF-n8n-fiabilite-et-memoire.md` + `.planning/research/n8n-upgrade/{r1,r2,r3,r4}.md` + `.planning/quick/260718-n8n-sidecar/SPEC.md`.
 
 ---
@@ -160,7 +160,9 @@ Les versions cibles sont déjà posées dans `versions.yml` (Lane 1 de la SPEC).
 source /home/mobuone/work/infra/VPAI/.venv/bin/activate
 # le seul tag "n8n" ne recrée pas le conteneur si seule l'image change (R5 §5) — TOUJOURS +docker-stack
 # n8n_upgrade_confirm=yes: GATE HUMAIN — n'ajouter qu'après §3 (pg_dump fait) + §4 (staging validé)
-ansible-playbook playbooks/stacks/site.yml -e target_env=prod -e n8n_upgrade_confirm=yes --tags n8n,docker-stack --diff
+# -e prod_ip=100.64.0.14: OBLIGATOIRE depuis waza (R7) — sans lui, vault_prod_ip pointe l'IP publique
+#   et le déploiement time-out sur le port 804 (Tailscale). Vérifié cutover 2026-07-18.
+ansible-playbook playbooks/stacks/site.yml -e target_env=prod -e prod_ip=100.64.0.14 -e n8n_upgrade_confirm=yes --tags n8n,docker-stack --diff
 ```
 Séquence attendue : `n8n-init` copie (1.8 Go) + patche l'arbre → `service_completed_successfully` → `n8n` démarre avec l'overlay monté → migrations TypeORM s'auto-appliquent au boot (142 déjà appliquées avant cutover, delta = migrations des 23 versions mineures).
 
@@ -202,7 +204,7 @@ ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 \
 
 ## §8. R9 — disposition (IF node v2)
 
-**État actuel (2026-07-18)** : ni prouvé corrigé, ni prouvé cassé en 2.30.7 (R3 §2.3 — le code de `IfV2.node.ts` a changé de façon compatible avec une correction — coercion défensive `caseSensitive: '={{!$parameter.options.ignoreCase}}'`, `builderHint` ajouté — mais aucun commit de fix explicitement identifié référençant le symptôme exact). **Empiriquement, 79 IF v2 tournent déjà en prod 2.7.3, dont 36 dans des workflows actifs et healthy** — ce qui contredit "crashe sur TOUTES les conditions" en tant qu'énoncé absolu.
+**État actuel (2026-07-18, post-staging run 3)** : **`fixed` prouvé sur le pattern string exact du REX** (revalidation staging 2.30.7). Workflow `r9-probe` : IF `typeVersion: 2`, comparaison string `$json.headers['x-r9-secret'] === $env.TEST_ENV_PROBE`, schéma canonique `options: { caseSensitive: true, typeValidation: strict }` → 2 exécutions réelles (200 branche match / 403 branche nomatch), **aucun crash `Cannot read properties of undefined (reading 'caseSensitive')`**, vérification R10 sur `workflow_history` (le node exécuté est bien `typeVersion 2`, non downgradé silencieusement). **Portée à ne PAS sur-généraliser** : seul le cas *comparaison string avec résolution d'expression sur `options`* a été retesté ; le cas **boolean IF v2** n'a PAS été rejoué. Ne pas retirer R9 en bloc — laisser la règle d'autoring en place, scopée. Empiriquement, 79 IF v2 tournaient déjà en prod 2.7.3 (36 en workflows actifs healthy), ce qui contredisait déjà "crashe sur TOUTES les conditions" comme énoncé absolu.
 
 **Cas de repro exact** (`docs/rex/REX-SESSION-2026-04-12b.md`, session 2026-04-12) :
 - Workflow `deploy-monitor` (id `q2w7nVrVNP7KNtyj`), node **"Validate Secret"** — `n8n-nodes-base.if` `typeVersion: 2`, comparaison string `$json.headers['x-af-secret'] === $env.AF_WEBHOOK_SECRET`.

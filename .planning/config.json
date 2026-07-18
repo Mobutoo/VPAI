@@ -7,7 +7,8 @@
     "gsd-executor": "sonnet[1m]",
     "gsd-phase-researcher": "sonnet[1m]",
     "gsd-verifier": "opus",
-    "gsd-plan-checker": "opus"
+    "gsd-plan-checker": "opus",
+    "gsd-code-reviewer": "opus"
   },
   "workflow": {
     "research": true,

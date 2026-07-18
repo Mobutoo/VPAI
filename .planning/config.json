@@ -3,6 +3,12 @@
   "parallelization": true,
   "commit_docs": true,
   "model_profile": "quality",
+  "model_overrides": {
+    "gsd-executor": "sonnet[1m]",
+    "gsd-phase-researcher": "sonnet[1m]",
+    "gsd-verifier": "opus",
+    "gsd-plan-checker": "opus"
+  },
   "workflow": {
     "research": true,
     "plan_check": true,

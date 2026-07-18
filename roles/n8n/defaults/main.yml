@@ -43,5 +43,13 @@ n8n_log_level: "info"
 # --- Insights ---
 n8n_insights_enabled: "true"
 
+# --- Native instance MCP server (n8n 2.30.7+, Community, aucun gate license) ---
+# Expose POST/GET /mcp-server/http : l'instance devient sa propre autorité de schéma de nœuds
+# (plus de désync avec le conteneur n8n-mcp docs-only). L'endpoint hérite de l'ACL Caddy
+# `vpn_only` (Tailscale) + est protégé par la clé API MCP de n8n (GET /mcp/api-key, rotation
+# POST /mcp/api-key/rotate). Réf : .planning/research/n8n-upgrade/r1-versions.md §4. Toggle off
+# pour désactiver (retire les 2 env vars → redeploy recrée le conteneur).
+n8n_native_mcp_enabled: true
+
 # --- License (optional — set via vault for Pro/Business) ---
 # n8n_license_activation_key: ""

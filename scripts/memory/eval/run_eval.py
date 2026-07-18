@@ -127,6 +127,26 @@ implementation.md §Phase 2) :
   - Sibling test 2026-07-18 : rejeu sans --scope-file sur le golden 89q
     reproduit exactement le rapport committé (fixup2, 2026-07-17T23:09) —
     recall@1 0.6629 / recall@5 0.9775 / mrr@10 0.7897.
+
+Extension 2026-07-18 (T3.1) — recall@1 cross-wing en garde-fou hebdo (plan
+ops/loops/plans/2026-07-17-scoped-retrieval-implementation.md §Phase 3) :
+  - Chaque question golden porte déjà `cross_wing: true/false` (T0.1, lu depuis
+    golden.yml). Le rapport JSON ajoute `report["by_cross_wing"]` = {"cross_wing":
+    aggregate(sous-ensemble cross_wing), "non_cross_wing": aggregate(le reste)} —
+    même forme que `by_doc_kind`, calcul PUREMENT additif (n'affecte ni "metrics"
+    ni "by_doc_kind" existants, golden sans tag cross_wing -> {"n": 0}).
+  - `--min-recall1-cross-wing FLOAT` (optionnel, env EVAL_MIN_RECALL_1_CROSS_WING) :
+    2e seuil de gate, appliqué UNIQUEMENT si fourni ET si le golden a au moins une
+    question cross_wing:true (`by_cross_wing.cross_wing.n > 0` — garde contre
+    aggregate([]) qui ne produit pas de clé "recall@1", cf golden sans ce tag).
+    Détecte une régression du sous-ensemble cross-wing (downside structurel de la
+    contrainte de conception #1 du plan, boost jamais filtre) SÉPARÉMENT du
+    recall@1 global — un boost qui écrase discrètement les réponses hors-scope
+    peut laisser le recall@1 global inchangé tout en dégradant ce sous-ensemble.
+  - Défaut (--min-recall1-cross-wing omis) : comportement byte-identique aux
+    métriques pré-existantes ("metrics"/"by_doc_kind" inchangés) ; seul un champ
+    JSON additif ("by_cross_wing") apparaît -- valeurs "au point près" (pas
+    byte-identique du fichier complet, cf `details[*].cross_wing` ajouté).
 """
 
 from __future__ import annotations
@@ -259,6 +279,17 @@ def parse_args() -> argparse.Namespace:
         help=f"Taille du pool global (non filtré) récupéré avant retri boost "
              f"(défaut {PREFETCH_LIMIT} = prefetch_limit contrat). Doit être >= --limit.",
     )
+    parser.add_argument(
+        "--min-recall1-cross-wing", type=float,
+        default=(
+            float(os.environ["EVAL_MIN_RECALL_1_CROSS_WING"])
+            if os.environ.get("EVAL_MIN_RECALL_1_CROSS_WING")
+            else None
+        ),
+        help="Seuil recall@1 pour --assert-thresholds sur le sous-ensemble questions "
+             "cross_wing:true (garde-fou T3.1). None (défaut) = pas de gate cross-wing. "
+             "Ignoré si le golden n'a aucune question cross_wing:true.",
+    )
     return parser.parse_args()
 
 
@@ -347,6 +378,22 @@ def check_thresholds(metrics: dict, min_recall1: float, min_mrr10: float) -> lis
     if mrr10 < min_mrr10:
         failures.append(f"mrr@10 {mrr10:.4f} < seuil {min_mrr10:.4f}")
     return failures
+
+
+def check_cross_wing_threshold(by_cross_wing: dict, min_recall1_cross_wing: float | None) -> list[str]:
+    """Seuil franchi (liste vide = gate OK ou non applicable) sur le sous-ensemble
+    cross_wing:true (T3.1). No-op si min_recall1_cross_wing est None (gate désactivé) OU
+    si le golden n'a aucune question cross_wing (n==0 -> aggregate([]) n'a pas de clé
+    "recall@1", cf aggregate()) -- évite un golden legacy sans tag de casser le gate."""
+    if min_recall1_cross_wing is None:
+        return []
+    cw = by_cross_wing.get("cross_wing", {})
+    if cw.get("n", 0) == 0:
+        return []
+    recall1 = cw.get("recall@1", 0.0)
+    if recall1 < min_recall1_cross_wing:
+        return [f"recall@1[cross_wing] {recall1:.4f} < seuil {min_recall1_cross_wing:.4f}"]
+    return []
 
 
 def load_yaml(path: Path) -> dict:
@@ -863,6 +910,7 @@ def main() -> int:
                 "top_files": outcome["top_files"],
                 "note": question.get("note", ""),
                 "in_scope": in_scope,
+                "cross_wing": bool(question.get("cross_wing", False)),
             }
         )
         status = f"rank={outcome['rank']}" if outcome["rank"] else "MISS"
@@ -894,6 +942,16 @@ def main() -> int:
         if scoped_results else None
     )
 
+    # by_cross_wing (T3.1) : additif, même forme que by_doc_kind. Calculé sur TOUS
+    # les résultats (indépendant de --scope-*) -- mesure le downside cross-wing du
+    # pipeline RÉELLEMENT exercé par ce run (boost ON ou OFF selon les flags reçus).
+    cross_wing_results = [r for r in results if r["cross_wing"]]
+    non_cross_wing_results = [r for r in results if not r["cross_wing"]]
+    by_cross_wing = {
+        "cross_wing": aggregate(cross_wing_results),
+        "non_cross_wing": aggregate(non_cross_wing_results),
+    }
+
     report = {
         "schema_version": "eval-v1",
         "collection": args.collection,
@@ -920,6 +978,7 @@ def main() -> int:
             ),
         },
         "filter_miss_rate": filter_miss_rate,
+        "by_cross_wing": by_cross_wing,
         "rerank_timings": rerank_stats,
         "timings": {"encode_s": round(encode_s, 2), "search_s": round(search_s, 2)},
         "metrics": aggregate(results),
@@ -961,6 +1020,10 @@ def main() -> int:
     for kind, kind_metrics in report["by_doc_kind"].items():
         print(f"  [{kind}] n={kind_metrics['n']} r@1={kind_metrics['recall@1']:.4f} "
               f"r@5={kind_metrics['recall@5']:.4f} mrr@10={kind_metrics['mrr@10']:.4f}")
+    if by_cross_wing["cross_wing"]["n"] > 0:
+        cw = by_cross_wing["cross_wing"]
+        print(f"  [cross_wing] n={cw['n']} r@1={cw['recall@1']:.4f} "
+              f"r@5={cw['recall@5']:.4f} mrr@10={cw['mrr@10']:.4f}")
     print(f"  encode={report['timings']['encode_s']}s search={report['timings']['search_s']}s")
     if rerank_stats:
         print(f"  rerank[{rerank_stats['model']}] median={rerank_stats['median_s']}s "
@@ -973,16 +1036,23 @@ def main() -> int:
 
     if args.assert_thresholds:
         failures = check_thresholds(metrics, args.min_recall1, args.min_mrr10)
+        failures += check_cross_wing_threshold(by_cross_wing, args.min_recall1_cross_wing)
         if failures:
             print("\n[GATE FAIL] dérive mémoire détectée :", file=sys.stderr)
             for failure in failures:
                 print(f"  - {failure}", file=sys.stderr)
             print(f"  rapport complet -> {out_path}", file=sys.stderr)
             return 3
-        print(
+        gate_msg = (
             f"\n[GATE OK] recall@1={metrics['recall@1']:.4f} (>= {args.min_recall1:.4f})  "
             f"mrr@10={metrics['mrr@10']:.4f} (>= {args.min_mrr10:.4f})"
         )
+        if args.min_recall1_cross_wing is not None and by_cross_wing["cross_wing"]["n"] > 0:
+            gate_msg += (
+                f"  recall@1[cross_wing]={by_cross_wing['cross_wing']['recall@1']:.4f} "
+                f"(>= {args.min_recall1_cross_wing:.4f})"
+            )
+        print(gate_msg)
     return 0
 
 

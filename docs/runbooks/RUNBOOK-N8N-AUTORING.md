@@ -118,8 +118,9 @@ workflow, sans baseline pré-deploy pour trancher si le PUT en a ajouté une
 troisième non retenue comme active — pas d'affirmation au-delà de ce qui est
 prouvé). Aucune exécution parasite déclenchée par le déploiement
 (`execution_entity` : aucune nouvelle ligne entre le PUT/activate de ~18h25 et
-~18h30, heure du contrôle — revérifier après le tick cron de 19h00 pour clore
-le critère « exécution verte post-deploy », requête §5).
+~18h30, heure du contrôle). **Critère « exécution verte post-deploy » CLOS
+2026-07-18 19:05** : exécution `33889 | success | 2026-07-18 19:00:00+02`
+(première exécution cron postérieure au redeploy de 18h25, requête §5).
 
 **Écart vs critère d'acceptation « exécution verte »** : les 5 exécutions
 `success` citées ci-dessus (12h-18h) précèdent toutes le redeploy de 18h25 —

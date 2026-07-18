@@ -82,6 +82,11 @@ claude_code_gsd_model_profile: "balanced"
 claude_code_gsd_model_overrides:
   gsd-executor: "sonnet[1m]"
   gsd-phase-researcher: "sonnet[1m]"
+  # Revue adversariale toujours Opus (politique routage 2026-07-18) — sans quoi
+  # les NOUVEAUX projets naissent avec verifier/plan-checker en sonnet (le seed
+  # ne s'applique qu'à la création ; l'existant est géré par gsd-model-audit.sh).
+  gsd-verifier: "opus"
+  gsd-plan-checker: "opus"
 
 # Auto-fix pipeline
 claude_code_auto_fix_enabled: true

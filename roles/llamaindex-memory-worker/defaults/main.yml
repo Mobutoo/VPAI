@@ -260,6 +260,9 @@ memory_worker_exclude_dirs:
   # Artefacts harnais d'éval (audit 2026-07-17-audit-memoire.md §1 FIX A) : nom
   # EXACT "eval" — jamais de sous-chaîne (matcherait "retrieval", contenu RAG légitime).
   - eval
+  # Collections Ansible vendorées dans un repo (incident 2026-07-19 : banga/.ansible
+  # 40 Mo, ~5000 modules tiers → run incrémental de 15 h + pollution memory_v3).
+  - .ansible
 
 memory_worker_max_file_bytes: 1048576
 memory_worker_chunk_size: 1600

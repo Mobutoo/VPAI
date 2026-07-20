@@ -290,6 +290,45 @@ prompts jumeaux `evaluations/scenarios/goal-ab-arm-{A,B}.prompt.md`) :
 GSD → Workflows (cadrage non entamé s4) ; mirror lab post-P0-1 ; `/goal` interactif
 non testé.
 
+## ✅ VERDICT SESSION 5 (2026-07-20 soir) — cluster D SOLDÉ (hooks 0 échec) + cadrage GSD→Workflows LIVRÉ
+
+1. **Cluster D : soldé, et la dérive était PIRE que le diagnostic** — 7/8 racines de
+   sources.yml mortes (chemins pré-réorg) → `detect()` fail-open → topics dynamiques
+   R0-Continu MORTS EN LIVE pour tous les repos (dégradation silencieuse), pas juste
+   3 tests rouges. Décision (ni fixture seule, ni régénération worker) : `sources.js`
+   découvre lui-même en lisant le MÊME `config.yml` que le worker (bloc `discovery`
+   déployé Ansible = autorité partagée), fallback sources.yml, fail-open. Livré :
+   ~/.claude `a5653d9`+`d2fd26f` (miroir complet de `discover_sources` — exclude_globs
+   fnmatch, merge `sources_manual`, symlinks, memo par valeurs env ; `max_repos`
+   délibérément non appliqué, gardien fail-loud = worker Python ; **borne 29/30 à
+   surveiller**), tests hermétiques (piège : dossier `.git` non commitable → fixtures
+   créées au runtime par `setup-workspace.js`), run-all.sh **3→0, 100 % PASS**, revue
+   Opus **MERGE-OK 0C/0H** (2 MEDIUM latents soldés dans d2fd26f). Côté VPAI `b3cc86f` :
+   fallback `memory_worker_sources` réaligné `~/work/<wing>/<name>` + deploy rôle
+   (ok=45 failed=0) → sources.yml live régénéré 8/8 vivantes. Piège retenu : le vert
+   `detect() VPAI` du test était un FAUX VERT (string-match test/racine morte identiques,
+   aucune vérif d'existence disque).
+2. **Cadrage migration GSD→Workflows LIVRÉ** (lab `9ef4ef4`,
+   `recommendations/2026-07-20-cadrage-migration-gsd-workflows.md`) : 102 .md / ~33,4k
+   LOC ; 4 gros fichiers lus intégralement (5 188 l.). Frontières dures : AskUserQuestion
+   in-script impossible (217 gates restent .md) ; bash orchestrateur non transposable
+   (bloc worktree execute-phase 729–901 EXCLU) ; 1 niveau `workflow()` ; modèles résolus
+   avant, passés en args. **Ordre décidé : pilote = map-codebase l.139–340** (~90 %
+   mécanique, analogue review-multilens sans dédup), puis docs-update 373–954 (plus
+   gros bloc contigu sans interaction — son manifest JSON est un apparat anti-oubli
+   prompt-space qui disparaît en JS natif), puis plan-phase checker-loop 1195–1367,
+   execute-phase partiel en dernier. Protocole s6 : tâches jumelles A/B,
+   `measure_headless_session.py`, GO = −30 % main ET qualité identique. Patch .md
+   minimal enregistré dans `verify-reapply-patches` (leçon incident npx) + fallback
+   historique intégral.
+3. **`/goal` interactif : REPORTÉ (gate humain)** — un test du mode interactif exige
+   un user au clavier, l'A/B headless de s4 ne se transpose pas ; protocole à définir
+   ensemble. Mirror lab : toujours gaté P0-1 (inchangé).
+
+**Restent (session 6+)** : pilote map-codebase (GO/NO-GO chiffré, §6-7 du cadrage) ;
+`/goal` interactif (avec user) ; mirror lab post-P0-1 ; surveiller borne
+découverte 29/30 repos (max_repos worker).
+
 ## Rappels d'état
 
 - Hebdo 98 % (**reset LUNDI 10:00**, corrigé par user), Opus scopé 83 %. Ne rien lancer de lourd avant.

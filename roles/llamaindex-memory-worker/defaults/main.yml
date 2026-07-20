@@ -104,7 +104,10 @@ memory_worker_rerank_model_id: "onnx-community/bge-reranker-v2-m3-ONNX"
 #   make deploy-role ROLE=llamaindex-memory-worker ENV=<env> --tags memory_worker
 # Effectif au PROCHAIN spawn du serveur MCP qdrant-find (mcp_search.py lit l'env
 # une fois au démarrage) — pas rétroactif sur une session déjà ouverte.
-memory_worker_scope_boost_enabled: true  # ACTIVÉ 2026-07-18 (décision humaine : +3.4 pts recall@1 [0.6629→0.6966], downside borné 1 question cross-wing rang 5→6, surveillé par l'éval hebdo cross-wing)
+# ACTIVÉ 2026-07-18 (décision humaine : +3.4 pts recall@1 [0.6629→0.6966],
+# downside borné 1 question cross-wing rang 5→6, surveillé par l'éval hebdo
+# cross-wing).
+memory_worker_scope_boost_enabled: true
 memory_worker_scope_boost_weight: 0.2
 
 # === FUSION (restauration recall@1, 2026-07-17) ===
@@ -128,8 +131,8 @@ memory_worker_version: "2026-04-11"
 memory_worker_host_origin: "waza"
 
 memory_worker_repo_roots:
-  - "/home/{{ workstation_pi_user | default('pi') }}/flash-studio"
-  - "{{ workstation_projects_dir }}/saas/story-engine"
+  - "{{ memory_worker_workspace_root }}/saas/flash-studio"
+  - "{{ memory_worker_workspace_root }}/saas/story-engine"
 
 # === AUTO-DECOUVERTE DES SOURCES (MANIFESTE-CREATION-PROJET) ===
 # Quand enabled, le worker découvre tout repo git sous workspace_root/<wing>/<name>
@@ -164,33 +167,34 @@ memory_worker_sources_manual: []
 # Conservé pour le mode fichier et la référence parité pod. The worker's
 # merge_source_roots() uses THIS list exclusively when populated; `memory_worker_repo_roots`
 # / config.yml `repos:` is only a fallback when sources.yml is empty.
-# Reconciled 2026-06-05 with the live (hand-edited) sources.yml + 4 new saas repos.
-# Nested repos (flash-infra in flash-studio; litellm/n8n/openclaw-docs in DOCS) are
-# covered as subdirectories — no separate source required.
+# Racines réalignées post-réorg 2026-07-20 (cluster D) : les anciens chemins
+# ~/VPAI, ~/flash-studio et ~/projects/* étaient tous morts — un redeploy
+# réécrivait un sources.yml empoisonné. Autorité réelle = auto-découverte
+# ci-dessus (MANIFESTE §4) ; cette liste ne sert QUE si discovery.enabled=false.
 memory_worker_sources:
   - name: "VPAI"
     wing: "infra"
     kind: "git_repo"
-    root: "/home/{{ workstation_pi_user | default('pi') }}/VPAI"
+    root: "{{ memory_worker_workspace_root }}/infra/VPAI"
     tags:
       - "scope:vpai"
       - "kind:ansible"
   - name: "flash-studio"
     wing: "saas"
     kind: "git_repo"
-    root: "/home/{{ workstation_pi_user | default('pi') }}/flash-studio"
+    root: "{{ memory_worker_workspace_root }}/saas/flash-studio"
     tags:
       - "scope:flash"
   - name: "story-engine"
     wing: "saas"
     kind: "git_repo"
-    root: "{{ workstation_projects_dir }}/saas/story-engine"
+    root: "{{ memory_worker_workspace_root }}/saas/story-engine"
     tags:
       - "scope:story-engine"
   - name: "typebot-docs"
     wing: "refdocs"
     kind: "git_repo"
-    root: "{{ workstation_projects_dir }}/typebot-docs"
+    root: "{{ memory_worker_workspace_root }}/refdocs/typebot-docs"
     tags:
       - "scope:typebot"
       - "kind:official-docs"
@@ -200,25 +204,25 @@ memory_worker_sources:
   - name: "podpilot"
     wing: "saas"
     kind: "git_repo"
-    root: "{{ workstation_projects_dir }}/saas/podpilot"
+    root: "{{ memory_worker_workspace_root }}/saas/podpilot"
     tags:
       - "scope:podpilot"
   - name: "hawkeye"
     wing: "saas"
     kind: "git_repo"
-    root: "{{ workstation_projects_dir }}/saas/hawkeye"
+    root: "{{ memory_worker_workspace_root }}/saas/hawkeye"
     tags:
       - "scope:hawkeye"
   - name: "fantrad"
     wing: "saas"
     kind: "git_repo"
-    root: "{{ workstation_projects_dir }}/saas/fantrad"
+    root: "{{ memory_worker_workspace_root }}/saas/fantrad"
     tags:
       - "scope:fantrad"
   - name: "riposte"
     wing: "saas"
     kind: "git_repo"
-    root: "{{ workstation_projects_dir }}/saas/riposte"
+    root: "{{ memory_worker_workspace_root }}/saas/riposte"
     tags:
       - "scope:riposte"
 

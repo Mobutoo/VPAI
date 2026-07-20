@@ -229,6 +229,42 @@ utile. Décision : PAS de session dédiée — session 3 livre un **2e template 
 fusion, ou pipeline de fix par fichier), mesuré au même `measure_arm_windows_v2.py`
 → verdict graphes obtenu pendant l'industrialisation.
 
+## ✅ VERDICT SESSION 3 (2026-07-20 soir) — industrialisation LIVRÉE + GO graphes −44 % durée
+
+1. **Bibliothèque v1** (lab c5ada5d→dc18a54) : `workflows/implement-review-verify.js`
+   généralisé par args (repo/objective/scope/verify_cmd/constraints/hunt/max_review_rounds/
+   implement, v2 POC → archive/) + `workflows/review-multilens.js` (2e template PARALLÈLE :
+   3 lentilles opus correctness/tests/scope + fusion dédup script-space, revue seule — la
+   session principale arbitre). Demo-args + fixtures + smoke-tests statiques + **harness node
+   validate/simulate** (`scripts/wf_harness.mjs` — exécute la vraie validation d'args et la
+   logique post-agents avec stubs) ; `make verify` lab = 41 tests verts.
+2. **Verdict graphes : GO** (éval `evaluations/2026-07-20-parallel-multilens-verdict-graphes.md`,
+   run wf_fd85b7e7 = revue réelle du diff session 3, pattern tâches jumelles) : mur 903 s vs
+   1 615 s de séquentialisation des mêmes reviews = **−44 % durée** (slots 89 %, cap waza 2 ;
+   extrapolé −56 % à cap ≥3). Main 1 686 tok out / 9 534 chars ingérés ; subagents 198 680 tok.
+   Boucle bouclée : 9 findings (0C/0H/3M/6L, 2 recoupés par 2 lentilles) TOUS appliqués+testés.
+3. **Gitea** : repo privé `mobuone/claude-code-improvement-lab` créé (API localhost:3030, token
+   éphémère CLI admin, les 3 tokens de session révoqués). **Push du lab complet REFUSÉ** :
+   l'historique contient des transcripts `data/sanitized/*.jsonl` committés pré-gitignore
+   (risque scrubbing résiduel = périmètre P0-1) → backup = **snapshot orphelin du tree tracké**
+   (`make backup-gitea`, 91fc948) ; bibliothèque → `make sync-claude` → `~/.claude/workflows/`
+   (commit ~/.claude ee51c3c). Mirror complet différé post-P0-1.
+4. **Gabarit prompts VALIDÉ** (`workflows/PROMPT-TEMPLATE.md` : objectif→contexte→contraintes→
+   étapes numérotées→format exact→critère verify, sourcé mining+canon+2 runs) + **6 fiches
+   commandes de boucle** (`recommendations/2026-07-20-fiches-commandes-boucle.md` : Workflow
+   MESURÉ GO, /goal NON TESTÉ (A9, backlog), /tasks, /routines vs timers systemd, agent-teams
+   non prioritaire, /rewind). Follow-up LOW soldé (assertion test_main_nature_filter
+   discriminante : --min-bucket 1 + assert nature/sid du bucket).
+
+**Pièges session 3** : args Workflow livré en CHAÎNE JSON via scriptPath (templates tolèrent
+objet|string) ; la notification de résultat ÉCHOE les args (bloc recovery) → scope/hunt denses ;
+le compteur measure v2 ignorait le contenu user de type string (la notification en est un) ;
+prose « agent() » dans un message d'erreur = faux positif smoke (regex ancrée await|=>) ;
+Gitea : POST /user/repos exige write:user, push-to-create OFF, HTTP sur 127.0.0.1:3030.
+
+**Reste (session 4+)** : test contrôlé `/goal` (A9), migration du mécanique GSD vers Workflows,
+mirror lab complet post-P0-1, trier les 14 échecs préexistants run-all.sh hooks.
+
 ## Rappels d'état
 
 - Hebdo 98 % (**reset LUNDI 10:00**, corrigé par user), Opus scopé 83 %. Ne rien lancer de lourd avant.

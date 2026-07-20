@@ -265,6 +265,31 @@ Gitea : POST /user/repos exige write:user, push-to-create OFF, HTTP sur 127.0.0.
 **Reste (session 4+)** : test contrôlé `/goal` (A9), migration du mécanique GSD vers Workflows,
 mirror lab complet post-P0-1, trier les 14 échecs préexistants run-all.sh hooks.
 
+## ✅ VERDICT SESSION 4 (2026-07-20 soir) — `/goal` : **GO headless** (A9 validé)
+
+Test contrôlé A/B exécuté (lab `evaluations/2026-07-20-test-controle-goal.md`,
+prompts jumeaux `evaluations/scenarios/goal-ab-arm-{A,B}.prompt.md`) :
+1. **Tâches jumelles = 11 échecs MÉCANIQUES de run-all.sh** (triage scout 14/14 :
+   4 clusters ; partition contrainte par le grain fichier 5v6) — dette soldée en même
+   temps : bras A = fixture `tool_response` + isolation R0 du bloc R1 (commit ~/.claude
+   `0ae8fb9`), bras B = 6 topics DOC_TOPICS via `docTopicsIn()` (`1328a64`).
+   Suite hooks : 14 → 3 échecs.
+2. **Verdict `/goal` : GO** — bras B (headless `claude -p "/goal …"` sonnet) : condition
+   atteinte + **arrêt autonome propre** + aucun surcoût vs one-shot A (out −54 %,
+   coût API −24 %, durée −13 % ; clause artefact : tâche B plus simple → conclusion
+   « pas plus cher », pas « moins cher »). Critère ≤ 1,2× A largement franchi.
+3. **Mécanique élucidée** : `/goal` = `Goal set` + **Stop hook session-scoped portant
+   la condition** (3 blocs user injectés). L'« évaluateur Haiku par tour » de la doc
+   n'apparaît PAS dans le JSONL (100 % sonnet). Fiche 2 mise à jour.
+4. **Outillage** : `scripts/measure_headless_session.py` (v3 : session entière +
+   ventilation par modèle, règles v2 conservées, pytest lab 47 verts, commit `621b9e0`).
+
+**Restent (session 5+)** : cluster D `sources.yml` (3 échecs JUGEMENT : fixture
+`R0_SOURCES_YML` hermétique et/ou régénération worker — dérive live RÉELLE : racines
+`flash-studio` et `VPAI` mortes dans sources.yml, à statuer) ; migration du mécanique
+GSD → Workflows (cadrage non entamé s4) ; mirror lab post-P0-1 ; `/goal` interactif
+non testé.
+
 ## Rappels d'état
 
 - Hebdo 98 % (**reset LUNDI 10:00**, corrigé par user), Opus scopé 83 %. Ne rien lancer de lourd avant.

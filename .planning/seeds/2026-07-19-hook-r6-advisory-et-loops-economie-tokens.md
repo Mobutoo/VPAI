@@ -184,7 +184,12 @@ b822wjsy9) — ancrer le pattern sur un chemin réel (ex. `/opt/.*/index.py`).
    schéma retour compact (détails sur disque) + tâche multi-rounds. Gain inattendu
    PROUVÉ : **subagents −31 %** (sortie structurée contraint la verbosité reviewer).
    Pas d'industrialisation bibliothèque tant que le re-POC n'a pas donné GO.
-4. Hook R6 : voir ci-dessous (selon temps restant session 1).
+4. **Hook R6 LIVRÉ** (~/.claude 868aa8d, copie lab 4393b07) : `r6-delegation-advisor.js`
+   PostToolUse advisory — nudge scout/mech au 6e Read / 11e Bash cumulés sans dispatch,
+   reset au dispatch Agent/Workflow, 1 nudge/type/cycle + plancher 10 min, exemptions
+   subagents + debug R5 + sessions GSD. Tests 31/31 (simulation stdin). Piège corrigé :
+   `ts | 0` tronque Date.now() à 32 bits. NB : run-all.sh a 14 échecs PRÉEXISTANTS
+   (topics/escalator/gate-log, prouvés par stash/re-run) → à trier séparément.
 
 Session 2 = re-POC amendé + follow-ups code --since/--nature (listés au doc d'éval),
 PUIS seulement gabarit prompts + inventaire commandes de boucle + bibliothèque Gitea.

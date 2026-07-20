@@ -216,6 +216,19 @@ Gitea → sync `.claude/workflows/` ; + follow-up LOW résiduel (assertion
 test_main_nature_filter inerte contre l'inversion du filtre) ; PUIS gabarit prompts
 + inventaire commandes de boucle (6 fiches max).
 
+**Graphes/parallélisme (question user 20/07, statué)** : NON mesuré à ce jour — POC
+v1/v2 = chaîne séquentielle seule (des workflows parallèles ont été utilisés ailleurs,
+jamais A/B). Le mining ne classe aucun motif parallèle en tête (motif payé = boucle
+séquentielle ; candidat n°2 = « stage de pipeline, pas un Workflow entier »). Le GO se
+transfère a fortiori aux graphes (un fan-out classique coûte PLUS cher en main : N
+rapports) et le parallélisme est le remède direct au +119 % de durée mesuré.
+Contrainte : cap concurrence par workflow = min(16, cœurs−2) = **2 sur waza (Pi5
+4 cœurs)** → fan-out large par vagues de 2, `pipeline()` (recouvrement) pleinement
+utile. Décision : PAS de session dédiée — session 3 livre un **2e template parallèle**
+(review multi-lentilles en `parallel()` 3 reviewers correctness/tests/périmètre +
+fusion, ou pipeline de fix par fichier), mesuré au même `measure_arm_windows_v2.py`
+→ verdict graphes obtenu pendant l'industrialisation.
+
 ## Rappels d'état
 
 - Hebdo 98 % (**reset LUNDI 10:00**, corrigé par user), Opus scopé 83 %. Ne rien lancer de lourd avant.

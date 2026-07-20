@@ -194,6 +194,28 @@ b822wjsy9) — ancrer le pattern sur un chemin réel (ex. `/opt/.*/index.py`).
 Session 2 = re-POC amendé + follow-ups code --since/--nature (listés au doc d'éval),
 PUIS seulement gabarit prompts + inventaire commandes de boucle + bibliothèque Gitea.
 
+## ✅ VERDICT SESSION 2 (2026-07-20 après-midi) — re-POC : **GO −77 %/−77 %**
+
+Re-POC amendé exécuté (lab 9258c10, protocole+résultats :
+`lab/evaluations/2026-07-20-re-poc-workflow-vs-classic.md`) sur les follow-ups
+--since/--nature comme tâches jumelles (dette soldée en même temps, f0516a9 + 90506d4) :
+- **GO net** : output −77 % (4 983→1 128 tok), ingestion −77 % (13 734→3 194 chars),
+  seuil −30 % largement franchi. Gate qualité OK (0 CRITICAL des 2 côtés, pytest
+  10/10 et 12/12). Verdict conservateur : le bras B a fait PLUS de rounds (3 reviews/
+  2 fixes vs 2/1) pour un coût main 4,4× moindre.
+- **Les 2 amendements prouvés** : retour compact (ingestion B 8 845→3 194 vs v1) ;
+  multi-rounds (coût main A croît avec les rounds, B reste plat).
+- **Contreparties chiffrées** : +44 % tokens subagents (rounds opus en plus),
+  +119 % durée mur. Le pattern échange temps+volume subagent contre contexte main.
+- Script v2 archivé `lab/workflows/implement-review-verify-v2.js` (1er élément de la
+  bibliothèque). Journal du run : session e0526fff, wf_6942103a-327.
+
+**Session 3 = industrialisation** : généraliser v2 par `args` (cible/pytest/périmètre
+en dur), smoke-test + make verify + périmètre backup (audit Fable), bibliothèque
+Gitea → sync `.claude/workflows/` ; + follow-up LOW résiduel (assertion
+test_main_nature_filter inerte contre l'inversion du filtre) ; PUIS gabarit prompts
++ inventaire commandes de boucle (6 fiches max).
+
 ## Rappels d'état
 
 - Hebdo 98 % (**reset LUNDI 10:00**, corrigé par user), Opus scopé 83 %. Ne rien lancer de lourd avant.

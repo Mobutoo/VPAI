@@ -329,6 +329,32 @@ non testé.
 `/goal` interactif (avec user) ; mirror lab post-P0-1 ; surveiller borne
 découverte 29/30 repos (max_repos worker).
 
+## Verdict session 6 (2026-07-20 soir) — pilote map-codebase : **GO −35,5 % main**
+
+1. **Pilote GSD→Workflows GO** (éval lab
+   `evaluations/2026-07-20-pilote-gsd-map-codebase-workflow.md`) : tronçon
+   mécanique l.139–340 de map-codebase.md extrait vers
+   `workflows/gsd-map-codebase.js` (fan-out 4 mappers + verify haiku,
+   retour compact). A/B jumelles koodia/powerbank (clones scratchpad,
+   ~25,5k LOC chacun, B défavorisé +19 % fichiers) : **out main 5 919→3 815
+   (−35,5 %, seuil −30 %)**, ingestion −22,1 % (diluée par l'overhead fixe
+   SessionStart — gain absolu net), subagents +4,5 %, mur +17,4 % (cap 2 vs
+   4 parallèles). **Gate qualité : EQUIVALENT** (reviewer opus unique,
+   spot-checks chemins dans les clones, 0C/0H/1M/3L, mode d'échec symétrique).
+   Fast-path prouvé au transcript (1 tool_use Workflow, 0 Agent main).
+   Patch = 2 fichiers (`map-codebase.md` step workflow_script_fast_path +
+   `SKILL.md` allowed-tools +Workflow), fallback historique intégral,
+   ~/.claude commit `db4e449`, filet gsd-local-patches auto au prochain update.
+   **Suite cadrage §7 : session 7 = docs-update l.373–954.**
+2. **Pièges s6** : headless `-p` TUE les tâches de fond à 600 s →
+   `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0` OBLIGATOIRE pour tout run headless
+   invoquant Workflow (1er run B mort en vol : 5/7 docs, 0 commit, conclusion
+   polie mensongère) ; **divergence `gsd-sdk` (cache npx lignée morte) vs
+   `gsd-tools.cjs` : `mapper_model` sonnet vs haiku dans le même cwd** →
+   follow-up purge symlink `~/.local/bin/gsd-sdk` ; `allowed-tools` SKILL.md
+   sans `Workflow` = fast-path invisible ; check smoke épinglage étendu
+   (identifiant dérivé d'args accepté, frontière §3.5).
+
 ## Rappels d'état
 
 - Hebdo 98 % (**reset LUNDI 10:00**, corrigé par user), Opus scopé 83 %. Ne rien lancer de lourd avant.

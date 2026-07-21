@@ -36,7 +36,7 @@ claude_code_mcp_context7_version: "latest"
 
 # Filesystem MCP — structured file operations in workspace
 claude_code_mcp_filesystem_enabled: true
-claude_code_mcp_filesystem_workspace: "/home/{{ claude_code_user }}/projects"
+claude_code_mcp_filesystem_workspace: "/home/{{ claude_code_user }}/work"
 
 # n8n MCP — trigger workflows from Claude Code
 claude_code_mcp_n8n_enabled: true

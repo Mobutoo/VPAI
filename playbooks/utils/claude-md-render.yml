@@ -1,0 +1,60 @@
+---
+# Rend `roles/claude-code/templates/CLAUDE.md.j2` SANS rien déployer, puis le
+# compare au CLAUDE.md live de la workstation.
+#
+# Pourquoi : arbitrage opérateur 2026-07-21 — **le live fait foi**. Le template
+# doit rendre exactement le live ; sinon un `make deploy-workstation` écrase la
+# référence (dérive mesurée à 104 lignes le 2026-07-21, dont des chemins FAUX).
+#
+# Usage :
+#   source .venv/bin/activate
+#   ansible-playbook -i inventory/hosts.yml playbooks/utils/claude-md-render.yml
+#   # rc = 0 si le rendu est identique au live ; sinon le diff est affiché.
+#
+# `connection: local` : aucune connexion à la cible, aucun changement sur elle.
+- name: Rendu hors déploiement du CLAUDE.md (contrôle de dérive live/template)
+  hosts: "{{ target_env | default('workstation') }}"
+  connection: local
+  gather_facts: false
+  vars:
+    claude_md_render_dir: "/tmp/claude-md-render"
+  vars_files:
+    - ../../roles/claude-code/defaults/main.yml
+
+  tasks:
+    - name: Créer le répertoire de rendu
+      ansible.builtin.file:
+        path: "{{ claude_md_render_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Rendre le template hors déploiement
+      ansible.builtin.template:
+        src: ../../roles/claude-code/templates/CLAUDE.md.j2
+        dest: "{{ claude_md_render_dir }}/CLAUDE.rendered.md"
+        mode: "0644"
+
+    - name: Comparer le rendu au CLAUDE.md live
+      ansible.builtin.command:
+        cmd: >-
+          diff -u {{ claude_code_config_dir }}/CLAUDE.md
+          {{ claude_md_render_dir }}/CLAUDE.rendered.md
+      register: claude_md_diff
+      changed_when: false
+      failed_when: false
+
+    - name: Afficher le résultat
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'IDENTIQUE — le template rend bien le live.'
+             if claude_md_diff.rc == 0
+             else 'DÉRIVE (' ~ claude_md_diff.stdout_lines | length ~ ' lignes de diff) :
+             ' ~ claude_md_diff.stdout }}
+
+    - name: Échouer si le template a dérivé du live
+      ansible.builtin.assert:
+        that: claude_md_diff.rc == 0
+        fail_msg: >-
+          Le rendu du template diffère du live : un déploiement écraserait la
+          référence. Corriger le TEMPLATE (le live fait foi).
+        success_msg: "Aucune dérive."

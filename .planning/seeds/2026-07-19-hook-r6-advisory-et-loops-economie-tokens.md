@@ -424,6 +424,33 @@ découverte 29/30 repos (max_repos worker).
 3. **/goal interactif (GATE HUMAIN) et mirror post-P0-1** : inchangés, restent
    les seuls reliquats loops.
 
+## ✅ VERDICT SESSION 9 (2026-07-21) — `/goal` interactif : GO, gate humain SOLDÉ
+
+1. **Test contrôlé exécuté avec le user au clavier** (éval lab
+   `evaluations/2026-07-21-test-goal-interactif.md`, protocole `6ff0cf4`→verdict
+   `8911d78`) : arène mini-repo Node autonome (12 assertions, 7 FAIL semés,
+   baseline git taggé), un bras d'observation, 2 runs interactifs sonnet
+   `--dangerously-skip-permissions`. RUN 1 (boucle complète) : Goal set,
+   injection Stop hook unique 1 353 chars, 3 Edits → suite verte en 55 s →
+   commit `c054982`, `goal_status met:true`, **0 tour de travail parasite
+   post-condition** ; Esc + « continue » n'orphelinent pas le goal. RUN 2
+   (abandon volontaire) : Esc + `/quit` AVANT condition **non bloqués** — 0
+   edit, 0 commit. Vérifs indépendantes : suite rejouée au commit fix ALL PASS
+   12/12, test.js intact, fixes minimaux 4 causes.
+2. **Mécanique tranchée (complément s4)** : le Stop hook `/goal` gate la FIN
+   DE TOUR de l'assistant, PAS la fermeture CLI par l'humain → **jamais de
+   session captive** (en RUN 2 le hook Stop n'a même jamais été invoqué —
+   aucun tour complet terminé). Marqueurs JSONL : attachments
+   `goal_status met:true/false` + `stop_hook_summary` final. Injection 1 bloc
+   1 353 chars (2.1.216) vs 3 blocs 7 512 chars (s4, 2.1.215).
+3. **Limites documentées** : reprise mid-work après Esc non exercée (tâche
+   verte en 55 s — à observer en usage réel, pas de re-test) ; « état ? » non
+   joué (couvert par « continue » conversationnel 0 tool_use). Reste non testé :
+   gain différentiel sur one-shots ratés. Fiche 2 à jour (GO headless + interactif).
+4. **Reliquat loops final : mirror lab post-P0-1 seul** (+ suivi passif borne
+   29/30 et bandeau « stale hooks /gsd update » à élucider — ne PAS lancer
+   l'update aveugle : paquet mort, patches fast-path s6/s7 seraient clobberés).
+
 ## Rappels d'état
 
 - Hebdo 98 % (**reset LUNDI 10:00**, corrigé par user), Opus scopé 83 %. Ne rien lancer de lourd avant.

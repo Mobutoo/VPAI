@@ -88,6 +88,22 @@ prises telles quelles) ; vérification croisée / réfutation de findings =
 Codex. Jauges réelles (global hebdo + 5 h + limite Opus + jauge Fable) :
 `~/work/ops/loops/scripts/claude-usage-guard.sh`.
 
+### Amiral (essaims Workflow)
+
+L'amiral (session Fable, déclencheur 3) **compose et arbitre, n'exécute
+jamais** : pose les DAG, lit les verdicts, tranche les gates. Rôles d'essaim
+= le routage ci-dessus + **Codex en Bash dans un nœud** (`codex-verify.sh`,
+`review-file.sh`) = vérification hors quota. `graph-runner` dès **≥ 3 nœuds
+dont un dépendant** (le gain = le relais de sorties évité, croît avec le
+fan-in) ; sans dépendance, `parallel()` suffit. **Rien de secret n'entre dans
+un essaim** — ni `args`, ni prompt, ni sortie de nœud : tout est réinjecté en
+aval et journalisé ; secret croisé = rotation, pas rature.
+`claude-usage-guard.sh` **avant chaque lancement** (il informe, ne bloque
+pas) : **jauge ≥ 80 % → aucun essaim, séquencer**. Cap ≈ 2 **par workflow**,
+aucun sémaphore partagé → **2 essaims simultanés max** sur waza ; budget par
+essaim (`budget.remaining()`). Détacher un chantier au téléphone : `/factor`.
+Détail : lab `recommendations/2026-07-21-fable-amiral-c{1,2}-*.md`.
+
 ### Gestion du contexte — 100% autonome (CRITIQUE)
 
 L'utilisateur lance une tache puis part. Tu DOIS gerer ton contexte SEUL, sans interaction humaine.

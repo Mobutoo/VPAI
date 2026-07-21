@@ -389,6 +389,41 @@ découverte 29/30 repos (max_repos worker).
    upstream : `</content>` fuité par gsd-doc-writer (A ×1, B ×2) + marqueurs
    VERIFY shippés — strip côté writer à proposer.
 
+## Verdict session 8 (2026-07-21 matin) — pilote plan-phase checker-loop : **NO-GO au seuil, série ARRÊTÉE**
+
+1. **plan-phase l.1195–1367 extrait, testé, mesuré, REVERTÉ** (éval lab
+   `evaluations/2026-07-21-pilote-gsd-plan-phase-workflow.md`) : script
+   `gsd-plan-phase.js` (boucle checker→revise cap 3, stall detection, statuts
+   PASSED/STALLED/MAX_ITERATIONS/EMPTY_RETURN → gates .md), revue Opus
+   0C/0H/2M/5L soldée, 7 fixtures dont cap-vs-stall discriminante (mutant-test).
+   A/B jumelles koodia/powerbank (paire s6, même binaire, tous sonnet) :
+   **out main 21 703→18 711 (−13,8 %, seuil −30 % NON atteint)** — coûts fixes
+   de plan-phase dominants, prédit par le cadrage (rang 3). MAIS tronçon :
+   retours de boucle en main **7 465 → 1 282 chars (−83 %) à charge 3×**, et
+   stall detection prouvée LIVE (STALLED 1→3 → gate .md → fixes committés).
+   Gate qualité EQUIVALENT (0C/0H, A 15/16, B 23/24 spot-checks, zéro
+   fabrication). **Règle d'arrêt appliquée** : patch live reverté (pristine),
+   script conservé dormant (lab 40e0f6e+63fb7c7, ~/.claude 5050a72),
+   **execute-phase partiel ABANDONNÉ — bilan série : 2 GO live + 1 NO-GO.**
+2. **Pièges s8** (3 runs B brûlés avant le bon, détail éval §4) :
+   (a) **cap Read 25k tokens** — plan-phase.md vit à ~24,4k (~2 % du cap), le
+   patch §9d v1 l'a fait franchir → les DEUX bras ont improvisé sur des
+   lectures partielles (baseline contaminée) ; mesurer les tokens d'un .md GSD
+   avant/après patch, bloc opérationnel → SKILL.md (toujours chargé), pointeur
+   court dans le .md ; (b) **conditions exécutables, jamais introspectives** —
+   « Workflow tool available » jugé par introspection = faux négatif en env
+   outils différés ; imposer `ToolSearch select:Workflow` ; (c) **PATH sous
+   systemd-run --user** résout `/usr/bin/claude` (install système, registre
+   SANS Workflow) vs `~/.local/bin/claude` (avec) — MÊME numéro de version
+   2.1.216 ; bisect env full→halves→PATH ; runner : `export
+   PATH="$HOME/.local/bin:$PATH"` + `command -v claude` loggé. Rétro-éclaire
+   s6 (background de session = env hérité → marchait par accident) ;
+   (d) **probes contaminés** — tout probe lancé du shell de session hérite
+   CLAUDECODE/env → comparer avec un probe sous systemd avant de conclure.
+   Annexe : vigies Bash background tuées ×2 → Monitor (parade s7 confirmée).
+3. **/goal interactif (GATE HUMAIN) et mirror post-P0-1** : inchangés, restent
+   les seuls reliquats loops.
+
 ## Rappels d'état
 
 - Hebdo 98 % (**reset LUNDI 10:00**, corrigé par user), Opus scopé 83 %. Ne rien lancer de lourd avant.

@@ -138,10 +138,13 @@ Si l'utilisateur est devant l'ecran et que le contexte est tres degrade (3+ comp
 
 ### Reviews hors GSD (superpowers) — règles prioritaires sur les skills
 
-1. Quand une skill superpowers demande `Task(subagent_type: "superpowers:code-reviewer")`,
+1. Quand une skill superpowers dispatche une REVUE — depuis la v6.x :
+   `Task(general-purpose)` + template de prompt (`requesting-code-review/code-reviewer.md`,
+   `subagent-driven-development/task-reviewer-prompt.md`) ; l'agent nommé
+   `superpowers:code-reviewer` n'existe plus (supprimé v5.1.0) —
    dispatcher À LA PLACE `subagent_type: "reviewer"` (agent local, Opus épinglé).
-   Raison : code-reviewer est `model: inherit` → hérite de la session (Fable interdit
-   en subagent de revue — 2x le prix d'Opus).
+   Raison : `general-purpose` sans `model` explicite hérite de la session (Fable
+   interdit en subagent de revue — 2x le prix d'Opus).
 2. Avec `executing-plans` : dispatcher une revue (`reviewer`) après chaque batch de
    tâches, comme le documente requesting-code-review (l'intégration n'existe pas
    dans la skill — c'est à l'orchestrateur de la faire).

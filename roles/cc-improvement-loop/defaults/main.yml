@@ -24,3 +24,13 @@ cc_improvement_enabled: true                               # false = timer stopp
 # liste, PRICING interne au script) dépasse ce seuil. Silence si sous le
 # seuil (anti-spam).
 cc_improvement_token_audit_threshold_pct: 50
+
+# Drift plugins/marketplaces (T1.3, seed 2026-07-21) : après l'audit tokens,
+# le service exécute scripts/plugin_drift_check.sh (lab git-local) qui
+# compare chaque plugin installé (~/.claude/plugins/installed_plugins.json)
+# à son marketplace amont GitHub et signale toute marketplace non rafraîchie
+# depuis plus de N jours. Origine : superpowers 5.0.4 a stagné 4 mois derrière
+# l'amont (6.1.1) sans que le timer mensuel ne le détecte — la boucle
+# n'auditait que les sessions/tokens, jamais les versions plugins. Détection-
+# only : jamais d'auto-update (pin discipline, leçon gsd-core npx 2026-07-19).
+cc_improvement_plugin_drift_stale_days: 60

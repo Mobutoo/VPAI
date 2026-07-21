@@ -454,5 +454,10 @@ découverte 29/30 repos (max_repos worker).
 ## Rappels d'état
 
 - Hebdo 98 % (**reset LUNDI 10:00**, corrigé par user), Opus scopé 83 %. Ne rien lancer de lourd avant.
-- Restes programme : P0-1 scrubbing (réservé), backup offsite ~/.claude+lab (décision),
-  spike @opengsd/gsd-core sandboxé, re-mesure 2026-08-17.
+- Restes programme : P0-1 scrubbing (réservé) ; re-mesure 2026-08-17.
+- **FAITS 2026-07-21 après-midi** : spike gsd-core = **GO migration 1.7.0** (lab
+  `683445c` — session dédiée ~2-3 h à planifier, 8 conditions) ; **backup offsite
+  LIVE** Gitea Seko (snapshots orphelins hebdo ~/.claude→`claude-config` + lab,
+  gate secrets fail-closed, timer dim 04:30, loops `e1f2ee2`) ; `mcp.json`
+  DÉTRACKÉ de ~/.claude (`b3055a9`, ≥8 clés API inline — indirection env = coffre
+  P1b) ; mirror complet toujours gaté P0-1.

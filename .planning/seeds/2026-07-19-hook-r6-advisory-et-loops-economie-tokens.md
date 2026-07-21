@@ -355,6 +355,40 @@ découverte 29/30 repos (max_repos worker).
    sans `Workflow` = fast-path invisible ; check smoke épinglage étendu
    (identifiant dérivé d'args accepté, frontière §3.5).
 
+## Verdict session 7 (2026-07-20 nuit → 21) — pilote docs-update : **GO −46,1 % main**
+
+1. **docs-update l.373–954 extrait et GO** (éval lab
+   `evaluations/2026-07-20-pilote-gsd-docs-update-workflow.md`) : tronçon
+   dispatch_wave_1→fix_loop vers `workflows/gsd-docs-update.js` (vagues W1/W2,
+   verify par doc, fix ≤2 halt-on-regression D-05/D-06 prouvés par fixtures
+   adversariales). Revue pré-sync MERGE-OK 0C/0H/1M/6L/4T (M = campagne :
+   verifier_model non passé → héritage session, fidélité .md). A/B jumelles
+   ase (56k LOC, A) / trek (99k LOC, B défavorisé), clones scratchpad,
+   `--force`, tous agents sonnet hérités des 2 côtés : **out main
+   40 801→21 981 (−46,1 %, seuil −30 %)**, ingestion −56,5 %, subagents
+   +3,9 % (42 vs 31 agents — B a vérifié 12 docs, fixé 8 claims vs 4), mur
+   +104 % (repo +77 % LOC, cap 2, workflow 1 h 55). **Gate qualité :
+   EQUIVALENT** (reviewer opus unique, ~40 spot-checks/bras, exactitude
+   ~5,0/5,0, zéro fabrication des 2 côtés, 0C/0H/0M/3L/1T symétriques).
+   Commits : lab `3ebff81`+`9e740ec`+`9c57eef`+`93819cb` (65 tests verts),
+   ~/.claude `ba1b597` (.md fast-path + SKILL.md +Workflow + script sync).
+   **Suite cadrage §7 : session 8 = plan-phase checker-loop l.1195–1367.**
+2. **Pièges s7** (détail éval §4) : sweep harness tue les background Bash →
+   run dans `systemd-run --user` + vigie via Monitor ; headless docs-update
+   exige `--dangerously-skip-permissions` (refus Write/Bash orchestrateur =
+   ~$3,3 de recovery parasite) ; calibrage budget chemin historique ~$40 sur
+   56k LOC → doctrine `--max-budget-usd 60` + timeout 7200 s (verify = poste
+   dominant, 360 claims) ; EXIT:0 ≠ complétude (pause budget polie) et
+   EXIT:124 ≠ échec (B avait committé — vérifier le COMMIT du clone) ;
+   ENOTIMP DNS au boot → pré-flight getent ; le CLAUDE.md du repo cible
+   injecte du travail post-protocole (trek « make verify vert » → npm install
+   dans le clone, tangente tuée par timeout) → neutraliser/égaliser les
+   CLAUDE.md des clones ; timestamps JSONL en UTC (+2 locale). Annexes :
+   gsd-sdk npx re-aligné 1.42.3 (divergence s6 éteinte, purge différée — pas
+   de remplaçant tracké) ; borne découverte 29/30 inchangée ; follow-up
+   upstream : `</content>` fuité par gsd-doc-writer (A ×1, B ×2) + marqueurs
+   VERIFY shippés — strip côté writer à proposer.
+
 ## Rappels d'état
 
 - Hebdo 98 % (**reset LUNDI 10:00**, corrigé par user), Opus scopé 83 %. Ne rien lancer de lourd avant.

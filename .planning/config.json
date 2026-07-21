@@ -14,7 +14,8 @@
     "research": true,
     "plan_check": true,
     "verifier": true,
-    "_auto_chain_active": false
+    "_auto_chain_active": false,
+    "plan_review_convergence": true
   },
   "granularity": "coarse",
   "plane": {
@@ -29,5 +30,13 @@
   "session": {
     "memory_search_on_start": true,
     "scope_required": false
+  },
+  "review": {
+    "default_reviewers": [
+      "codex"
+    ],
+    "models": {
+      "codex": "gpt-5.6-sol"
+    }
   }
 }

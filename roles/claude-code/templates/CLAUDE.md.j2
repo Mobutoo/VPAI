@@ -122,11 +122,19 @@ Détail : lab `recommendations/2026-07-21-fable-amiral-c{1,2,5}-*.md`.
 3. Avant tout merge/PR (`finishing-a-development-branch`) : une revue (`reviewer`
    local, ou Codex via review-pr.sh si une PR existe) doit avoir eu lieu — les tests
    seuls ne suffisent pas.
-4. Consultant Codex AVANT gate humain : tout plan/doc produit par une skill
-   superpowers (`writing-plans`, design issu de `brainstorming`) passe par
-   `~/work/ops/loops/scripts/review-file.sh --sol <fichier>` ; intégrer les
-   findings (HIGH obligatoires) AVANT de présenter l'artefact à l'humain —
-   le gate humain devient approve/reject d'un artefact déjà convergé.
+4. Consultant Codex AVANT gate humain — périmètre : **tout artefact TEXTE
+   substantiel** (plan, spec, runbook, design, verdict) présenté à un gate humain,
+   **quelle que soit sa provenance, y compris repris d'une session précédente**
+   (la provenance ne survit pas au changement de session : ne jamais conditionner
+   la règle à « produit par une skill superpowers »). PAS « tout ce qui passe par
+   un gate » : une confirmation de déploiement triviale n'est pas un artefact.
+   L'artefact passe par `~/work/ops/loops/scripts/review-file.sh --sol <fichier>` ;
+   intégrer les findings (HIGH obligatoires) AVANT de présenter l'artefact à
+   l'humain — le gate humain devient approve/reject d'un artefact déjà convergé.
+   Présentation du gate **obligatoirement** via
+   `~/work/ops/loops/scripts/notify-gate.sh --artifact <chemin>` (ou
+   `--no-artifact`, déclaration consciente) : le script rapporte l'état de revue
+   (RELU / NON RELU / N/A) dans la notification, sans jamais la supprimer.
    Équivalent GSD : `/gsd-plan-review-convergence`. Jamais de fichier contenant
    des secrets (le contenu part chez OpenAI).
 

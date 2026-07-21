@@ -65,9 +65,17 @@ un tableau statique. Verifier le modele reellement resolu avec :
 Politique complete (source unique) :
 `~/work/ops/claude-code-improvement-lab/recommendations/2026-07-18-model-routing-policy.md`.
 
-Doctrine : session principale = Opus par défaut. **Fable = sessions garant,
-jauge DÉDIÉE ~50 % du forfait Max (incluse — la laisser à 0 % = valeur
-perdue ; l'utiliser préserve la limite Opus)**. Déclencheurs Fable précis :
+Doctrine : session principale = Opus par défaut ; sessions légères/ops =
+Sonnet. **Fable = sessions garant uniquement. Jauges (vérifié endpoint
+`api/oauth/usage` 2026-07-21) : `weekly_all` = jauge globale TOUS modèles ;
+`weekly_scoped` Fable = CAP dédié (~50 % du forfait) — la consommation Fable
+compte AUSSI dans la globale : le cap borne, il n'offre PAS de quota
+gratuit. Pas de jauge Opus séparée constatée.** Pas de chat routinier sur
+Fable (thinking always-on = plus de tokens/tour ; préserver le headroom du
+cap pour les sessions garant). Bascule mid-session possible via `/model` au
+moment verdict (coût : re-processing complet du contexte, cache par
+modèle — préférer choisir le modèle à l'ouverture selon la nature de la
+session). Déclencheurs Fable précis :
 (1) verdict / synthèse critique de fin de chantier (GO/NO-GO, post-mortem,
 audit) ; (2) arbitrage d'architecture transverse où le coût d'erreur excède
 largement le coût tokens ; (3) orchestration long-horizon multi-agents

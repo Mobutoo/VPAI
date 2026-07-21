@@ -60,16 +60,25 @@ Les overrides de `~/.gsd/defaults.json` ne s'appliquent qu'a la **creation**
 d'un projet GSD. Pour un projet EXISTANT, seul `.planning/config.json`
 (`model_profile` + `model_overrides`) fait foi — ne jamais supposer depuis
 un tableau statique. Verifier le modele reellement resolu avec :
-`node ~/.claude/get-shit-done/bin/gsd-tools.cjs resolve-model <agent>`.
+`node ~/.claude/gsd-core/bin/gsd-tools.cjs resolve-model <agent>`.
 
 Politique complete (source unique) :
 `~/work/ops/claude-code-improvement-lab/recommendations/2026-07-18-model-routing-policy.md`.
 
-Doctrine : session principale = Opus (Fable reserve au role de garant /
-synthese critique, cap ~50% du quota hebdo) ; subagents d'execution =
-Sonnet ; revue adversariale = Opus ; inventaires / greps massifs = Haiku
-(conclusions **a re-verifier** par l'appelant, jamais prises telles
-quelles) ; verification croisee / refutation de findings = Codex.
+Doctrine : session principale = Opus par défaut. **Fable = sessions garant,
+jauge DÉDIÉE ~50 % du forfait Max (incluse — la laisser à 0 % = valeur
+perdue ; l'utiliser préserve la limite Opus)**. Déclencheurs Fable précis :
+(1) verdict / synthèse critique de fin de chantier (GO/NO-GO, post-mortem,
+audit) ; (2) arbitrage d'architecture transverse où le coût d'erreur excède
+largement le coût tokens ; (3) orchestration long-horizon multi-agents
+(session pilote qui dispatche et arbitre) ; (4) réfutation finale d'un plan
+à fort enjeu après convergence Codex. JAMAIS Fable en subagent (2× le prix
+d'Opus — hook advisor le rappelle) ni pour exécution / recherche / docs.
+Subagents d'exécution = Sonnet ; revue adversariale = Opus ; inventaires /
+greps massifs = Haiku (conclusions **à re-vérifier** par l'appelant, jamais
+prises telles quelles) ; vérification croisée / réfutation de findings =
+Codex. Jauges réelles (global hebdo + 5 h + limite Opus + jauge Fable) :
+`~/work/ops/loops/scripts/claude-usage-guard.sh`.
 
 ### Gestion du contexte — 100% autonome (CRITIQUE)
 

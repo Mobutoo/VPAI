@@ -151,6 +151,13 @@ Si l'utilisateur est devant l'ecran et que le contexte est tres degrade (3+ comp
 3. Avant tout merge/PR (`finishing-a-development-branch`) : une revue (`reviewer`
    local, ou Codex via review-pr.sh si une PR existe) doit avoir eu lieu — les tests
    seuls ne suffisent pas.
+4. Consultant Codex AVANT gate humain : tout plan/doc produit par une skill
+   superpowers (`writing-plans`, design issu de `brainstorming`) passe par
+   `~/work/ops/loops/scripts/review-file.sh --sol <fichier>` ; intégrer les
+   findings (HIGH obligatoires) AVANT de présenter l'artefact à l'humain —
+   le gate humain devient approve/reject d'un artefact déjà convergé.
+   Équivalent GSD : `/gsd-plan-review-convergence`. Jamais de fichier contenant
+   des secrets (le contenu part chez OpenAI).
 
 
 ## Workspace

@@ -133,9 +133,20 @@ Plans:
 - [ ] 09-01-PLAN.md — Template/workflow fixes (event_handler variable, Remotion API fields, env vars, rough-cut action, STATUS_MAP locked) + vault credential update
 - [ ] 09-02-PLAN.md — Bot account provisioning + deploy to Sese-AI + E2E verification
 
-### Phase 10: AI Ops
+### Phase 10: AI Ops — **ARCHIVÉE 2026-07-22**
 
-**Goal**: Cycle d'amélioration continue des sessions Claude Code opérationnel — zéro nouveau serveur obligatoire. Track A : Langfuse Cloud free tier branché sur le hook SessionStop (semaine 1). Track B : stack maison (NocoDB + VictoriaMetrics + Loki + LiteLLM juge qualité) en parallèle pour stockage long terme et scoring automatique. Nouveau serveur uniquement si Track C se déclenche (rétention ou confidentialité bloquants).
+> **Statut : archivée, non planifiée, non exécutée.** Revue croisée Opus (reviewer local) + Codex
+> (`review-file.sh --sol`) : objectif redondant avec `~/work/ops/claude-code-improvement-lab`
+> (hooks P0-P4 live + `continuous-improvement.sh`, timer mensuel) et surtout `~/work/ops/loops/PLAN.md`
+> Phase 2 (T2.1-T2.4 — même dashboard Grafana tokens/coût via OTLP/Alloy/VictoriaMetrics, non exécutée,
+> bloquée sur la livraison du NAS Banga). Vérification factuelle doc officielle Claude Code : OTEL natif
+> (`CLAUDE_CODE_ENABLE_TELEMETRY=1`) calcule tokens+coût USD automatiquement — supérieur au parseur
+> `session-analyst.py` prévu ici (table de pricing manuelle déjà périmée). Seule la partie sémantique
+> (bash_évitable, corrections utilisateur, compaction) et le juge qualité LLM ne sont couverts par rien
+> d'existant : **greffés dans `ops/loops/PLAN.md` Phase 2 (T2.5/T2.6)** plutôt que rebâtis en phase VPAI
+> séparée. Décision détaillée : `.planning/notes/2026-07-22-phase10-aiops-vs-boucle-amelioration-comparaison.md`.
+
+**Goal** (historique, non poursuivi) : Cycle d'amélioration continue des sessions Claude Code opérationnel — zéro nouveau serveur obligatoire. Track A : Langfuse Cloud free tier branché sur le hook SessionStop (semaine 1). Track B : stack maison (NocoDB + VictoriaMetrics + Loki + LiteLLM juge qualité) en parallèle pour stockage long terme et scoring automatique. Nouveau serveur uniquement si Track C se déclenche (rétention ou confidentialité bloquants).
 
 **Depends on**: ULTIMATE-CONFIG Couche 5 (`session-memory-writer.sh` — SessionStop hook)
 
@@ -164,4 +175,4 @@ Phases execute in numeric order: 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 7. Orchestration | 5/5 | Complete | 2026-03-17 | - |
 | 8. Data Layer Glue | 1/2 | In Progress|  | - |
 | 9. Integration Fixes | 2/2 | Complete   | 2026-03-18 | - |
-| 10. AI Ops | 0/TBD | Planned | - | - |
+| 10. AI Ops | 0/TBD | **Archivée** (superseded) | 2026-07-22 | - |

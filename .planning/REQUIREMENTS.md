@@ -150,7 +150,18 @@
 > - Arize Phoenix : hors scope (valeur marginale pour usage solo batch).
 > - LiteLLM : rôle = **juge qualité** (modèle cheap évalue la session après coup), pas capturer les appels.
 
-### Track A — Langfuse Cloud (démarrage immédiat, 0€)
+> **ARCHIVÉ 2026-07-22** — Phase 10 jamais planifiée/exécutée (spec figée depuis avril, 3+ mois
+> avant réexamen). Revue croisée Opus+Codex : redondante avec `~/work/ops/claude-code-improvement-lab`
+> (hooks P0-P4 live, `continuous-improvement.sh`) et surtout `~/work/ops/loops/PLAN.md` Phase 2
+> (T2.1-T2.4, même dashboard Grafana tokens/coût, non exécutée — bloquée NAS). Vérification factuelle
+> (doc officielle Claude Code) : OTEL natif (`CLAUDE_CODE_ENABLE_TELEMETRY=1`) couvre tokens+coût USD
+> auto-calculé, supérieur au parseur maison ci-dessous (table `PRICING` déjà périmée). Seule la partie
+> sémantique (bash_évitable, corrections, compaction) et le juge qualité survivent, **greffés dans
+> `ops/loops/PLAN.md` Phase 2** (T2.5/T2.6) plutôt que rebâtis ici. AIOPS-01/05/07 (parties sémantique +
+> juge) → mergées. AIOPS-02/04/06/08/09/10/11/12 → **drop** (Langfuse/Tempo/NocoDB/Qdrant/Gitea webhook
+> tous redondants ou hors besoin confirmé). Détail : `.planning/notes/2026-07-22-phase10-aiops-vs-boucle-amelioration-comparaison.md`.
+
+### Track A — Langfuse Cloud (démarrage immédiat, 0€) — ARCHIVÉ, voir note ci-dessus
 
 - [ ] **AIOPS-01**: `session-analyst` enhanced — parse JSONL complet, extrait métriques (tokens, coût, tool_calls, bash_évitables, modèle, durée, git_sha CLAUDE.md)
 - [ ] **AIOPS-02**: Hook `SessionStop` déclenche `session-analyst` → Langfuse Python SDK → Langfuse Cloud (free tier). Zéro nouveau serveur, rétention 30 jours.

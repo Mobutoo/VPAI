@@ -1,7 +1,40 @@
 # Phase 10: AI Ops — État de planification
 
 **Date:** 2026-04-12
-**Statut:** Spec Track B complète — prête pour `/gsd-plan-phase 10 --skip-research`
+**Statut:** ~~Spec Track B complète — prête pour `/gsd-plan-phase 10 --skip-research`~~
+**ARCHIVÉE 2026-07-22** — jamais planifiée ni exécutée (aucun PLAN.md, 3+ mois sans réexamen).
+
+## Archivage 2026-07-22
+
+Revue croisée Opus (reviewer local, lecture indépendante des sources) + Codex (`review-file.sh
+--sol`) : cette phase fait doublon avec du travail déjà livré ailleurs, non VPAI :
+
+- `~/work/ops/claude-code-improvement-lab` — hooks P0-P4 **live** dans `~/.claude` (bash-lint,
+  error-escalator v2, loop-detector v2, gate R0 2-tiers) + `continuous-improvement.sh` (timer
+  systemd mensuel) = le "cycle d'amélioration continue" visé par cette phase existe déjà, sous
+  une forme différente (correction temps réel via hooks, pas score post-hoc).
+- `~/work/ops/loops/PLAN.md` **Phase 2** (T2.1-T2.4) — planifie le **même dashboard Grafana**
+  tokens/coût (OTLP→Alloy→VictoriaMetrics), non exécutée (bloquée sur livraison NAS Banga). Doublon
+  direct avec Track B destinations 2-3 de cette phase.
+- Vérification factuelle (doc officielle `code.claude.com/docs`) : la télémétrie OTEL native
+  (`CLAUDE_CODE_ENABLE_TELEMETRY=1`) calcule tokens + **coût USD automatiquement** — supérieure au
+  parseur `session-analyst.py` prévu ici (table `PRICING` manuelle, déjà périmée : ne connaît que
+  claude-sonnet-4-6/opus-4-6, absents sonnet-5/opus-4.8/haiku-4.5/fable-5).
+
+**Ce qui est repris** (la seule partie qu'OTEL ne peut structurellement pas fournir — confirmé
+doc officielle) : détection bash_évitable, signaux de correction utilisateur, compteur de
+compaction, et le juge qualité LLM (aucun équivalent ailleurs). **Greffés dans
+`~/work/ops/loops/PLAN.md` Phase 2 (T2.5/T2.6)**, en étendant le script déjà vivant
+`lab/scripts/measure_headless_session.py`, plutôt que rebâtis comme phase VPAI séparée avec 7
+nouvelles destinations (Langfuse, Tempo, NocoDB, Qdrant `sessions_v1`, Gitea webhook, coach
+Règles 8-11 — tous droppés, redondants ou risque de fork d'un hook déjà maintenu ailleurs).
+
+Décision complète, tableau de fusion par composant : `.planning/notes/2026-07-22-phase10-aiops-vs-boucle-amelioration-comparaison.md`.
+
+---
+
+## État historique (avant archivage — pour mémoire, ne plus suivre)
+
 **Artefact clé :** `.planning/phases/10-ai-ops/10-TRACK-B-SPEC.md` (destinations 1-7, scrubber sécurité, 3 plans B1/B2/B3)
 
 ---

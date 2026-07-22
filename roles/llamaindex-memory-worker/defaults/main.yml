@@ -267,6 +267,16 @@ memory_worker_exclude_dirs:
   # Collections Ansible vendorées dans un repo (incident 2026-07-19 : banga/.ansible
   # 40 Mo, ~5000 modules tiers → run incrémental de 15 h + pollution memory_v3).
   - .ansible
+  # Dumps runtime hawktrade, non-versionnés (son .gitignore) mais auto-découverts
+  # (incident 2026-07-22 : sic_store seul = 709 Mo, 4747 fichiers → run bloqué 13h).
+  # doc_store = 3.6G, le plus gros. `data/corpus-trading/` reste indexé (versionné).
+  - sic_store
+  - ritter_store
+  - doc_store
+  - eodhd_store
+  - binance
+  - bitvavo
+  - user_data
 
 memory_worker_max_file_bytes: 1048576
 memory_worker_chunk_size: 1600

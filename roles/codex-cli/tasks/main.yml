@@ -34,7 +34,42 @@
   ansible.builtin.debug:
     msg: "OpenAI Codex CLI: {{ codex_cli_version.stdout }}"
 
+# --- Preserve [projects.*] trust blocks across redeploys ---
+# Codex CLI écrit lui-même des blocs [projects."<chemin>"] (trust_level =
+# "trusted") dans config.toml à l'approbation interactive d'un répertoire.
+# Ces blocs ne sont pas modélisés dans le template Jinja2 : sans ce
+# mécanisme, chaque redeploy les efface silencieusement et force une
+# ré-approbation manuelle. On les extrait AVANT d'écraser le fichier, pour
+# les réinjecter via le template (voir config.toml.j2).
+- name: Check for existing Codex CLI config.toml
+  ansible.builtin.stat:
+    path: "{{ codex_cli_config_dir }}/config.toml"
+  become: true
+  register: codex_cli_existing_config_stat
+
+- name: Extract existing [projects.*] trust blocks (best-effort, never fails)
+  ansible.builtin.command:
+    cmd: "python3 {{ role_path }}/files/extract-project-trust.py {{ codex_cli_config_dir }}/config.toml"
+  become: true
+  when: codex_cli_existing_config_stat.stat.exists
+  changed_when: false
+  register: codex_cli_project_trust_raw
+
+- name: Set fact - existing projects trust (config.toml found)
+  ansible.builtin.set_fact:
+    codex_cli_existing_projects: "{{ (codex_cli_project_trust_raw.stdout | default('{}')) | from_json }}"
+  when: codex_cli_existing_config_stat.stat.exists
+
+- name: Set fact - existing projects trust (no prior config.toml)
+  ansible.builtin.set_fact:
+    codex_cli_existing_projects: {}
+  when: not codex_cli_existing_config_stat.stat.exists
+
 # --- Deploy config.toml ---
+# no_log: contient QDRANT_API_KEY en clair (mcp_servers.qdrant.env) — --diff sinon
+# l'affiche en clair dans la sortie/les logs (constaté 2026-07-22, cf. REX).
+# backup: true — filet de sécurité : Ansible conserve une copie horodatée
+# (config.toml.XXXX~) de l'ancien fichier avant de l'écraser.
 - name: Deploy Codex CLI config (config.toml)
   ansible.builtin.template:
     src: config.toml.j2
@@ -42,7 +77,9 @@
     owner: "{{ codex_cli_user }}"
     group: "{{ codex_cli_user }}"
     mode: "0600"
+    backup: true
   become: true
+  no_log: true
 
 # --- Post-deploy instructions ---
 - name: Post-deploy authentication reminder

@@ -12,9 +12,10 @@ codex_cli_config_dir: "/home/{{ codex_cli_user }}/.codex"
 # npm global prefix (NodeSource on Ubuntu 24.04 ARM64 → /usr)
 codex_cli_npm_prefix: "/usr"
 
-# Pinned version — update after first validated deploy
-# Check: https://www.npmjs.com/package/@openai/codex
-codex_cli_npm_version: "0.106.0"
+# Pinned version — le live fait foi (constaté 0.144.5 sur waza via `codex --version`,
+# pin précédent 0.106.0 obsolète depuis une mise à jour hors-Ansible). Revérifier avec
+# `codex --version` avant tout nouveau bump. Check: https://www.npmjs.com/package/@openai/codex
+codex_cli_npm_version: "0.144.5"
 
 # Credential storage : file (stocke dans ~/.codex/auth.json)
 # Valeurs valides : file | keyring | auto (schema: cli_auth_credentials_store)
@@ -30,3 +31,8 @@ codex_cli_default_model: "gpt-5.6-terra"
 # HIGH, cf. ops/loops/scripts/review-pr.sh) doit monter à "xhigh", via
 # override par invocation (-c model_reasoning_effort="xhigh"), jamais ici.
 codex_cli_reasoning_effort: "medium"
+
+# --- MCP: recherche mémoire Qdrant (parité R0 avec Claude Code) ---
+codex_cli_qdrant_mcp_enabled: true
+codex_cli_qdrant_mcp_python: "/opt/workstation/ai-memory-worker/.venv/bin/python"
+codex_cli_qdrant_mcp_script: "/opt/workstation/ai-memory-worker/mcp_search.py"

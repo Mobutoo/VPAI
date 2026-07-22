@@ -5,4 +5,25 @@
 model = "{{ codex_cli_default_model }}"
 cli_auth_credentials_store = "{{ codex_cli_credential_storage }}"
 model_reasoning_effort = "{{ codex_cli_reasoning_effort }}"
+{% if codex_cli_qdrant_mcp_enabled | default(true) | bool %}
+
+[mcp_servers.qdrant]
+command = "{{ codex_cli_qdrant_mcp_python }}"
+args = ["{{ codex_cli_qdrant_mcp_script }}"]
+
+[mcp_servers.qdrant.env]
+QDRANT_URL = "{{ memory_worker_qdrant_url }}"
+QDRANT_API_KEY = "{{ qdrant_api_key }}"
+HF_HUB_OFFLINE = "1"
+{% endif %}
+
+{# Blocs [projects.*] (trust_level, etc.) écrits par Codex CLI lui-même à
+   l'approbation interactive d'un répertoire. Préservés à travers les
+   redeploys via extract-project-trust.py (voir tasks/main.yml). #}
+{% for proj_path, proj_data in (codex_cli_existing_projects | default({})).items() %}
+[projects."{{ proj_path }}"]
+{% for k, v in proj_data.items() %}
+{{ k }} = {{ v | tojson }}
+{% endfor %}
+{% endfor %}
 

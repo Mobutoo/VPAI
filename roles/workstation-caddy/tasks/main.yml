@@ -126,6 +126,7 @@
     group: root
     mode: "0644"
   become: true
+  no_log: true  # Environment= embarque OVH_APPLICATION_SECRET/CONSUMER_KEY — --diff les affichait en clair
   notify:
     - Reload systemd
     - Restart caddy-workstation

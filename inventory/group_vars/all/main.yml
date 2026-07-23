@@ -278,6 +278,12 @@ workstation_pi_become_pass: "{{ vault_workstation_become_pass }}"
 workstation_pi_ram_gb: 16
 workstation_pi_disk_gb: 256
 
+# --- Banga (X58 home-datacenter, repo séparé) — cible du dead-man waza→banga ---
+# Tailscale IP — sondée par le rôle banga-deadman (déployé sur waza) pour le
+# dead-man switch inverse. default('') si vault vide → banga-deadman retombe
+# sur l'IP connue (100.64.0.32) en dur dans ses defaults.
+banga_tailscale_ip: "{{ vault_banga_tailscale_ip | default('') }}"
+
 # === PALAIS ===
 palais_subdomain: "palais"
 # Palais v2 — Infrastructure Control Plane

@@ -117,6 +117,9 @@
     - role: obsidian-collector-pi
       tags: [obsidian-collector-pi, workstation, monitoring]
 
+    - role: banga-deadman
+      tags: [banga-deadman, workstation, monitoring]
+
   post_tasks:
     - name: Deploy Windows Claude Code mcp.json (n8n-docs via Tailscale)
       ansible.builtin.template:

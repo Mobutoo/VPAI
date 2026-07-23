@@ -1,0 +1,7 @@
+---
+# banga-deadman — handlers
+
+- name: Reload systemd (banga-deadman)
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true

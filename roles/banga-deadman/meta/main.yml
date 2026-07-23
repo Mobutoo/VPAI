@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  role_name: banga_deadman
+  author: VPAI
+  namespace: mobutoo
+  description: Dead-man switch inverse — sonde banga par tailscale depuis waza, alerte Telegram si muet (timer systemd)
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+
+dependencies: []

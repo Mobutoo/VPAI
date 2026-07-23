@@ -41,14 +41,31 @@ done
 echo "[$(date)] PostgreSQL dump completed"
 
 # === Redis BGSAVE ===
+# REX 2026-07-23 : dump.rdb appartient à l'uid du conteneur redis (999, mode 0600) —
+# illisible par l'utilisateur du script → un `cp` host faisait avorter TOUT le script
+# (set -e) avant Qdrant/n8n/Grafana. `docker cp` passe par le daemon (root), contourne
+# le problème. Bloc entièrement non-fatal : un échec = WARNING, on continue.
 echo "[$(date)] Triggering Redis BGSAVE..."
-docker exec "${PROJECT}_redis" \
-  sh -c 'REDISCLI_AUTH="{{ redis_password }}" redis-cli BGSAVE'
-# Wait for background save to complete
-sleep 5
-cp "/opt/${PROJECT}/data/redis/dump.rdb" \
-  "${BACKUP_DIR}/redis/dump-${TIMESTAMP}.rdb"
-echo "[$(date)] Redis snapshot completed"
+if docker exec "${PROJECT}_redis" \
+    sh -c 'REDISCLI_AUTH="{{ redis_password }}" redis-cli BGSAVE' >/dev/null 2>&1; then
+  # Polling au lieu d'un sleep fixe : attend la fin réelle du BGSAVE (max 30s)
+  for i in $(seq 1 30); do
+    BGSAVE_DONE=$(docker exec "${PROJECT}_redis" \
+      sh -c 'REDISCLI_AUTH="{{ redis_password }}" redis-cli INFO persistence' 2>/dev/null | \
+      grep -c '^rdb_bgsave_in_progress:0' || true)
+    [ "${BGSAVE_DONE}" = "1" ] && break
+    sleep 1
+  done
+  if docker cp "${PROJECT}_redis:/data/dump.rdb" \
+      "${BACKUP_DIR}/redis/dump-${TIMESTAMP}.rdb" 2>/dev/null \
+      && [ -s "${BACKUP_DIR}/redis/dump-${TIMESTAMP}.rdb" ]; then
+    echo "[$(date)] Redis snapshot completed"
+  else
+    echo "[$(date)] WARNING: Redis snapshot vide ou échec de copie"
+  fi
+else
+  echo "[$(date)] WARNING: Redis BGSAVE a échoué"
+fi
 
 # === Qdrant snapshots ===
 # NOTE: Qdrant image has no wget/curl — call API from host via Docker network
@@ -122,13 +139,21 @@ tar -czf "{{ backup_trek_dir }}/uploads-${TIMESTAMP}.tar.gz" \
 echo "[$(date)] TREK backup completed"
 
 # === n8n workflow export ===
+# REX 2026-07-23 : `/home/node/.n8n/backups/` n'existe PAS dans le conteneur —
+# `export:workflow --output=...` échouait (ENOENT) mais les `|| true` masquaient
+# l'échec sans jamais vérifier le fichier produit. mkdir -p + vérif non-vide.
 echo "[$(date)] Exporting n8n workflows..."
-docker exec "${PROJECT}_n8n" \
-  n8n export:workflow --all \
-  --output="/home/node/.n8n/backups/workflows.json" 2>/dev/null || true
-docker cp "${PROJECT}_n8n:/home/node/.n8n/backups/workflows.json" \
-  "${BACKUP_DIR}/n8n/workflows-${TIMESTAMP}.json" 2>/dev/null || true
-echo "[$(date)] n8n export completed"
+if docker exec "${PROJECT}_n8n" mkdir -p /home/node/.n8n/backups \
+    && docker exec "${PROJECT}_n8n" \
+      n8n export:workflow --all \
+      --output="/home/node/.n8n/backups/workflows.json" >/dev/null 2>&1 \
+    && docker cp "${PROJECT}_n8n:/home/node/.n8n/backups/workflows.json" \
+      "${BACKUP_DIR}/n8n/workflows-${TIMESTAMP}.json" 2>/dev/null \
+    && [ -s "${BACKUP_DIR}/n8n/workflows-${TIMESTAMP}.json" ]; then
+  echo "[$(date)] n8n export completed"
+else
+  echo "[$(date)] WARNING: n8n export vide ou échoué"
+fi
 
 # === Grafana dashboard export ===
 echo "[$(date)] Exporting Grafana dashboards..."

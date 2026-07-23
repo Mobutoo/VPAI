@@ -8,7 +8,7 @@ User={{ opencode_user }}
 WorkingDirectory={{ opencode_workspace_dir }}
 Environment="OPENCODE_CONFIG_DIR={{ opencode_config_dir }}"
 Environment="LITELLM_API_KEY={{ opencode_litellm_api_key }}"
-ExecStart={{ opencode_npm_prefix }}/bin/opencode serve --port {{ opencode_port }} --hostname 0.0.0.0
+ExecStart={{ opencode_npm_prefix }}/bin/opencode serve --port {{ opencode_port }} --hostname {{ opencode_hostname }}
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

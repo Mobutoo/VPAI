@@ -100,7 +100,7 @@ remotion_version: "4.0.437"
 workstation_caddy_image: "caddy:2.11.2-alpine"  # reference version prod
 # OpenCode : pinne apres premier deploy valide
 # opencode_npm_version dans roles/opencode/defaults/main.yml
-opencode_npm_version_pinned: "1.2.15"  # updated 2026-02-27
+opencode_npm_version_pinned: "1.18.4"  # updated 2026-07-23
 
 # Claude Code CLI : pinne apres premier deploy valide
 # claude_code_npm_version dans roles/claude-code/defaults/main.yml

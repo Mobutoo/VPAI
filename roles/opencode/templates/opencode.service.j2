@@ -8,6 +8,14 @@ User={{ opencode_user }}
 WorkingDirectory={{ opencode_workspace_dir }}
 Environment="OPENCODE_CONFIG_DIR={{ opencode_config_dir }}"
 Environment="LITELLM_API_KEY={{ opencode_litellm_api_key }}"
+# Coupe l'injection ~/.claude/CLAUDE.md (doctrine Claude Code, sans rapport pour Banga)
+# et le catalogue complet des skills Claude Code (~28k caracteres de bruit, ~74% du
+# system prompt) : sans ca, banga/coder (14B, contexte 12288) rejette la requete reelle
+# OpenCode (~15443 tokens) avec exceed_context_size_error. Assume : pas d'usage Sonnet
+# via OpenCode (litellm) sur ce host, sinon regression du contexte skills/CLAUDE.md.
+# Detail : .planning/handoffs/2026-07-23-opencode-banga-temperature-tool-calling.md
+Environment="OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1"
+Environment="OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1"
 ExecStart={{ opencode_npm_prefix }}/bin/opencode serve --port {{ opencode_port }} --hostname {{ opencode_hostname }}
 Restart=on-failure
 RestartSec=5

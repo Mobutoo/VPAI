@@ -54,8 +54,72 @@ sans en discuter — c'était une décision actée, mais la prémisse ("temp=0 s
 d'être invalidée empiriquement sur le pipeline réel.
 
 Sessions de test toutes nettoyées (`DELETE /session/{id}`), aucune boucle active restante
-au moment de la rédaction. Rien commité — `git status` montre le diff opencode role en
-working tree, prêt à commit si l'opérateur valide l'approche malgré le constat ci-dessus.
+au moment de la rédaction.
+
+## MISE À JOUR 2 2026-07-23 (même session) — debug format tools, root cause complète
+
+Fix température **commité** (`817e507`).
+
+**Root cause de la boucle infinie + de l'écart avec le "3/3" banga, en 2 couches
+distinctes maintenant élucidées** :
+
+1. **Contexte trop petit — RÉSOLU côté VPAI** : le vrai system prompt qu'OpenCode envoie
+   (agent `build`) pèse 38 743 caractères / ~15 443 tokens, dont **74% est du bruit sans
+   rapport avec Banga** : `~/.claude/CLAUDE.md` global (8 879 car., doctrine de routage
+   Claude-specifique) + catalogue complet des skills Claude Code (19 783 car., 51% à lui
+   seul). `banga/coder` (14B, contexte serveur 12288) rejette donc la requête réelle
+   d'entrée (`400 exceed_context_size_error`) — c'est ce qui causait la boucle infinie de
+   compaction déjà notée dans la mise à jour précédente. **Fix déployé** (commit à suivre) :
+   `OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1` + `OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1` sur
+   le service systemd + le shell interactif (`roles/opencode/templates/opencode.service.j2`,
+   `roles/opencode/tasks/main.yml`). Vérifié empiriquement (CLI direct + proxy de capture
+   locale) : system prompt tombe à 13 671 caractères, la requête rentre enfin dans les
+   12288 tokens de `coder`. **Compromis assumé** (décision opérateur) : ces variables sont
+   globales au process OpenCode, donc coupent aussi skills/CLAUDE.md pour un usage
+   Claude Sonnet via LiteLLM dans le même OpenCode — accepté car Sonnet ne sera pas
+   utilisé via OpenCode sur ce host.
+
+2. **Format de tool-call non reconnu — PAS RÉSOLU, root cause différente de ce qui était
+   cru** : une fois le problème de contexte réglé, `banga/coder` (14B) **retombe
+   exactement dans le même échec que `coder_longctx` (7B)** : avec les **10 vrais outils
+   OpenCode** (`bash`, `edit`, `glob`, `grep`, `read`, `skill`, `task`, `todowrite`,
+   `webfetch`, `write` — descriptions verbeuses, ex. `bash` ~2000 caractères), le modèle
+   émet de façon déterministe un bloc `` ```json\n{"name": "bash", "arguments": {...}}\n``` ``
+   au lieu du tag `<tool_call>` que le patch attend — `finish_reason: "stop"`, jamais
+   `"tool_calls"`. **Le "3/3 déterministe" du handoff banga ne tenait que pour un test à
+   1 seul outil trivial (`list_files`)** — confirmé en reproduisant EXACTEMENT ce cas
+   minimal (3/3 `tool_calls` structuré parfait sur `coder` 14B) puis en gonflant
+   progressivement vers les 10 vrais outils (bascule déterministe vers le mauvais
+   format, peu importe modèle 14B ou 7B, peu importe la taille du system prompt une fois
+   les 10 outils présents). Donc : **le patch autoparser fonctionne, mais ne généralise
+   pas à un agent de code réel avec un jeu d'outils complet** — ni `coder` ni
+   `coder_longctx` n'est utilisable de façon fiable aujourd'hui pour du tool-calling réel
+   via OpenCode. Confirmé aussi sur le service systemd réel (pas seulement CLI/proxy) :
+   `banga/coder` boucle encore après le fix contexte (boucle différente — "anchored
+   summary", pas `exceed_context_size_error` cette fois — signe que le modèle répond bien
+   mais dans un format qu'OpenCode ne reconnaît pas comme final).
+
+**Méthode de repro utile pour la suite (banga)** : proxy de capture local
+(`http.server` + `urllib`, ~60 lignes, voir historique de session) intercalé entre
+OpenCode et llama-swap via `provider.banga.options.baseURL` temporairement repointé vers
+`127.0.0.1:<port>` — capture la requête EXACTE (tools réels, system prompt réel) sans
+toucher à banga, puis rejeu direct en curl contre `100.64.0.32:8080` pour isoler
+totalement le comportement serveur du client OpenCode. Permet de faire varier
+indépendamment : nombre d'outils, taille du system prompt, modèle (`coder`/`coder_longctx`),
+sans jamais passer par le pipeline OpenCode complet (donc sans risque de re-déclencher la
+boucle infinie sur le service de prod).
+
+**Prochaine étape (chantier banga, pas VPAI)** : étendre le patch autoparser pour
+reconnaître aussi le format `` ```json\n{"name":...,"arguments":...}\n `` (4ᵉ variante,
+après `<tool_call>`, `<tools>`, `<function-call>` déjà rencontrés) — ou explorer un
+fallback côté client OpenCode (plugin qui parse ce pattern en texte libre et invoque
+l'outil manuellement, si un hook de post-traitement de message existe). Décision
+opérateur en attente sur lequel des deux chemins prendre.
+
+**Chantier séparé capturé en seed** (pas ce chantier) : réécrire les skills/workflows
+Claude Code (`~/.claude/skills/`) en une version allégée/dédiée destinée à OpenCode —
+motivé par la découverte que le catalogue skills complet (19 783 car.) est injecté tel
+quel et verbeux. Voir `.planning/seeds/2026-07-23-reecriture-skills-workflows-opencode.md`.
 
 ---
 

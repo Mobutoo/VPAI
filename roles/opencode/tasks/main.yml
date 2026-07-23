@@ -137,6 +137,8 @@
     block: |
       export OPENCODE_CONFIG_DIR="{{ opencode_config_dir }}"
       export LITELLM_API_KEY="{{ opencode_litellm_api_key }}"
+      export OPENCODE_DISABLE_CLAUDE_CODE_PROMPT=1
+      export OPENCODE_DISABLE_CLAUDE_CODE_SKILLS=1
     create: true
     owner: "{{ opencode_user }}"
     group: "{{ opencode_user }}"

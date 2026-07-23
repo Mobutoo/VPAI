@@ -1,7 +1,7 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "username": "{{ workstation_pi_user | default('mobuone') }}",
-  "model": "litellm/claude-sonnet",
+  "model": "banga/coder_longctx",
   "provider": {
     "litellm": {
       "name": "LiteLLM",
@@ -11,33 +11,46 @@
       "models": {
         "claude-sonnet": {
           "name": "Claude Sonnet (via LiteLLM)",
-          "id": "anthropic/claude-sonnet-4-5",
+          "id": "claude-sonnet",
           "tool_call": true,
           "attachment": true
         },
         "claude-haiku": {
           "name": "Claude Haiku (via LiteLLM)",
-          "id": "anthropic/claude-haiku-4-5",
+          "id": "claude-haiku",
           "tool_call": true,
           "attachment": false
-        },
-        "banga-general": {
-          "name": "Gemma 4 12B (Banga, local GPU)",
-          "id": "banga-general",
+        }
+      }
+    },
+    "banga": {
+      "name": "Banga (LAN direct, GPU local)",
+      "npm": "@ai-sdk/openai-compatible",
+      "options": {
+        "baseURL": "http://100.64.0.32:8080/v1",
+        "apiKey": "sk-no-auth-needed"
+      },
+      "models": {
+        "coder": {
+          "name": "Qwen2.5-Coder 14B (Banga LAN)",
+          "id": "coder",
           "tool_call": true,
-          "attachment": true
+          "attachment": false,
+          "limit": { "context": 12288, "output": 4096 }
         },
-        "banga-coder": {
-          "name": "Qwen2.5-Coder 14B (Banga, local GPU)",
-          "id": "banga-coder",
+        "coder_longctx": {
+          "name": "Qwen2.5-Coder 7B long-context (Banga LAN)",
+          "id": "coder_longctx",
           "tool_call": true,
-          "attachment": false
+          "attachment": false,
+          "limit": { "context": 49152, "output": 4096 }
         },
-        "banga-coder-longctx": {
-          "name": "Qwen2.5-Coder 7B long-context (Banga, local GPU)",
-          "id": "banga-coder-longctx",
+        "general": {
+          "name": "Gemma 4 12B (Banga LAN)",
+          "id": "general",
           "tool_call": true,
-          "attachment": false
+          "attachment": false,
+          "limit": { "context": 32768, "output": 4096 }
         }
       }
     }

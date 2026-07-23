@@ -102,3 +102,21 @@
   when: opencode_health is failed
   become: true
   failed_when: false
+
+# --- CLI interactif (SSH) ---
+# Le service systemd force OPENCODE_CONFIG_DIR ; un shell interactif ne l'a
+# jamais, donc `opencode` (SSH) retombe sur ~/.config/opencode/opencode.jsonc
+# (vide) et n'affiche ni litellm ni Gemma/Qwen. Meme config partagee CLI+serveur
+# (source unique, pas de duplication opencode.json).
+- name: Exposer OPENCODE_CONFIG_DIR + LITELLM_API_KEY au shell interactif
+  ansible.builtin.blockinfile:
+    path: "/home/{{ opencode_user }}/.bashrc"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK — opencode CLI (roles/opencode)"
+    block: |
+      export OPENCODE_CONFIG_DIR="{{ opencode_config_dir }}"
+      export LITELLM_API_KEY="{{ opencode_litellm_api_key }}"
+    create: true
+    owner: "{{ opencode_user }}"
+    group: "{{ opencode_user }}"
+    mode: "0640"
+  no_log: true  # LITELLM_API_KEY en clair dans le bloc

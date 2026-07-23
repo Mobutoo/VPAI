@@ -21,6 +21,15 @@
     mode: "0755"
   become: true
 
+- name: Create OpenCode plugins directory
+  ansible.builtin.file:
+    path: "{{ opencode_config_dir }}/plugins"
+    state: directory
+    owner: "{{ opencode_user }}"
+    group: "{{ opencode_user }}"
+    mode: "0755"
+  become: true
+
 # --- Install OpenCode via npm global ---
 # C6 fix : version pinnee via opencode_npm_version (pinner apres premier test)
 - name: Install OpenCode via npm global
@@ -49,6 +58,19 @@
     owner: "{{ opencode_user }}"
     group: "{{ opencode_user }}"
     mode: "0600"
+  become: true
+  notify: Restart {{ opencode_service_name }}
+
+# Contourne bug amont opencode (agent.temperature ignore pour providers
+# @ai-sdk/openai-compatible custom) : hook chat.params force temperature=0
+# sur banga/coder + banga/coder_longctx, fiabilite tool-calling Qwen2.5-Coder.
+- name: Deploy OpenCode plugin — banga temperature forcing
+  ansible.builtin.copy:
+    src: plugins/banga-temperature.js
+    dest: "{{ opencode_config_dir }}/plugins/banga-temperature.js"
+    owner: "{{ opencode_user }}"
+    group: "{{ opencode_user }}"
+    mode: "0644"
   become: true
   notify: Restart {{ opencode_service_name }}
 

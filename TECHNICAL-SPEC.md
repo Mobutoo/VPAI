@@ -656,6 +656,11 @@ CREATE EXTENSION IF NOT EXISTS "vector";
 
 ## 5. Zerobyte — Backup Architecture & GFS Retention
 
+> ⚠️ **SUPERSÉDÉ (2026-07-23)** — le modèle « pull VPN → push S3 » ci-dessous est **périmé**.
+> Architecture cible approuvée : `docs/design/2026-07-23-refonte-backup-zerobyte-orchestrateur-seko.md`
+> (2 couches : dumps cohérents → restic tampon Seko → drain banga LAN → offsite S3 Object-Lock ; restore-drill « 0 »).
+> Contenu conservé ci-dessous à titre historique jusqu'à réécriture.
+
 > **Zerobyte is the central orchestrator** for all backups. It runs on Seko-VPN,
 > pulls data via VPN, and pushes to S3. **No backup data is stored on Seko-VPN.**
 > Full strategy: `docs/BACKUP-STRATEGY.md`

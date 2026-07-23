@@ -1,5 +1,10 @@
 # Backup Strategy — Data Lifecycle & Tiering
 
+> ⚠️ **SUPERSÉDÉ (2026-07-23)** — cette stratégie (fév 2026 : « zerobyte pull VPN → Hetzner S3, NAS via sync S3 à
+> T+6 mois ») est **périmée**. Architecture cible approuvée :
+> `docs/design/2026-07-23-refonte-backup-zerobyte-orchestrateur-seko.md` (2 couches, drain banga LAN + offsite S3
+> Object-Lock, restore-drill automatique). Document conservé à titre historique jusqu'à réécriture.
+
 > **Project**: VPAI — Self-Hosted AI Infrastructure Stack
 > **Version**: 1.0.0
 > **Last updated**: February 2026

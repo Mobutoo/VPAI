@@ -1,5 +1,11 @@
 # DISASTER RECOVERY — Recovery Plan
 
+> ⚠️ **PARTIELLEMENT SUPERSÉDÉ (2026-07-23)** — les chemins de restore fondés sur « pull Zerobyte depuis S3 + NAS mirror
+> T+6 mois » sont **périmés**. Restore cible : depuis **banga NAS** ou **offsite S3 Object-Lock**, prouvé par
+> restore-drill (import DB jetable). Architecture approuvée :
+> `docs/design/2026-07-23-refonte-backup-zerobyte-orchestrateur-seko.md`. Les scénarios généraux (crash conteneur, etc.)
+> ci-dessous restent valides ; la section restore-données est à réécrire.
+
 > **Project**: VPAI — Self-Hosted AI Infrastructure Stack
 > **RPO** (Recovery Point Objective): 24 hours (daily backups)
 > **RTO** (Recovery Time Objective): 2 hours

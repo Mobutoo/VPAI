@@ -1,7 +1,8 @@
 # Design v3 — Refonte backup 3-2-1-1-0 : zerobyte (Seko) orchestrateur unique
 
-> **Statut** : **CONVERGÉ** (5 rounds Codex gpt-5.6-sol, LOI règle 4) — arrêt **RESIDUAL** (voir §9 : le reste = détail
-> d'implémentation, hors périmètre d'un design). **Prêt pour le gate humain d'approbation.**
+> **Statut** : **APPROUVÉ 2026-07-23** (gate humain — 4 points validés : archi cible, déviation prémisse staging,
+> exigences DR ajoutées, voie upstream-first + upgrade préprod). Convergé Codex 5 rounds (RESIDUAL, §9). L'implémentation
+> (P0→FLIP, §7) peut démarrer **dans son ordre de phases, chacune avec son propre gate** — hors périmètre de cette piste B.
 > **Date** : 2026-07-23
 > **Périmètre** : artefact de conception uniquement. AUCUN code d'implémentation dans cette piste (piste B).
 > **Dépendance amont** : « Couche 1 » (dumps cohérents) = **piste A, en cours** (code écrit + testé en sibling ;
@@ -36,8 +37,8 @@
 ### 1.2 Ce que ce design remplace
 
 La stratégie backup décrite dans les docs de février 2026 (modèle « zerobyte tire les données via VPN → push
-Hetzner S3, NAS via sync S3 à T+6 mois ») est **périmée**. Docs à marquer « superséded » **à l'approbation du
-design** (action post-gate — ne PAS éditer avant l'approbation, sinon invalidation prématurée) :
+Hetzner S3, NAS via sync S3 à T+6 mois ») est **périmée**. Docs **marqués « SUPERSÉDÉ » le 2026-07-23** (à l'approbation
+du design) — bannière en tête pointant ce design :
 
 - `TECHNICAL-SPEC.md` §5 (Zerobyte — pull VPN → S3).
 - `docs/BACKUP-STRATEGY.md` (v1.0.0, fév 2026 — pull VPN → S3, NAS à T+6 mois).

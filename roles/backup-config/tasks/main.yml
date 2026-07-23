@@ -49,6 +49,11 @@
     group: "{{ prod_user }}"
     mode: "0700"
   become: true
+  no_log: true
+  # REX 2026-07-23 : ce template embarque postgresql/redis/qdrant/grafana en
+  # clair (substitution Jinja2). Sans no_log, `diff_always` (ansible.cfg) +
+  # `--diff` (Makefile deploy-role) affichent le contenu AVANT/APRÈS en clair
+  # — fuite constatée en direct (clé API Qdrant + mot de passe Grafana).
 
 # === CLEANUP SCRIPT ===
 

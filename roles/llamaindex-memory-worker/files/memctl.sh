@@ -9,9 +9,21 @@ SPOOL_DIR="${MEMCTL_SPOOL_DIR:-/opt/workstation/data/ai-memory-worker/spool}"
 LOG="${MEMCTL_LOG:-/opt/workstation/data/ai-memory-worker/logs/memory-worker.log}"
 TIMER="${MEMCTL_TIMER_NAME:-llamaindex-memory-worker.timer}"
 SERVICE="${MEMCTL_SERVICE_NAME:-llamaindex-memory-worker.service}"
+# La sonde qdrant de `status` doit marcher depuis SSH forced-command / cron,
+# pas seulement depuis un shell qui a déjà chargé memory-worker.env : si
+# l'appelant ne fournit aucune URL, on source l'env worker nous-mêmes.
+MEMCTL_ENV_FILE="${MEMCTL_ENV_FILE:-/opt/workstation/configs/ai-memory-worker/memory-worker.env}"
+if [ -z "${MEMCTL_QDRANT_URL:-}" ] && [ -z "${QDRANT_URL:-}" ] && [ -r "$MEMCTL_ENV_FILE" ]; then
+  set -a; . "$MEMCTL_ENV_FILE"; set +a
+fi
 QURL="${MEMCTL_QDRANT_URL:-${QDRANT_URL:-}}"
 QKEY="${QDRANT_API_KEY:-}"
-COLL="${MEMCTL_COLLECTION:-memory_v1}"
+# Collection : autorité = config.yml du worker (survit aux bascules v2→v3→…),
+# un défaut codé en dur redeviendrait faux à la prochaine migration.
+MEMCTL_CONFIG="${MEMCTL_CONFIG:-/opt/workstation/configs/ai-memory-worker/config.yml}"
+_cfg_coll() { sed -nE 's/^collection_name:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/p' "$MEMCTL_CONFIG" 2>/dev/null | head -1; }
+COLL="${MEMCTL_COLLECTION:-$(_cfg_coll)}"
+COLL="${COLL:-memory_v1}"
 LOCK="$STATE_DIR/index.lock"
 # systemctl --user needs a bus address even when invoked outside a user session.
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"

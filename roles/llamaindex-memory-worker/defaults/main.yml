@@ -157,8 +157,10 @@ memory_worker_discovery:
     - content-factory-m1
   # globs sur chemin absolu (ex. "*/saas/archive-*")
   exclude_globs: []
-  # garde-fou coût : abort si total dépassé (LOI no-silent-caps). 20 repos actuels.
-  max_repos: 30
+  # garde-fou coût : abort si total dépassé (LOI no-silent-caps). 31 repos réels
+  # au 2026-07-25 (arrivée usine-saas) ; marge +9 ≈ plusieurs mois au rythme
+  # observé (~1 repo/semaine).
+  max_repos: 40
 # Sources manuelles : priorité sur la découverte (collision par `name`). Pour des
 # overrides de tags ou des roots hors arborescence wing. Vide = découverte pure.
 memory_worker_sources_manual: []

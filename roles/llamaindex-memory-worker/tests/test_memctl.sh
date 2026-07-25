@@ -36,4 +36,22 @@ chmod +x "$FAKEBIN2/curl"
 OUT="$(PATH="$FAKEBIN2:$PATH" MEMCTL_QDRANT_URL=http://x MEMCTL_TIMER_NAME=nonexistent bash "$MEMCTL" status 2>/dev/null)"
 echo "$OUT" | python3 -c 'import sys,json; d=json.load(sys.stdin); v=d["qdrant_points"]; assert v is None, "expected None, got "+repr(v)' && ok 1 "qdrant points_count:null → JSON null (not bareword None)" || ok 0 "qdrant points_count:null → JSON null"
 
+# REGRESSION: probed collection must come from config.yml (hardcoded memory_v1
+# default was dead after the v3 migration → qdrant_reachable:false forever)
+FAKECFG="$TMP/config.yml"; echo 'collection_name: "coll_from_cfg"' > "$FAKECFG"
+FAKEBIN3="$TMP/bin3"; mkdir -p "$FAKEBIN3"
+printf '#!/bin/bash\nprintf "%%s\\n" "$@" >> "%s/curl_args"\necho "{}"\n' "$TMP" > "$FAKEBIN3/curl"
+chmod +x "$FAKEBIN3/curl"
+PATH="$FAKEBIN3:$PATH" MEMCTL_CONFIG="$FAKECFG" MEMCTL_TIMER_NAME=nonexistent bash "$MEMCTL" status >/dev/null 2>&1
+grep -q 'coll_from_cfg' "$TMP/curl_args" 2>/dev/null && ok 1 "status probes collection read from config.yml" || ok 0 "status probes collection read from config.yml"
+
+# REGRESSION: caller without qdrant env → memctl sources MEMCTL_ENV_FILE itself
+# (SSH forced-command / cron callers have no memory-worker.env loaded)
+FAKEENV="$TMP/w.env"; printf 'QDRANT_URL=http://x\nQDRANT_API_KEY=k\n' > "$FAKEENV"
+FAKEBIN4="$TMP/bin4"; mkdir -p "$FAKEBIN4"
+printf '#!/bin/bash\necho '"'"'{"result":{"points_count":5}}'"'"'\nexit 0\n' > "$FAKEBIN4/curl"
+chmod +x "$FAKEBIN4/curl"
+OUT="$(env -u MEMCTL_QDRANT_URL -u QDRANT_URL PATH="$FAKEBIN4:$PATH" MEMCTL_ENV_FILE="$FAKEENV" MEMCTL_CONFIG="$FAKECFG" MEMCTL_TIMER_NAME=nonexistent bash "$MEMCTL" status 2>/dev/null)"
+echo "$OUT" | python3 -c 'import sys,json; d=json.load(sys.stdin); assert d["qdrant_reachable"] is True and d["qdrant_points"]==5' && ok 1 "no caller env → env file sourced, qdrant probe works" || ok 0 "no caller env → env file sourced"
+
 rm -rf "$TMP"; [ "$fail" = 0 ] && echo "test_memctl PASS" || { echo "test_memctl FAIL"; exit 1; }

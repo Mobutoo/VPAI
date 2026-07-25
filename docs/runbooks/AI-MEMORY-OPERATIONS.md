@@ -512,6 +512,35 @@ Action:
 - si vraiment bloquant: ajuster `memory_worker_loadavg_threshold` dans l'inventaire et redeployer
 - voir **section 4.1.1 Loadavg gate** pour les tunables `MEMORY_WAIT_*`
 
+### 7.2b Garde-fou discovery (`max_repos`) — incident 2026-07-24/25
+
+Symptomes:
+
+- chaque run incremental crashe en ~4s, `RuntimeError: discover_sources:
+  N repos > max_repos=M` dans `journalctl --user -u llamaindex-memory-worker`
+- AUCUN rapport POSTe (crash avant `--report-path`) → `memory_runs` ne recoit
+  plus de ligne → healthcheck n8n alerte `stale_incremental` indefiniment
+  sans jamais voir la cause
+- piege : la derniere ligne du LOG worker reste fraiche (le run demarre avant
+  de crasher) — ne pas se fier a `age_seconds` de `memctl status` pour ce cas,
+  regarder `systemctl --user show ... -p ExecMainStatus -p Result`
+
+Action (decision de cout/portee — jamais automatisable) :
+
+1. compter les sources reelles : `index.py --list-sources` (dry-run). NB : si
+   le garde-fou est deja depasse, le dry-run crashe AUSSI — reproduire le scan
+   a la main (`for d in ~/work/{infra,saas,tools,refdocs}/*/; do [ -d "$d/.git" ] && echo "$d"; done`)
+2. trancher : bump `memory_worker_discovery.max_repos`
+   (`roles/llamaindex-memory-worker/defaults/main.yml`) avec marge, OU exclure
+   un repo illegitime via `exclude_names`
+3. patcher le defaults + le config live, verifier un run vert (`memctl run`,
+   puis `memctl status` et ligne fraiche dans `memory_runs`)
+
+Precedent : 2026-07-25, 31 repos (arrivee `usine-saas`) > 30 → bump a 40,
+commit `11b84c3`. Meme commit : la sonde qdrant de `memctl status` lisait la
+collection morte `memory_v1` codee en dur → desormais lue depuis `config.yml`
+(+ env worker auto-source si l'appelant n'en fournit pas).
+
 ### 7.3 Hugging Face / modele
 
 Symptomes:

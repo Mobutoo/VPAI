@@ -1,0 +1,76 @@
+---
+# memory-worker-auto-repair — réparation bornée après 1h de drift (Waza).
+#
+# Design normatif : docs/design/2026-07-25-memory-worker-auto-repair.md
+# (validé au gate humain 2026-07-25). Rôle FRÈRE de memory-worker-watchdog
+# (pas une réécriture) — même mécanique (timer systemd --user séparé, script
+# .sh.j2, env 0600 no_log, linger guard, handlers daemon_reload user).
+#
+# Origine : handoff .planning/handoffs/2026-07-25-memory-pipeline-drift-autorepair.md
+# (incident discover_sources: 31 repos > max_repos=30, pipeline cassé >21h,
+# alertes en boucle sans action). Cette brique agit sur les pannes SÛRES et
+# RÉVERSIBLES (classes A/B/C, via memctl — jamais systemctl directement pour
+# AGIR) et escalade en alerte enrichie pour tout le reste (classes D/E/F).
+#
+# Tourne sur Waza, scope USER, même utilisateur que le worker surveillé
+# (roles/llamaindex-memory-worker). Référence ses defaults par nom avec
+# fallback explicite -> fonctionne même si ce rôle tourne seul (tags ciblés).
+
+memory_worker_auto_repair_user: "{{ memory_worker_user | default(workstation_pi_user | default('pi')) }}"
+memory_worker_auto_repair_uid: "{{ memory_worker_uid | default(1000) }}"
+
+# Unité + surface d'action (llamaindex-memory-worker role). memctl.sh est LA
+# seule surface d'action autorisée (status/start/stop/run/fix) — jamais
+# systemctl directement pour AGIR (systemctl --user show reste OK pour
+# OBSERVER, cf script).
+memory_worker_auto_repair_target_service: "{{ memory_worker_service_name | default('llamaindex-memory-worker') }}.service"
+memory_worker_auto_repair_target_timer: "{{ memory_worker_timer_name | default('llamaindex-memory-worker') }}.timer"
+memory_worker_auto_repair_memctl: "{{ memory_worker_install_dir | default('/opt/workstation/ai-memory-worker') }}/memctl.sh"
+memory_worker_auto_repair_host_origin: "{{ memory_worker_host_origin | default('waza') }}"
+# Fenêtre de journal scrutée pour la signature D (discovery garde-fou) et
+# l'extrait de traceback des classes D/E/F (§5/§6 du design).
+memory_worker_auto_repair_journal_since: "-6h"
+memory_worker_auto_repair_journal_lines: 300
+
+memory_worker_auto_repair_install_dir: "/opt/workstation/ai-memory-worker-auto-repair"
+memory_worker_auto_repair_script: "{{ memory_worker_auto_repair_install_dir }}/memory-worker-auto-repair.sh"
+memory_worker_auto_repair_env_file: "{{ memory_worker_auto_repair_install_dir }}/memory-worker-auto-repair.env"
+memory_worker_auto_repair_state_dir: "/opt/workstation/data/ai-memory-worker-auto-repair"
+memory_worker_auto_repair_state_file: "{{ memory_worker_auto_repair_state_dir }}/state"
+# Marqueur de gel DÉDIÉ, fichier SÉPARÉ du state file (§5) : le dégel manuel
+# (rm de ce fichier) ne doit jamais pouvoir effacer LAST_REPAIR_EPOCH et
+# contourner le cooldown.
+memory_worker_auto_repair_lock_file: "{{ memory_worker_auto_repair_state_dir }}/repair-locked"
+# Sentinelle opérateur (§4.2) — touch manuel = gel ; rm = reprise (fenêtre de
+# drift recommence à zéro, documenté runbook AI-MEMORY-OPERATIONS.md).
+memory_worker_auto_repair_maintenance_file: "{{ memory_worker_auto_repair_state_dir }}/maintenance"
+# Marqueur interne (PAS un des 6 champs KEY=VALUE du state file) qui mémorise
+# qu'on a déjà notifié le gel courant — permet de détecter la transition
+# "sentinelle levée" (reprise) sans polluer le state file officiel.
+memory_worker_auto_repair_maintenance_frozen_marker: "{{ memory_worker_auto_repair_state_dir }}/maintenance-frozen"
+
+memory_worker_auto_repair_service_name: "memory-worker-auto-repair"
+memory_worker_auto_repair_timer_name: "memory-worker-auto-repair"
+memory_worker_auto_repair_user_unit_dir: "/home/{{ memory_worker_auto_repair_user }}/.config/systemd/user"
+
+# === Seuils (§3/§5/§8.2 du design — validés au gate, conservés tels quels) ===
+# Drift : 30min d'intervalle nominal du worker + 1h de drift effectif.
+memory_worker_auto_repair_drift_sec: 5400
+# Budget de réparation : au plus 1 action auto par fenêtre (> 2x le seuil drift).
+memory_worker_auto_repair_cooldown_sec: 14400
+# Dégel automatique de REPAIR_LOCKED : 8 ticks sains soutenus (= 2h à 15min/tick).
+memory_worker_auto_repair_unlock_ticks: 8
+
+# Cadence de la sonde : même cadence que memory-worker-watchdog (15min),
+# indépendante du timer worker (30min) — ne dépend jamais de l'unité
+# surveillée pour se déclencher.
+memory_worker_auto_repair_timer_on_boot_sec: "10min"
+memory_worker_auto_repair_timer_on_unit_active_sec: "15min"
+
+# Anti-spam alertes (pattern watchdog/disk-guard/waza-deadman) — 3h.
+memory_worker_auto_repair_reminder_sec: 10800
+
+# Notification Telegram (réutilise le bot monitoring existant — même canal
+# que watchdog/healthcheck/disk-guard, cf inventory/group_vars/all/main.yml).
+memory_worker_auto_repair_telegram_bot_token: "{{ telegram_monitoring_bot_token | default('') }}"
+memory_worker_auto_repair_telegram_chat_id: "{{ telegram_monitoring_chat_id | default('') }}"

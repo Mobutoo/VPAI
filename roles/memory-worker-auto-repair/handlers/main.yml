@@ -1,0 +1,12 @@
+---
+# memory-worker-auto-repair — handlers
+
+- name: Reload systemd (user, memory-worker-auto-repair)
+  ansible.builtin.systemd:
+    daemon_reload: true
+    scope: user
+  become: true
+  become_user: "{{ memory_worker_auto_repair_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ memory_worker_auto_repair_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_auto_repair_uid }}/bus"

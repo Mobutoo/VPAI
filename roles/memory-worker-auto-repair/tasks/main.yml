@@ -1,0 +1,108 @@
+---
+# memory-worker-auto-repair — deploie le script + units systemd --user + active
+# le timer, sur Waza (meme utilisateur que llamaindex-memory-worker). Role
+# SEPARE (pas de fichiers colocalises dans llamaindex-memory-worker), pattern
+# memory-worker-watchdog — pour rester independant et deployable seul via
+# --tags memory_worker_auto_repair.
+#
+# Design normatif : docs/design/2026-07-25-memory-worker-auto-repair.md
+
+- name: Ensure memory-worker-auto-repair directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ memory_worker_auto_repair_user }}"
+    group: "{{ memory_worker_auto_repair_user }}"
+    mode: "0750"
+  loop:
+    - "{{ memory_worker_auto_repair_install_dir }}"
+    - "{{ memory_worker_auto_repair_state_dir }}"
+  become: true
+  tags: [memory_worker_auto_repair, phase3]
+
+- name: Deploy memory-worker-auto-repair env file (Telegram secrets)
+  ansible.builtin.template:
+    src: memory-worker-auto-repair.env.j2
+    dest: "{{ memory_worker_auto_repair_env_file }}"
+    owner: "{{ memory_worker_auto_repair_user }}"
+    group: "{{ memory_worker_auto_repair_user }}"
+    mode: "0600"
+  become: true
+  no_log: true
+  tags: [memory_worker_auto_repair, phase3]
+
+- name: Deploy memory-worker-auto-repair script
+  ansible.builtin.template:
+    src: memory-worker-auto-repair.sh.j2
+    dest: "{{ memory_worker_auto_repair_script }}"
+    owner: "{{ memory_worker_auto_repair_user }}"
+    group: "{{ memory_worker_auto_repair_user }}"
+    mode: "0750"
+  become: true
+  tags: [memory_worker_auto_repair, phase3]
+
+- name: Verify memory-worker-auto-repair script syntax
+  ansible.builtin.command:
+    cmd: "bash -n {{ memory_worker_auto_repair_script }}"
+  changed_when: false
+  when: not ansible_check_mode
+  tags: [memory_worker_auto_repair, phase3]
+
+- name: Ensure user systemd unit dir
+  ansible.builtin.file:
+    path: "{{ memory_worker_auto_repair_user_unit_dir }}"
+    state: directory
+    owner: "{{ memory_worker_auto_repair_user }}"
+    group: "{{ memory_worker_auto_repair_user }}"
+    mode: "0755"
+  become: true
+  tags: [memory_worker_auto_repair, phase3]
+
+- name: Deploy memory-worker-auto-repair USER units
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ memory_worker_auto_repair_user_unit_dir }}/{{ item.dest }}"
+    owner: "{{ memory_worker_auto_repair_user }}"
+    group: "{{ memory_worker_auto_repair_user }}"
+    mode: "0644"
+  loop:
+    - { src: "memory-worker-auto-repair.service.user.j2", dest: "{{ memory_worker_auto_repair_service_name }}.service" }
+    - { src: "memory-worker-auto-repair.timer.user.j2", dest: "{{ memory_worker_auto_repair_timer_name }}.timer" }
+  become: true
+  notify: Reload systemd (user, memory-worker-auto-repair)
+  tags: [memory_worker_auto_repair, phase3]
+
+- name: Flush handlers so daemon-reload happens before enable
+  ansible.builtin.meta: flush_handlers
+
+# Idempotent no-ops if llamaindex-memory-worker / memory-worker-watchdog already
+# did this for the same user (creates: guard) — keeps this role deployable
+# standalone via --tags.
+- name: Enable linger for the auto-repair user (runs user units without login)
+  ansible.builtin.command: "loginctl enable-linger {{ memory_worker_auto_repair_user }}"
+  become: true
+  args:
+    creates: "/var/lib/systemd/linger/{{ memory_worker_auto_repair_user }}"
+  tags: [memory_worker_auto_repair, phase3]
+
+- name: Ensure the user systemd instance is running (creates the XDG runtime dir after fresh linger)
+  ansible.builtin.systemd:
+    name: "user@{{ memory_worker_auto_repair_uid }}.service"
+    state: started
+  become: true
+  tags: [memory_worker_auto_repair, phase3]
+
+- name: Enable + start memory-worker-auto-repair USER timer
+  ansible.builtin.systemd:
+    name: "{{ memory_worker_auto_repair_timer_name }}.timer"
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  become_user: "{{ memory_worker_auto_repair_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ memory_worker_auto_repair_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_auto_repair_uid }}/bus"
+  when: not ansible_check_mode
+  tags: [memory_worker_auto_repair, phase3]

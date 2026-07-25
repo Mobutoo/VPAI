@@ -1,0 +1,583 @@
+#!/bin/bash
+# {{ ansible_managed }}
+set -euo pipefail
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/{{ memory_worker_auto_repair_uid }}}"
+
+UNIT="{{ memory_worker_auto_repair_target_service }}"
+MEMCTL_DEFAULT="{{ memory_worker_auto_repair_memctl }}"
+HOST="{{ memory_worker_auto_repair_host_origin }}"
+JOURNAL_SINCE="{{ memory_worker_auto_repair_journal_since }}"
+JOURNAL_LINES={{ memory_worker_auto_repair_journal_lines }}
+STATE_FILE="{{ memory_worker_auto_repair_state_file }}"
+LOCK_MARKER="{{ memory_worker_auto_repair_lock_file }}"
+MAINTENANCE_FILE="{{ memory_worker_auto_repair_maintenance_file }}"
+FROZEN_MARKER="{{ memory_worker_auto_repair_maintenance_frozen_marker }}"
+ENV_FILE="{{ memory_worker_auto_repair_env_file }}"
+DRIFT_SEC={{ memory_worker_auto_repair_drift_sec }}
+COOLDOWN_SEC={{ memory_worker_auto_repair_cooldown_sec }}
+UNLOCK_TICKS={{ memory_worker_auto_repair_unlock_ticks }}
+REMINDER_SEC={{ memory_worker_auto_repair_reminder_sec }}
+
+MEMCTL="${AUTOREPAIR_MEMCTL_BIN:-$MEMCTL_DEFAULT}"
+
+# --- Secrets Telegram (fichier 0600). Absents = pas de notif (script continue). ---
+TG_BOT=""
+TG_CHAT=""
+# shellcheck disable=SC1090
+[ -r "$ENV_FILE" ] && . "$ENV_FILE"
+
+log() { echo "[memory-worker-auto-repair] $*"; }
+
+notify() {
+  local msg="$1"
+  if [ -z "$TG_BOT" ] || [ -z "$TG_CHAT" ]; then
+    log "pas de creds telegram, notif ignoree"
+    return 0
+  fi
+  curl -fsS --max-time 20 \
+    "https://api.telegram.org/bot${TG_BOT}/sendMessage" \
+    -d chat_id="${TG_CHAT}" \
+    -d parse_mode="HTML" \
+    --data-urlencode text="$msg" >/dev/null 2>&1 || log "notify telegram echec (non bloquant)"
+}
+
+now() { date +%s; }
+
+# redact() lit sur stdin, ecrit sur stdout. Exigence COMPORTEMENTALE (§6 design) :
+# masque integralement toute valeur de credential sous CHACUNE de ces formes :
+# env KEY=v, YAML key: v, JSON quote "key": "v a l" (espaces inclus), quote
+# simple 'key':'v', Authorization: Bearer/Basic <token> (schema separe par
+# ESPACE), userinfo d'URL scheme://user:pass@, chaines sk-\S+. Implemente en
+# Python (regex fiables sur les formes a espaces/guillemets, contrairement a
+# sed/awk) — python3 est deja une dependance du worker (memctl.sh, cf sibling).
+#
+# IMPORTANT : le programme Python est passe via `-c "$prog"`, PAS via un
+# heredoc directement attache a `python3 -` — un heredoc sur `python3 -`
+# consommerait le SEUL stdin disponible pour a la fois fournir le code source
+# (mode `-`) ET le texte a rediger, laissant `sys.stdin.read()` vide (EOF).
+# La construction `cat <<'PYEOF' ... PYEOF` ci-dessous attache le heredoc au
+# stdin de `cat` uniquement — le stdin de la fonction (le texte a rediger)
+# reste intact et passe intact a `python3 -c`.
+redact() {
+  local prog
+  prog=$(cat <<'PYEOF'
+import re, sys
+
+KEYWORDS = r'(?:api[-_]?key|token|secret|password|authorization|bearer|basic)'
+text = sys.stdin.read()
+
+# Ordre volontaire : formes les plus specifiques d'abord, sinon un motif
+# generique plus permissif "mange" une partie du match et laisse le reste du
+# secret intact (ex. generique KEY:value s'arreterait sur le mot "Bearer" si
+# on le laissait passer avant la regle Authorization dediee).
+# 1. JSON quote double, valeur pouvant contenir des espaces.
+text = re.sub(
+    rf'"({KEYWORDS})"\s*:\s*"([^"]*)"',
+    r'"\1": "***REDACTED***"',
+    text, flags=re.IGNORECASE,
+)
+# 2. quotes simples 'key':'value'
+text = re.sub(
+    rf"'({KEYWORDS})'\s*:\s*'([^']*)'",
+    r"'\1':'***REDACTED***'",
+    text, flags=re.IGNORECASE,
+)
+# 3. Authorization: Bearer <token> / Basic <base64> (schema separe par ESPACE).
+text = re.sub(
+    r'(Authorization\s*:\s*(?:Bearer|Basic))\s+\S+',
+    r'\1 ***REDACTED***',
+    text, flags=re.IGNORECASE,
+)
+# 4. userinfo d'URL scheme://user:pass@
+text = re.sub(
+    r'([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/@\s:]+:[^/@\s]+@',
+    r'\1***REDACTED***@',
+    text,
+)
+# 5. chaines sk-XXXX (cles API type OpenAI/compat).
+text = re.sub(r'sk-\S+', 'sk-***REDACTED***', text)
+# 6. generique env/YAML KEY=value ou key: value (un seul token, sans
+#    espace/quote). Lookahead negatif Bearer/Basic : deja traites par la
+#    regle 3, evite une double-redaction cosmetique.
+text = re.sub(
+    rf'({KEYWORDS})\s*[:=]\s*(?!(?:Bearer|Basic)\b)([^\s\'"]+)',
+    r'\1=***REDACTED***',
+    text, flags=re.IGNORECASE,
+)
+sys.stdout.write(text)
+PYEOF
+)
+  python3 -c "$prog"
+}
+
+# Point d'entree cache pour le harnais de tests (redact() isolee, sans le
+# reste de la logique systemd/state) :
+#   printf '%s' "$input" | AUTOREPAIR_MEMCTL_BIN=x bash script.sh __redact_test
+if [ "${1:-}" = "__redact_test" ]; then
+  redact
+  exit 0
+fi
+
+# --- Etat persistant (state file KEY=VALUE, pattern watchdog) ---
+LAST_SUCCESS_EPOCH=0
+DRIFT_TICKS=0
+HEALTHY_TICKS=0
+LAST_REPAIR_EPOCH=0
+REPAIR_ATTEMPTS=0
+ALERTED=0
+LAST_ALERT=0
+FIRST_RUN=1
+if [ -r "$STATE_FILE" ]; then
+  FIRST_RUN=0
+  # shellcheck disable=SC1090
+  . "$STATE_FILE"
+fi
+
+write_state() {
+  mkdir -p "$(dirname "$STATE_FILE")"
+  cat > "$STATE_FILE" <<EOF
+LAST_SUCCESS_EPOCH=$LAST_SUCCESS_EPOCH
+DRIFT_TICKS=$DRIFT_TICKS
+HEALTHY_TICKS=$HEALTHY_TICKS
+LAST_REPAIR_EPOCH=$LAST_REPAIR_EPOCH
+REPAIR_ATTEMPTS=$REPAIR_ATTEMPTS
+ALERTED=$ALERTED
+LAST_ALERT=$LAST_ALERT
+EOF
+}
+
+# =====================================================================
+# GARDE #2 : sentinelle maintenance (§4.2). Verifiee EN PREMIER (avant toute
+# requete systemd — la sonde reste locale et bon marche meme gelee). Bloque
+# TOUJOURS l'action tant qu'elle est presente ; notif au premier tick gelé
+# puis rappels anti-spam REMINDER_SEC (peut durer des jours, cf design).
+# =====================================================================
+if [ -e "$MAINTENANCE_FILE" ]; then
+  if [ ! -e "$FROZEN_MARKER" ]; then
+    notify "🧊 <b>memory-auto-repair</b> @${HOST} — gel par sentinelle maintenance (${MAINTENANCE_FILE}). Aucune action tant qu'elle est presente. Reprise : rm ${MAINTENANCE_FILE}."
+    mkdir -p "$(dirname "$FROZEN_MARKER")"
+    touch "$FROZEN_MARKER"
+    ALERTED=1
+    LAST_ALERT=$(now)
+    log "gel sentinelle: notification initiale envoyee"
+  else
+    if [ $(( $(now) - LAST_ALERT )) -ge "$REMINDER_SEC" ]; then
+      notify "🧊 <b>memory-auto-repair</b> @${HOST} — toujours gele par sentinelle maintenance ($(date '+%F %T'))."
+      LAST_ALERT=$(now)
+      log "gel sentinelle: rappel envoye"
+    else
+      log "gel sentinelle: silence (anti-spam)"
+    fi
+  fi
+  write_state
+  exit 0
+fi
+
+# Transition "reprise" (sentinelle levee depuis le tick precedent) : reset
+# DRIFT_TICKS/ALERTED/LAST_ALERT — le drift "vieilli" pendant la maintenance
+# ne doit jamais declencher une action immediate a la seconde ou la
+# sentinelle tombe (§4.2). On NE sort PAS ici : le tick continue normalement,
+# mais DRIFT_TICKS repart de 0 -> la garde ">=2" plus bas empeche de toute
+# facon une action ce meme tick.
+if [ -e "$FROZEN_MARKER" ]; then
+  rm -f "$FROZEN_MARKER"
+  notify "✅ <b>memory-auto-repair</b> @${HOST} — sentinelle maintenance levee, reprise ($(date '+%F %T')). Fenetre de drift remise a zero."
+  DRIFT_TICKS=0
+  ALERTED=0
+  LAST_ALERT=0
+  log "reprise apres sentinelle: fenetre de drift remise a zero"
+fi
+
+# =====================================================================
+# Signal de sante = dernier run TERMINE AVEC SUCCES (systemd wall-clock),
+# PAS la fraicheur du log (§3 design — un crash systematique en ~4s
+# rafraichirait le log en permanence sans jamais etre detecte).
+# ExecMainExitTimestamp (wall-clock) — JAMAIS la variante Monotonic (compte
+# depuis le boot, rendrait le calcul de drift silencieusement faux apres un
+# reboot). Point d'injection test : AUTOREPAIR_FAKE_ACTIVE_STATE et consorts.
+# =====================================================================
+QUERY_OK=1
+if [ -n "${AUTOREPAIR_FAKE_ACTIVE_STATE:-}" ]; then
+  ACTIVE_STATE="$AUTOREPAIR_FAKE_ACTIVE_STATE"
+  EXEC_MAIN_STATUS="${AUTOREPAIR_FAKE_EXEC_MAIN_STATUS:-0}"
+  RESULT="${AUTOREPAIR_FAKE_RESULT:-success}"
+  EXIT_EPOCH="${AUTOREPAIR_FAKE_EXEC_MAIN_EXIT_EPOCH:-0}"
+else
+  SHOW_OUT=""
+  if ! SHOW_OUT="$(systemctl --user show "$UNIT" -p ActiveState -p ExecMainStatus -p ExecMainExitTimestamp -p Result 2>/dev/null)"; then
+    QUERY_OK=0
+  fi
+  if [ "$QUERY_OK" -ne 1 ] || [ -z "$SHOW_OUT" ]; then
+    # Sonde AVEUGLE, pas "rien a signaler" -> log fort + code de sortie
+    # distinct, jamais un retour silencieux dans le chemin "rien a faire".
+    log "ERREUR: impossible d'interroger ${UNIT} via systemctl --user (bus absent ?) — sonde aveugle ce tour"
+    exit 2
+  fi
+  ACTIVE_STATE="$(printf '%s\n' "$SHOW_OUT" | sed -n 's/^ActiveState=//p')"
+  EXEC_MAIN_STATUS="$(printf '%s\n' "$SHOW_OUT" | sed -n 's/^ExecMainStatus=//p')"
+  RESULT="$(printf '%s\n' "$SHOW_OUT" | sed -n 's/^Result=//p')"
+  EXIT_TS_RAW="$(printf '%s\n' "$SHOW_OUT" | sed -n 's/^ExecMainExitTimestamp=//p')"
+  if [ -z "$EXIT_TS_RAW" ] || [ "$EXIT_TS_RAW" = "n/a" ]; then
+    EXIT_EPOCH=0
+  else
+    EXIT_EPOCH="$(date -d "$EXIT_TS_RAW" +%s 2>/dev/null || echo 0)"
+  fi
+fi
+
+# Succes := ExecMainStatus==0 ET Result==success (un Result en timeout/echec
+# ne compte JAMAIS comme succes, quel que soit l'exit code — §3).
+SUCCESS=false
+if [ "${EXEC_MAIN_STATUS:-1}" = "0" ] && [ "${RESULT:-}" = "success" ]; then
+  SUCCESS=true
+fi
+
+# Initialisation au premier tick (pas de state file prealable) : si l'etat
+# courant est sain, now ; sinon 0 (inconnu = suspect). Sinon, mise a jour
+# incrementale normale (n'avance jamais en arriere sur un re-lecture du meme
+# run termine).
+if [ "$FIRST_RUN" -eq 1 ] && [ "$LAST_SUCCESS_EPOCH" = "0" ]; then
+  if [ "$SUCCESS" = true ]; then
+    LAST_SUCCESS_EPOCH=$(now)
+  fi
+elif [ "$SUCCESS" = true ] && [ "${EXIT_EPOCH:-0}" -gt 0 ] && [ "$EXIT_EPOCH" -gt "$LAST_SUCCESS_EPOCH" ]; then
+  LAST_SUCCESS_EPOCH=$EXIT_EPOCH
+fi
+
+NOW_EPOCH=$(now)
+IS_DRIFT=false
+if [ "$ACTIVE_STATE" != "activating" ] && [ $(( NOW_EPOCH - LAST_SUCCESS_EPOCH )) -gt "$DRIFT_SEC" ]; then
+  IS_DRIFT=true
+fi
+
+if [ "$IS_DRIFT" = false ]; then
+  # Tick sain. Retour a la sante ne remet a zero QUE DRIFT_TICKS/ALERTED/
+  # LAST_ALERT (§3) — LAST_REPAIR_EPOCH/REPAIR_ATTEMPTS survivent (le
+  # cooldown doit tenir meme si un run reussit transitoirement).
+  if [ "$ALERTED" -eq 1 ]; then
+    notify "✅ <b>memory-worker</b> @${HOST} — run reussi, retour a la sante ($(date '+%F %T'))."
+    log "retablissement notifie"
+  fi
+  DRIFT_TICKS=0
+  ALERTED=0
+  LAST_ALERT=0
+  HEALTHY_TICKS=$(( HEALTHY_TICKS + 1 ))
+  if [ -e "$LOCK_MARKER" ] && [ "$HEALTHY_TICKS" -ge "$UNLOCK_TICKS" ]; then
+    rm -f "$LOCK_MARKER"
+    notify "🔓 <b>memory-auto-repair</b> @${HOST} — degel automatique de REPAIR_LOCKED (sante soutenue, ${HEALTHY_TICKS} ticks consecutifs)."
+    log "degel automatique REPAIR_LOCKED (HEALTHY_TICKS=${HEALTHY_TICKS})"
+  fi
+  write_state
+  log "${UNIT} sain (ActiveState=${ACTIVE_STATE}, LAST_SUCCESS_EPOCH=${LAST_SUCCESS_EPOCH})"
+  exit 0
+fi
+
+# --- Drift confirme ---
+DRIFT_TICKS=$(( DRIFT_TICKS + 1 ))
+HEALTHY_TICKS=0
+log "${UNIT} en drift depuis $(( NOW_EPOCH - LAST_SUCCESS_EPOCH ))s (seuil ${DRIFT_SEC}s), DRIFT_TICKS=${DRIFT_TICKS}"
+
+# Un tick isole en drift ne declenche JAMAIS d'action (§3 : DRIFT_TICKS>=2).
+if [ "$DRIFT_TICKS" -lt 2 ]; then
+  write_state
+  log "premier tick de drift, action differee (garde DRIFT_TICKS>=2)"
+  exit 0
+fi
+
+# =====================================================================
+# memctl status = seule source pour lock/timer/qdrant (memctl.sh = seule
+# surface d'action/observation autorisee — jamais systemctl directement pour
+# AGIR ; systemctl --user show reste OK pour OBSERVER, deja utilise ci-dessus
+# pour le signal de sante).
+# =====================================================================
+if [ -n "${AUTOREPAIR_FAKE_STATUS_JSON:-}" ]; then
+  STATUS_JSON="$AUTOREPAIR_FAKE_STATUS_JSON"
+else
+  STATUS_JSON="$("$MEMCTL" status 2>/dev/null || echo '{}')"
+fi
+
+STATUS_PARSED="$(printf '%s' "$STATUS_JSON" | python3 -c '
+import json, sys
+
+def b(v):
+    if v is True:
+        return "true"
+    if v is False:
+        return "false"
+    return str(v) if v is not None else ""
+
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    d = {}
+print("LOCK_PID=" + str(d.get("lock_pid") or ""))
+print("LOCK_ALIVE=" + b(d.get("lock_alive", False)))
+print("TIMER_ENABLED=" + str(d.get("timer_enabled") or "unknown"))
+print("TIMER_ACTIVE=" + str(d.get("timer_active") or "unknown"))
+print("QDRANT_REACHABLE=" + b(d.get("qdrant_reachable", False)))
+' 2>/dev/null || true)"
+
+LOCK_PID=""
+LOCK_ALIVE="false"
+TIMER_ENABLED="unknown"
+TIMER_ACTIVE="unknown"
+QDRANT_REACHABLE="false"
+if [ -n "$STATUS_PARSED" ]; then
+  while IFS='=' read -r _k _v; do
+    case "$_k" in
+      LOCK_PID) LOCK_PID="$_v" ;;
+      LOCK_ALIVE) LOCK_ALIVE="$_v" ;;
+      TIMER_ENABLED) TIMER_ENABLED="$_v" ;;
+      TIMER_ACTIVE) TIMER_ACTIVE="$_v" ;;
+      QDRANT_REACHABLE) QDRANT_REACHABLE="$_v" ;;
+    esac
+  done <<STATUSEOF
+$STATUS_PARSED
+STATUSEOF
+fi
+
+# =====================================================================
+# GARDE #1 : timer desactive — trace durable d'un /memory_stop Telegram ou
+# `memctl stop` manuel (les deux font systemctl --user disable --now le
+# timer). Notif UNE fois par episode de drift (reset au retablissement),
+# jamais de rappel repete (contrairement a la sentinelle).
+# =====================================================================
+if [ "$TIMER_ENABLED" = "disabled" ]; then
+  if [ "$ALERTED" -eq 0 ]; then
+    notify "🛑 <b>memory-auto-repair</b> @${HOST} — timer ${UNIT%.service}.timer desactive (arret volontaire, /memory_stop ou memctl stop). Aucune action tentee."
+    ALERTED=1
+    LAST_ALERT=$(now)
+    log "garde arret volontaire (timer disabled): notification unique envoyee"
+  else
+    log "garde arret volontaire (timer disabled): silence (deja notifie cet episode)"
+  fi
+  write_state
+  exit 0
+fi
+
+# =====================================================================
+# REPAIR_LOCKED : gel apres echec d'une reparation precedente. Fichier
+# SEPARE du state file (§5) — le degel manuel (rm) ne touche jamais
+# LAST_REPAIR_EPOCH/REPAIR_ATTEMPTS (ne contourne pas le cooldown).
+# =====================================================================
+if [ -e "$LOCK_MARKER" ]; then
+  if [ "$ALERTED" -eq 0 ]; then
+    notify "🔴 <b>memory-auto-repair</b> @${HOST} — REPAIR_LOCKED actif, intervention requise. Aucune action tentee (degel: rm ${LOCK_MARKER}, ou sante soutenue)."
+    ALERTED=1
+    LAST_ALERT=$(now)
+  elif [ $(( $(now) - LAST_ALERT )) -ge "$REMINDER_SEC" ]; then
+    notify "🔴 <b>memory-auto-repair</b> @${HOST} — REPAIR_LOCKED toujours actif ($(date '+%F %T')). Intervention requise."
+    LAST_ALERT=$(now)
+  fi
+  write_state
+  exit 0
+fi
+
+# =====================================================================
+# Classification (§5) — ordre d'evaluation STRICT D -> E -> A -> B -> C -> F,
+# premier match gagne. Les signatures peuvent se chevaucher ; c'est la
+# priorite qui rend la CLASSE finale unique (ex. D+A -> D gagne, reparer A
+# relancerait indefiniment le meme crash en masquant la cause).
+# =====================================================================
+if [ -n "${AUTOREPAIR_FAKE_JOURNAL:-}" ]; then
+  JOURNAL_TEXT="$AUTOREPAIR_FAKE_JOURNAL"
+else
+  JOURNAL_TEXT="$(journalctl --user -u "$UNIT" --since "$JOURNAL_SINCE" -n "$JOURNAL_LINES" -o cat 2>/dev/null || echo '')"
+fi
+
+SIG_D=false
+if printf '%s' "$JOURNAL_TEXT" | grep -qiE 'discover_sources.*max_repos'; then
+  SIG_D=true
+fi
+
+SIG_E=false
+if [ "$QDRANT_REACHABLE" = "false" ]; then
+  SIG_E=true
+fi
+
+SIG_A=false
+if [ -n "$LOCK_PID" ] && [ "$LOCK_ALIVE" = "false" ]; then
+  SIG_A=true
+fi
+
+SIG_B=false
+if [ "$TIMER_ACTIVE" != "active" ] && [ "$TIMER_ENABLED" = "enabled" ]; then
+  SIG_B=true
+fi
+
+SIG_C=false
+if [ "$RESULT" = "exec-condition" ] || [ "${EXEC_MAIN_STATUS:-0}" != "0" ]; then
+  SIG_C=true
+fi
+
+CLASS=""
+if [ "$SIG_D" = true ]; then
+  CLASS=D
+elif [ "$SIG_E" = true ]; then
+  CLASS=E
+elif [ "$SIG_A" = true ]; then
+  CLASS=A
+elif [ "$SIG_B" = true ]; then
+  CLASS=B
+elif [ "$SIG_C" = true ]; then
+  CLASS=C
+else
+  CLASS=F
+fi
+
+SECONDARY=""
+if [ "$CLASS" != "D" ] && [ "$SIG_D" = true ]; then SECONDARY="${SECONDARY}+ garde-fou discovery (max_repos) present egalement. "; fi
+if [ "$CLASS" != "E" ] && [ "$SIG_E" = true ]; then SECONDARY="${SECONDARY}+ qdrant injoignable egalement. "; fi
+if [ "$CLASS" != "A" ] && [ "$SIG_A" = true ]; then SECONDARY="${SECONDARY}+ lock zombie present egalement. "; fi
+if [ "$CLASS" != "B" ] && [ "$SIG_B" = true ]; then SECONDARY="${SECONDARY}+ timer arrete par accident egalement. "; fi
+if [ "$CLASS" != "C" ] && [ "$SIG_C" = true ]; then SECONDARY="${SECONDARY}+ dernier run en echec egalement. "; fi
+
+log "classification: CLASS=${CLASS} (sig D=${SIG_D} E=${SIG_E} A=${SIG_A} B=${SIG_B} C=${SIG_C})"
+
+# =====================================================================
+# Classes D/E/F : alerte seule, jamais d'action. Redaction OBLIGATOIRE de
+# l'extrait de traceback avant envoi (§6).
+# =====================================================================
+if [ "$CLASS" = "D" ] || [ "$CLASS" = "E" ] || [ "$CLASS" = "F" ]; then
+  TRACEBACK_REDACTED="$(printf '%s' "$JOURNAL_TEXT" | tail -c 400 | redact)"
+  CAUSE=""
+  case "$CLASS" in
+    D) CAUSE="garde-fou discovery (max_repos/exclude_names) — decision requise, config a ajuster manuellement." ;;
+    E) CAUSE="Qdrant injoignable (dependance externe) — le spool absorbe, rien a reparer localement." ;;
+    F) CAUSE="inclassable — aucune signature connue detectee." ;;
+  esac
+  MSG="🔧 <b>memory-auto-repair</b> @${HOST} — classe ${CLASS}, ALERTE SEULE (aucune action auto).
+Cause : ${CAUSE}
+${SECONDARY}
+Extrait journal (redacted, <=400 car.) : ${TRACEBACK_REDACTED}
+Diagnostic : memctl status ; cf §6.4 AI-MEMORY-OPERATIONS.md."
+  if [ "$ALERTED" -eq 0 ]; then
+    notify "$MSG"
+    ALERTED=1
+    LAST_ALERT=$(now)
+    log "alerte classe ${CLASS} envoyee"
+  elif [ $(( $(now) - LAST_ALERT )) -ge "$REMINDER_SEC" ]; then
+    notify "$MSG (rappel)"
+    LAST_ALERT=$(now)
+    log "rappel alerte classe ${CLASS} envoye"
+  else
+    log "alerte classe ${CLASS}: silence (anti-spam)"
+  fi
+  write_state
+  exit 0
+fi
+
+# =====================================================================
+# Classes A/B/C : action, sous reserve du budget cooldown (1 action /
+# COOLDOWN_SEC, calcule sur LAST_REPAIR_EPOCH qui SURVIT aux retours
+# transitoires a la sante).
+# =====================================================================
+COOLDOWN_ACTIVE=false
+if [ "$LAST_REPAIR_EPOCH" -gt 0 ] && [ $(( $(now) - LAST_REPAIR_EPOCH )) -lt "$COOLDOWN_SEC" ]; then
+  COOLDOWN_ACTIVE=true
+fi
+
+if [ "$COOLDOWN_ACTIVE" = true ]; then
+  # Predicat de succes post-reparation (§5) : un run doit s'etre termine avec
+  # ExecMainStatus==0 ET Result==success ET fin POSTERIEURE a l'action. Si
+  # jamais (LAST_SUCCESS_EPOCH <= LAST_REPAIR_EPOCH), le drift n'a JAMAIS
+  # cesse depuis la reparation -> echec confirme, escalade + REPAIR_LOCKED.
+  # Sinon (un succes a bien eu lieu depuis), c'est un incident DISTINCT
+  # survenu apres un retablissement transitoire -> le budget est deja
+  # consomme pour cette fenetre, alerte seule, pas d'escalade.
+  if [ "$LAST_SUCCESS_EPOCH" -le "$LAST_REPAIR_EPOCH" ]; then
+    mkdir -p "$(dirname "$LOCK_MARKER")"
+    touch "$LOCK_MARKER"
+    notify "🔴 <b>memory-auto-repair</b> @${HOST} — auto-repair a agi (classe ${CLASS}) mais le drift persiste. Intervention requise. REPAIR_LOCKED pose (degel : rm ${LOCK_MARKER}, ou sante soutenue $(( UNLOCK_TICKS )) ticks)."
+    ALERTED=1
+    LAST_ALERT=$(now)
+    log "echec post-reparation confirme -> REPAIR_LOCKED pose"
+  else
+    MSG="🔧 <b>memory-auto-repair</b> @${HOST} — classe ${CLASS} detectee mais budget de reparation deja consomme cette fenetre (cooldown $(( COOLDOWN_SEC / 3600 ))h). Aucune action."
+    if [ "$ALERTED" -eq 0 ]; then
+      notify "$MSG"
+      ALERTED=1
+      LAST_ALERT=$(now)
+    elif [ $(( $(now) - LAST_ALERT )) -ge "$REMINDER_SEC" ]; then
+      notify "$MSG (rappel)"
+      LAST_ALERT=$(now)
+    fi
+    log "cooldown actif, incident distinct (succes depuis derniere reparation) -> alerte seule"
+  fi
+  write_state
+  exit 0
+fi
+
+# --- Action ---
+ACTION_LABEL=""
+case "$CLASS" in
+  A) ACTION_LABEL="memctl fix (lock zombie)" ;;
+  B) ACTION_LABEL="memctl start (+run si aucun run n'a demarre entre-temps)" ;;
+  C) ACTION_LABEL="memctl run (relance unique)" ;;
+esac
+notify "🔧 <b>memory-auto-repair</b> @${HOST} — classe ${CLASS} detectee. ${SECONDARY}Action prevue : ${ACTION_LABEL}."
+
+run_action() {
+  local action="$1"
+  if [ -n "${AUTOREPAIR_FAKE_ACTIONS_LOG:-}" ]; then
+    echo "$action" >> "$AUTOREPAIR_FAKE_ACTIONS_LOG"
+  else
+    "$MEMCTL" "$action" >/dev/null 2>&1 || true
+  fi
+}
+
+case "$CLASS" in
+  A)
+    run_action fix
+    ;;
+  B)
+    # Anti-course (§5) : comparaison InactiveExitTimestamp AVANT/APRES le
+    # start (pas ActiveState seul, qui raterait un run demarre ET termine
+    # dans l'intervalle) avant d'oser un `memctl run` separe — un timer
+    # Persistent=true peut deja avoir rattrape la fenetre manquee au start.
+    if [ -n "${AUTOREPAIR_FAKE_INACTIVE_EXIT_BEFORE:-}" ]; then
+      BEFORE_IET="$AUTOREPAIR_FAKE_INACTIVE_EXIT_BEFORE"
+    else
+      BEFORE_RAW="$(systemctl --user show "$UNIT" -p InactiveExitTimestamp --value 2>/dev/null || echo '')"
+      if [ -n "$BEFORE_RAW" ] && [ "$BEFORE_RAW" != "n/a" ]; then
+        BEFORE_IET="$(date -d "$BEFORE_RAW" +%s 2>/dev/null || echo 0)"
+      else
+        BEFORE_IET=0
+      fi
+    fi
+
+    run_action start
+
+    SLEEP_SEC="${AUTOREPAIR_ANTI_COURSE_SLEEP_SEC:-5}"
+    if [ "$SLEEP_SEC" -gt 0 ]; then
+      sleep "$SLEEP_SEC"
+    fi
+
+    if [ -n "${AUTOREPAIR_FAKE_INACTIVE_EXIT_AFTER:-}" ]; then
+      AFTER_IET="$AUTOREPAIR_FAKE_INACTIVE_EXIT_AFTER"
+    else
+      AFTER_RAW="$(systemctl --user show "$UNIT" -p InactiveExitTimestamp --value 2>/dev/null || echo '')"
+      if [ -n "$AFTER_RAW" ] && [ "$AFTER_RAW" != "n/a" ]; then
+        AFTER_IET="$(date -d "$AFTER_RAW" +%s 2>/dev/null || echo 0)"
+      else
+        AFTER_IET=0
+      fi
+    fi
+
+    if [ "$AFTER_IET" = "$BEFORE_IET" ]; then
+      run_action run
+    else
+      log "anti-course classe B: run deja demarre entre start et le recheck (InactiveExitTimestamp before=${BEFORE_IET} after=${AFTER_IET}) -> pas de 2e declenchement"
+    fi
+    ;;
+  C)
+    run_action run
+    ;;
+esac
+
+LAST_REPAIR_EPOCH=$(now)
+REPAIR_ATTEMPTS=$(( REPAIR_ATTEMPTS + 1 ))
+notify "🔧 <b>memory-auto-repair</b> @${HOST} — action lancee (classe ${CLASS}). Resultat verifie au tick suivant."
+write_state
+log "action classe ${CLASS} lancee, LAST_REPAIR_EPOCH=${LAST_REPAIR_EPOCH} REPAIR_ATTEMPTS=${REPAIR_ATTEMPTS}"
+exit 0

@@ -1,0 +1,20 @@
+---
+galaxy_info:
+  role_name: memory_worker_auto_repair
+  author: VPAI
+  namespace: mobutoo
+  description: >-
+    Reparation bornee du pipeline llamaindex-memory-worker (Waza) apres 1h de
+    drift continu — classification des pannes (D->E->A->B->C->F), actions
+    sures/reversibles via memctl (lock zombie, timer arrete, relance unique),
+    alerte Telegram enrichie pour le reste. Design :
+    docs/design/2026-07-25-memory-worker-auto-repair.md
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

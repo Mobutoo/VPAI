@@ -1,0 +1,16 @@
+[Unit]
+Description=memory-worker-auto-repair — reparation bornee apres 1h de drift llamaindex-memory-worker (user)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory={{ memory_worker_auto_repair_install_dir }}
+ExecStart={{ memory_worker_auto_repair_script }}
+Nice=19
+IOSchedulingClass=idle
+
+# No [Install] section: this is a timer-triggered Type=oneshot. Only the timer
+# is enabled (systemctl --user enable …timer) — mirrors llamaindex-memory-worker
+# and memory-worker-watchdog so a stray `enable …service` never runs the probe
+# at every login.

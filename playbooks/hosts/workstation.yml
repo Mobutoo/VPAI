@@ -69,6 +69,9 @@
     - role: memory-worker-watchdog
       tags: [memory-worker-watchdog, workstation, monitoring]
 
+    - role: memory-worker-auto-repair
+      tags: [memory_worker_auto_repair, phase3, workstation, monitoring]
+
     - role: cc-improvement-loop
       tags: [cc-improvement-loop, workstation, services]
 

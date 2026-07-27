@@ -20,6 +20,11 @@
   become: true
   tags: [memory_worker_auto_repair, phase3]
 
+# F7 fix (revue Opus 2026-07-27) : `no_log: true` sur CETTE tache censurait
+# le fail_msg lui-meme (l'assert ne loggue jamais de secret -- seulement des
+# noms de variables) -- un echec devenait indechiffrable en CI/logs. Retire
+# ICI uniquement ; conserve sur la tache "Deploy ... env file" ci-dessous
+# (celle-la manipule bien les valeurs des secrets).
 - name: Assert Telegram credentials are configured (L4 fix — pattern vpn-dns)
   ansible.builtin.assert:
     that:
@@ -32,7 +37,6 @@
       action ni alerte D/E/F). Deploiement bloque plutot qu'un echec
       silencieux.
     quiet: true
-  no_log: true
   tags: [memory_worker_auto_repair, phase3]
 
 - name: Deploy memory-worker-auto-repair env file (Telegram secrets)

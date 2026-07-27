@@ -1,5 +1,5 @@
 schema_version: 1
-prisme_registry_ref: "54d0375"
+prisme_registry_ref: "3953698"
 endpoint:
   controller: "https://qd.ewutelo.cloud:443"
   runtime: "http://javisi_qdrant:6333"

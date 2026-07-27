@@ -98,14 +98,22 @@
     - { src: "remotion/Montage/effects.tsx", dest: "remotion/Montage/effects.tsx" }
   register: remotion_composition_files
 
+# changed_when volontairement absent : ansible.builtin.file rapporte deja
+# fidelement changed=true/false selon qu'il a reellement supprime le fichier
+# (REX : un changed_when: false ici mentirait sur une tache mutante).
 - name: Remove stale package-lock.json when package.json changes  # noqa: no-handler
   ansible.builtin.file:
     path: "{{ remotion_install_dir }}/package-lock.json"
     state: absent
   become: true
   when: remotion_root_files.changed
-  changed_when: false
 
+# changed_when: true (avant fix) mentait: `creates` fait deja sauter la
+# commande npm quand package-lock.json existe (rc=0, "Did not run command"),
+# mais le forcage a "true" rapportait quand meme changed a chaque run
+# (REX non-idempotence constate en run reel). Sans override, le module
+# command rapporte nativement changed=false quand `creates` a fait sauter
+# l'execution.
 - name: Generate package-lock.json for reproducible builds
   ansible.builtin.command:
     cmd: npm install --package-lock-only --ignore-scripts
@@ -114,7 +122,6 @@
   become_user: "{{ workstation_pi_user }}"
   args:
     creates: "{{ remotion_install_dir }}/package-lock.json"
-  changed_when: true
 
 - name: Build Remotion Docker image (ARM64 — system Chromium)
   community.docker.docker_image:

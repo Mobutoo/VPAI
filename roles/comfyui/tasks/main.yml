@@ -68,6 +68,15 @@
     depth: 1
     version: "HEAD"
     force: false
+    # update: false = clone si absent, ne jamais re-fetch un dépôt déjà présent.
+    # Avec update (défaut true) + version "HEAD" flottant, ansible.builtin.git
+    # refait un checkout HEAD à chaque run et rapporte changed=true même quand
+    # before == after (constaté en run réel : REX non-idempotence). "HEAD" n'est
+    # de toute façon pas une version pinnée (doctrine versions.yml interdit les
+    # branches flottantes) — ces custom nodes ne sont pas mis à jour
+    # automatiquement par ce rôle ; une mise à jour délibérée reste possible en
+    # supprimant le dossier ou via un `git pull` manuel.
+    update: false
   become: true
   loop: "{{ comfyui_custom_nodes }}"
   loop_control:
@@ -191,15 +200,58 @@
     mode: "0755"
   become: true
 
-- name: Copy CLI source code
+# Copie fichier-par-fichier (pas de copie de repertoire entier) : la source
+# roles/comfyui/files/comfyui-cli/ accumule localement des artefacts de dev
+# (.pytest_cache/, comfyui_cli.egg-info/, __pycache__/*.pyc) ignores par git
+# mais PAS par ansible.builtin.copy (qui n'a pas connaissance de .gitignore).
+# `pip install -e` régénère ensuite l'egg-info a partir de l'etat reel du
+# disque cible -> a chaque run la version poussee par copy differe de celle
+# regeneree par pip -> oscillation infinie "changed" (REX non-idempotence).
+# Les glob *.py excluent nativement ces artefacts (extension .pyc/.egg-info
+# jamais matchee) sans introduire de dependance de collection (ansible.posix).
+- name: Copy CLI root files (package metadata)
   ansible.builtin.copy:
-    src: comfyui-cli/
-    dest: "{{ comfyui_cli_install_dir }}/"
+    src: "{{ item }}"
+    dest: "{{ comfyui_cli_install_dir }}/{{ item | basename }}"
     owner: "{{ workstation_pi_user }}"
     group: "{{ workstation_pi_user }}"
     mode: "0644"
   become: true
-  register: _comfyui_cli_src
+  loop:
+    - comfyui-cli/setup.py
+    - comfyui-cli/requirements.txt
+    - comfyui-cli/requirements-dev.txt
+  loop_control:
+    label: "{{ item | basename }}"
+  register: _comfyui_cli_root_files
+
+- name: Copy CLI package source (comfyui_cli/*.py)
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ comfyui_cli_install_dir }}/comfyui_cli/{{ item | basename }}"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+  with_fileglob:
+    - "comfyui-cli/comfyui_cli/*.py"
+  loop_control:
+    label: "{{ item | basename }}"
+  register: _comfyui_cli_package_files
+
+- name: Copy CLI test suite (tests/*.py)
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ comfyui_cli_install_dir }}/tests/{{ item | basename }}"
+    owner: "{{ workstation_pi_user }}"
+    group: "{{ workstation_pi_user }}"
+    mode: "0644"
+  become: true
+  with_fileglob:
+    - "comfyui-cli/tests/*.py"
+  loop_control:
+    label: "{{ item | basename }}"
+  register: _comfyui_cli_test_files
 
 - name: Install CLI Python dependencies in venv
   ansible.builtin.pip:
@@ -209,12 +261,21 @@
   become: true
   become_user: "{{ workstation_pi_user }}"
 
+# `pip install -e` avec backend pyproject.toml (PEP 660) reconstruit
+# systematiquement le wheel editable et imprime "Successfully installed" a
+# CHAQUE run, meme sans aucun changement (constate en run reel : REX
+# non-idempotence). En mode editable, une modif de comfyui_cli/*.py est deja
+# prise en compte sans reinstall (symlink source) ; seul un premier bootstrap
+# (venv neuf) ou un changement de setup.py/entry_points le necessite. Le
+# `creates` cible le binaire d'entree, deja la reference canonique utilisee
+# par la tache "Create CLI symlink in /usr/local/bin" plus bas.
 - name: Install CLI package in venv (editable)
   ansible.builtin.shell:
     cmd: |
       set -euo pipefail
       {{ comfyui_cli_install_dir }}/.venv/bin/pip install -e "{{ comfyui_cli_install_dir }}"
     executable: /bin/bash
+    creates: "{{ comfyui_cli_install_dir }}/.venv/bin/comfyui-cli"
   become: true
   become_user: "{{ workstation_pi_user }}"
   register: _comfyui_cli_pip

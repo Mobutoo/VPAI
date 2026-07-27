@@ -53,12 +53,27 @@ curl_cfg_escape() {
 # echouer sendMessage (HTTP 400), et l'ancien code avalait cet echec sans
 # jamais logger le code HTTP => alertes D/E/F silencieusement perdues).
 html_escape() {
+  # F1 fix (revue Opus 2026-07-27) : dans `${s//pat/rep}`, un `&` DANS LE
+  # REMPLACEMENT designe le texte matche par pat, pas un litteral -- l'ancien
+  # code produisait donc des chevrons/esperluettes bruts qui survivaient
+  # (`a <lt; b >gt; c &amp;amp; d`), faisant echouer parse_mode=HTML. Echapper
+  # l'esperluette du REMPLACEMENT avec `\&` force le litteral. ORDRE STRICT :
+  # `&` d'abord (sinon les `&` injectes par `&lt;`/`&gt;` seraient
+  # re-echappes en `&amp;lt;`/`&amp;gt;`).
+  # Verifie : s='a < b > c & d' -> 'a &lt; b &gt; c &amp; d'.
   local s="$1"
-  s="${s//&/&amp;}"
-  s="${s//</&lt;}"
-  s="${s//>/&gt;}"
+  s="${s//&/\&amp;}"
+  s="${s//</\&lt;}"
+  s="${s//>/\&gt;}"
   printf '%s' "$s"
 }
+
+# Point d'entree cache pour le harnais (html_escape() isolee) :
+#   printf '%s' "$input" | bash script.sh __html_escape_test
+if [ "${1:-}" = "__html_escape_test" ]; then
+  html_escape "$(cat)"
+  exit 0
+fi
 
 notify() {
   local msg="$1" http_code
@@ -108,7 +123,10 @@ redact() {
   prog=$(cat <<'PYEOF'
 import re, sys
 
-KEYWORDS = r'(?:api[-_]?key|token|secret|password|authorization|bearer|basic)'
+# F11 fix (revue Opus 2026-07-27) : ajout de private[-_]?key (private_key/
+# privatekey/private-key) -- absent des mots-cles, une cle privee sous cette
+# forme exacte ne matchait aucune des regles ci-dessous.
+KEYWORDS = r'(?:api[-_]?key|private[-_]?key|token|secret|password|authorization|bearer|basic)'
 text = sys.stdin.read()
 
 # Ordre volontaire : formes les plus specifiques d'abord, sinon un motif
@@ -186,28 +204,46 @@ REPAIR_ATTEMPTS=0
 ALERTED=0
 LAST_ALERT=0
 CONSECUTIVE_BLIND=0
+# F10 fix : compteur de ticks consecutifs en ActiveState=activating -- meme
+# patron que CONSECUTIVE_BLIND/M8 (alerte au Ne tick, jamais un silence non
+# borne sur un run fige, cf §4.1.3 runbook).
+ACTIVATING_TICKS=0
 FIRST_RUN=1
 STATE_CORRUPT=0
 
 state_field() {
   # $1=KEY $2=DEFAULT -> derniere valeur numerique valide pour KEY dans
   # STATE_FILE, sinon DEFAULT (jamais d'echec, jamais de source shell).
+  # F6 fix (revue Opus 2026-07-27) : l'ancien filtre `*[!0-9-]*` rejetait
+  # uniquement les valeurs contenant un caractere NI chiffre NI '-' -- une
+  # valeur comme "-" ou "1-2" (uniquement chiffres/tirets) le traversait donc
+  # SANS etre rejetee, et atterrissait telle quelle dans l'arithmetique
+  # `$(( VAR + 1 ))` plus bas (erreur de syntaxe shell). Aucun champ du state
+  # n'est jamais negatif : `*[!0-9]*` rejette tout caractere non-numerique,
+  # '-' inclus, sans exception.
   local key="$1" default="$2" raw
   raw="$(sed -n "s/^${key}=//p" "$STATE_FILE" 2>/dev/null | tail -1)"
   case "$raw" in
-    ''|*[!0-9-]*) printf '%s' "$default" ;;
+    ''|*[!0-9]*) printf '%s' "$default" ;;
     *) printf '%s' "$raw" ;;
   esac
 }
 
 write_state() {
-  # H1 fix : ecriture atomique (.tmp + mv -f) -- un `cat >` direct sur
+  # H1 fix : ecriture atomique (.tmp + install) -- un `cat >` direct sur
   # STATE_FILE laisse une fenetre ou une coupure (disque plein, OOM-kill en
   # plein milieu) produit un fichier tronque = corruption au prochain tick.
+  # F3 fix (revue Opus 2026-07-27) : retourne desormais un CODE non-zero si
+  # une etape echoue (mkdir/cat/install), au lieu de laisser l'appelant
+  # supposer un succes implicite -- necessaire pour le fail-closed AVANT
+  # action (cf plus bas, section Action). F9 fix : `install -m 0600` au lieu
+  # de `mv -f` -- un `mv` conserve les permissions du fichier TEMPORAIRE
+  # source (umask du process), potentiellement plus permissif que le 0600
+  # attendu sur un fichier d'etat.
   local tmp
-  mkdir -p "$(dirname "$STATE_FILE")"
+  mkdir -p "$(dirname "$STATE_FILE")" || return 1
   tmp="${STATE_FILE}.tmp.$$"
-  cat > "$tmp" <<EOF
+  cat > "$tmp" <<EOF || return 1
 LAST_SUCCESS_EPOCH=$LAST_SUCCESS_EPOCH
 DRIFT_TICKS=$DRIFT_TICKS
 HEALTHY_TICKS=$HEALTHY_TICKS
@@ -216,13 +252,24 @@ REPAIR_ATTEMPTS=$REPAIR_ATTEMPTS
 ALERTED=$ALERTED
 LAST_ALERT=$LAST_ALERT
 CONSECUTIVE_BLIND=$CONSECUTIVE_BLIND
+ACTIVATING_TICKS=$ACTIVATING_TICKS
 EOF
-  mv -f "$tmp" "$STATE_FILE"
+  if ! install -m 0600 "$tmp" "$STATE_FILE" 2>/dev/null; then
+    rm -f "$tmp" || true
+    return 1
+  fi
+  rm -f "$tmp" || true
 }
 
 if [ -e "$STATE_FILE" ]; then
   FIRST_RUN=0
-  if [ -r "$STATE_FILE" ] && [ -s "$STATE_FILE" ] && grep -q '^LAST_SUCCESS_EPOCH=' "$STATE_FILE" 2>/dev/null; then
+  # F5 fix (revue Opus 2026-07-27) : la sonde de corruption testait la
+  # PREMIERE cle ecrite (^LAST_SUCCESS_EPOCH=) -- un state tronque APRES
+  # cette 1ere ligne (coupure en cours d'ecriture) la contient toujours et
+  # passait donc pour valide. On teste desormais la DERNIERE cle ecrite par
+  # write_state (^ACTIVATING_TICKS=) : un fichier tronque avant cette ligne
+  # est detecte.
+  if [ -r "$STATE_FILE" ] && [ -s "$STATE_FILE" ] && grep -q '^ACTIVATING_TICKS=' "$STATE_FILE" 2>/dev/null; then
     LAST_SUCCESS_EPOCH="$(state_field LAST_SUCCESS_EPOCH 0)"
     DRIFT_TICKS="$(state_field DRIFT_TICKS 0)"
     HEALTHY_TICKS="$(state_field HEALTHY_TICKS 0)"
@@ -231,6 +278,7 @@ if [ -e "$STATE_FILE" ]; then
     ALERTED="$(state_field ALERTED 0)"
     LAST_ALERT="$(state_field LAST_ALERT 0)"
     CONSECUTIVE_BLIND="$(state_field CONSECUTIVE_BLIND 0)"
+    ACTIVATING_TICKS="$(state_field ACTIVATING_TICKS 0)"
   else
     STATE_CORRUPT=1
   fi
@@ -380,13 +428,24 @@ NOW_EPOCH=$(now)
 # zero DRIFT_TICKS/ALERTED (faux all-clear) et incrementait HEALTHY_TICKS
 # (degel de REPAIR_LOCKED en 2h sans qu'AUCUN run n'ait reellement reussi).
 # Un run en cours ne prouve rien -- on n'ecrit que l'etat inchange et on
-# sort, sans toucher a AUCUN compteur.
+# sort, sans toucher a AUCUN compteur (DRIFT_TICKS/HEALTHY_TICKS/ALERTED).
+# F10 fix (revue Opus 2026-07-27) : cette suspension de jugement n'etait
+# bornee que par le watchdog (memory-worker-watchdog, 4.1.2) -- auto-repair
+# lui-meme restait muet indefiniment sur un run fige (TimeoutStartUSec=
+# infinity, cf §4.1.3 runbook). Compteur ACTIVATING_TICKS, meme patron que
+# CONSECUTIVE_BLIND/M8 : alerte au Ne tick consecutif (BLIND_ALERT_EVERY),
+# jamais avant, jamais re-emise a chaque tick suivant.
 # =====================================================================
 if [ "$ACTIVE_STATE" = "activating" ]; then
+  ACTIVATING_TICKS=$(( ACTIVATING_TICKS + 1 ))
+  if [ $(( ACTIVATING_TICKS % BLIND_ALERT_EVERY )) -eq 0 ]; then
+    notify "⏳ <b>memory-auto-repair</b> @${HOST} — ${UNIT} en ActiveState=activating depuis au moins ${ACTIVATING_TICKS} ticks consecutifs (~$(( ACTIVATING_TICKS * TICK_SEC / 60 ))min). Run peut-etre fige -- voir memory-worker-watchdog / journalctl --user -u ${UNIT}."
+  fi
   write_state
-  log "${UNIT} run en cours (ActiveState=activating) -> tick suspendu, aucun jugement porte (DRIFT_TICKS=${DRIFT_TICKS} HEALTHY_TICKS=${HEALTHY_TICKS} inchanges)"
+  log "${UNIT} run en cours (ActiveState=activating) -> tick suspendu, aucun jugement porte (DRIFT_TICKS=${DRIFT_TICKS} HEALTHY_TICKS=${HEALTHY_TICKS} inchanges, ACTIVATING_TICKS=${ACTIVATING_TICKS})"
   exit 0
 fi
+ACTIVATING_TICKS=0
 
 IS_DRIFT=false
 if [ $(( NOW_EPOCH - LAST_SUCCESS_EPOCH )) -gt "$DRIFT_SEC" ]; then
@@ -442,7 +501,13 @@ fi
 if [ -n "${AUTOREPAIR_FAKE_STATUS_JSON:-}" ]; then
   STATUS_JSON="$AUTOREPAIR_FAKE_STATUS_JSON"
 else
-  STATUS_JSON="$("$MEMCTL" status 2>/dev/null || echo '{}')"
+  # F4 fix (revue Opus 2026-07-27) : `|| echo '{}'` transformait un memctl
+  # absent/en echec en JSON *valide* -- STATUS_OK passait a true et un
+  # diagnostic classe E ("Qdrant injoignable") etait invente sur des champs a
+  # false par defaut. `|| true` laisse STATUS_JSON vide dans ce cas : le
+  # parseur Python plus bas echoue alors reellement a le parser (STATUS_OK=
+  # false), ce qui force la classe F dediee "sonde memctl HS" (deja geree).
+  STATUS_JSON="$("$MEMCTL" status 2>/dev/null || true)"
 fi
 
 # M4 fix : STATUS_OK distingue "JSON invalide/absent" de "champs a false par
@@ -664,9 +729,15 @@ log "classification: CLASS=${CLASS} (sig D=${SIG_D} E=${SIG_E} A=${SIG_A} B=${SI
 # (l'ordre inverse coupait le mot-clef et laissait la valeur fuiter en clair
 # dans les 400 derniers caracteres). H4 fix : echappement HTML de l'extrait
 # (parse_mode=HTML avale un `<`/`&` non echappe -> HTTP 400 silencieux).
+# F8 fix (revue Opus 2026-07-27) : `tail -c 400` compte des OCTETS, pas des
+# caracteres -- une coupure en plein milieu d'une sequence UTF-8 multi-octets
+# produit un octet invalide en tete, corrompant le payload JSON envoye a
+# Telegram (HTTP 400). `iconv -c` (omet les sequences invalides au lieu
+# d'echouer) nettoie la coupure ; `|| true` protege sous set -e si iconv est
+# absent (jamais de mort du script pour un extrait de log).
 # =====================================================================
 if [ "$CLASS" = "D" ] || [ "$CLASS" = "E" ] || [ "$CLASS" = "F" ]; then
-  TRACEBACK_REDACTED="$(printf '%s' "$JOURNAL_TEXT" | redact | tail -c 400)"
+  TRACEBACK_REDACTED="$(printf '%s' "$JOURNAL_TEXT" | redact | tail -c 400 | iconv -c -f UTF-8 -t UTF-8 2>/dev/null || true)"
   TRACEBACK_REDACTED="$(html_escape "$TRACEBACK_REDACTED")"
   CAUSE=""
   case "$CLASS" in
@@ -687,7 +758,7 @@ if [ "$CLASS" = "D" ] || [ "$CLASS" = "E" ] || [ "$CLASS" = "F" ]; then
   MSG="🔧 <b>memory-auto-repair</b> @${HOST} — classe ${CLASS}, ALERTE SEULE (aucune action auto).
 Cause : ${CAUSE}
 ${SECONDARY}
-Extrait journal (redacted, <=400 car.) : ${TRACEBACK_REDACTED}
+Extrait journal (redacted, max 400 car.) : ${TRACEBACK_REDACTED}
 Diagnostic : memctl status ; cf §6.4 AI-MEMORY-OPERATIONS.md."
   if [ "$ALERTED" -eq 0 ]; then
     notify "$MSG"
@@ -741,6 +812,27 @@ case "$CLASS" in
   B) ACTION_LABEL="memctl start (+run si aucun run n'a demarre entre-temps)" ;;
   C) ACTION_LABEL="memctl run (relance unique)" ;;
 esac
+
+# =====================================================================
+# F3 fix (revue Opus 2026-07-27) : LAST_REPAIR_EPOCH/REPAIR_ATTEMPTS sont
+# desormais persistes AVANT de lancer l'action, pas apres. L'ancien ordre
+# laissait `set -e` tuer le script APRES l'action si write_state echouait
+# plus tard (disque plein, repertoire non inscriptible) SANS jamais avoir
+# enregistre qu'une reparation avait ete tentee -- LAST_REPAIR_EPOCH restait
+# a 0 pour toujours, et `memctl fix`/`start`/`run` se relancerait SANS BORNE
+# a chaque tick suivant (aucun cooldown ne peut jouer sur un
+# LAST_REPAIR_EPOCH jamais ecrit). write_state() retourne desormais un code
+# explicite (0/1) : un echec d'ecriture est fail-closed ici -- notif dediee
+# + exit 1, AUCUNE action (run_action) n'est tentee ce tick.
+# =====================================================================
+LAST_REPAIR_EPOCH=$(now)
+REPAIR_ATTEMPTS=$(( REPAIR_ATTEMPTS + 1 ))
+if ! write_state; then
+  log "ERREUR: echec d'ecriture du state file (${STATE_FILE}) avant action -- action ANNULEE (fail-closed, evite un LAST_REPAIR_EPOCH jamais persiste)"
+  notify "🔴 <b>memory-auto-repair</b> @${HOST} — echec d'ecriture du state file avant action (disque plein / repertoire non inscriptible ?). Aucune action tentee. Intervention requise (verifier ${STATE_FILE})."
+  exit 1
+fi
+
 notify "🔧 <b>memory-auto-repair</b> @${HOST} — classe ${CLASS} detectee. ${SECONDARY}Action prevue : ${ACTION_LABEL}."
 
 run_action() {
@@ -801,8 +893,9 @@ case "$CLASS" in
     ;;
 esac
 
-LAST_REPAIR_EPOCH=$(now)
-REPAIR_ATTEMPTS=$(( REPAIR_ATTEMPTS + 1 ))
+# F3 fix : LAST_REPAIR_EPOCH/REPAIR_ATTEMPTS sont DEJA persistes (ci-dessus,
+# avant l'action) -- on ne les reecrit pas ici, seule leur valeur en memoire
+# est reutilisee dans les logs/notif ci-dessous.
 # H3 fix : ALERTED=1 pose ICI, avant write_state -- sans cela, le tick
 # suivant qui constate le retour a la sante ne notifiait JAMAIS le resultat
 # de la reparation (branche "healthy" conditionnee a ALERTED=1, qui restait

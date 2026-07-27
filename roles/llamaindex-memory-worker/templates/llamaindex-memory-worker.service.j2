@@ -24,5 +24,9 @@ MemoryMax={{ memory_worker_memory_max }}
 MemorySwapMax={{ memory_worker_memory_swap_max }}
 OOMScoreAdjust={{ memory_worker_oom_score_adjust }}
 
+# REX 2026-07-27 (parité avec memory-worker.service.user.j2) : filet de dernier
+# recours contre un run figé qui gèle tout le système.
+RuntimeMaxSec={{ memory_worker_runtime_max_sec }}
+
 [Install]
 WantedBy=multi-user.target

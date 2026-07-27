@@ -306,6 +306,16 @@ memory_worker_memory_high: "3G"      # throttle doux (reclaim agressif au-delà)
 memory_worker_memory_max: "4G"       # plafond dur (cgroup OOM-kill le worker seul)
 memory_worker_memory_swap_max: "512M"
 memory_worker_oom_score_adjust: 1000
+# Borne dure de duree (incident 2026-07-27 : run incrementale figee ~2h41,
+# freeze systeme, reset watchdog materiel BCM2835 -- toutes les sessions
+# coupees d'un coup). Ni memory-worker-auto-repair (ActiveState=activating =
+# suspension de jugement permanente, cf F10) ni memory-worker-watchdog (alerte
+# seule, jamais d'action -- un run de 26h54m avait deja ete observe sans
+# intervention, audit 2026-07-17 angle mort #4) ne peuvent tuer un run fige :
+# c'etait le seul gardien restant avant que le systeme entier ne cede.
+# Superieur au seuil watchdog (5400s/90min) : l'alerte Telegram arrive
+# toujours AVANT le kill, jamais le kill sans alerte prealable.
+memory_worker_runtime_max_sec: 7200
 # Cap threads torch/BLAS de l'embed (waza = 4 cœurs). Borne l'indexation à N cœurs
 # -> laisse les autres aux sessions interactives (Claude Code). Combiné à Nice=19 +
 # IO idle + calm-wait, contrôle la charge même en co-activité multi-sessions.

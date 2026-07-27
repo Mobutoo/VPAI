@@ -1,0 +1,110 @@
+---
+- name: Validate Prisme deployment pins and capacity variables
+  ansible.builtin.assert:
+    that:
+      - prisme_image_digest is match('^sha256:[a-f0-9]{64}$')
+      - "'@sha256:' in prisme_db_proxy_image"
+      - prisme_db_proxy_backend_ip == "172.20.2.240"
+      - prisme_service_backend_ip == "172.20.2.241"
+      - prisme_web_memory_limit is defined
+      - prisme_db_proxy_memory_reservation is defined
+      - vault_prisme_session_token is defined
+      - vault_prisme_session_token | length >= 32
+    fail_msg: "Prisme image digests or authoritative capacity/IP variables are missing"
+    quiet: true
+  when: prisme_enabled | bool
+  tags: [prisme]
+
+- name: Create isolated Prisme connector network
+  community.docker.docker_network:
+    name: "{{ prisme_connector_network }}"
+    internal: true
+    state: present
+  become: true
+  when: prisme_enabled | bool
+  tags: [prisme]
+
+- name: Inspect backend network before reserving Prisme IPs
+  ansible.builtin.command:
+    argv:
+      - docker
+      - network
+      - inspect
+      - "{{ prisme_backend_network }}"
+      - --format
+      - "{% raw %}{{json .Containers}}{% endraw %}"
+  register: prisme_backend_network_state
+  changed_when: false
+  when: prisme_enabled | bool
+  tags: [prisme]
+
+- name: Refuse occupied Prisme backend IPs
+  ansible.builtin.assert:
+    that:
+      - prisme_db_proxy_backend_ip not in prisme_backend_network_state.stdout
+      - prisme_service_backend_ip not in prisme_backend_network_state.stdout
+    fail_msg: "Prisme fixed backend IP collision: G0 IP decision required"
+    quiet: true
+  when: prisme_enabled | bool
+  tags: [prisme]
+
+- name: Create Prisme directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0750"
+  loop:
+    - "{{ prisme_config_dir }}"
+    - "{{ prisme_data_dir }}"
+    - "{{ prisme_backup_dir }}"
+  become: true
+  when: prisme_enabled | bool
+  tags: [prisme]
+
+- name: Render Prisme environment
+  ansible.builtin.template:
+    src: prisme.env.j2
+    dest: "{{ prisme_config_dir }}/prisme.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0600"
+  become: true
+  no_log: true
+  when: prisme_enabled | bool
+  tags: [prisme]
+
+- name: Render Prisme DB proxy configuration
+  ansible.builtin.template:
+    src: haproxy.cfg.j2
+    dest: "{{ prisme_config_dir }}/haproxy.cfg"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0640"
+  become: true
+  when: prisme_enabled | bool
+  tags: [prisme]
+
+- name: Render Prisme compose
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ prisme_config_dir }}/docker-compose.yml"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0640"
+  become: true
+  when: prisme_enabled | bool
+  tags: [prisme]
+
+- name: Deploy Prisme only after deployment gates
+  community.docker.docker_compose_v2:
+    project_src: "{{ prisme_config_dir }}"
+    files: [docker-compose.yml]
+    state: present
+    pull: never
+  become: true
+  when:
+    - prisme_enabled | bool
+    - prisme_deploy_enabled | bool
+  tags: [prisme]

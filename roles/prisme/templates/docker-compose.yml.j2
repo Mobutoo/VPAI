@@ -1,0 +1,111 @@
+# {{ ansible_managed }}
+x-prisme-image: &prisme_image "{{ prisme_image_repository }}@{{ prisme_image_digest }}"
+x-prisme-env: &prisme_env
+  env_file: ["{{ prisme_config_dir }}/prisme.env"]
+  restart: unless-stopped
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+
+services:
+  web:
+    <<: *prisme_env
+    image: *prisme_image
+    command: ["node", "build"]
+    mem_limit: "{{ prisme_web_memory_limit }}"
+    mem_reservation: "{{ prisme_web_memory_reservation }}"
+    networks:
+      prisme_internal: {}
+      frontend: {}
+      backend:
+        ipv4_address: "{{ prisme_service_backend_ip }}"
+
+  outbox:
+    <<: *prisme_env
+    image: *prisme_image
+    command: ["node", "workers/outbox.js"]
+    mem_limit: "{{ prisme_outbox_memory_limit }}"
+    mem_reservation: "{{ prisme_outbox_memory_reservation }}"
+    networks: [prisme_internal]
+
+  research-worker:
+    <<: *prisme_env
+    image: *prisme_image
+    command: ["node", "workers/research.js"]
+    mem_limit: "{{ prisme_research_memory_limit }}"
+    mem_reservation: "{{ prisme_research_memory_reservation }}"
+    networks: [prisme_internal, egress]
+
+  browser:
+    <<: *prisme_env
+    image: *prisme_image
+    command: ["node", "workers/browser.js"]
+    mem_limit: "{{ prisme_browser_memory_limit }}"
+    mem_reservation: "{{ prisme_browser_memory_reservation }}"
+    networks: [prisme_internal, egress]
+
+  connector:
+    <<: *prisme_env
+    image: *prisme_image
+    command: ["node", "workers/connectors/karakeep.js"]
+    mem_limit: "{{ prisme_connector_memory_limit }}"
+    mem_reservation: "{{ prisme_connector_memory_reservation }}"
+    networks: [prisme_internal, connector_internal]
+
+  indexer:
+    <<: *prisme_env
+    image: *prisme_image
+    command: ["node", "workers/indexer.js"]
+    mem_limit: "{{ prisme_indexer_memory_limit }}"
+    mem_reservation: "{{ prisme_indexer_memory_reservation }}"
+    networks: [prisme_internal, backend]
+
+  consolidation:
+    <<: *prisme_env
+    image: *prisme_image
+    command: ["node", "workers/consolidation.js"]
+    mem_limit: "{{ prisme_consolidation_memory_limit }}"
+    mem_reservation: "{{ prisme_consolidation_memory_reservation }}"
+    networks: [prisme_internal]
+
+  sparse-query:
+    <<: *prisme_env
+    image: *prisme_image
+    command: ["python", "-m", "prisme_embeddings", "--mode", "sparse-query-only"]
+    mem_limit: "{{ prisme_sparse_memory_limit }}"
+    mem_reservation: "{{ prisme_sparse_memory_reservation }}"
+    networks: [prisme_internal]
+
+  db-proxy:
+    image: "{{ prisme_db_proxy_image }}"
+    restart: unless-stopped
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    mem_limit: "{{ prisme_db_proxy_memory_limit }}"
+    mem_reservation: "{{ prisme_db_proxy_memory_reservation }}"
+    volumes:
+      - "{{ prisme_config_dir }}/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro"
+    networks:
+      prisme_internal:
+        ipv4_address: "{{ prisme_db_proxy_internal_ip }}"
+      backend:
+        ipv4_address: "{{ prisme_db_proxy_backend_ip }}"
+
+networks:
+  prisme_internal:
+    internal: true
+    ipam:
+      config: [{subnet: "{{ prisme_internal_subnet }}"}]
+  connector_internal:
+    external: true
+    name: "{{ prisme_connector_network }}"
+  frontend:
+    external: true
+    name: "{{ prisme_frontend_network }}"
+  backend:
+    external: true
+    name: "{{ prisme_backend_network }}"
+  egress:
+    external: true
+    name: "{{ prisme_egress_network }}"

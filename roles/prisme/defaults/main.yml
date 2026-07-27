@@ -1,0 +1,23 @@
+---
+prisme_enabled: false
+prisme_deploy_enabled: false
+prisme_config_dir: "/opt/{{ project_name }}/configs/prisme"
+prisme_data_dir: "/opt/{{ project_name }}/data/prisme"
+prisme_backup_dir: "/opt/{{ project_name }}/backups/prisme"
+
+prisme_image_repository: "ghcr.io/Mobutoo/prisme"
+prisme_image_digest: ""
+prisme_db_proxy_image: ""
+prisme_internal_subnet: "172.30.10.0/24"
+prisme_db_proxy_internal_ip: "172.30.10.10"
+prisme_db_proxy_backend_ip: "172.20.2.240"
+prisme_service_backend_ip: "172.20.2.241"
+prisme_database_name: "prisme"
+prisme_database_user: "prisme"
+prisme_karakeep_enabled: false
+prisme_karakeep_base_url: "http://karakeep:3000"
+
+prisme_frontend_network: "javisi_frontend"
+prisme_backend_network: "javisi_backend"
+prisme_egress_network: "javisi_egress"
+prisme_connector_network: "prisme_connector_internal"

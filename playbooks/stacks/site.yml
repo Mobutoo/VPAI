@@ -122,6 +122,8 @@
     # Phase 4.5 — Déploiement de la stack Docker
     - role: docker-stack
       tags: [docker-stack, phase4, platform]
+    - role: prisme
+      tags: [prisme, phase5, apps]
 
     # Phase 4.6 — Provisioning post-déploiement
     - role: n8n-provision

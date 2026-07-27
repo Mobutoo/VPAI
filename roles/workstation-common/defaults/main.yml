@@ -158,7 +158,7 @@ workstation_earlyoom_enabled: true
 # non retenu : trop de faux positifs en régime chargé normal, et les caps
 # cgroup Couche 2 agissent déjà avant ce seuil.)
 workstation_earlyoom_mem_percent: "10,5"
-workstation_earlyoom_swap_percent: "100"
+workstation_earlyoom_swap_percent: "100,100"
 # Jamais tuer ce qui maintient l'accès distant (cohérent avec oom-protect.conf.j2
 # qui met déjà OOMScoreAdjust=-900 sur systemd-networkd, systemd-resolved et
 # tailscaled). --avoid ne fait QUE retrancher 300 au oom_score (pondération,

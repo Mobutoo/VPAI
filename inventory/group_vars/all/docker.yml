@@ -16,6 +16,10 @@ docker_network_monitoring_subnet: "172.20.3.0/24"
 docker_network_egress_subnet: "172.20.4.0/24"
 docker_network_sandbox_subnet: "172.20.5.0/24"
 
+# --- Prisme fixed backend endpoints (reserved only when prisme_enabled=true) ---
+prisme_db_proxy_backend_ip: "172.20.2.240"
+prisme_service_backend_ip: "172.20.2.241"
+
 # --- Resource limits (prod / preprod) ---
 # PostgreSQL
 postgresql_memory_limit: "{{ '1536M' if target_env == 'prod' else '768M' }}"
@@ -71,6 +75,26 @@ alloy_cpu_limit: "0.25"
 caddy_memory_limit: "256M"
 caddy_memory_reservation: "64M"
 caddy_cpu_limit: "0.5"
+
+# Prisme — authoritative hard limits and reservations (G0 capacity input)
+prisme_web_memory_limit: "1G"
+prisme_web_memory_reservation: "512M"
+prisme_outbox_memory_limit: "384M"
+prisme_outbox_memory_reservation: "192M"
+prisme_research_memory_limit: "512M"
+prisme_research_memory_reservation: "256M"
+prisme_browser_memory_limit: "1536M"
+prisme_browser_memory_reservation: "768M"
+prisme_connector_memory_limit: "384M"
+prisme_connector_memory_reservation: "192M"
+prisme_indexer_memory_limit: "512M"
+prisme_indexer_memory_reservation: "256M"
+prisme_consolidation_memory_limit: "384M"
+prisme_consolidation_memory_reservation: "192M"
+prisme_sparse_memory_limit: "1G"
+prisme_sparse_memory_reservation: "512M"
+prisme_db_proxy_memory_limit: "128M"
+prisme_db_proxy_memory_reservation: "64M"
 
 # cAdvisor (container metrics collector)
 cadvisor_memory_limit: "256M"

@@ -1,0 +1,11 @@
+---
+galaxy_info:
+  role_name: prisme
+  author: VPAI
+  description: Gated Prisme application stack
+  license: proprietary
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Ubuntu
+      versions: ["noble"]
+dependencies: []

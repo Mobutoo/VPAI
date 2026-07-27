@@ -1,0 +1,17 @@
+global
+  maxconn 64
+
+defaults
+  mode tcp
+  timeout connect 3s
+  timeout client 30s
+  timeout server 30s
+
+frontend prisme_postgresql
+  bind {{ prisme_db_proxy_internal_ip }}:5432
+  acl from_prisme src {{ prisme_internal_subnet }}
+  tcp-request connection reject if !from_prisme
+  default_backend shared_postgresql
+
+backend shared_postgresql
+  server postgresql {{ project_name }}_postgresql:5432 check

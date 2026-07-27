@@ -46,7 +46,7 @@
     group: "{{ prod_user }}"
     mode: "0644"
   become: true
-  notify: Restart postgresql stack
+  notify: Reload PostgreSQL config
 
 - name: Deploy postgresql.conf
   ansible.builtin.template:
@@ -146,3 +146,65 @@
   when: not (common_molecule_mode | default(false))
   # docker not available in molecule container (no daemon/socket mounted)
   tags: [postgresql, plane, platform]
+
+# Prisme is provisioned only against an already-running PostgreSQL container.
+- name: Probe PostgreSQL before Prisme provisioning
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - "{{ project_name }}_postgresql"
+      - pg_isready
+      - -U
+      - postgres
+  become: true
+  register: prisme_postgresql_probe
+  changed_when: false
+  failed_when: false
+  when: prisme_enabled | default(false) | bool
+  tags: [postgresql, prisme]
+
+- name: Assert PostgreSQL is ready for Prisme provisioning
+  ansible.builtin.assert:
+    that:
+      - prisme_postgresql_probe.rc == 0
+    fail_msg: "PostgreSQL vivant mais indisponible : provisionnement Prisme interdit"
+    quiet: true
+  when: prisme_enabled | default(false) | bool
+  tags: [postgresql, prisme]
+
+- name: Provision Prisme role and database idempotently
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -i
+      - -e
+      - PGPASSWORD
+      - "{{ project_name }}_postgresql"
+      - psql
+      - -U
+      - postgres
+      - -d
+      - postgres
+      - -v
+      - ON_ERROR_STOP=1
+      - -f
+      - "-"
+    stdin: |
+      DO $$ BEGIN
+        CREATE ROLE prisme LOGIN PASSWORD '{{ postgresql_password }}';
+      EXCEPTION WHEN duplicate_object THEN
+        ALTER ROLE prisme LOGIN PASSWORD '{{ postgresql_password }}';
+      END $$;
+      SELECT 'CREATE DATABASE prisme OWNER prisme'
+      WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'prisme')\gexec
+      GRANT ALL PRIVILEGES ON DATABASE prisme TO prisme;
+  environment:
+    PGPASSWORD: "{{ postgresql_password }}"
+  become: true
+  register: prisme_postgresql_provision
+  changed_when: "'CREATE DATABASE' in prisme_postgresql_provision.stdout"
+  no_log: true
+  when: prisme_enabled | default(false) | bool
+  tags: [postgresql, prisme]

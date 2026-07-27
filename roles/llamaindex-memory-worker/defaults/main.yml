@@ -269,6 +269,10 @@ memory_worker_exclude_dirs:
   # Collections Ansible vendorées dans un repo (incident 2026-07-19 : banga/.ansible
   # 40 Mo, ~5000 modules tiers → run incrémental de 15 h + pollution memory_v3).
   - .ansible
+  # Artefacts SvelteKit générés (incident 2026-07-27 : prisme/.svelte-kit —
+  # types + output serveur → run incrémental >6 h + pollution memory_v3 ;
+  # simubot et vps portent aussi ce dossier).
+  - .svelte-kit
   # Dumps runtime hawktrade, non-versionnés (son .gitignore) mais auto-découverts
   # (incident 2026-07-22 : sic_store seul = 709 Mo, 4747 fichiers → run bloqué 13h).
   # doc_store = 3.6G, le plus gros. `data/corpus-trading/` reste indexé (versionné).

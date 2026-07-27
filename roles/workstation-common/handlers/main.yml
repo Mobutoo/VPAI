@@ -38,3 +38,12 @@
   ansible.builtin.systemd:
     daemon_reexec: true
   become: true
+
+# EARLYOOM_ARGS n'est lu qu'au démarrage du process (EnvironmentFile) — un
+# simple daemon-reload ne suffit pas à appliquer un changement de seuils.
+# Restart sûr: earlyoom n'a aucun état, Restart=always côté unit de toute façon.
+- name: Restart earlyoom
+  ansible.builtin.systemd:
+    name: earlyoom
+    state: restarted
+  become: true

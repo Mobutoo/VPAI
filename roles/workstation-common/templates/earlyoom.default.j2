@@ -1,0 +1,9 @@
+# {{ ansible_managed }}
+# Couche 1 — REX 2026-07-27: RAM+swap chroniquement saturés sans aucune
+# politique OOM -> livelock de reclaim noyau -> PID1 non ordonnançable ->
+# hard-reset par le watchdog matériel BCM2835 (4x en juillet). earlyoom
+# fait mlockall() et poll /proc/meminfo directement : un filet résident,
+# indépendant de l'ordonnanceur systemd, qui agit AVANT que le watchdog
+# matériel n'ait à intervenir. Voir roles/workstation-common/defaults/main.yml
+# pour le détail de la cause racine et le choix (earlyoom vs systemd-oomd).
+EARLYOOM_ARGS="-m {{ workstation_earlyoom_mem_percent }} -s {{ workstation_earlyoom_swap_percent }} --avoid '{{ workstation_earlyoom_avoid_regex }}' --prefer '{{ workstation_earlyoom_prefer_regex }}' -r {{ workstation_earlyoom_report_interval_sec }}{% if workstation_earlyoom_notify_dbus %} -n{% endif %}"

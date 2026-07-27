@@ -387,3 +387,81 @@
   become: true
   when: workstation_fsck_repair_enabled | bool
   tags: [workstation-common, resilience, fsck]
+
+# --- Couche 1: earlyoom (REX 2026-07-27 — livelock de reclaim -> hard-reset watchdog) ---
+# earlyoom est déjà installé via workstation_packages (apt). Voir
+# defaults/main.yml pour le détail complet de la cause racine et le choix
+# earlyoom vs systemd-oomd.
+- name: L1 — Deploy earlyoom args (/etc/default/earlyoom)
+  ansible.builtin.template:
+    src: earlyoom.default.j2
+    dest: /etc/default/earlyoom
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: workstation_earlyoom_enabled | bool
+  notify: Restart earlyoom
+  tags: [workstation-common, memory_guard]
+
+- name: L1 — Create OOM-protection drop-in dir for earlyoom
+  ansible.builtin.file:
+    path: /etc/systemd/system/earlyoom.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: workstation_earlyoom_enabled | bool
+  tags: [workstation-common, memory_guard]
+
+- name: L1 — Shield earlyoom from its own filet (OOMScoreAdjust)
+  ansible.builtin.template:
+    src: earlyoom-oom-protect.conf.j2
+    dest: /etc/systemd/system/earlyoom.service.d/10-oom-protect.conf
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: workstation_earlyoom_enabled | bool
+  notify: Reload systemd daemon (workstation)
+  tags: [workstation-common, memory_guard]
+
+- name: Flush handlers so daemon-reload/args are applied before enabling earlyoom
+  ansible.builtin.meta: flush_handlers
+
+- name: L1 — Enable + start earlyoom
+  ansible.builtin.systemd:
+    name: earlyoom
+    enabled: true
+    state: started
+  become: true
+  when: workstation_earlyoom_enabled | bool
+  tags: [workstation-common, memory_guard]
+
+# --- Couche 2: plafond mémoire de user-{{ workstation_user_slice_uid }}.slice ---
+# Vérifié: un daemon-reload seul applique MemoryHigh/MemoryMax/MemorySwapMax
+# à la slice DÉJÀ active (cgroup memory.max/high/swap.max mis à jour en
+# place), sans restart -> aucune coupure des sessions SSH/tmux en cours.
+- name: L2 — Create drop-in dir for user-{{ workstation_user_slice_uid }}.slice memory cap
+  ansible.builtin.file:
+    path: "/etc/systemd/system/user-{{ workstation_user_slice_uid }}.slice.d"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: workstation_user_slice_memory_guard_enabled | bool
+  tags: [workstation-common, memory_guard]
+
+- name: L2 — Cap user-{{ workstation_user_slice_uid }}.slice memory (MemoryHigh/MemoryMax/MemorySwapMax)
+  ansible.builtin.template:
+    src: user-slice-memory-cap.conf.j2
+    dest: "/etc/systemd/system/user-{{ workstation_user_slice_uid }}.slice.d/10-memory-cap.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  when: workstation_user_slice_memory_guard_enabled | bool
+  notify: Reload systemd daemon (workstation)
+  tags: [workstation-common, memory_guard]

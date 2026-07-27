@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# Couche 1 — earlyoom est le filet OOM de dernier recours (REX 2026-07-27,
+# livelock de reclaim -> hard-reset watchdog) : il ne doit jamais être lui-même
+# la victime d'un OOM-kill pendant qu'il tente de sauver la machine.
+[Service]
+OOMScoreAdjust={{ workstation_earlyoom_oom_score_adjust }}

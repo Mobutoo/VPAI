@@ -19,6 +19,7 @@ workstation_packages:
   - git
   - build-essential
   - apt-transport-https
+  - earlyoom
 
 workstation_hostname: "{{ workstation_pi_hostname | default('workstation-pi') }}"
 workstation_user: "{{ workstation_pi_user | default('pi') }}"
@@ -114,6 +115,51 @@ workstation_net_watchdog_reboot_cooldown: 3600     # secondes mini entre 2 reboo
 workstation_hw_watchdog_enabled: true
 workstation_hw_watchdog_runtime_sec: "15s"         # délai sans "pet" avant reboot matériel
 workstation_hw_watchdog_reboot_sec: "10min"        # délai max d'un shutdown/reboot avant kill matériel
+
+# --- Couche 1 — earlyoom (filet OOM global manquant) ---
+# REX 2026-07-27 (4 hard-resets watchdog: 17/07, 23/07, 27/07 x2): RAM+swapfile
+# 8G chroniquement saturés 10-16h/j, AUCUNE politique OOM (ni systemd-oomd ni
+# earlyoom installés) -> le reclaim noyau n'aboutit jamais (livelock, pgpgin
+# ~20 000/s, majflt ~78/s) -> PID1 non ordonnançable -> RuntimeWatchdogSec
+# (15s) ne peut plus être "pété" -> le watchdog matériel BCM2835 hard-reset
+# le Pi. Zéro ligne OOM dans `journalctl -k` sur les 3 derniers boots : le
+# noyau ne se déclenche jamais tout seul dans ce livelock.
+# systemd-oomd écarté (choix arbitré) : il dépend du manager systemd
+# ordonnançable — précisément ce qui échoue dans ce scénario — et son
+# déclencheur swap se déclencherait en permanence sur cette machine (swap
+# chroniquement plein, ce n'est pas hors-norme ici). earlyoom fait
+# mlockall(), reste résident, et poll /proc/meminfo directement : indépendant
+# de l'ordonnanceur systemd pour sa boucle de décision.
+workstation_earlyoom_enabled: true
+# SIGTERM sous 8% MemAvailable (~1,25 Go), SIGKILL sous 4% (~640 Mo).
+# sar montrait kbavail descendre à 1,6-2,2 Go (10-14%) juste avant les
+# freezes -> 8% est la zone de mort documentée, pas un faux positif.
+workstation_earlyoom_mem_percent: "8,4"
+workstation_earlyoom_swap_percent: "5,2"
+# Jamais tuer ce qui maintient l'accès distant (cohérent avec oom-protect.conf.j2
+# qui met déjà OOMScoreAdjust=-900 sur systemd-networkd et tailscaled).
+workstation_earlyoom_avoid_regex: '^(sshd|systemd|systemd-networkd|systemd-logind|tailscaled|dbus-daemon|earlyoom)$'
+# Cibler d'abord les gros consommateurs connus (sessions Claude Code / MCP).
+workstation_earlyoom_prefer_regex: '^(index\.py|mcp_search\.py|chrome|node)$'
+workstation_earlyoom_report_interval_sec: 3600   # 1 rapport mémoire/heure max, évite de spammer le journal
+workstation_earlyoom_notify_dbus: true            # -n : notification d-bus/journal au moment du kill
+workstation_earlyoom_oom_score_adjust: -1000      # earlyoom ne doit jamais être la victime de son propre filet
+
+# --- Couche 2 — plafond mémoire de user-1000.slice ---
+# REX 2026-07-27: user-1000.slice (sessions SSH/tmux/Claude Code) est
+# aujourd'hui illimitée (MemoryMax=infinity), y compris les scopes
+# tmux-spawn-*.scope : N sessions Claude Code peuvent y spawner chacune un
+# mcp_search.py ~1 Go sans plafond ni sur la taille ni sur le nombre (3
+# process = 3,1 Go observés 10 min après un boot). Un throttle (MemoryHigh)
+# puis un kill CONTRÔLÉ à l'intérieur de la slice (MemoryMax) est infiniment
+# préférable au livelock de reclaim qui a fini par déclencher le hard-reset
+# watchdog. llamaindex-memory-worker (unit systemd --user, MemoryMax=4G) vit
+# DANS cette slice — ses 4G restent inclus dans le budget de 10G, c'est voulu.
+workstation_user_slice_memory_guard_enabled: true
+workstation_user_slice_uid: 1000
+workstation_user_slice_memory_high: "8G"
+workstation_user_slice_memory_max: "10G"
+workstation_user_slice_memory_swap_max: "2G"
 
 # --- Intégrité FS après coupure de courant brutale ---
 # fsck.repair=yes : répare automatiquement l'ext4 au boot si le FS est sale

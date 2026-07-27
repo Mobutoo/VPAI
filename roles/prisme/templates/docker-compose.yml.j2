@@ -11,13 +11,20 @@ x-prisme-env: &prisme_env
     options:
       max-size: "{{ docker_log_max_size }}"
       max-file: "{{ docker_log_max_file }}"
-  healthcheck:
-    test: ["CMD-SHELL", "test -r /proc/1/status"]
-    interval: 30s
-    timeout: 5s
-    retries: 3
 
 services:
+  migrate:
+    <<: *prisme_env
+    restart: "no"
+    image: *prisme_image
+    command: ["node", "scripts/migrate.mjs"]
+    mem_limit: "256M"
+    mem_reservation: "128M"
+    depends_on:
+      db-proxy:
+        condition: service_healthy
+    networks: [prisme_internal]
+
   prisme:
     <<: *prisme_env
     image: *prisme_image
@@ -25,6 +32,20 @@ services:
     mem_limit: "{{ prisme_web_memory_limit }}"
     mem_reservation: "{{ prisme_web_memory_reservation }}"
     expose: ["3000"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     networks:
       prisme_internal: {}
       connector_internal: {}
@@ -32,6 +53,7 @@ services:
       backend:
         ipv4_address: "{{ prisme_service_backend_ip }}"
 
+{% if prisme_workers_enabled | bool %}
   outbox:
     <<: *prisme_env
     image: *prisme_image
@@ -87,6 +109,7 @@ services:
     mem_limit: "{{ prisme_sparse_memory_limit }}"
     mem_reservation: "{{ prisme_sparse_memory_reservation }}"
     networks: [prisme_internal]
+{% endif %}
 
   db-proxy:
     image: "{{ prisme_db_proxy_image }}"

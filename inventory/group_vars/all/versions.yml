@@ -38,6 +38,10 @@ dufs_image: "sigoden/dufs:v0.46.0"
 # --- Reverse Proxy ---
 caddy_image: "caddy:2.11.3-alpine"  # CVE-2026-30851/30852 identity injection + env leak (fix 2.11.2); patch 2.11.3
 
+# Prisme control-plane DB boundary. Manifest-list digest verified directly against Docker Hub on
+# 2026-07-28; never replace with an unpinned HAProxy tag.
+prisme_db_proxy_image: "haproxy:3.2.5-alpine@sha256:8007effce89a08af0236b9529a0daab5b8b36fa939f4162f28201f1bf8731dbf"
+
 # --- Content Factory (Hetzner app-prod) ---
 # temporalio/auto-setup: dernier stable 1.29.7 (Docker Hub, juin 2026). Image deprecated
 # (builds migrés vers temporalio/server) mais auto-setup reste le chemin standard compose pour M0.

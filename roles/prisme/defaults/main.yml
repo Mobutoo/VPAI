@@ -1,6 +1,9 @@
 ---
 prisme_enabled: false
 prisme_deploy_enabled: false
+# Allows the tested web/API + migrations to be installed before P5-P9 workers exist.
+# This is an explicit degraded deployment, never a substitute for closing G4-G9.
+prisme_workers_enabled: true
 prisme_config_dir: "/opt/{{ project_name }}/configs/prisme"
 prisme_data_dir: "/opt/{{ project_name }}/data/prisme"
 prisme_backup_dir: "/opt/{{ project_name }}/backups/prisme"

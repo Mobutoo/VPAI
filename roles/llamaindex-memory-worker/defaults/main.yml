@@ -283,6 +283,12 @@ memory_worker_exclude_dirs:
   - binance
   - bitvavo
   - user_data
+  # Git worktrees = copie complète d'un repo déjà indexé (incident 2026-07-27 :
+  # hawktrade/.worktrees 814 Mo + story-engine/.worktrees 425 Mo, double
+  # indexation + run interminable, crash à 17:49 pendant l'indexation de
+  # .worktrees/ipo-terminal/data/corpus-trading/...). Nom EXACT ".worktrees"
+  # (dossier créé par `git worktree add`, un enfant par worktree).
+  - .worktrees
 
 memory_worker_max_file_bytes: 1048576
 memory_worker_chunk_size: 1600

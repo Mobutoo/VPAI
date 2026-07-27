@@ -28,8 +28,12 @@ memory_worker_auto_repair_target_timer: "{{ memory_worker_timer_name | default('
 memory_worker_auto_repair_memctl: "{{ memory_worker_install_dir | default('/opt/workstation/ai-memory-worker') }}/memctl.sh"
 memory_worker_auto_repair_host_origin: "{{ memory_worker_host_origin | default('waza') }}"
 # Fenêtre de journal scrutée pour la signature D (discovery garde-fou) et
-# l'extrait de traceback des classes D/E/F (§5/§6 du design).
-memory_worker_auto_repair_journal_since: "-6h"
+# l'extrait de traceback des classes D/E/F (§5/§6 du design). M5 fix (revue
+# Opus 2026-07-25) : bornée dynamiquement sur LAST_SUCCESS_EPOCH par le
+# script (pas un `-6h` fixe, qui fait sortir une signature de la fenêtre dès
+# que le drift dépasse 6h — l'incident fondateur a duré 21h). Ce plafond
+# évite une lecture illimitée si LAST_SUCCESS_EPOCH est très ancien/inconnu.
+memory_worker_auto_repair_journal_lookback_max_sec: 86400
 memory_worker_auto_repair_journal_lines: 300
 
 memory_worker_auto_repair_install_dir: "/opt/workstation/ai-memory-worker-auto-repair"
@@ -44,9 +48,12 @@ memory_worker_auto_repair_lock_file: "{{ memory_worker_auto_repair_state_dir }}/
 # Sentinelle opérateur (§4.2) — touch manuel = gel ; rm = reprise (fenêtre de
 # drift recommence à zéro, documenté runbook AI-MEMORY-OPERATIONS.md).
 memory_worker_auto_repair_maintenance_file: "{{ memory_worker_auto_repair_state_dir }}/maintenance"
-# Marqueur interne (PAS un des 6 champs KEY=VALUE du state file) qui mémorise
-# qu'on a déjà notifié le gel courant — permet de détecter la transition
-# "sentinelle levée" (reprise) sans polluer le state file officiel.
+# Marqueur interne (PAS un des 8 champs KEY=VALUE du state file : LAST_
+# SUCCESS_EPOCH, DRIFT_TICKS, HEALTHY_TICKS, LAST_REPAIR_EPOCH,
+# REPAIR_ATTEMPTS, ALERTED, LAST_ALERT, CONSECUTIVE_BLIND — ce dernier ajouté
+# par le fix M8) qui mémorise qu'on a déjà notifié le gel courant — permet de
+# détecter la transition "sentinelle levée" (reprise) sans polluer le state
+# file officiel.
 memory_worker_auto_repair_maintenance_frozen_marker: "{{ memory_worker_auto_repair_state_dir }}/maintenance-frozen"
 
 memory_worker_auto_repair_service_name: "memory-worker-auto-repair"
@@ -60,6 +67,14 @@ memory_worker_auto_repair_drift_sec: 5400
 memory_worker_auto_repair_cooldown_sec: 14400
 # Dégel automatique de REPAIR_LOCKED : 8 ticks sains soutenus (= 2h à 15min/tick).
 memory_worker_auto_repair_unlock_ticks: 8
+# M1 fix (revue Opus 2026-07-25) : au moins 1 tick de cadence sonde doit
+# s'être écoulé depuis LAST_REPAIR_EPOCH avant de juger un échec de
+# réparation confirmé (le run déclenché peut prendre plusieurs minutes) —
+# même valeur que memory_worker_auto_repair_timer_on_unit_active_sec (15min).
+memory_worker_auto_repair_tick_sec: 900
+# M8 fix : alerte au Ne tick consécutif où la sonde elle-même est aveugle
+# (systemctl --user injoignable) — jamais un exit 2 silencieux répété.
+memory_worker_auto_repair_blind_alert_every: 4
 
 # Cadence de la sonde : même cadence que memory-worker-watchdog (15min),
 # indépendante du timer worker (30min) — ne dépend jamais de l'unité

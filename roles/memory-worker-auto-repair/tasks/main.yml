@@ -20,6 +20,21 @@
   become: true
   tags: [memory_worker_auto_repair, phase3]
 
+- name: Assert Telegram credentials are configured (L4 fix — pattern vpn-dns)
+  ansible.builtin.assert:
+    that:
+      - memory_worker_auto_repair_telegram_bot_token | length > 0
+      - memory_worker_auto_repair_telegram_chat_id | length > 0
+    fail_msg: >-
+      telegram_monitoring_bot_token / telegram_monitoring_chat_id manquants
+      (inventory/group_vars/all/secrets.yml) — sans eux la brique auto-repair
+      tourne muette (aucune notification jamais envoyee, ni avant/apres
+      action ni alerte D/E/F). Deploiement bloque plutot qu'un echec
+      silencieux.
+    quiet: true
+  no_log: true
+  tags: [memory_worker_auto_repair, phase3]
+
 - name: Deploy memory-worker-auto-repair env file (Telegram secrets)
   ansible.builtin.template:
     src: memory-worker-auto-repair.env.j2

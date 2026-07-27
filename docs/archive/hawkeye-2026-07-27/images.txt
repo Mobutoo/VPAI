@@ -1,0 +1,6 @@
+hawkeye-pgtap:16.14 479MB
+hawkeye-api:0.1.0 194MB
+hawkeye-backup:0.1.0 8.17MB
+hawkeye-postgres:16.14-pgcron 476MB
+budibase/budibase:3.39.5 3.19GB
+gotenberg/gotenberg:8.33.0 1.69GB

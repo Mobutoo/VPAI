@@ -1,0 +1,1650 @@
+[
+ {
+  "Id": "b42e8631a76eb8d2926f3aae331809468948199a1002eb719ed38e4068eb7f20",
+  "Created": "2026-05-30T17:08:16.832526143Z",
+  "Path": "flyway",
+  "Args": [
+   "migrate"
+  ],
+  "State": {
+   "Status": "exited",
+   "Running": false,
+   "Paused": false,
+   "Restarting": false,
+   "OOMKilled": false,
+   "Dead": false,
+   "Pid": 0,
+   "ExitCode": 0,
+   "Error": "",
+   "StartedAt": "2026-05-31T06:21:55.465857664Z",
+   "FinishedAt": "2026-05-31T06:21:58.949029596Z"
+  },
+  "Image": "sha256:7fc6b9bed4ae7d60e4244a89911e1effa33d39010249de96c00b8d0ea46ce293",
+  "ResolvConfPath": "/var/lib/docker/containers/b42e8631a76eb8d2926f3aae331809468948199a1002eb719ed38e4068eb7f20/resolv.conf",
+  "HostnamePath": "/var/lib/docker/containers/b42e8631a76eb8d2926f3aae331809468948199a1002eb719ed38e4068eb7f20/hostname",
+  "HostsPath": "/var/lib/docker/containers/b42e8631a76eb8d2926f3aae331809468948199a1002eb719ed38e4068eb7f20/hosts",
+  "LogPath": "/var/lib/docker/containers/b42e8631a76eb8d2926f3aae331809468948199a1002eb719ed38e4068eb7f20/b42e8631a76eb8d2926f3aae331809468948199a1002eb719ed38e4068eb7f20-json.log",
+  "Name": "/hawkeye-flyway",
+  "RestartCount": 0,
+  "Driver": "overlay2",
+  "Platform": "linux",
+  "MountLabel": "",
+  "ProcessLabel": "",
+  "AppArmorProfile": "docker-default",
+  "ExecIDs": null,
+  "HostConfig": {
+   "Binds": [
+    "/home/mobuone/projects/saas/hawkeye/db/migrations/repeatable:/flyway/sql/repeatable:ro",
+    "/home/mobuone/projects/saas/hawkeye/db/migrations/versioned:/flyway/sql/versioned:ro"
+   ],
+   "ContainerIDFile": "",
+   "LogConfig": {
+    "Type": "json-file",
+    "Config": {
+     "max-file": "3",
+     "max-size": "10m"
+    }
+   },
+   "NetworkMode": "hawkeye_hawkeye_internal",
+   "PortBindings": {},
+   "RestartPolicy": {
+    "Name": "no",
+    "MaximumRetryCount": 0
+   },
+   "AutoRemove": false,
+   "VolumeDriver": "",
+   "VolumesFrom": null,
+   "ConsoleSize": [
+    0,
+    0
+   ],
+   "CapAdd": null,
+   "CapDrop": null,
+   "CgroupnsMode": "private",
+   "Dns": [],
+   "DnsOptions": [],
+   "DnsSearch": [],
+   "ExtraHosts": [],
+   "GroupAdd": null,
+   "IpcMode": "private",
+   "Cgroup": "",
+   "Links": null,
+   "OomScoreAdj": 0,
+   "PidMode": "",
+   "Privileged": false,
+   "PublishAllPorts": false,
+   "ReadonlyRootfs": false,
+   "SecurityOpt": null,
+   "UTSMode": "",
+   "UsernsMode": "",
+   "ShmSize": 67108864,
+   "Runtime": "runc",
+   "Isolation": "",
+   "CpuShares": 0,
+   "Memory": 0,
+   "NanoCpus": 0,
+   "CgroupParent": "",
+   "BlkioWeight": 0,
+   "BlkioWeightDevice": null,
+   "BlkioDeviceReadBps": null,
+   "BlkioDeviceWriteBps": null,
+   "BlkioDeviceReadIOps": null,
+   "BlkioDeviceWriteIOps": null,
+   "CpuPeriod": 0,
+   "CpuQuota": 0,
+   "CpuRealtimePeriod": 0,
+   "CpuRealtimeRuntime": 0,
+   "CpusetCpus": "",
+   "CpusetMems": "",
+   "Devices": null,
+   "DeviceCgroupRules": null,
+   "DeviceRequests": null,
+   "MemoryReservation": 0,
+   "MemorySwap": 0,
+   "MemorySwappiness": null,
+   "OomKillDisable": null,
+   "PidsLimit": null,
+   "Ulimits": null,
+   "CpuCount": 0,
+   "CpuPercent": 0,
+   "IOMaximumIOps": 0,
+   "IOMaximumBandwidth": 0,
+   "MaskedPaths": [
+    "/proc/acpi",
+    "/proc/asound",
+    "/proc/interrupts",
+    "/proc/kcore",
+    "/proc/keys",
+    "/proc/latency_stats",
+    "/proc/sched_debug",
+    "/proc/scsi",
+    "/proc/timer_list",
+    "/proc/timer_stats",
+    "/sys/devices/virtual/powercap",
+    "/sys/firmware"
+   ],
+   "ReadonlyPaths": [
+    "/proc/bus",
+    "/proc/fs",
+    "/proc/irq",
+    "/proc/sys",
+    "/proc/sysrq-trigger"
+   ]
+  },
+  "GraphDriver": {
+   "Data": {
+    "ID": "b42e8631a76eb8d2926f3aae331809468948199a1002eb719ed38e4068eb7f20",
+    "LowerDir": "/var/lib/docker/overlay2/2ee361e050e7281f9538ab22993b8d2b4508e6cea9a1a0d2fdc5584ccd1790b9-init/diff:/var/lib/docker/overlay2/50e3665cfc6c10fd001ad35c53249edb553305978123ef7973dc3042dfde10ae/diff:/var/lib/docker/overlay2/c451687fe9888a069bea93125a0b79b07cd52a18d9e7403ed7a4682b6d3610b3/diff:/var/lib/docker/overlay2/e376dcb7303f45b13cc922efaccf3d5e13a52309ac621059536d1fcb83d6dcb3/diff:/var/lib/docker/overlay2/9ef0e0537319782a443fd631e79df215bf0b70af357282447ed2ad021bd6880d/diff:/var/lib/docker/overlay2/d335c5fcd3f8ed91cf33d5394ca3154d15ce198e5f4bfd432e104923de357652/diff:/var/lib/docker/overlay2/2ce465c9cd959fd1c4987813a27375ffb2ea5a884b75e849a84ec7e89f491f80/diff:/var/lib/docker/overlay2/4f0897475e4e180b3f050cbac9202b5ba2dddc6649b3c05757e26959c6b0a31a/diff",
+    "MergedDir": "/var/lib/docker/overlay2/2ee361e050e7281f9538ab22993b8d2b4508e6cea9a1a0d2fdc5584ccd1790b9/merged",
+    "UpperDir": "/var/lib/docker/overlay2/2ee361e050e7281f9538ab22993b8d2b4508e6cea9a1a0d2fdc5584ccd1790b9/diff",
+    "WorkDir": "/var/lib/docker/overlay2/2ee361e050e7281f9538ab22993b8d2b4508e6cea9a1a0d2fdc5584ccd1790b9/work"
+   },
+   "Name": "overlay2"
+  },
+  "Mounts": [
+   {
+    "Type": "bind",
+    "Source": "/home/mobuone/projects/saas/hawkeye/db/migrations/repeatable",
+    "Destination": "/flyway/sql/repeatable",
+    "Mode": "ro",
+    "RW": false,
+    "Propagation": "rprivate"
+   },
+   {
+    "Type": "bind",
+    "Source": "/home/mobuone/projects/saas/hawkeye/db/migrations/versioned",
+    "Destination": "/flyway/sql/versioned",
+    "Mode": "ro",
+    "RW": false,
+    "Propagation": "rprivate"
+   }
+  ],
+  "Config": {
+   "Hostname": "b42e8631a76e",
+   "Domainname": "",
+   "User": "",
+   "AttachStdin": false,
+   "AttachStdout": true,
+   "AttachStderr": true,
+   "Tty": false,
+   "OpenStdin": false,
+   "StdinOnce": false,
+   "Env": [
+    "FLYWAY_PLACEHOLDERS_audit_password=<<REDACTED len=28>>",
+    "FLYWAY_URL=jdbc:postgresql://hawkeye-postgres:5432/hawkeye",
+    "FLYWAY_USER=hawkeye_app",
+    "FLYWAY_PASSWORD=<<REDACTED len=26>>",
+    "FLYWAY_LOCATIONS=filesystem:/flyway/sql/versioned,filesystem:/flyway/sql/repeatable",
+    "FLYWAY_PLACEHOLDERS_manager_password=<<REDACTED len=26>>",
+    "PATH=/flyway:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "JAVA_HOME=/opt/java/openjdk",
+    "LANG=en_US.UTF-8",
+    "LANGUAGE=en_US:en",
+    "LC_ALL=en_US.UTF-8",
+    "JAVA_VERSION=jdk-17.0.13+11"
+   ],
+   "Cmd": [
+    "migrate"
+   ],
+   "Image": "flyway/flyway:10.21",
+   "Volumes": null,
+   "WorkingDir": "/flyway",
+   "Entrypoint": [
+    "flyway"
+   ],
+   "Labels": {
+    "com.docker.compose.config-hash": "d7f6d54f447d0fcd741be69e29ce9bc25ece2cf27dbd472e17ed5c54564e3f7e",
+    "com.docker.compose.container-number": "1",
+    "com.docker.compose.depends_on": "hawkeye-postgres:service_healthy:false",
+    "com.docker.compose.image": "sha256:7fc6b9bed4ae7d60e4244a89911e1effa33d39010249de96c00b8d0ea46ce293",
+    "com.docker.compose.oneoff": "False",
+    "com.docker.compose.project": "hawkeye",
+    "com.docker.compose.project.config_files": "/home/mobuone/projects/saas/hawkeye/docker-compose.yml",
+    "com.docker.compose.project.working_dir": "/home/mobuone/projects/saas/hawkeye",
+    "com.docker.compose.replace": "hawkeye-flyway",
+    "com.docker.compose.service": "flyway",
+    "com.docker.compose.version": "5.0.2",
+    "org.opencontainers.image.ref.name": "ubuntu",
+    "org.opencontainers.image.version": "10.21.0"
+   }
+  },
+  "NetworkSettings": {
+   "SandboxID": "",
+   "SandboxKey": "",
+   "Ports": {},
+   "Networks": {
+    "hawkeye_hawkeye_internal": {
+     "IPAMConfig": null,
+     "Links": null,
+     "Aliases": [
+      "hawkeye-flyway",
+      "flyway"
+     ],
+     "DriverOpts": null,
+     "GwPriority": 0,
+     "NetworkID": "c441ba965de09e4e7acba3be3898bf39da1df2f4a4ffb1cffc3cd4d757f003bf",
+     "EndpointID": "",
+     "Gateway": "",
+     "IPAddress": "",
+     "MacAddress": "",
+     "IPPrefixLen": 0,
+     "IPv6Gateway": "",
+     "GlobalIPv6Address": "",
+     "GlobalIPv6PrefixLen": 0,
+     "DNSNames": [
+      "hawkeye-flyway",
+      "flyway",
+      "b42e8631a76e"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "Id": "bf7fb87a7990cc2deb115cd0bcf6f78e273acda9f64052d27469c027ca83cc3e",
+  "Created": "2026-05-30T12:27:51.707690978Z",
+  "Path": "tini",
+  "Args": [
+   "--",
+   "/docker-entrypoint.sh",
+   "./runner.sh"
+  ],
+  "State": {
+   "Status": "running",
+   "Running": true,
+   "Paused": false,
+   "Restarting": false,
+   "OOMKilled": false,
+   "Dead": false,
+   "Pid": 2041,
+   "ExitCode": 0,
+   "Error": "",
+   "StartedAt": "2026-07-27T15:49:54.765993289Z",
+   "FinishedAt": "2026-07-27T15:49:52.20316555Z",
+   "Health": {
+    "Status": "healthy",
+    "FailingStreak": 0,
+    "Log": [
+     {
+      "Start": "2026-07-27T19:56:51.601263731+02:00",
+      "End": "2026-07-27T19:56:51.768397833+02:00",
+      "ExitCode": 0,
+      "Output": ""
+     },
+     {
+      "Start": "2026-07-27T19:57:21.76967786+02:00",
+      "End": "2026-07-27T19:57:21.838903327+02:00",
+      "ExitCode": 0,
+      "Output": ""
+     },
+     {
+      "Start": "2026-07-27T19:57:51.840518569+02:00",
+      "End": "2026-07-27T19:57:51.914202814+02:00",
+      "ExitCode": 0,
+      "Output": ""
+     },
+     {
+      "Start": "2026-07-27T19:58:21.91503557+02:00",
+      "End": "2026-07-27T19:58:21.992974074+02:00",
+      "ExitCode": 0,
+      "Output": ""
+     },
+     {
+      "Start": "2026-07-27T19:58:51.99378005+02:00",
+      "End": "2026-07-27T19:58:52.120346371+02:00",
+      "ExitCode": 0,
+      "Output": ""
+     }
+    ]
+   }
+  },
+  "Image": "sha256:98914388943f0b26cdd78a65ac12d3af29dd91b123e333fa83e4961362d38e4a",
+  "ResolvConfPath": "/var/lib/docker/containers/bf7fb87a7990cc2deb115cd0bcf6f78e273acda9f64052d27469c027ca83cc3e/resolv.conf",
+  "HostnamePath": "/var/lib/docker/containers/bf7fb87a7990cc2deb115cd0bcf6f78e273acda9f64052d27469c027ca83cc3e/hostname",
+  "HostsPath": "/var/lib/docker/containers/bf7fb87a7990cc2deb115cd0bcf6f78e273acda9f64052d27469c027ca83cc3e/hosts",
+  "LogPath": "/var/lib/docker/containers/bf7fb87a7990cc2deb115cd0bcf6f78e273acda9f64052d27469c027ca83cc3e/bf7fb87a7990cc2deb115cd0bcf6f78e273acda9f64052d27469c027ca83cc3e-json.log",
+  "Name": "/hawkeye-budibase",
+  "RestartCount": 0,
+  "Driver": "overlay2",
+  "Platform": "linux",
+  "MountLabel": "",
+  "ProcessLabel": "",
+  "AppArmorProfile": "docker-default",
+  "ExecIDs": null,
+  "HostConfig": {
+   "Binds": [
+    "/home/mobuone/projects/saas/hawkeye/.data/budibase:/data:rw"
+   ],
+   "ContainerIDFile": "",
+   "LogConfig": {
+    "Type": "json-file",
+    "Config": {
+     "max-file": "3",
+     "max-size": "10m"
+    }
+   },
+   "NetworkMode": "hawkeye_hawkeye_internal",
+   "PortBindings": {},
+   "RestartPolicy": {
+    "Name": "unless-stopped",
+    "MaximumRetryCount": 0
+   },
+   "AutoRemove": false,
+   "VolumeDriver": "",
+   "VolumesFrom": null,
+   "ConsoleSize": [
+    0,
+    0
+   ],
+   "CapAdd": null,
+   "CapDrop": null,
+   "CgroupnsMode": "private",
+   "Dns": [],
+   "DnsOptions": [],
+   "DnsSearch": [],
+   "ExtraHosts": [],
+   "GroupAdd": null,
+   "IpcMode": "private",
+   "Cgroup": "",
+   "Links": null,
+   "OomScoreAdj": 0,
+   "PidMode": "",
+   "Privileged": false,
+   "PublishAllPorts": false,
+   "ReadonlyRootfs": false,
+   "SecurityOpt": null,
+   "UTSMode": "",
+   "UsernsMode": "",
+   "ShmSize": 67108864,
+   "Runtime": "runc",
+   "Isolation": "",
+   "CpuShares": 0,
+   "Memory": 3758096384,
+   "NanoCpus": 0,
+   "CgroupParent": "",
+   "BlkioWeight": 0,
+   "BlkioWeightDevice": null,
+   "BlkioDeviceReadBps": null,
+   "BlkioDeviceWriteBps": null,
+   "BlkioDeviceReadIOps": null,
+   "BlkioDeviceWriteIOps": null,
+   "CpuPeriod": 0,
+   "CpuQuota": 0,
+   "CpuRealtimePeriod": 0,
+   "CpuRealtimeRuntime": 0,
+   "CpusetCpus": "",
+   "CpusetMems": "",
+   "Devices": null,
+   "DeviceCgroupRules": null,
+   "DeviceRequests": null,
+   "MemoryReservation": 0,
+   "MemorySwap": 3758096384,
+   "MemorySwappiness": null,
+   "OomKillDisable": null,
+   "PidsLimit": null,
+   "Ulimits": null,
+   "CpuCount": 0,
+   "CpuPercent": 0,
+   "IOMaximumIOps": 0,
+   "IOMaximumBandwidth": 0,
+   "MaskedPaths": [
+    "/proc/acpi",
+    "/proc/asound",
+    "/proc/interrupts",
+    "/proc/kcore",
+    "/proc/keys",
+    "/proc/latency_stats",
+    "/proc/sched_debug",
+    "/proc/scsi",
+    "/proc/timer_list",
+    "/proc/timer_stats",
+    "/sys/devices/virtual/powercap",
+    "/sys/firmware"
+   ],
+   "ReadonlyPaths": [
+    "/proc/bus",
+    "/proc/fs",
+    "/proc/irq",
+    "/proc/sys",
+    "/proc/sysrq-trigger"
+   ]
+  },
+  "GraphDriver": {
+   "Data": {
+    "ID": "bf7fb87a7990cc2deb115cd0bcf6f78e273acda9f64052d27469c027ca83cc3e",
+    "LowerDir": "/var/lib/docker/overlay2/d78bfca91f4eec77695fc839a03dc389cfdec3790c9832f14ba36b1bd8c63741-init/diff:/var/lib/docker/overlay2/3e6f23c8103b92d8f66829de461715130c72577e14fbfd687d5e9d70081a720b/diff:/var/lib/docker/overlay2/4d4d729d28885d876d95988a045bf6992d1a1b4142a513275b38c3eaacc341e9/diff:/var/lib/docker/overlay2/a56b66c06829187865cd7cf8405cc0907aed1fd3e88cd760d88b972acd38c719/diff:/var/lib/docker/overlay2/b0cee20935f961a2d74e5b6c7dc36a04b1bbd72c70edd9ff4618b2b48e1be295/diff:/var/lib/docker/overlay2/65819022efc8c430d0789ccbd9c25381a692a7b1b45f7d9abbfa36028a91ebd8/diff:/var/lib/docker/overlay2/e88b18daf29256db2fab565f87e86a724007700fa6b7c601ff92123b52fe86a3/diff:/var/lib/docker/overlay2/5619b86eddb341ba8e79cf11d0bd597d5e0f9e5ea9bd674bdffd6fe8116eca9d/diff:/var/lib/docker/overlay2/83597727995cd8fad412f661060aff2d079e5437666a9348cdf5a4da2a09fc8b/diff:/var/lib/docker/overlay2/163f64d819dcfdf8dabf1d6952cd33aa39a0c068ea5a8216cc80377b44ec2008/diff:/var/lib/docker/overlay2/a01a3f578e9f24150ae6433fcf51fa5e751d49a13a717060a7bf9724aa949277/diff:/var/lib/docker/overlay2/d46432a76125424c227dc2b5fc129bb282c201518045ff852bf1ae8d5186c054/diff:/var/lib/docker/overlay2/b5e6f3c9cd5cd6da345ea3949665ed7e54e0356c8a5766685def6ffbc5214d83/diff:/var/lib/docker/overlay2/5cbdf94f396d4d24e18738f3ec81c651390862814813863db9f129f561593b49/diff:/var/lib/docker/overlay2/3e274988f26a6a0974e5890d04015e8cfc9aaa9c4aa89faabac5ac2a2e15dc21/diff:/var/lib/docker/overlay2/d688dab9671b5e2e19a24db64c470bbccd67009a6ac31212f7763fd3aff6a26e/diff:/var/lib/docker/overlay2/158703b7212ca2fe8b55c0371814683e57bc15dbf9c639918cf58b3c21b52b93/diff:/var/lib/docker/overlay2/ba631009a0a19eea4d0c24b798bb898cd815325c8cef04a9d472a4c3593ee259/diff:/var/lib/docker/overlay2/8aa88b2938acb18f28dc00301329050fa5272538775f5c2b33d3b42f1891d0b2/diff:/var/lib/docker/overlay2/1d354da37646c29b0a2f799a68008280ccf0e4e02fa8e4c4ade0ab81867ee450/diff:/var/lib/docker/overlay2/57f24541dd06f3279ec743b387849474aa6579a81fb69945485992e3cbec491c/diff:/var/lib/docker/overlay2/6c0dda29921c1c8bd1838b64853602525614afaee8c2d3859f170a43b279196c/diff:/var/lib/docker/overlay2/c1e800b8b0b99b097c43970bd3554f75606555c8a92e1b86ca09101a08508422/diff:/var/lib/docker/overlay2/a58642a7e99929b9d7f44dde200b8aa728b34f931e9072b1555dff253d73eb8b/diff:/var/lib/docker/overlay2/f39a42cdddad9ff5afd83c14e6f2547b3601ab92a3713ec9b9c57b1715344400/diff:/var/lib/docker/overlay2/2e03591ceb2520fcd85c8608a4e62df8b0a32f4e1f3ebe1469032150532039a6/diff:/var/lib/docker/overlay2/3c1ab2ffd7694290d72cd58028a8c370be5c15512b5af02f293a1b0d5dde1677/diff:/var/lib/docker/overlay2/8391c1b3f4e7565a7f62b8ad6e680f8809921b99d0dfe50d50a97e7ee652ea6c/diff:/var/lib/docker/overlay2/7b7bb487e08730ec064773d295a179364cb6faa0d4973c08e8f89ced22f6aba7/diff:/var/lib/docker/overlay2/6361a27a4f9a57bad36dd48e5af5abb48e2cb3492d26914b76a4fbb49eadb58e/diff:/var/lib/docker/overlay2/2f3db0a3664797fddc7c86d76ef29dbfef9bcc037aa4864925db865467945d74/diff:/var/lib/docker/overlay2/d2949475b5fd8b7d456250bb0f5bdbbf3b0c22c767bbec58790a165520575110/diff:/var/lib/docker/overlay2/7ca6fc7e0fcb60b0d857141f74927a7cea6a13bc30cd0e96b1c12c2568c9ea5b/diff:/var/lib/docker/overlay2/af1a761b86c0148f67b310eb2ea8ce12b7bc53e83e8780163b2971d044a9fe1e/diff:/var/lib/docker/overlay2/c08ad2e38a05dea4a70c443f721eef2a73e6e1d6d9dfd6b47080309e3751011a/diff:/var/lib/docker/overlay2/1753cd1bc4f733be27d016eee0e8db89ba4741634272a3c04134f6faba95fd4d/diff:/var/lib/docker/overlay2/7d73896e7541a1bc5809dccc639ee01109d1565b2e402f29e03155353a15895f/diff:/var/lib/docker/overlay2/eca9a11b25afe6ac6c680ec846e560b2c07040116e42424fa6f1c6a0481a2848/diff:/var/lib/docker/overlay2/b0d62b3a8f80b60ad56ba87772623c0b892479022add812ab48b0e9cfba8c20c/diff:/var/lib/docker/overlay2/c8fd88673fe6eba4e034ea57ad193a8bb66e578b5ffaeb0ccb2987fc9929277e/diff:/var/lib/docker/overlay2/6c190a6aced780cee2716bb7725efb2af3fd29df3e0e3366ea3b0a62b9877bc2/diff:/var/lib/docker/overlay2/cd781183bde7c4f15e55061e4a95cad28e44384e8bad0a6edde4797e6718bdb2/diff:/var/lib/docker/overlay2/2ec48f25e4a0cc58ef18fd5cf721f3d949ade1543fa8251417701b0000635acb/diff:/var/lib/docker/overlay2/3fdfc91ccb9b260dc83bd3c09b46152a5733a6368435ba162b9fc8c8a9f3aca6/diff:/var/lib/docker/overlay2/aa6049f2edcf78bdbf119013bd09615ad1d80d1d1993681d66b548c3ca6bad36/diff:/var/lib/docker/overlay2/4e42e4721579a2f8ba720af21333e9d468cfcccabf2093594f8be9d202b33195/diff:/var/lib/docker/overlay2/600cbcdba6781d609546c70426c9165477b6cbf4206c5f371933859f6f95ee5a/diff:/var/lib/docker/overlay2/61782bc8ce05a7a35ec88e40a2c68f96aab6e1c2373ea9a49bd2c8e60c359001/diff:/var/lib/docker/overlay2/70624e9725d4d798e3536c8cc97773aa58ceb21184c16212f2ae11904c78f2d5/diff:/var/lib/docker/overlay2/717cd6a97364572c0a1e661fe03c219dde02a7e76c509aafccca1f00eb3ad38c/diff:/var/lib/docker/overlay2/83728432052ddbc3eb5ff65a3f528b1c3ed8797b8ea4647ea33ec2f74ae70c18/diff:/var/lib/docker/overlay2/e1bdc358f241b6a48333f329804bd7dba9483cb20ebf6be5ea621fe470e2deda/diff:/var/lib/docker/overlay2/bb0b7d854ac4f6a52f82ee49e0a5130780d6377cbe21fd648b0dff09d3986e9b/diff:/var/lib/docker/overlay2/e31d9e3ae554d3f0b61d7a47f2402443f16bee728590dc64d899f5c48ef38f36/diff:/var/lib/docker/overlay2/99dc9cee7cc1babbc875c819dd1b7131f96116d7fdb2581d05536ebfddadead0/diff:/var/lib/docker/overlay2/91c39913ecf9e9ed6644c20648fdcd1bec8d94dea988fb36aaabc136a87d6b00/diff:/var/lib/docker/overlay2/540764e6d74307f69d05835c212f4b05008e8c1abf4ab008bd8d36d786594a9e/diff:/var/lib/docker/overlay2/4a4ab737f29436c05a1b00b987d024b1068edced58d33d757c428f7b7cc862dc/diff:/var/lib/docker/overlay2/a47980739e6c27fea3a4669da05df6b3df1268da9f35828241d8212b5d2c05a9/diff:/var/lib/docker/overlay2/850f2358e760edd934ede408883ca6069a9819311c70c8fe4fddd0a30cd45389/diff:/var/lib/docker/overlay2/0fdbcef29715c1cfab18f7e0481baa83f5df0811673ff91e03f784775ef7e5fd/diff:/var/lib/docker/overlay2/839326b56f2c8847fc6dcf77400b38e9d3a28aabc784cfc8a1a678fe0abec274/diff:/var/lib/docker/overlay2/fa973d08d7ea9e5683c92e2d624f5eac7f0000c1f264f5d3bf4db0219a80cbc6/diff:/var/lib/docker/overlay2/c491ffb28613e6bccbf4e502427cba6b39078f25e1a170592ddeb3679d41515d/diff:/var/lib/docker/overlay2/9afb6583798467ed6328a3d9d89300f29fc04567e6d72aa2fafdc2c6590700fd/diff:/var/lib/docker/overlay2/25936e22ab6d6614179ea82130f88639001b59be4ad82276208a74109e5f0edf/diff",
+    "MergedDir": "/var/lib/docker/overlay2/d78bfca91f4eec77695fc839a03dc389cfdec3790c9832f14ba36b1bd8c63741/merged",
+    "UpperDir": "/var/lib/docker/overlay2/d78bfca91f4eec77695fc839a03dc389cfdec3790c9832f14ba36b1bd8c63741/diff",
+    "WorkDir": "/var/lib/docker/overlay2/d78bfca91f4eec77695fc839a03dc389cfdec3790c9832f14ba36b1bd8c63741/work"
+   },
+   "Name": "overlay2"
+  },
+  "Mounts": [
+   {
+    "Type": "bind",
+    "Source": "/home/mobuone/projects/saas/hawkeye/.data/budibase",
+    "Destination": "/data",
+    "Mode": "rw",
+    "RW": true,
+    "Propagation": "rprivate"
+   }
+  ],
+  "Config": {
+   "Hostname": "bf7fb87a7990",
+   "Domainname": "",
+   "User": "",
+   "AttachStdin": false,
+   "AttachStdout": true,
+   "AttachStderr": true,
+   "ExposedPorts": {
+    "2222/tcp": {},
+    "4000/tcp": {},
+    "4369/tcp": {},
+    "443/tcp": {},
+    "4984/tcp": {},
+    "5984/tcp": {},
+    "80/tcp": {},
+    "9100/tcp": {}
+   },
+   "Tty": false,
+   "OpenStdin": false,
+   "StdinOnce": false,
+   "Env": [
+    "ENCRYPTION_KEY=yW7DnAgJdfLYjM5xZEgUgsZyTgknRpWLcDkp6JnvBTg=",
+    "REDIS_PASSWORD=<<REDACTED len=20>>",
+    "SELF_HOSTED=1",
+    "MINIO_ACCESS_KEY=158b730b104bc4634707",
+    "PLATFORM_URL=https://hawkeye.dev.local",
+    "COUCHDB_USER=hawkeye_couch",
+    "MINIO_SECRET_KEY=<<REDACTED len=30>>",
+    "COUCHDB_PASSWORD=<<REDACTED len=20>>",
+    "JWT_SECRET=<<REDACTED len=44>>",
+    "PATH=/opt/venv/litellm/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "NODE_VERSION=22.22.1",
+    "YARN_VERSION=1.22.22",
+    "GPG_COUCH_KEY=390EF70BB1EA12B2773962950EE62FB37A00258D",
+    "COUCHDB_VERSION=3.3.3",
+    "TARGETARCH=arm64",
+    "TARGETBUILD=single",
+    "BUDIBASE_VERSION=3.39.5",
+    "NODE_ENV=production",
+    "NODE_OPTIONS=--no-node-snapshot"
+   ],
+   "Cmd": [
+    "./runner.sh"
+   ],
+   "Healthcheck": {
+    "Test": [
+     "CMD-SHELL",
+     "wget --quiet --spider http://localhost/health || exit 1"
+    ],
+    "Interval": 30000000000,
+    "Timeout": 10000000000,
+    "StartPeriod": 120000000000,
+    "Retries": 5
+   },
+   "Image": "budibase/budibase:3.39.5",
+   "Volumes": {
+    "/data": {}
+   },
+   "WorkingDir": "/",
+   "Entrypoint": [
+    "tini",
+    "--",
+    "/docker-entrypoint.sh"
+   ],
+   "Labels": {
+    "com.docker.compose.config-hash": "ed132cbeffcccaec90841083d56300d6fc33327025d35152d632dfdefc2c1bfa",
+    "com.docker.compose.container-number": "1",
+    "com.docker.compose.depends_on": "hawkeye-postgres:service_healthy:false,flyway:service_completed_successfully:false",
+    "com.docker.compose.image": "sha256:98914388943f0b26cdd78a65ac12d3af29dd91b123e333fa83e4961362d38e4a",
+    "com.docker.compose.oneoff": "False",
+    "com.docker.compose.project": "hawkeye",
+    "com.docker.compose.project.config_files": "/home/mobuone/projects/saas/hawkeye/docker-compose.yml",
+    "com.docker.compose.project.working_dir": "/home/mobuone/projects/saas/hawkeye",
+    "com.docker.compose.service": "hawkeye-budibase",
+    "com.docker.compose.version": "5.0.2"
+   }
+  },
+  "NetworkSettings": {
+   "SandboxID": "bac7279cd893152f8f0abc189664a8c590748b4f53366237d8d5181140e154b4",
+   "SandboxKey": "/var/run/docker/netns/bac7279cd893",
+   "Ports": {
+    "2222/tcp": null,
+    "4000/tcp": null,
+    "4369/tcp": null,
+    "443/tcp": null,
+    "4984/tcp": null,
+    "5984/tcp": null,
+    "80/tcp": null,
+    "9100/tcp": null
+   },
+   "Networks": {
+    "hawkeye_hawkeye_internal": {
+     "IPAMConfig": null,
+     "Links": null,
+     "Aliases": [
+      "hawkeye-budibase",
+      "hawkeye-budibase"
+     ],
+     "DriverOpts": null,
+     "GwPriority": 0,
+     "NetworkID": "c441ba965de09e4e7acba3be3898bf39da1df2f4a4ffb1cffc3cd4d757f003bf",
+     "EndpointID": "f8de591631750a82a0c453bdba63b3c52316abe1faaceed31af739c5b7da484b",
+     "Gateway": "172.19.0.1",
+     "IPAddress": "172.19.0.2",
+     "MacAddress": "42:c1:18:c8:a5:1d",
+     "IPPrefixLen": 16,
+     "IPv6Gateway": "",
+     "GlobalIPv6Address": "",
+     "GlobalIPv6PrefixLen": 0,
+     "DNSNames": [
+      "hawkeye-budibase",
+      "bf7fb87a7990"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "Id": "77ec3ba12014d721d7f2f8975e14e9bf0fe5c441f6e43f94b3bd3b866900f67e",
+  "Created": "2026-05-30T12:27:51.706384959Z",
+  "Path": "uvicorn",
+  "Args": [
+   "api.main:app",
+   "--host",
+   "0.0.0.0",
+   "--port",
+   "8000"
+  ],
+  "State": {
+   "Status": "running",
+   "Running": true,
+   "Paused": false,
+   "Restarting": false,
+   "OOMKilled": false,
+   "Dead": false,
+   "Pid": 2193,
+   "ExitCode": 0,
+   "Error": "",
+   "StartedAt": "2026-07-27T15:49:54.86373403Z",
+   "FinishedAt": "2026-07-27T15:49:52.200736087Z",
+   "Health": {
+    "Status": "healthy",
+    "FailingStreak": 0,
+    "Log": [
+     {
+      "Start": "2026-07-27T19:57:52.829761312+02:00",
+      "End": "2026-07-27T19:57:53.000901896+02:00",
+      "ExitCode": 0,
+      "Output": ""
+     },
+     {
+      "Start": "2026-07-27T19:58:08.002414778+02:00",
+      "End": "2026-07-27T19:58:08.283124701+02:00",
+      "ExitCode": 0,
+      "Output": ""
+     },
+     {
+      "Start": "2026-07-27T19:58:23.284697277+02:00",
+      "End": "2026-07-27T19:58:23.710417431+02:00",
+      "ExitCode": 0,
+      "Output": ""
+     },
+     {
+      "Start": "2026-07-27T19:58:38.712065163+02:00",
+      "End": "2026-07-27T19:58:38.964322677+02:00",
+      "ExitCode": 0,
+      "Output": ""
+     },
+     {
+      "Start": "2026-07-27T19:58:53.965541399+02:00",
+      "End": "2026-07-27T19:58:54.329146068+02:00",
+      "ExitCode": 0,
+      "Output": ""
+     }
+    ]
+   }
+  },
+  "Image": "sha256:3da1a461a0b54bc3324c3c25c284ce375662f3f008f12295ff8a031695ac4f22",
+  "ResolvConfPath": "/var/lib/docker/containers/77ec3ba12014d721d7f2f8975e14e9bf0fe5c441f6e43f94b3bd3b866900f67e/resolv.conf",
+  "HostnamePath": "/var/lib/docker/containers/77ec3ba12014d721d7f2f8975e14e9bf0fe5c441f6e43f94b3bd3b866900f67e/hostname",
+  "HostsPath": "/var/lib/docker/containers/77ec3ba12014d721d7f2f8975e14e9bf0fe5c441f6e43f94b3bd3b866900f67e/hosts",
+  "LogPath": "/var/lib/docker/containers/77ec3ba12014d721d7f2f8975e14e9bf0fe5c441f6e43f94b3bd3b866900f67e/77ec3ba12014d721d7f2f8975e14e9bf0fe5c441f6e43f94b3bd3b866900f67e-json.log",
+  "Name": "/hawkeye-api",
+  "RestartCount": 0,
+  "Driver": "overlay2",
+  "Platform": "linux",
+  "MountLabel": "",
+  "ProcessLabel": "",
+  "AppArmorProfile": "docker-default",
+  "ExecIDs": null,
+  "HostConfig": {
+   "Binds": null,
+   "ContainerIDFile": "",
+   "LogConfig": {
+    "Type": "json-file",
+    "Config": {
+     "max-file": "3",
+     "max-size": "10m"
+    }
+   },
+   "NetworkMode": "hawkeye_gotenberg_bridge",
+   "PortBindings": {},
+   "RestartPolicy": {
+    "Name": "unless-stopped",
+    "MaximumRetryCount": 0
+   },
+   "AutoRemove": false,
+   "VolumeDriver": "",
+   "VolumesFrom": null,
+   "ConsoleSize": [
+    0,
+    0
+   ],
+   "CapAdd": null,
+   "CapDrop": null,
+   "CgroupnsMode": "private",
+   "Dns": [],
+   "DnsOptions": [],
+   "DnsSearch": [],
+   "ExtraHosts": [],
+   "GroupAdd": null,
+   "IpcMode": "private",
+   "Cgroup": "",
+   "Links": null,
+   "OomScoreAdj": 0,
+   "PidMode": "",
+   "Privileged": false,
+   "PublishAllPorts": false,
+   "ReadonlyRootfs": false,
+   "SecurityOpt": null,
+   "UTSMode": "",
+   "UsernsMode": "",
+   "ShmSize": 67108864,
+   "Runtime": "runc",
+   "Isolation": "",
+   "CpuShares": 0,
+   "Memory": 536870912,
+   "NanoCpus": 0,
+   "CgroupParent": "",
+   "BlkioWeight": 0,
+   "BlkioWeightDevice": null,
+   "BlkioDeviceReadBps": null,
+   "BlkioDeviceWriteBps": null,
+   "BlkioDeviceReadIOps": null,
+   "BlkioDeviceWriteIOps": null,
+   "CpuPeriod": 0,
+   "CpuQuota": 0,
+   "CpuRealtimePeriod": 0,
+   "CpuRealtimeRuntime": 0,
+   "CpusetCpus": "",
+   "CpusetMems": "",
+   "Devices": null,
+   "DeviceCgroupRules": null,
+   "DeviceRequests": null,
+   "MemoryReservation": 0,
+   "MemorySwap": 536870912,
+   "MemorySwappiness": null,
+   "OomKillDisable": null,
+   "PidsLimit": null,
+   "Ulimits": null,
+   "CpuCount": 0,
+   "CpuPercent": 0,
+   "IOMaximumIOps": 0,
+   "IOMaximumBandwidth": 0,
+   "MaskedPaths": [
+    "/proc/acpi",
+    "/proc/asound",
+    "/proc/interrupts",
+    "/proc/kcore",
+    "/proc/keys",
+    "/proc/latency_stats",
+    "/proc/sched_debug",
+    "/proc/scsi",
+    "/proc/timer_list",
+    "/proc/timer_stats",
+    "/sys/devices/virtual/powercap",
+    "/sys/firmware"
+   ],
+   "ReadonlyPaths": [
+    "/proc/bus",
+    "/proc/fs",
+    "/proc/irq",
+    "/proc/sys",
+    "/proc/sysrq-trigger"
+   ]
+  },
+  "GraphDriver": {
+   "Data": {
+    "ID": "77ec3ba12014d721d7f2f8975e14e9bf0fe5c441f6e43f94b3bd3b866900f67e",
+    "LowerDir": "/var/lib/docker/overlay2/f35c1154b91f043c7684efe604a276f4cc7fd03c9a116766769f72e7d30ec290-init/diff:/var/lib/docker/overlay2/z5qg2ljscqahur5xxa1mj0jo2/diff:/var/lib/docker/overlay2/qlbp6bajiyq1upmwief7ni4gn/diff:/var/lib/docker/overlay2/rfubu4xts9740ix024gvi0dvb/diff:/var/lib/docker/overlay2/ldv3z295dpig6upapclbcj7m1/diff:/var/lib/docker/overlay2/2e3hjgs3m2z8m5esjp2yxue1k/diff:/var/lib/docker/overlay2/deebe79a9e06f3104790a43d1c7d5cecc9f898ad30fe999e53062753e4cf525d/diff:/var/lib/docker/overlay2/ba0ca03b265d430c093bc13084a86d4e74b43b84539d21a573b6d44ab59138e8/diff:/var/lib/docker/overlay2/01d9cf69967413d7fffb338a98251c6447c657f48db71102ba3bbd954ace181a/diff:/var/lib/docker/overlay2/ec282f5c84b4b9100414520020bb140abaeca4bf70f5850972c8b04869bd557b/diff",
+    "MergedDir": "/var/lib/docker/overlay2/f35c1154b91f043c7684efe604a276f4cc7fd03c9a116766769f72e7d30ec290/merged",
+    "UpperDir": "/var/lib/docker/overlay2/f35c1154b91f043c7684efe604a276f4cc7fd03c9a116766769f72e7d30ec290/diff",
+    "WorkDir": "/var/lib/docker/overlay2/f35c1154b91f043c7684efe604a276f4cc7fd03c9a116766769f72e7d30ec290/work"
+   },
+   "Name": "overlay2"
+  },
+  "Mounts": [],
+  "Config": {
+   "Hostname": "77ec3ba12014",
+   "Domainname": "",
+   "User": "hawkeye",
+   "AttachStdin": false,
+   "AttachStdout": true,
+   "AttachStderr": true,
+   "ExposedPorts": {
+    "8000/tcp": {}
+   },
+   "Tty": false,
+   "OpenStdin": false,
+   "StdinOnce": false,
+   "Env": [
+    "GOTENBERG_URL=http://hawkeye-gotenberg:3000",
+    "PATH=/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "LANG=C.UTF-8",
+    "GPG_KEY=7169605F62C751356D054A26A821E680E5FA6305",
+    "PYTHON_VERSION=3.12.13",
+    "PYTHON_SHA256=c08bc65a81971c1dd5783182826503369466c7e67374d1646519adf05207b684"
+   ],
+   "Cmd": [
+    "uvicorn",
+    "api.main:app",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    "8000"
+   ],
+   "Healthcheck": {
+    "Test": [
+     "CMD-SHELL",
+     "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""
+    ],
+    "Interval": 15000000000,
+    "Timeout": 5000000000,
+    "StartPeriod": 15000000000,
+    "Retries": 3
+   },
+   "Image": "hawkeye-api:0.1.0",
+   "Volumes": null,
+   "WorkingDir": "/app",
+   "Entrypoint": null,
+   "Labels": {
+    "com.docker.compose.config-hash": "ababa872e655dcea12b946783a20f2c9f8ecea958e1f669c6a0cc67407570618",
+    "com.docker.compose.container-number": "1",
+    "com.docker.compose.depends_on": "flyway:service_completed_successfully:false,hawkeye-postgres:service_healthy:false",
+    "com.docker.compose.image": "sha256:3da1a461a0b54bc3324c3c25c284ce375662f3f008f12295ff8a031695ac4f22",
+    "com.docker.compose.oneoff": "False",
+    "com.docker.compose.project": "hawkeye",
+    "com.docker.compose.project.config_files": "/home/mobuone/projects/saas/hawkeye/docker-compose.yml",
+    "com.docker.compose.project.working_dir": "/home/mobuone/projects/saas/hawkeye",
+    "com.docker.compose.service": "hawkeye-api",
+    "com.docker.compose.version": "5.0.2"
+   }
+  },
+  "NetworkSettings": {
+   "SandboxID": "1bfe024c872fd3d30be0b2620b868db51fb98b37099f60d1193eda545039ed34",
+   "SandboxKey": "/var/run/docker/netns/1bfe024c872f",
+   "Ports": {
+    "8000/tcp": null
+   },
+   "Networks": {
+    "hawkeye_gotenberg_bridge": {
+     "IPAMConfig": null,
+     "Links": null,
+     "Aliases": [
+      "hawkeye-api",
+      "hawkeye-api"
+     ],
+     "DriverOpts": null,
+     "GwPriority": 0,
+     "NetworkID": "4afd3dd9d5eae03287b1d8a23c379cb08d73818d01b56413f3aea4fd293c5041",
+     "EndpointID": "d7428e01ae01f7f8b6367df545c47abde023223a418c8eb8cf003127bca69274",
+     "Gateway": "172.20.0.1",
+     "IPAddress": "172.20.0.2",
+     "MacAddress": "ce:ff:29:f3:86:6c",
+     "IPPrefixLen": 16,
+     "IPv6Gateway": "",
+     "GlobalIPv6Address": "",
+     "GlobalIPv6PrefixLen": 0,
+     "DNSNames": [
+      "hawkeye-api",
+      "77ec3ba12014"
+     ]
+    },
+    "hawkeye_hawkeye_internal": {
+     "IPAMConfig": null,
+     "Links": null,
+     "Aliases": [
+      "hawkeye-api",
+      "hawkeye-api"
+     ],
+     "DriverOpts": null,
+     "GwPriority": 0,
+     "NetworkID": "c441ba965de09e4e7acba3be3898bf39da1df2f4a4ffb1cffc3cd4d757f003bf",
+     "EndpointID": "0adebd3d5174057ee67d73c9e21827e6cd5577c0b6dd2a8f8f77e5e1807c8a02",
+     "Gateway": "172.19.0.1",
+     "IPAddress": "172.19.0.5",
+     "MacAddress": "aa:5d:6e:af:3d:b2",
+     "IPPrefixLen": 16,
+     "IPv6Gateway": "",
+     "GlobalIPv6Address": "",
+     "GlobalIPv6PrefixLen": 0,
+     "DNSNames": [
+      "hawkeye-api",
+      "77ec3ba12014"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "Id": "6a6676c3046ad1054723cd2e33c22b7ef2fdcd5415cec33fa3a8dfa382a3470c",
+  "Created": "2026-05-30T12:27:51.638672295Z",
+  "Path": "/entrypoint.sh",
+  "Args": [],
+  "State": {
+   "Status": "running",
+   "Running": true,
+   "Paused": false,
+   "Restarting": false,
+   "OOMKilled": false,
+   "Dead": false,
+   "Pid": 2212,
+   "ExitCode": 0,
+   "Error": "",
+   "StartedAt": "2026-07-27T15:49:54.857280308Z",
+   "FinishedAt": "2026-07-27T15:49:52.205323421Z",
+   "Health": {
+    "Status": "healthy",
+    "FailingStreak": 0,
+    "Log": [
+     {
+      "Start": "2026-07-27T19:54:13.889946364+02:00",
+      "End": "2026-07-27T19:54:13.994958612+02:00",
+      "ExitCode": 0,
+      "Output": "stub healthy\n"
+     },
+     {
+      "Start": "2026-07-27T19:55:13.995680945+02:00",
+      "End": "2026-07-27T19:55:14.059056875+02:00",
+      "ExitCode": 0,
+      "Output": "stub healthy\n"
+     },
+     {
+      "Start": "2026-07-27T19:56:14.062405443+02:00",
+      "End": "2026-07-27T19:56:14.167630172+02:00",
+      "ExitCode": 0,
+      "Output": "stub healthy\n"
+     },
+     {
+      "Start": "2026-07-27T19:57:14.168904574+02:00",
+      "End": "2026-07-27T19:57:14.303016341+02:00",
+      "ExitCode": 0,
+      "Output": "stub healthy\n"
+     },
+     {
+      "Start": "2026-07-27T19:58:14.305755286+02:00",
+      "End": "2026-07-27T19:58:14.345013288+02:00",
+      "ExitCode": 0,
+      "Output": "stub healthy\n"
+     }
+    ]
+   }
+  },
+  "Image": "sha256:e807d07a25f16fc70affd8440d8e3151fe13dd686b2724efccf8995a2339042f",
+  "ResolvConfPath": "/var/lib/docker/containers/6a6676c3046ad1054723cd2e33c22b7ef2fdcd5415cec33fa3a8dfa382a3470c/resolv.conf",
+  "HostnamePath": "/var/lib/docker/containers/6a6676c3046ad1054723cd2e33c22b7ef2fdcd5415cec33fa3a8dfa382a3470c/hostname",
+  "HostsPath": "/var/lib/docker/containers/6a6676c3046ad1054723cd2e33c22b7ef2fdcd5415cec33fa3a8dfa382a3470c/hosts",
+  "LogPath": "/var/lib/docker/containers/6a6676c3046ad1054723cd2e33c22b7ef2fdcd5415cec33fa3a8dfa382a3470c/6a6676c3046ad1054723cd2e33c22b7ef2fdcd5415cec33fa3a8dfa382a3470c-json.log",
+  "Name": "/hawkeye-backup",
+  "RestartCount": 0,
+  "Driver": "overlay2",
+  "Platform": "linux",
+  "MountLabel": "",
+  "ProcessLabel": "",
+  "AppArmorProfile": "docker-default",
+  "ExecIDs": null,
+  "HostConfig": {
+   "Binds": null,
+   "ContainerIDFile": "",
+   "LogConfig": {
+    "Type": "json-file",
+    "Config": {
+     "max-file": "3",
+     "max-size": "10m"
+    }
+   },
+   "NetworkMode": "hawkeye_hawkeye_internal",
+   "PortBindings": {},
+   "RestartPolicy": {
+    "Name": "unless-stopped",
+    "MaximumRetryCount": 0
+   },
+   "AutoRemove": false,
+   "VolumeDriver": "",
+   "VolumesFrom": null,
+   "ConsoleSize": [
+    0,
+    0
+   ],
+   "CapAdd": null,
+   "CapDrop": null,
+   "CgroupnsMode": "private",
+   "Dns": [],
+   "DnsOptions": [],
+   "DnsSearch": [],
+   "ExtraHosts": [],
+   "GroupAdd": null,
+   "IpcMode": "private",
+   "Cgroup": "",
+   "Links": null,
+   "OomScoreAdj": 0,
+   "PidMode": "",
+   "Privileged": false,
+   "PublishAllPorts": false,
+   "ReadonlyRootfs": false,
+   "SecurityOpt": null,
+   "UTSMode": "",
+   "UsernsMode": "",
+   "ShmSize": 67108864,
+   "Runtime": "runc",
+   "Isolation": "",
+   "CpuShares": 0,
+   "Memory": 268435456,
+   "NanoCpus": 0,
+   "CgroupParent": "",
+   "BlkioWeight": 0,
+   "BlkioWeightDevice": null,
+   "BlkioDeviceReadBps": null,
+   "BlkioDeviceWriteBps": null,
+   "BlkioDeviceReadIOps": null,
+   "BlkioDeviceWriteIOps": null,
+   "CpuPeriod": 0,
+   "CpuQuota": 0,
+   "CpuRealtimePeriod": 0,
+   "CpuRealtimeRuntime": 0,
+   "CpusetCpus": "",
+   "CpusetMems": "",
+   "Devices": null,
+   "DeviceCgroupRules": null,
+   "DeviceRequests": null,
+   "MemoryReservation": 0,
+   "MemorySwap": 268435456,
+   "MemorySwappiness": null,
+   "OomKillDisable": null,
+   "PidsLimit": null,
+   "Ulimits": null,
+   "CpuCount": 0,
+   "CpuPercent": 0,
+   "IOMaximumIOps": 0,
+   "IOMaximumBandwidth": 0,
+   "MaskedPaths": [
+    "/proc/acpi",
+    "/proc/asound",
+    "/proc/interrupts",
+    "/proc/kcore",
+    "/proc/keys",
+    "/proc/latency_stats",
+    "/proc/sched_debug",
+    "/proc/scsi",
+    "/proc/timer_list",
+    "/proc/timer_stats",
+    "/sys/devices/virtual/powercap",
+    "/sys/firmware"
+   ],
+   "ReadonlyPaths": [
+    "/proc/bus",
+    "/proc/fs",
+    "/proc/irq",
+    "/proc/sys",
+    "/proc/sysrq-trigger"
+   ]
+  },
+  "GraphDriver": {
+   "Data": {
+    "ID": "6a6676c3046ad1054723cd2e33c22b7ef2fdcd5415cec33fa3a8dfa382a3470c",
+    "LowerDir": "/var/lib/docker/overlay2/9ddc7f3be65d11d70d6044d418bf2f54537d5d473810cd3ced770be2d51af5d7-init/diff:/var/lib/docker/overlay2/2rw8c9cjbacp70km9v4tv206i/diff:/var/lib/docker/overlay2/tqtfwb2kq5jgvjy4srw676y4w/diff:/var/lib/docker/overlay2/73abffe61471e091b76741c9b4d689511a47d730b03af1f4c21c9dcef740908c/diff",
+    "MergedDir": "/var/lib/docker/overlay2/9ddc7f3be65d11d70d6044d418bf2f54537d5d473810cd3ced770be2d51af5d7/merged",
+    "UpperDir": "/var/lib/docker/overlay2/9ddc7f3be65d11d70d6044d418bf2f54537d5d473810cd3ced770be2d51af5d7/diff",
+    "WorkDir": "/var/lib/docker/overlay2/9ddc7f3be65d11d70d6044d418bf2f54537d5d473810cd3ced770be2d51af5d7/work"
+   },
+   "Name": "overlay2"
+  },
+  "Mounts": [],
+  "Config": {
+   "Hostname": "6a6676c3046a",
+   "Domainname": "",
+   "User": "",
+   "AttachStdin": false,
+   "AttachStdout": true,
+   "AttachStderr": true,
+   "Tty": false,
+   "OpenStdin": false,
+   "StdinOnce": false,
+   "Env": [
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+   ],
+   "Cmd": null,
+   "Healthcheck": {
+    "Test": [
+     "CMD-SHELL",
+     "echo 'stub healthy'"
+    ],
+    "Interval": 60000000000,
+    "Timeout": 5000000000,
+    "StartPeriod": 5000000000,
+    "Retries": 1
+   },
+   "Image": "hawkeye-backup:0.1.0",
+   "Volumes": null,
+   "WorkingDir": "/",
+   "Entrypoint": [
+    "/entrypoint.sh"
+   ],
+   "Labels": {
+    "com.docker.compose.config-hash": "937da2291eac40c70784c41b193fa493a4e1bc314e241031ba2717026b65589f",
+    "com.docker.compose.container-number": "1",
+    "com.docker.compose.depends_on": "hawkeye-postgres:service_healthy:false",
+    "com.docker.compose.image": "sha256:e807d07a25f16fc70affd8440d8e3151fe13dd686b2724efccf8995a2339042f",
+    "com.docker.compose.oneoff": "False",
+    "com.docker.compose.project": "hawkeye",
+    "com.docker.compose.project.config_files": "/home/mobuone/projects/saas/hawkeye/docker-compose.yml",
+    "com.docker.compose.project.working_dir": "/home/mobuone/projects/saas/hawkeye",
+    "com.docker.compose.service": "hawkeye-backup",
+    "com.docker.compose.version": "5.0.2"
+   }
+  },
+  "NetworkSettings": {
+   "SandboxID": "8febfd86e2e069a84e3571f40d27d41a8452b9ca5af2687462a68aeeb2855e56",
+   "SandboxKey": "/var/run/docker/netns/8febfd86e2e0",
+   "Ports": {},
+   "Networks": {
+    "hawkeye_hawkeye_internal": {
+     "IPAMConfig": null,
+     "Links": null,
+     "Aliases": [
+      "hawkeye-backup",
+      "hawkeye-backup"
+     ],
+     "DriverOpts": null,
+     "GwPriority": 0,
+     "NetworkID": "c441ba965de09e4e7acba3be3898bf39da1df2f4a4ffb1cffc3cd4d757f003bf",
+     "EndpointID": "29b5436525a35891ed8a815994c9752a2aa222e71b471ffad1a0ef2f6863ab79",
+     "Gateway": "172.19.0.1",
+     "IPAddress": "172.19.0.3",
+     "MacAddress": "6a:ec:b9:49:36:cd",
+     "IPPrefixLen": 16,
+     "IPv6Gateway": "",
+     "GlobalIPv6Address": "",
+     "GlobalIPv6PrefixLen": 0,
+     "DNSNames": [
+      "hawkeye-backup",
+      "6a6676c3046a"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "Id": "db70ef5c7d9e21747ad29da9003a7e37d439d7b2bdf7a454ca5d3594a014c18e",
+  "Created": "2026-05-30T12:27:51.573303856Z",
+  "Path": "/usr/bin/tini",
+  "Args": [
+   "--",
+   "gotenberg"
+  ],
+  "State": {
+   "Status": "running",
+   "Running": true,
+   "Paused": false,
+   "Restarting": false,
+   "OOMKilled": false,
+   "Dead": false,
+   "Pid": 2211,
+   "ExitCode": 0,
+   "Error": "",
+   "StartedAt": "2026-07-27T15:49:54.85123716Z",
+   "FinishedAt": "2026-07-27T15:49:52.208183828Z",
+   "Health": {
+    "Status": "healthy",
+    "FailingStreak": 0,
+    "Log": [
+     {
+      "Start": "2026-07-27T19:57:49.604272162+02:00",
+      "End": "2026-07-27T19:57:49.681213407+02:00",
+      "ExitCode": 0,
+      "Output": "{\"status\":\"up\",\"details\":{\"chromium\":{\"status\":\"up\",\"timestamp\":\"2026-07-27T17:57:49.675742981Z\"},\"libreoffice\":{\"status\":\"up\",\"timestamp\":\"2026-07-27T17:57:49.675736888Z\"}}}"
+     },
+     {
+      "Start": "2026-07-27T19:58:04.682795736+02:00",
+      "End": "2026-07-27T19:58:04.763730389+02:00",
+      "ExitCode": 0,
+      "Output": "{\"status\":\"up\",\"details\":{\"chromium\":{\"status\":\"up\",\"timestamp\":\"2026-07-27T17:58:04.758940055Z\"},\"libreoffice\":{\"status\":\"up\",\"timestamp\":\"2026-07-27T17:58:04.758930073Z\"}}}"
+     },
+     {
+      "Start": "2026-07-27T19:58:19.764545541+02:00",
+      "End": "2026-07-27T19:58:19.848763397+02:00",
+      "ExitCode": 0,
+      "Output": "{\"status\":\"up\",\"details\":{\"chromium\":{\"status\":\"up\",\"timestamp\":\"2026-07-27T17:58:19.843653878Z\"},\"libreoffice\":{\"status\":\"up\",\"timestamp\":\"2026-07-27T17:58:19.843664045Z\"}}}"
+     },
+     {
+      "Start": "2026-07-27T19:58:34.850237058+02:00",
+      "End": "2026-07-27T19:58:34.959521879+02:00",
+      "ExitCode": 0,
+      "Output": "{\"status\":\"up\",\"details\":{\"chromium\":{\"status\":\"up\",\"timestamp\":\"2026-07-27T17:58:34.950773397Z\"},\"libreoffice\":{\"status\":\"up\",\"timestamp\":\"2026-07-27T17:58:34.950817267Z\"}}}"
+     },
+     {
+      "Start": "2026-07-27T19:58:49.961469807+02:00",
+      "End": "2026-07-27T19:58:50.096544852+02:00",
+      "ExitCode": 0,
+      "Output": "{\"status\":\"up\",\"details\":{\"chromium\":{\"status\":\"up\",\"timestamp\":\"2026-07-27T17:58:50.091420444Z\"},\"libreoffice\":{\"status\":\"up\",\"timestamp\":\"2026-07-27T17:58:50.091444185Z\"}}}"
+     }
+    ]
+   }
+  },
+  "Image": "sha256:19475070986472aae48d917d0ebf7569a23b221b2e1a98e485a6a10e67cd12b4",
+  "ResolvConfPath": "/var/lib/docker/containers/db70ef5c7d9e21747ad29da9003a7e37d439d7b2bdf7a454ca5d3594a014c18e/resolv.conf",
+  "HostnamePath": "/var/lib/docker/containers/db70ef5c7d9e21747ad29da9003a7e37d439d7b2bdf7a454ca5d3594a014c18e/hostname",
+  "HostsPath": "/var/lib/docker/containers/db70ef5c7d9e21747ad29da9003a7e37d439d7b2bdf7a454ca5d3594a014c18e/hosts",
+  "LogPath": "/var/lib/docker/containers/db70ef5c7d9e21747ad29da9003a7e37d439d7b2bdf7a454ca5d3594a014c18e/db70ef5c7d9e21747ad29da9003a7e37d439d7b2bdf7a454ca5d3594a014c18e-json.log",
+  "Name": "/hawkeye-gotenberg",
+  "RestartCount": 0,
+  "Driver": "overlay2",
+  "Platform": "linux",
+  "MountLabel": "",
+  "ProcessLabel": "",
+  "AppArmorProfile": "docker-default",
+  "ExecIDs": null,
+  "HostConfig": {
+   "Binds": null,
+   "ContainerIDFile": "",
+   "LogConfig": {
+    "Type": "json-file",
+    "Config": {
+     "max-file": "3",
+     "max-size": "10m"
+    }
+   },
+   "NetworkMode": "hawkeye_gotenberg_bridge",
+   "PortBindings": {},
+   "RestartPolicy": {
+    "Name": "unless-stopped",
+    "MaximumRetryCount": 0
+   },
+   "AutoRemove": false,
+   "VolumeDriver": "",
+   "VolumesFrom": null,
+   "ConsoleSize": [
+    0,
+    0
+   ],
+   "CapAdd": null,
+   "CapDrop": null,
+   "CgroupnsMode": "private",
+   "Dns": [],
+   "DnsOptions": [],
+   "DnsSearch": [],
+   "ExtraHosts": [],
+   "GroupAdd": null,
+   "IpcMode": "private",
+   "Cgroup": "",
+   "Links": null,
+   "OomScoreAdj": 0,
+   "PidMode": "",
+   "Privileged": false,
+   "PublishAllPorts": false,
+   "ReadonlyRootfs": false,
+   "SecurityOpt": null,
+   "UTSMode": "",
+   "UsernsMode": "",
+   "ShmSize": 67108864,
+   "Runtime": "runc",
+   "Isolation": "",
+   "CpuShares": 0,
+   "Memory": 1073741824,
+   "NanoCpus": 0,
+   "CgroupParent": "",
+   "BlkioWeight": 0,
+   "BlkioWeightDevice": null,
+   "BlkioDeviceReadBps": null,
+   "BlkioDeviceWriteBps": null,
+   "BlkioDeviceReadIOps": null,
+   "BlkioDeviceWriteIOps": null,
+   "CpuPeriod": 0,
+   "CpuQuota": 0,
+   "CpuRealtimePeriod": 0,
+   "CpuRealtimeRuntime": 0,
+   "CpusetCpus": "",
+   "CpusetMems": "",
+   "Devices": null,
+   "DeviceCgroupRules": null,
+   "DeviceRequests": null,
+   "MemoryReservation": 0,
+   "MemorySwap": 1073741824,
+   "MemorySwappiness": null,
+   "OomKillDisable": null,
+   "PidsLimit": null,
+   "Ulimits": null,
+   "CpuCount": 0,
+   "CpuPercent": 0,
+   "IOMaximumIOps": 0,
+   "IOMaximumBandwidth": 0,
+   "MaskedPaths": [
+    "/proc/acpi",
+    "/proc/asound",
+    "/proc/interrupts",
+    "/proc/kcore",
+    "/proc/keys",
+    "/proc/latency_stats",
+    "/proc/sched_debug",
+    "/proc/scsi",
+    "/proc/timer_list",
+    "/proc/timer_stats",
+    "/sys/devices/virtual/powercap",
+    "/sys/firmware"
+   ],
+   "ReadonlyPaths": [
+    "/proc/bus",
+    "/proc/fs",
+    "/proc/irq",
+    "/proc/sys",
+    "/proc/sysrq-trigger"
+   ]
+  },
+  "GraphDriver": {
+   "Data": {
+    "ID": "db70ef5c7d9e21747ad29da9003a7e37d439d7b2bdf7a454ca5d3594a014c18e",
+    "LowerDir": "/var/lib/docker/overlay2/da8195c0f027dff46e720dadd4c2a108f88625478c76556048bcd7989ad65a0f-init/diff:/var/lib/docker/overlay2/5867268eff30b93b55a0a4ddb95a0da7d2aee2170cb4a1f78b411fd16a42ee44/diff:/var/lib/docker/overlay2/48e41613e519751578bd24a565f5a7e56a94983d459595e8a9fab5474a03ae80/diff:/var/lib/docker/overlay2/904ec040596ffb8c36b30a8e09b051eb822c67a9a62cd93509f942a1d2b9aaf0/diff:/var/lib/docker/overlay2/d1ac76a9c41acf0e5aa0d2997098b2375ac766052d27883a41d85db188da66e4/diff:/var/lib/docker/overlay2/ddc7a919bf4d937d0b4704f1801a40d49b5e0d09deba0b4104177065b4609123/diff:/var/lib/docker/overlay2/7b3b8ba77ab07558e57286a9e86c3eb24342cafbdaf815ed5c6d856a5654a332/diff:/var/lib/docker/overlay2/36739fc0002044a7cd99c48075a9fe47917fd0a408128f14e417e9e4ab9b859f/diff:/var/lib/docker/overlay2/abc27ec803a00f263571e554ecce2c8b5d5a4ba403cfd437463fb66e19c4b4a0/diff:/var/lib/docker/overlay2/ff2fe9ddbb69ca488ad7c4effdab0a8c7d4fa67922bd7cb0b7ccd95b5e2248de/diff:/var/lib/docker/overlay2/87f8295485fda1862461d25071dbac7980326c47eda9d6351441cc322382c2f5/diff:/var/lib/docker/overlay2/8fa1f5a60220b1d14a6e08e09790e7e2906b67bdd94c79cc1fd54dbe13d0cb0b/diff:/var/lib/docker/overlay2/c7349ffd0f20b931b4e47e15904e8949435fb5ce80aeacc6002e54bf9ade6ab5/diff:/var/lib/docker/overlay2/dc5715b6f0133c9d35e9b38bdb87544ae4082132ad3399619aa00ac3a9ae2268/diff:/var/lib/docker/overlay2/1c66c4716a35f68764db58c92be4aeea049a9eef49c4b23d65df3ed8c916a6d2/diff:/var/lib/docker/overlay2/ec282f5c84b4b9100414520020bb140abaeca4bf70f5850972c8b04869bd557b/diff",
+    "MergedDir": "/var/lib/docker/overlay2/da8195c0f027dff46e720dadd4c2a108f88625478c76556048bcd7989ad65a0f/merged",
+    "UpperDir": "/var/lib/docker/overlay2/da8195c0f027dff46e720dadd4c2a108f88625478c76556048bcd7989ad65a0f/diff",
+    "WorkDir": "/var/lib/docker/overlay2/da8195c0f027dff46e720dadd4c2a108f88625478c76556048bcd7989ad65a0f/work"
+   },
+   "Name": "overlay2"
+  },
+  "Mounts": [],
+  "Config": {
+   "Hostname": "db70ef5c7d9e",
+   "Domainname": "",
+   "User": "gotenberg",
+   "AttachStdin": false,
+   "AttachStdout": true,
+   "AttachStderr": true,
+   "ExposedPorts": {
+    "3000/tcp": {}
+   },
+   "Tty": false,
+   "OpenStdin": false,
+   "StdinOnce": false,
+   "Env": [
+    "PATH=/opt/java/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+    "TZ=UTC",
+    "LANG=C.UTF-8",
+    "LC_ALL=C.UTF-8",
+    "PDFTK_BIN_PATH=/usr/bin/pdftk",
+    "QPDF_BIN_PATH=/usr/bin/qpdf",
+    "EXIFTOOL_BIN_PATH=/usr/bin/exiftool",
+    "PDFCPU_BIN_PATH=/usr/bin/pdfcpu",
+    "OTEL_TRACES_EXPORTER=none",
+    "OTEL_METRICS_EXPORTER=none",
+    "OTEL_LOGS_EXPORTER=none",
+    "CHROMIUM_BIN_PATH=/usr/bin/chromium",
+    "CHROMIUM_HYPHEN_DATA_DIR_PATH=/opt/gotenberg/chromium-hyphen-data",
+    "LIBREOFFICE_BIN_PATH=/usr/lib/libreoffice/program/soffice.bin",
+    "UNOCONVERTER_BIN_PATH=/usr/bin/unoconverter"
+   ],
+   "Cmd": [
+    "gotenberg"
+   ],
+   "Healthcheck": {
+    "Test": [
+     "CMD-SHELL",
+     "curl --silent --fail http://localhost:3000/health || exit 1"
+    ],
+    "Interval": 15000000000,
+    "Timeout": 5000000000,
+    "StartPeriod": 10000000000,
+    "Retries": 3
+   },
+   "Image": "gotenberg/gotenberg:8.33.0",
+   "Volumes": null,
+   "WorkingDir": "/home/gotenberg",
+   "Entrypoint": [
+    "/usr/bin/tini",
+    "--"
+   ],
+   "Labels": {
+    "com.docker.compose.config-hash": "f4dfb44058a0145f8c005ec4cf8a4a3673c52b386cba3f7978dd74568dec4368",
+    "com.docker.compose.container-number": "1",
+    "com.docker.compose.depends_on": "",
+    "com.docker.compose.image": "sha256:19475070986472aae48d917d0ebf7569a23b221b2e1a98e485a6a10e67cd12b4",
+    "com.docker.compose.oneoff": "False",
+    "com.docker.compose.project": "hawkeye",
+    "com.docker.compose.project.config_files": "/home/mobuone/projects/saas/hawkeye/docker-compose.yml",
+    "com.docker.compose.project.working_dir": "/home/mobuone/projects/saas/hawkeye",
+    "com.docker.compose.service": "hawkeye-gotenberg",
+    "com.docker.compose.version": "5.0.2",
+    "org.opencontainers.image.authors": "Julien Neuhart <neuhart.julien@gmail.com>",
+    "org.opencontainers.image.description": "A Docker-based API for converting documents to PDF.",
+    "org.opencontainers.image.documentation": "https://gotenberg.dev",
+    "org.opencontainers.image.source": "https://github.com/gotenberg/gotenberg",
+    "org.opencontainers.image.title": "Gotenberg",
+    "org.opencontainers.image.version": "8.33.0"
+   }
+  },
+  "NetworkSettings": {
+   "SandboxID": "c96f4934ba513963c795c6ad8a54000bbdd05a3d90108b68a7a96c343df4967d",
+   "SandboxKey": "/var/run/docker/netns/c96f4934ba51",
+   "Ports": {
+    "3000/tcp": null
+   },
+   "Networks": {
+    "hawkeye_gotenberg_bridge": {
+     "IPAMConfig": null,
+     "Links": null,
+     "Aliases": [
+      "hawkeye-gotenberg",
+      "hawkeye-gotenberg"
+     ],
+     "DriverOpts": null,
+     "GwPriority": 0,
+     "NetworkID": "4afd3dd9d5eae03287b1d8a23c379cb08d73818d01b56413f3aea4fd293c5041",
+     "EndpointID": "4c0d3f326ff6f2551e7798b57468cc788cbe75ad4d32473978f2fbddff96da5a",
+     "Gateway": "172.20.0.1",
+     "IPAddress": "172.20.0.3",
+     "MacAddress": "42:30:96:54:4e:ed",
+     "IPPrefixLen": 16,
+     "IPv6Gateway": "",
+     "GlobalIPv6Address": "",
+     "GlobalIPv6PrefixLen": 0,
+     "DNSNames": [
+      "hawkeye-gotenberg",
+      "db70ef5c7d9e"
+     ]
+    }
+   }
+  }
+ },
+ {
+  "Id": "28405b41a178e1717bfe399b36182164cdcc9e20b20b49678dfd0881ecf44b7d",
+  "Created": "2026-05-30T12:27:51.573197448Z",
+  "Path": "docker-entrypoint.sh",
+  "Args": [
+   "postgres"
+  ],
+  "State": {
+   "Status": "running",
+   "Running": true,
+   "Paused": false,
+   "Restarting": false,
+   "OOMKilled": false,
+   "Dead": false,
+   "Pid": 2256,
+   "ExitCode": 0,
+   "Error": "",
+   "StartedAt": "2026-07-27T15:49:54.875872382Z",
+   "FinishedAt": "2026-07-27T15:49:52.20345018Z",
+   "Health": {
+    "Status": "healthy",
+    "FailingStreak": 0,
+    "Log": [
+     {
+      "Start": "2026-07-27T19:58:08.747728635+02:00",
+      "End": "2026-07-27T19:58:09.032228022+02:00",
+      "ExitCode": 0,
+      "Output": "/var/run/postgresql:5432 - accepting connections\n"
+     },
+     {
+      "Start": "2026-07-27T19:58:19.033704906+02:00",
+      "End": "2026-07-27T19:58:19.226802084+02:00",
+      "ExitCode": 0,
+      "Output": "/var/run/postgresql:5432 - accepting connections\n"
+     },
+     {
+      "Start": "2026-07-27T19:58:29.228816297+02:00",
+      "End": "2026-07-27T19:58:29.565033539+02:00",
+      "ExitCode": 0,
+      "Output": "/var/run/postgresql:5432 - accepting connections\n"
+     },
+     {
+      "Start": "2026-07-27T19:58:39.566783155+02:00",
+      "End": "2026-07-27T19:58:39.817532836+02:00",
+      "ExitCode": 0,
+      "Output": "/var/run/postgresql:5432 - accepting connections\n"
+     },
+     {
+      "Start": "2026-07-27T19:58:49.818556299+02:00",
+      "End": "2026-07-27T19:58:50.078969703+02:00",
+      "ExitCode": 0,
+      "Output": "/var/run/postgresql:5432 - accepting connections\n"
+     }
+    ]
+   }
+  },
+  "Image": "sha256:e8f63e9b55f7c22b2cb39d85dc458c9a3671a8685564c58750a37dbdd01903ea",
+  "ResolvConfPath": "/var/lib/docker/containers/28405b41a178e1717bfe399b36182164cdcc9e20b20b49678dfd0881ecf44b7d/resolv.conf",
+  "HostnamePath": "/var/lib/docker/containers/28405b41a178e1717bfe399b36182164cdcc9e20b20b49678dfd0881ecf44b7d/hostname",
+  "HostsPath": "/var/lib/docker/containers/28405b41a178e1717bfe399b36182164cdcc9e20b20b49678dfd0881ecf44b7d/hosts",
+  "LogPath": "/var/lib/docker/containers/28405b41a178e1717bfe399b36182164cdcc9e20b20b49678dfd0881ecf44b7d/28405b41a178e1717bfe399b36182164cdcc9e20b20b49678dfd0881ecf44b7d-json.log",
+  "Name": "/hawkeye-postgres",
+  "RestartCount": 0,
+  "Driver": "overlay2",
+  "Platform": "linux",
+  "MountLabel": "",
+  "ProcessLabel": "",
+  "AppArmorProfile": "docker-default",
+  "ExecIDs": null,
+  "HostConfig": {
+   "Binds": [
+    "hawkeye_hawkeye_pgdata:/var/lib/postgresql/data:rw"
+   ],
+   "ContainerIDFile": "",
+   "LogConfig": {
+    "Type": "json-file",
+    "Config": {
+     "max-file": "3",
+     "max-size": "10m"
+    }
+   },
+   "NetworkMode": "hawkeye_hawkeye_internal",
+   "PortBindings": {},
+   "RestartPolicy": {
+    "Name": "unless-stopped",
+    "MaximumRetryCount": 0
+   },
+   "AutoRemove": false,
+   "VolumeDriver": "",
+   "VolumesFrom": null,
+   "ConsoleSize": [
+    0,
+    0
+   ],
+   "CapAdd": null,
+   "CapDrop": null,
+   "CgroupnsMode": "private",
+   "Dns": [],
+   "DnsOptions": [],
+   "DnsSearch": [],
+   "ExtraHosts": [],
+   "GroupAdd": null,
+   "IpcMode": "private",
+   "Cgroup": "",
+   "Links": null,
+   "OomScoreAdj": 0,
+   "PidMode": "",
+   "Privileged": false,
+   "PublishAllPorts": false,
+   "ReadonlyRootfs": false,
+   "SecurityOpt": null,
+   "UTSMode": "",
+   "UsernsMode": "",
+   "ShmSize": 67108864,
+   "Runtime": "runc",
+   "Isolation": "",
+   "CpuShares": 0,
+   "Memory": 536870912,
+   "NanoCpus": 0,
+   "CgroupParent": "",
+   "BlkioWeight": 0,
+   "BlkioWeightDevice": null,
+   "BlkioDeviceReadBps": null,
+   "BlkioDeviceWriteBps": null,
+   "BlkioDeviceReadIOps": null,
+   "BlkioDeviceWriteIOps": null,
+   "CpuPeriod": 0,
+   "CpuQuota": 0,
+   "CpuRealtimePeriod": 0,
+   "CpuRealtimeRuntime": 0,
+   "CpusetCpus": "",
+   "CpusetMems": "",
+   "Devices": null,
+   "DeviceCgroupRules": null,
+   "DeviceRequests": null,
+   "MemoryReservation": 0,
+   "MemorySwap": 536870912,
+   "MemorySwappiness": null,
+   "OomKillDisable": null,
+   "PidsLimit": null,
+   "Ulimits": null,
+   "CpuCount": 0,
+   "CpuPercent": 0,
+   "IOMaximumIOps": 0,
+   "IOMaximumBandwidth": 0,
+   "MaskedPaths": [
+    "/proc/acpi",
+    "/proc/asound",
+    "/proc/interrupts",
+    "/proc/kcore",
+    "/proc/keys",
+    "/proc/latency_stats",
+    "/proc/sched_debug",
+    "/proc/scsi",
+    "/proc/timer_list",
+    "/proc/timer_stats",
+    "/sys/devices/virtual/powercap",
+    "/sys/firmware"
+   ],
+   "ReadonlyPaths": [
+    "/proc/bus",
+    "/proc/fs",
+    "/proc/irq",
+    "/proc/sys",
+    "/proc/sysrq-trigger"
+   ]
+  },
+  "GraphDriver": {
+   "Data": {
+    "ID": "28405b41a178e1717bfe399b36182164cdcc9e20b20b49678dfd0881ecf44b7d",
+    "LowerDir": "/var/lib/docker/overlay2/5a815795d4210b64813470d1931912bcb3e0726c66860b04a082ffc9d723408f-init/diff:/var/lib/docker/overlay2/vdiu4wv6govd9jtvog2xerb5v/diff:/var/lib/docker/overlay2/mpfbi5phzks5omjv844cg85is/diff:/var/lib/docker/overlay2/c7ca997d4800e1dab95a84d33963911fb7e105735ae2f7fda06bee69ce1cd72c/diff:/var/lib/docker/overlay2/376b63cd5c0b97240349d130f1d82ac1b45ad9a9dc9a0ed7f1b50450967b26ee/diff:/var/lib/docker/overlay2/eb6801fb96e3f32a069e13505a39091155e4094e2d84a413485427044b7430b5/diff:/var/lib/docker/overlay2/48bf299427c70e93a2e4f1a733472afe6430f7f86c7bc5798a34551ea20da474/diff:/var/lib/docker/overlay2/be0774042ba35ecd4ed66e92f1239f91e9bfa6ff078172b4c8bc715d72109f17/diff:/var/lib/docker/overlay2/4c583b5c66d950e55487acdcb938ef95968d5dff5b3caa6611b5152223bd212e/diff:/var/lib/docker/overlay2/9a919f6625faa2d25f833545f583914e40aacfe9599ceada368bdd6e95576f24/diff:/var/lib/docker/overlay2/1ffde9c993d4c4f3638700865570e396221a698e205ff3f46323b53facab44d6/diff:/var/lib/docker/overlay2/007c8431471fababe275e2eca19aaab8e2e8b22fa637cccf8e1909f2162c0251/diff:/var/lib/docker/overlay2/6351fdc76f9fc1659054d77c2c4d3329ba4669af946020ecdf7147785e2775f6/diff:/var/lib/docker/overlay2/8f4f486ab1a1e22a8487f04ffdfa555339aba46d77e46038a422e13b786469e4/diff:/var/lib/docker/overlay2/6e2a2e7691b2d28e2b3573f6dcd984293026b5d6208ff45aff7c7e961b4bccf6/diff:/var/lib/docker/overlay2/3216de5a6d4fde83a58e904f4b7710abd88be829632fe2d21a274d8cf8cf015a/diff:/var/lib/docker/overlay2/ec282f5c84b4b9100414520020bb140abaeca4bf70f5850972c8b04869bd557b/diff",
+    "MergedDir": "/var/lib/docker/overlay2/5a815795d4210b64813470d1931912bcb3e0726c66860b04a082ffc9d723408f/merged",
+    "UpperDir": "/var/lib/docker/overlay2/5a815795d4210b64813470d1931912bcb3e0726c66860b04a082ffc9d723408f/diff",
+    "WorkDir": "/var/lib/docker/overlay2/5a815795d4210b64813470d1931912bcb3e0726c66860b04a082ffc9d723408f/work"
+   },
+   "Name": "overlay2"
+  },
+  "Mounts": [
+   {
+    "Type": "volume",
+    "Name": "hawkeye_hawkeye_pgdata",
+    "Source": "/var/lib/docker/volumes/hawkeye_hawkeye_pgdata/_data",
+    "Destination": "/var/lib/postgresql/data",
+    "Driver": "local",
+    "Mode": "rw",
+    "RW": true,
+    "Propagation": ""
+   }
+  ],
+  "Config": {
+   "Hostname": "28405b41a178",
+   "Domainname": "",
+   "User": "",
+   "AttachStdin": false,
+   "AttachStdout": true,
+   "AttachStderr": true,
+   "ExposedPorts": {
+    "5432/tcp": {}
+   },
+   "Tty": false,
+   "OpenStdin": false,
+   "StdinOnce": false,
+   "Env": [
+    "POSTGRES_PASSWORD=<<REDACTED len=26>>",
+    "POSTGRES_USER=hawkeye_app",
+    "POSTGRES_DB=hawkeye",
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/lib/postgresql/16/bin",
+    "GOSU_VERSION=1.19",
+    "LANG=en_US.utf8",
+    "PG_MAJOR=16",
+    "PG_VERSION=16.14-1.pgdg13+1",
+    "PGDATA=/var/lib/postgresql/data"
+   ],
+   "Cmd": [
+    "postgres"
+   ],
+   "Healthcheck": {
+    "Test": [
+     "CMD-SHELL",
+     "pg_isready -U hawkeye_app -d hawkeye && psql -U hawkeye_app -d hawkeye -c 'SELECT 1 FROM cron.job LIMIT 1' > /dev/null 2>&1 || pg_isready -U hawkeye_app -d hawkeye"
+    ],
+    "Interval": 10000000000,
+    "Timeout": 5000000000,
+    "StartPeriod": 30000000000,
+    "Retries": 5
+   },
+   "Image": "hawkeye-postgres:16.14-pgcron",
+   "Volumes": {
+    "/var/lib/postgresql/data": {}
+   },
+   "WorkingDir": "",
+   "Entrypoint": [
+    "docker-entrypoint.sh"
+   ],
+   "Labels": {
+    "com.docker.compose.config-hash": "d633afc6237c27152c8aac8ac2eaee07a4c54d8500b7928f9a5e799a7626f0e2",
+    "com.docker.compose.container-number": "1",
+    "com.docker.compose.depends_on": "",
+    "com.docker.compose.image": "sha256:e8f63e9b55f7c22b2cb39d85dc458c9a3671a8685564c58750a37dbdd01903ea",
+    "com.docker.compose.oneoff": "False",
+    "com.docker.compose.project": "hawkeye",
+    "com.docker.compose.project.config_files": "/home/mobuone/projects/saas/hawkeye/docker-compose.yml",
+    "com.docker.compose.project.working_dir": "/home/mobuone/projects/saas/hawkeye",
+    "com.docker.compose.service": "hawkeye-postgres",
+    "com.docker.compose.version": "5.0.2",
+    "org.opencontainers.image.version": "16.14-pgcron-1.6.7"
+   },
+   "StopSignal": "SIGINT"
+  },
+  "NetworkSettings": {
+   "SandboxID": "3704656525eca3d4ce77e3a4663d4e50ceb7db20c8c10c58ec8a9e7caac9b9f1",
+   "SandboxKey": "/var/run/docker/netns/3704656525ec",
+   "Ports": {
+    "5432/tcp": null
+   },
+   "Networks": {
+    "hawkeye_hawkeye_internal": {
+     "IPAMConfig": null,
+     "Links": null,
+     "Aliases": [
+      "hawkeye-postgres",
+      "hawkeye-postgres"
+     ],
+     "DriverOpts": null,
+     "GwPriority": 0,
+     "NetworkID": "c441ba965de09e4e7acba3be3898bf39da1df2f4a4ffb1cffc3cd4d757f003bf",
+     "EndpointID": "0d36a19c6a3b89435cc5f59186f593f0d15a2c7f25419012cfe0c519a0210cbe",
+     "Gateway": "172.19.0.1",
+     "IPAddress": "172.19.0.4",
+     "MacAddress": "4a:3f:ac:91:71:90",
+     "IPPrefixLen": 16,
+     "IPv6Gateway": "",
+     "GlobalIPv6Address": "",
+     "GlobalIPv6PrefixLen": 0,
+     "DNSNames": [
+      "hawkeye-postgres",
+      "28405b41a178"
+     ]
+    }
+   }
+  }
+ }
+]

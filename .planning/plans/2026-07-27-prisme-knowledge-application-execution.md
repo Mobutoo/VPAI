@@ -1,7 +1,7 @@
 # Plan d'exécution — Prisme, application de connaissance vérifiable
 
 > Date : 2026-07-27
-> Statut : **v2 post-revue Claude Opus 5 — prêt pour décisions G0, exécution non autorisée**
+> Statut : **v3 post-revue Claude Opus 5 — READY**, prêt pour décisions G0, exécution non autorisée
 > Design source : `docs/superpowers/specs/2026-07-27-prisme-knowledge-application-design.md`
 > Collection : nouvelle `knowledge_v1`, sans aucune interaction avec `trading_v1`
 
@@ -10,9 +10,9 @@
 1. Chaque lot se termine par ses tests et un artefact de preuve.
 2. Aucun lot suivant ne masque un gate rouge.
 3. Aucun `drop_collection`, `recreate_collection` ou purge automatique.
-4. La liste de collections Qdrant protégées est testée :
-   `memory_v3`, `trading_v1`, `videoref_styles`, `semantic_cache`,
-   `model-registry`, `palais_memory`, `content_index`.
+4. La source unique des collections Qdrant et politiques de mutation est
+   `inventory/group_vars/all/qdrant_collections.yml`; le client Prisme en génère son allowlist et
+   ses tests. Aucun duplicata manuel de denylist n'est autorisé.
 5. Les migrations PostgreSQL et Qdrant sont forward-only avec rollback applicatif documenté.
 6. Les images, modèles, packages et actions sont pinnés.
 7. Les services sont VPN-only et least privilege.
@@ -75,6 +75,7 @@ dès G2 afin de valider tôt le vocabulaire et la ligne de preuve.
 - politique d'auth ;
 - politiques de conservation par défaut ;
 - domaines sensibles ;
+- propriétaire du registre d'ontologie et procédure d'ajout d'entité/topic ;
 - budget maximal de recherche/LLM ;
 - révision exacte `google/embeddinggemma-300m` et tokenizer ;
 - version `Qdrant/bm25`/FastEmbed ;
@@ -117,6 +118,9 @@ besoin ne sont pas confirmés ; l'auto-découverte Waza suffit.
 - axe-core ;
 - Dockerfile multi-stage non-root ;
 - CI : lint, typecheck, unit, integration, e2e smoke, secret scan.
+- `.gitignore` et contrôle CI refusant média réel, transcript d'exploitation, frame, OCR, export,
+  cache modèle et volume runtime dans le repo ; seules les petites fixtures synthétiques ou
+  explicitement redistribuables sont autorisées.
 
 Gate G0b :
 
@@ -143,6 +147,9 @@ artifact.v1
 learning.v1
 verification.v1
 experiment.v1
+knowledge-entity.v1
+strategy-spec.v1
+search-intent.v1
 knowledge-point.v1
 outbox-event.v1
 problem-details.v1
@@ -197,9 +204,29 @@ packages/contracts/taxonomy/knowledge-v1.yaml
 packages/contracts/tests/taxonomy.test.ts
 ```
 
-Le registre contient `wing`, `room`, `doc_kind`, statuts, niveaux de risque et règles de fallback.
-`misc`, null et chaînes libres non enregistrées sont refusés.
+Le registre contient :
+
+- `taxonomy_namespace=prisme.knowledge`, `taxonomy_version=1` et `ontology_version` ;
+- `provenance_class` canonique : `social`, `web`, `official`, `academic`, `internal`, `derived`,
+  `experimental` ;
+- `wing` alias de compatibilité dérivé côté serveur, strictement égal à `provenance_class` ;
+- `room` de domaine ;
+- `topic_path` hiérarchique et `topic_ancestors[]` ;
+- `entity_kind`, entités canoniques et alias ;
+- `doc_kind` de représentation ;
+- `knowledge_kind` de rôle intellectuel ;
+- statuts, niveaux de risque et règles de fallback.
+
+`misc`, null et chaînes libres non enregistrées sont refusés. `provenance_class` n'est jamais un score de
+vérité ni un filtre dur implicite. `doc_kind` est unique et ne mélange plus représentation,
+contenu intellectuel et rôle probatoire.
+La matrice complète `doc_kind/knowledge_kind`, l'invariant racine de `topic_path == room` et les
+règles `source_provenance_classes[]` pour `derived/experimental` vivent dans le YAML et ses tests.
+Tout changement d'alias ou de reclassification incrémente `ontology_version` et planifie le
+réencodage des points affectés.
 `repo` est dérivé de `corpus_id`; un test refuse toute divergence.
+`wing` est dérivé de `provenance_class`; le client ne peut pas le fournir et un test refuse toute
+divergence `wing != provenance_class`.
 
 ### T1.4 — Contrat embedding partagé
 
@@ -214,13 +241,15 @@ packages/embeddings/tests/
 
 Contrats :
 
-- `embedDocument()` applique uniquement `build_doc_prompt` ;
+- `embedDocument()` applique uniquement `build_doc_prompt` avec room/topic, entités/alias,
+  `doc_kind/knowledge_kind`, provenance et texte ;
 - `embedQuery()` applique uniquement le prompt nommé `Retrieval-query` ;
-- `embedSparse()` applique `build_sparse_text` ;
+- `embedSparse()` applique `build_sparse_text` incluant acronymes, noms canoniques et alias ;
 - modèle, tokenizer, sparse model et prompts ont des versions pinnées ;
 - import direct d'un autre client embedding interdit par lint ;
 - aucune retombée silencieuse vers un autre modèle ;
-- parité fixtures avec le contrat `memory_v3`.
+- parité avec `memory_v3` limitée aux modèles, à l'asymétrie requête/document et aux primitives
+  sparse ; le prompt documentaire Prisme est volontairement différent et testé comme tel.
 
 ### T1.5 — Golden set embryonnaire
 
@@ -230,10 +259,32 @@ Avant tout benchmark :
 - transcript humain de référence sur passages représentatifs ;
 - claims/timestamps attendus ;
 - 20 paires query/document ;
+- requêtes exactes VPIN/VWAP/HMM/OBI, synonymes, noms développés et formulations sémantiques ;
+- intentions `explore`, `learn`, `verify`, `source`, `compare` ;
 - cas contradictoires et injections indirectes ;
 - données sensibles exclues.
 
 Ce jeu démarre petit mais précède P4/P6/P7 ; P10 l'étend en golden de production.
+
+### T1.6 — Contrat de retrieval
+
+Créer un contrat pur et testable :
+
+```text
+query → SearchIntent + resolved entities/aliases + room/topic +
+        temporal constraints + explicit provenance constraints
+```
+
+Règles :
+
+- ACL, tenant, validité, suppression et version active sont toujours des filtres durs ;
+- une contrainte de provenance n'est dure que si l'utilisateur l'a explicitement demandée ;
+- `entity_ids`/alias et `topic_path` portent le routage principal ;
+- `room`, `doc_kind` et `knowledge_kind` sont des boosts ou filtres dépendant de l'intention ;
+- `provenance_class` sert à la provenance, à la diversité et à un boost borné dépendant de
+  l'intention ;
+- `verify` doit conserver les preuves favorables et contradictoires de plusieurs provenances ;
+- le contrat de score et chaque feature sont versionnés et désactivables pour ablation.
 
 Gate G1 : contrats utilisables par web, workers Python et bootstrap Qdrant.
 
@@ -263,10 +314,36 @@ Créer les tables de la spec avec :
 - index SQL sur états, source IDs, claim IDs et dates ;
 - GIN uniquement sur besoins démontrés.
 
+Inclure explicitement :
+
+```text
+knowledge_entities
+entity_aliases
+entity_relations
+knowledge_item_entities
+strategy_specs
+```
+
+`strategy_specs` versionne hypothèses, paramètres, univers, horizon, coûts, risques, métriques et
+liens vers expériences. Les alias sont normalisés, uniques dans leur namespace et testés contre les
+collisions d'acronymes.
+
+Définir la projection Qdrant mutable :
+
+```text
+topic, tags, acl_scope, claim_ids, verification_status, risk_level,
+evidence_level, experiment_status, last_verified_at, index_state,
+valid_to, is_deleted, deleted_at
+```
+
+PostgreSQL en reste l'autorité ; seuls ces champs utilisent `set_payload`. L'outbox, le reconciler,
+la métrique `qdrant_projection_lag_seconds` et les tests de crash garantissent la convergence.
+
 Tests :
 
 - migration depuis base vide ;
 - migration répétée ;
+- `valid_to NOT NULL DEFAULT '9999-12-31T00:00:00Z'` dans la projection/index ledger ;
 - rollback applicatif ;
 - contraintes d'idempotence ;
 - suppression logique ;
@@ -277,6 +354,9 @@ Tests :
 Implémenter :
 
 - auth middleware ;
+- repositories SQL de retrieval retournant uniquement un type `ScopedQuery` après
+  `applySecurityScope()` ;
+- import/accès `db.` brut interdit par lint hors migrations et couche repository allowlistée ;
 - request ID ;
 - `Idempotency-Key` ;
 - Problem Details ;
@@ -287,6 +367,9 @@ Implémenter :
 
 Le buffer SSE a une taille et une TTL configurables ; au-delà, le client recharge un snapshot
 plutôt que de supposer que tous les événements sont encore disponibles.
+
+Tests : une requête retrieval SQL non scopée échoue au typecheck/lint ; une identité étrangère ne
+retourne aucune ligne par les repositories d'entités, claims, preuves et graphe.
 
 ### T2.4 — Relais outbox
 
@@ -356,7 +439,16 @@ Le client runtime :
 - filtre ACL/validité/index actif injecté dans chaque prefetch dense et BM25 ;
 - import direct du SDK Qdrant interdit hors du package.
 
-`ids.ts` inclut artefact, contenu, modèle/révision, chunker, prompt d'extraction et prompt embedding.
+`ids.ts` inclut `knowledge_item_id`, artefact, identité canonique, `doc_kind`, `knowledge_kind`,
+index de chunk, SHA-256 du texte exact de l'unité, schéma, `taxonomy_version`, `ontology_version`,
+modèles dense et sparse, chunker, prompt d'extraction et prompt embedding. Deux unités issues du
+même chunk restent distinctes et tout changement vectoriel produit une nouvelle identité.
+
+Les indexes couvrent au minimum `taxonomy_namespace`, `taxonomy_version`, `ontology_version`,
+`provenance_class`, `wing`, `room`, `topic_path`, `topic_ancestors`, `entity_ids`, `entity_kinds`,
+`doc_kind`, `knowledge_kind`, `source_provenance_classes`, `knowledge_item_id`, `artifact_id`,
+`canonical_id` et tous les champs sécurité/validité de la spec. `topic`, `embedding_dim`,
+`relative_path` et `content_sha256` restent hors index.
 
 ### T3.3 — Tests sans production
 
@@ -375,7 +467,15 @@ Qdrant éphémère local :
 - `trading_v1` refusée avant réseau ;
 - stabilité UUIDv5 inter-processus ;
 - non-collision après changement modèle/chunker/prompt ;
-- ACL étrangère, point expiré, staging et deleted exclus dans dense **et** BM25 ;
+- non-collision après changement de taxonomie ;
+- non-collision après changement de modèle sparse ou d'ontologie/alias ;
+- deux unités issues du même chunk donnent deux points distincts ;
+- deux versions d'une même unité partagent `canonical_id` et sont dédupliquées au retrieval ;
+- enums `doc_kind` mutuellement exclusifs et combinaisons `doc_kind/knowledge_kind` valides ;
+- alias exact VPIN/VWAP/HMM/OBI routés vers les bonnes entités ;
+- ACL étrangère, point expiré, staging et deleted exclus dans dense, BM25 **et graphe SQL** ;
+- `buildValidationFilter()` conserve tenant/ACL mais retrouve le staging pour l'indexeur seulement ;
+- un point sans `valid_to` ou avec `valid_to=null` est refusé avant upsert ;
 - timeout ;
 - alias atomique.
 
@@ -405,14 +505,34 @@ Gate G3 : diff avant/après prouve que seule `knowledge_v1` et son alias ont cha
 
 Travaux dans `../banga`.
 
+Dépendance dure : le pool ZFS `tank` et son chantier de provisioning/backup sont verts avant toute
+création de dataset Prisme. Sinon P4 s'arrête sans créer de stockage alternatif.
+
 ### T4.1 — ZFS
 
 - dataset `tank/knowledge`, quota initial validé ;
 - sous-arborescence `incoming`, `library`, `research`, `experiments`, `exports`, `quarantine`;
 - permissions distinctes ;
 - snapshots ;
+- rattachement au backup 3-2-1-1-0 Banga, copie offsite et restore drill ;
 - métriques quota ;
 - aucune réservation avant mesure.
+
+Arborescence obligatoire par identifiants stables :
+
+```text
+/tank/knowledge/
+├── incoming/<ingestion_id>/
+├── library/<tenant_id>/<corpus_id>/<item_id>/<version_id>/{source,derived,knowledge}/
+├── research/<claim_id>/<research_run_id>/
+├── experiments/<experiment_id>/<run_id>/
+├── exports/<export_id>/
+└── quarantine/<ingestion_id>/
+```
+
+Interdire toute arborescence physique dérivée de `room`, `topic_path` ou d'un nom d'entité.
+Le rôle vérifie que chaque `relative_path` est relatif à `/tank/knowledge` et conforme au patron
+`library/<tenant>/<corpus>/<item>/<version>/...`.
 
 ### T4.2 — Knowledge store
 
@@ -565,14 +685,20 @@ Gate G5 : pipeline fixture local complet vers Banga, sans appel Instagram.
 
 Produire `learning.v1` :
 
-- concepts ;
+- entités canoniques candidates avec `entity_kind`, alias et score de résolution ;
+- `room`, `topic_path` et `topic_ancestors` issus du registre versionné ;
 - claims typés ;
 - citation source ;
-- procédures ;
+- définitions, explications, formules, procédures et stratégies via `knowledge_kind` ;
 - exemples ;
 - limites ;
 - inconnues ;
 - confiance d'extraction, jamais score de vérité.
+
+La résolution d'entité est déterministe lorsqu'un alias unique existe. Une collision ou une entité
+nouvelle crée une tâche de revue ; elle n'invente pas silencieusement un nouvel identifiant. Les
+stratégies produisent un `strategy_spec` distinct avec hypothèses, paramètres, univers, horizon,
+coûts, risques et métriques testables.
 
 ### T6.4 — Indexation
 
@@ -583,10 +709,12 @@ Produire `learning.v1` :
 - écrire le ledger `index_points` ;
 - upserter d'abord avec `index_state=staging` ;
 - upsert batch ;
-- vérifier count/source IDs/retrieval ;
+- vérifier count/source IDs/retrieval via `buildValidationFilter()` réservé à l'indexeur ;
 - activer la nouvelle version puis invalider l'ancienne ;
+- vérifier côté PostgreSQL que toute connaissance servie est active ;
 - dédupliquer la coexistence transitoire au retrieval ;
 - réconcilier tout état partiel après crash ;
+- tester un crash entre chaque étape, notamment activation Qdrant et activation PostgreSQL ;
 - marquer `indexed` seulement après lecture de contrôle.
 
 Gate G6 : trois fixtures produisent bundles valides et points retrouvables sans doublon ; changer
@@ -712,14 +840,41 @@ CLI ni accès direct aux machines.
 ### T9.1 — Search API
 
 - client Embedding : dense+BM25 avec dégradation BM25-only explicite ;
-- filtre `SecurityContext` injecté dans chaque prefetch ;
-- hybrid dense+BM25+RRF via l'alias `knowledge_current` ;
+- parser versionné des intentions `explore`, `learn`, `verify`, `source`, `compare` ;
+- résolution préalable des entités, acronymes, alias, `room`, `topic_path`, temporalité et
+  `provenance_constraint` explicite ;
+- filtre `SecurityContext` injecté dans chaque prefetch dense/BM25 et
+  `applySecurityScope(queryBuilder, ctx, asOf)` obligatoire pour chaque requête SQL ;
+- candidats dense/BM25 fusionnés via RRF ou DBSF sur l'alias `knowledge_current` ;
+- graphe PostgreSQL utilisé après fusion pour features/voisins autorisés, jamais injecté comme
+  distribution non scorée dans DBSF ;
 - filtres taxonomiques ajoutés au filtre sécurité, jamais à sa place ;
-- ACL, validité, `index_state=active` et `deleted_at=null` obligatoires ;
+- ACL, `valid_from<=as_of`, `valid_to>as_of`, `index_state=active` et `is_deleted=false`
+  obligatoires ;
+- `provenance_class` utilisé comme facette, diversification et boost dépendant de l'intention,
+  jamais comme filtre dur implicite ni score de vérité ;
+- boost borné pour entité exacte, topic, adéquation `doc_kind/knowledge_kind`, vérification et
+  temporalité ;
 - versions actives ;
-- regroupement source/claim ;
-- rerank flaggé OFF ;
+- regroupement entité/claim/source et pénalité des quasi-doublons ;
+- mode `verify` conservant supports, contradictions et plusieurs provenances ;
+- rerank petit top-k flaggé OFF jusqu'au benchmark ;
 - citations structurées.
+
+Le score est composable, versionné et chaque feature est ablatable. Tester au minimum :
+
+```text
+dense
+BM25
+RRF
+DBSF
+fusion + entity/topic
+fusion + entity/topic + qualité/vérification
+```
+
+Un filtre dur de provenance n'est autorisé que pour une contrainte utilisateur explicite.
+Le plan de requête trace si une contrainte de provenance a été appliquée. Une requête sans
+`provenance_constraint` doit prouver qu'aucun filtre dur de provenance n'a été injecté.
 
 ### T9.2 — Ask
 
@@ -747,7 +902,13 @@ knowledge_get_experiment
 Les outils MCP appellent l'API, jamais Qdrant directement.
 Chaque appel MCP propage une identité authentifiée et ses ACL ; une identité absente est refusée.
 
-Gate G9 : UI, API et MCP retournent les mêmes résultats/citations pour les mêmes filtres.
+Gate G9 :
+
+- UI, API et MCP retournent les mêmes résultats/citations pour les mêmes filtres ;
+- aucun résultat étranger ne fuit par dense, BM25, résolution d'entité ou graphe SQL ;
+- une requête sans `provenance_constraint` trace zéro filtre dur de provenance ;
+- le mode BM25-only est visible et passe son golden dégradé ;
+- le lag de projection PostgreSQL/Qdrant reste sous le seuil établi après baseline.
 
 ## 13. P10 — Sécurité, evals et exploitation
 
@@ -773,6 +934,7 @@ Créer tests et mitigations explicites.
 
 - spans OpenTelemetry ;
 - métriques files/latence/coût/qualité ;
+- métriques `qdrant_projection_lag_seconds`, écarts de projection et mode retrieval actif ;
 - dashboards Grafana ;
 - alertes stalled, circuit open, quota, index lag, backup, qualité ;
 - sampling sans contenu sensible ;
@@ -783,13 +945,21 @@ Créer tests et mitigations explicites.
 Étendre les fixtures T1.5 en golden sets humains versionnés. Mesurer :
 
 - extraction ;
-- retrieval ;
+- retrieval sur requêtes réellement observées ;
+- exact-match, acronymes, noms développés, alias multilingues et requêtes sémantiques ;
+- entity routing et topic routing ;
+- recall@k, MRR/nDCG, diversité des sources et couverture des contradictions ;
+- ablations dense/BM25/RRF/DBSF/boosts ;
+- golden complet en mode dégradé BM25-only, mode exposé dans chaque réponse API/MCP ;
 - citations ;
 - vérification ;
 - sécurité ;
 - reproductibilité.
 
-Ne pas fixer les seuils retrieval avant baseline sur requêtes réelles.
+Ne pas fixer les seuils retrieval avant baseline sur requêtes réelles. Le golden interdit qu'un
+fichier, une source ou une forme interrogative domine artificiellement la distribution. RRF/DBSF,
+boosts et rerank ne passent en production que sur gain supérieur au bruit de mesure et sans
+régression des requêtes exactes ou cross-provenance.
 
 ### T10.4 — Runbooks
 
@@ -915,8 +1085,11 @@ docs/runbooks/KNOWLEDGE-STORE.md
 
 - application autonome accessible VPN-only ;
 - aucune dépendance métier à Palais/Open WebUI ;
-- `knowledge_v1` dense 768 + BM25 + RRF ;
-- taxonomie et tous indexes vérifiés ;
+- `knowledge_v1` dense 768 + BM25, fusion RRF/DBSF sélectionnée sur golden réel ;
+- taxonomie versionnée, ontologie entités/topics et tous indexes vérifiés ;
+- `provenance_class` canonique, `wing` simple alias compatible, jamais vérité ou filtre implicite ;
+- VPIN, VWAP, HMM, OBI et Mean Reversion retrouvables par acronyme, nom, alias et sujet ;
+- code Prisme séparé de tout contenu runtime, bundle canonique uniquement sur Banga ;
 - aucune mutation de `trading_v1` ni autre collection protégée ;
 - ingestion autorisée de bout en bout ;
 - bundle canonique Banga ;

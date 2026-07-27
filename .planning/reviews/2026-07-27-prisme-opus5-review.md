@@ -79,3 +79,46 @@ appliquées :
 - `repo` est dérivé de `corpus_id` et leur divergence est refusée.
 
 Le service d'embedding reçoit également un jeton de service rotatable en plus de l'isolation mesh.
+
+## Revue v3 — taxonomie, stockage et retrieval
+
+Une nouvelle revue ciblée a été exécutée après clarification de la taxonomie financière et du rôle
+de la provenance.
+
+### Première passe
+
+Verdict `NOT READY`. Corrections P0 intégrées :
+
+- identité de point incluant unité, texte exact, modèles dense/sparse et versions
+  taxonomie/ontologie ;
+- versionnement des alias injectés dans les embeddings ;
+- séparation exhaustive payload immuable/projection mutable ;
+- cardinalités `entity_kinds[]` et `claim_ids[]` ;
+- sécurité obligatoire dans les prefetch Qdrant et le graphe SQL ;
+- fusion Qdrant distincte de l'enrichissement graphe.
+
+Corrections P1 intégrées :
+
+- `provenance_class` canonique, `wing` alias compatible dérivé ;
+- arborescence Banga par identifiants stables ;
+- sentinelle `valid_to`, `is_deleted` et indexes utiles seulement ;
+- invariant `room == racine(topic_path)` ;
+- `buildValidationFilter()` séparé pour les points staging ;
+- matrice `doc_kind/knowledge_kind` ;
+- backup Banga 3-2-1-1-0 et golden BM25-only ;
+- gate interdisant tout filtre dur implicite de provenance.
+
+### Deuxième passe
+
+Verdict `NOT READY` avec un P0 résiduel et quatre P1. Corrections intégrées :
+
+- `knowledge_item_id`, `artifact_id` et `canonical_id` ajoutés au payload et aux indexes ;
+- déduplication des versions par `canonical_id` ;
+- partition mutable exhaustive, incluant ACL, claims, risque, tags et projection métier ;
+- type SQL `ScopedQuery` et interdiction lint des accès retrieval non scopés ;
+- `valid_to` obligatoire et testé avant upsert ;
+- test `wing == provenance_class`.
+
+### Passe finale
+
+Claude Opus 5 a rendu le verdict **READY**, sans P0 ni P1.

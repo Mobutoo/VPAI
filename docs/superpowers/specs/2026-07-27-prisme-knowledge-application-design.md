@@ -1,7 +1,7 @@
 # Design — Prisme, application de connaissance vérifiable
 
 > Date : 2026-07-27
-> Statut : **v2 post-revue Claude Opus 5**, prêt pour décisions G0, aucune mutation autorisée
+> Statut : **v3 post-revue Claude Opus 5 — READY**, prêt pour décisions G0, aucune mutation autorisée
 > Nom produit : **Prisme** (nom de travail, renommable avant création du repo)
 > Repo cible : `/home/mobuone/work/saas/prisme`
 > Collection Qdrant cible : `knowledge_v1`
@@ -211,6 +211,36 @@ Le repo est placé sous le wing `saas`, conformément à
 `docs/runbooks/MANIFESTE-CREATION-PROJET.md`. Son auto-ingestion dans `memory_v3` concerne
 uniquement sa documentation et son code ; elle est indépendante de `knowledge_v1`.
 
+### 4.1 Séparation immuable code/contenu
+
+`/home/mobuone/work/saas/prisme` ne contient que code, migrations, contrats, tests, petites
+fixtures synthétiques, documentation et configuration sans secret. Aucun média réel, transcript
+d'exploitation, frame, OCR, export utilisateur, cache modèle ou volume de base n'y est écrit.
+
+Les contenus sont adressés par identifiants stables, jamais par taxonomie métier :
+
+```text
+/tank/knowledge/
+├── incoming/<ingestion_id>/
+├── library/<tenant_id>/<corpus_id>/<item_id>/<version_id>/
+│   ├── manifest.json
+│   ├── source/
+│   ├── derived/
+│   └── knowledge/
+├── research/<claim_id>/<research_run_id>/
+├── experiments/<experiment_id>/<run_id>/
+├── exports/<export_id>/
+└── quarantine/<ingestion_id>/
+```
+
+Une arborescence telle que `/tank/knowledge/finance/VPIN` est interdite : une taxonomie évolue et
+un contenu peut couvrir plusieurs sujets. PostgreSQL porte le catalogue et l'ontologie, les
+manifestes Banga portent la traçabilité, Qdrant porte un index reconstructible. Le spool Waza est
+transitoire, borné et placé hors de tout repo Git.
+
+`tank/knowledge` est rattaché à la politique backup 3-2-1-1-0 Banga avec copie offsite et restore
+drill. Toute perte acceptée ou exception de rétention est une décision explicite de l'ADR 0001.
+
 ## 5. Contrat Qdrant `knowledge_v1`
 
 ### 5.1 Invariants
@@ -224,8 +254,8 @@ uniquement sa documentation et son code ; elle est indépendante de `knowledge_v
 7. Aucun bootstrap ne supprime/recrée automatiquement une collection incompatible.
 8. Le client est **default-deny** : seules `knowledge_v1`, `knowledge_current` et des collections
    de test au préfixe imposé sont acceptées.
-9. `trading_v1`, `memory_v3`, `videoref_styles`, `semantic_cache` et `palais_memory`
-   restent dans une denylist de défense en profondeur.
+9. `inventory/group_vars/all/qdrant_collections.yml` est l'unique registre des propriétaires et
+   politiques de mutation ; l'allowlist/denylist Prisme et ses tests en sont générés.
 10. Aucun code Prisme n'importe directement le client Qdrant officiel hors du package wrapper.
 
 ### 5.2 Configuration
@@ -248,20 +278,32 @@ sparse_vectors:
 
 - Dense : `google/embeddinggemma-300m`, 768d, normalisé.
 - Sparse : `Qdrant/bm25`, modifier IDF.
-- Documents : fonction `build_doc_prompt` compatible avec le contrat `memory_v3`
-  (`title: {wing}/{repo}/{relative_path}{section} | text: {chunk_text}`).
+- Documents : fonction `build_doc_prompt` compatible avec l'asymétrie du contrat `memory_v3`,
+  mais contextualisée pour Prisme :
+  `title: {room}/{topic_path} | entities: {entity_aliases} | kind:
+  {doc_kind}/{knowledge_kind} | source: {provenance_class}/{publisher_id} | text: {chunk_text}`.
 - Requêtes denses : prompt SentenceTransformers nommé `Retrieval-query`.
-- Sparse document/requête : fonction partagée `build_sparse_text`, versionnée.
+- Sparse document/requête : fonction partagée `build_sparse_text`, versionnée, qui inclut texte,
+  acronymes, noms canoniques et alias d'entités.
 - `embedding_prompt_version` identifie ces transformations.
-- Fusion par défaut : RRF.
+- RRF et DBSF sont implémentés ; la stratégie active est choisie sur le golden Prisme réel et
+  versionnée. Aucun résultat de `memory_v3` n'est transposé sans mesure.
 - `knowledge_current` pointe vers `knowledge_v1` après validation du bootstrap et des evals.
 - Une future migration crée `knowledge_v2` côte à côte puis bascule l'alias ; aucun wipe.
 
 ### 5.3 Taxonomie — adaptation maximale du Memory Manifest
 
-Les trois axes `wing`, `room`, `doc_kind` sont conservés et restent orthogonaux.
+Le patron du Memory Manifest est conservé, mais ses enums ne sont pas copiés : `memory_v3` classe
+des fichiers de repos, Prisme classe des sources et unités de connaissance. Pour éviter qu'un
+`wing=saas` de `memory_v3` soit confondu avec une provenance Prisme, le champ canonique est
+`provenance_class`. `wing` reste un alias de compatibilité en lecture, dérivé côté serveur et
+strictement égal à `provenance_class`.
 
-#### `wing` — famille de provenance
+La taxonomie porte `taxonomy_namespace=prisme.knowledge`, `taxonomy_version=1` et
+`ontology_version`. `taxonomy_version` versionne schémas, enums et hiérarchie ; `ontology_version`
+versionne le snapshot des entités, alias et affectations de topics injecté dans les embeddings.
+
+#### `provenance_class` — famille de provenance (`wing` compatible)
 
 ```text
 social       contenu issu d'une plateforme sociale
@@ -269,11 +311,18 @@ web          page/site éditorial hors source officielle
 official     régulateur, administration, documentation officielle
 academic     publication ou base scientifique
 internal     note ou document explicitement fourni par l'utilisateur
+derived      synthèse Prisme issue d'une ou plusieurs provenances
 experimental résultat produit par un protocole Prisme
 ```
 
 Fallback : `internal`, uniquement pour un dépôt manuel dont la provenance est connue.
 Une provenance inconnue est mise en quarantaine, jamais classée arbitrairement.
+
+`provenance_class` n'est jamais un score de vérité. Il sert à expliquer la provenance, diversifier les
+résultats, appliquer un boost dépendant de l'intention et filtrer lorsque l'utilisateur le demande
+explicitement. Il ne devient jamais un filtre dur implicite. Une extraction mono-source hérite du
+champ de sa source. Toute synthèse `derived` et tout résultat `experimental` conserve un
+`source_provenance_classes[]` non vide décrivant ses entrées.
 
 #### `room` — domaine de connaissance
 
@@ -289,13 +338,68 @@ science, health, law, creative, personal-development
 - tout ajout de room modifie un registre versionné et ses tests ;
 - `misc` est interdit.
 
-#### `doc_kind` — nature de l'unité
+#### `topic_path` — routage hiérarchique
+
+`room` reste un domaine large. Le routage fin utilise un chemin contrôlé et ses ancêtres :
 
 ```text
-transcript, visual-observation, concept, claim, evidence,
-procedure, example, caveat, summary, lesson,
-experiment-protocol, experiment-result, source-document
+finance/market-microstructure/order-flow/toxicity/vpin
+finance/execution/benchmarks/vwap
+finance/quantitative-finance/regime-models/hmm
+finance/market-microstructure/order-book/imbalance
+finance/systematic-trading/strategy-families/mean-reversion
 ```
+
+`topic_path` désigne la feuille canonique ; `topic_ancestors[]` contient les parents filtrables.
+Les changements de libellé passent par alias et migration versionnée, jamais par réécriture
+silencieuse.
+Invariant : le premier segment de `topic_path` est strictement égal à `room`.
+
+#### Entités canoniques
+
+Une entité représente l'objet étudié indépendamment des documents qui en parlent :
+
+```text
+entity_kind =
+  concept | metric | indicator | benchmark | feature | model |
+  hypothesis | market-mechanism | strategy-family | strategy |
+  procedure | risk-rule
+```
+
+VPIN est par exemple une entité `indicator`, VWAP un `benchmark`, HMM un `model`, OBI une `feature`
+et Mean Reversion une `strategy-family`. Une unité peut référencer plusieurs `entity_ids[]`.
+Les acronymes, noms développés, synonymes et variantes linguistiques vivent dans
+`entity_aliases`, puis sont injectés dans le texte sparse.
+
+Tout ajout/retrait d'alias ou toute reclassification incrémente `ontology_version` et déclenche un
+réencodage tracé des points affectés. Un corpus ne mélange pas silencieusement plusieurs snapshots
+d'ontologie actifs.
+
+#### `doc_kind` — représentation indexée
+
+```text
+source-document, transcript, visual-observation, knowledge-unit,
+synthesis, experiment-protocol, experiment-result
+```
+
+`doc_kind` est unique et mutuellement exclusif. Le rôle intellectuel est séparé :
+
+```text
+knowledge_kind =
+  definition | claim | explanation | formula | procedure |
+  strategy | example | comparison | caveat | lesson
+```
+
+| `doc_kind` | `knowledge_kind` |
+|---|---|
+| `source-document`, `transcript`, `visual-observation` | null |
+| `knowledge-unit` | une valeur non nulle |
+| `synthesis` | `explanation`, `comparison`, `caveat` ou `lesson` |
+| `experiment-protocol`, `experiment-result` | null |
+
+La fonction probatoire n'est pas intrinsèque au document : `supports`, `contradicts`,
+`contextualizes` ou `neutral` appartient d'abord à l'arête PostgreSQL `claim_evidence`. Elle peut
+être dénormalisée dans Qdrant pour un besoin mesuré, sans devenir l'autorité.
 
 #### Compatibilité `repo` / `relative_path`
 
@@ -309,15 +413,19 @@ experiment-protocol, experiment-result, source-document
 
 | Champ | Type | Rôle |
 |---|---|---|
-| `wing` | keyword | provenance |
+| `provenance_class` | keyword | provenance canonique |
+| `wing` | keyword | alias compatible dérivé de `provenance_class` |
 | `room` | keyword | domaine |
-| `doc_kind` | keyword | nature |
+| `doc_kind` | keyword | représentation indexée |
 | `repo` | keyword | compatibilité : corpus stable |
 | `relative_path` | keyword | chemin canonique relatif |
-| `topic` | keyword | sujet principal |
+| `topic` | keyword | libellé principal compatible Memory Manifest |
 | `tags` | keyword[] | facettes libres contrôlées |
+| `taxonomy_namespace` | keyword | `prisme.knowledge` |
+| `taxonomy_version` | integer | version du registre |
+| `ontology_version` | integer | snapshot entités/alias/topics |
 | `valid_from` | datetime | début de validité |
-| `valid_to` | datetime/null | fin de validité |
+| `valid_to` | datetime | fin de validité, sentinelle `9999-12-31T00:00:00Z` si active |
 | `text` | text | unité verbatim/indexée |
 | `schema_version` | keyword | `knowledge.v1` |
 | `embedding_model` | keyword | modèle dense |
@@ -334,6 +442,7 @@ experiment-protocol, experiment-result, source-document
 | `chunk_total` | integer | nombre de chunks |
 | `index_state` | keyword | `staging` ou `active` |
 | `deleted_at` | datetime/null | retrait logique |
+| `is_deleted` | bool | filtre runtime, PostgreSQL conserve le null métier |
 
 ### 5.5 Payload métier
 
@@ -343,14 +452,23 @@ experiment-protocol, experiment-result, source-document
 | `acl_scope` | keyword[] |
 | `corpus_id` | keyword |
 | `source_id` | keyword |
+| `knowledge_item_id` | keyword |
+| `artifact_id` | keyword |
+| `canonical_id` | keyword |
 | `publisher_id` | keyword |
 | `platform` | keyword |
 | `canonical_url` | keyword |
 | `language` | keyword |
+| `topic_path` | keyword |
+| `topic_ancestors` | keyword[] |
+| `entity_ids` | keyword[] |
+| `entity_kinds` | keyword[] |
+| `knowledge_kind` | keyword/null |
+| `source_provenance_classes` | keyword[] |
 | `published_at` | datetime/null |
 | `created_at` | datetime |
 | `start_ms` / `end_ms` | integer/null |
-| `claim_id` | keyword/null |
+| `claim_ids` | keyword[] |
 | `verification_status` | keyword |
 | `risk_level` | keyword |
 | `evidence_level` | keyword |
@@ -370,31 +488,65 @@ experiment_status   = proposed | reviewed | sandbox | reproduced |
 index_state         = staging | active
 ```
 
+Deux classes exhaustives de payload sont explicites.
+
+Immuables par point :
+
+```text
+provenance_class, wing, room, doc_kind, repo, relative_path,
+taxonomy_namespace, taxonomy_version, ontology_version, valid_from, text,
+schema_version, embedding_model, embedding_model_version, embedding_dim,
+sparse_model, chunking_strategy_version, prompt_version,
+embedding_prompt_version, host_origin, source_kind, content_sha256,
+chunk_index, chunk_total, tenant_id, corpus_id, source_id,
+knowledge_item_id, artifact_id, canonical_id, publisher_id, platform,
+canonical_url, language, published_at, created_at, start_ms, end_ms,
+topic_path, topic_ancestors, entity_ids, entity_kinds, knowledge_kind,
+source_provenance_classes
+```
+
+Mutables par `set_payload` uniquement :
+
+```text
+topic, tags, acl_scope, claim_ids, verification_status, risk_level,
+evidence_level, experiment_status, last_verified_at, index_state,
+valid_to, is_deleted, deleted_at
+```
+
+PostgreSQL reste l'autorité des champs mutables. L'outbox et un reconciler idempotent propagent les
+changements ; `qdrant_projection_lag_seconds` et les écarts de projection sont mesurés. Une
+mutation de projection ne modifie jamais les vecteurs ni l'identité du point.
+
 ### 5.6 Payload indexes
 
 Indexes `keyword` :
 
 ```text
-wing, room, doc_kind, repo, topic, tags,
+provenance_class, wing, room, doc_kind, repo, tags, taxonomy_namespace,
+topic_path, topic_ancestors, entity_ids, entity_kinds, knowledge_kind,
+source_provenance_classes,
 schema_version, embedding_model, embedding_model_version, sparse_model,
 chunking_strategy_version, prompt_version,
 embedding_prompt_version, index_state,
 host_origin, source_kind, tenant_id, acl_scope, corpus_id, source_id,
-publisher_id, platform, language, claim_id, verification_status,
+knowledge_item_id, artifact_id, canonical_id,
+publisher_id, platform, language, claim_ids, verification_status,
 risk_level, evidence_level, experiment_status
 ```
 
 Indexes `datetime` :
 
 ```text
-valid_from, valid_to, published_at, created_at, last_verified_at, deleted_at
+valid_from, valid_to, published_at, created_at, last_verified_at
 ```
 
 Indexes `integer` :
 
 ```text
-embedding_dim, start_ms, end_ms, chunk_index
+taxonomy_version, ontology_version, start_ms, end_ms, chunk_index
 ```
+
+Index booléen : `is_deleted`.
 
 Le bootstrap vérifie type et présence de chaque index. Toute divergence produit un échec lisible
 et un plan de migration ; elle ne déclenche jamais de correction destructive implicite.
@@ -409,25 +561,40 @@ Identité source :
 <platform>:<publisher_stable_id>:<content_stable_id>:<media_index>
 ```
 
+`source_id` porte cette identité du contenu original. `canonical_id` est l'UUID PostgreSQL stable
+de la lignée logique d'une unité de connaissance à travers ses versions. `knowledge_item_id`
+identifie une version précise de cette unité ; `artifact_id` identifie l'artefact Banga exact dont
+elle dérive. Plusieurs versions partagent donc `canonical_id`, mais jamais `knowledge_item_id`.
+
 Identité point :
 
 ```text
 UUIDv5(PRISME_NAMESPACE,
-  artifact_id + ":" + canonical_id + ":" + doc_kind + ":" + chunk_index + ":" +
-  content_sha256 + ":" + schema_version + ":" + embedding_model_version + ":" +
+  knowledge_item_id + ":" + artifact_id + ":" + canonical_id + ":" +
+  doc_kind + ":" + knowledge_kind + ":" + chunk_index + ":" +
+  content_sha256 + ":" + schema_version + ":" + taxonomy_version + ":" +
+  ontology_version + ":" + embedding_model_version + ":" + sparse_model + ":" +
   chunking_strategy_version + ":" + prompt_version + ":" + embedding_prompt_version)
 ```
+
+`content_sha256` est toujours le SHA-256 du `text` exact de l'unité indexée, pas celui du média ni
+du bundle. Deux unités issues du même chunk ont des `knowledge_item_id` distincts.
 
 Lorsqu'un contenu change :
 
 1. transaction PostgreSQL : nouvelle version et événements outbox en attente ;
 2. nouveau point distinct upserté avec `index_state=staging` ;
-3. contrôle de comptage/retrieval par un chemin de validation interne ;
+3. contrôle de comptage/retrieval avec `buildValidationFilter()`, réservé à l'indexeur : ACL et
+   tenant obligatoires, `staging` explicitement autorisé ;
 4. nouveau point passe `active`, puis ancien point reçoit `valid_to` ;
 5. le retrieval déduplique transitoirement par identité canonique et prend le `valid_from`
    le plus récent ;
 6. version PostgreSQL devient active ;
 7. un reconciler corrige tout état partiel après crash.
+
+La fenêtre entre activation Qdrant et activation PostgreSQL est tracée. Le runtime ne présente
+jamais une connaissance dont l'enregistrement PostgreSQL n'est pas actif ; un test de crash entre
+chaque étape prouve la convergence.
 
 Un test échoue si l'ancien et le nouvel artefact produisent le même point ID après changement de
 modèle, chunker ou prompt.
@@ -436,16 +603,29 @@ modèle, chunker ou prompt.
 
 ```json
 {
+  "provenance_class": "social",
   "wing": "social",
   "room": "finance",
-  "doc_kind": "claim",
+  "doc_kind": "knowledge-unit",
+  "knowledge_kind": "claim",
+  "entity_kinds": ["indicator"],
+  "entity_ids": ["entity:vpin"],
+  "topic_path": "finance/market-microstructure/order-flow/toxicity/vpin",
+  "topic_ancestors": [
+    "finance",
+    "finance/market-microstructure",
+    "finance/market-microstructure/order-flow"
+  ],
+  "taxonomy_namespace": "prisme.knowledge",
+  "taxonomy_version": 1,
+  "ontology_version": 1,
   "repo": "instagram-17841400000000000",
   "corpus_id": "instagram-17841400000000000",
-  "relative_path": "instagram/17841400000000000/2026/07/ABC/derived/learning.v1.json",
-  "topic": "gestion du risque",
-  "tags": ["instagram", "trading", "risk-management"],
+  "relative_path": "library/personal/instagram-17841400000000000/item-ABC/v1/knowledge/learning.v1.json",
+  "topic": "VPIN et toxicité du flux d'ordres",
+  "tags": ["instagram", "trading", "market-microstructure", "vpin"],
   "valid_from": "2026-07-27T00:00:00Z",
-  "valid_to": null,
+  "valid_to": "9999-12-31T00:00:00Z",
   "text": "L'auteur affirme que ...",
   "schema_version": "knowledge.v1",
   "embedding_model": "google/embeddinggemma-300m",
@@ -462,13 +642,17 @@ modèle, chunker ou prompt.
   "chunk_total": 1,
   "index_state": "active",
   "deleted_at": null,
+  "is_deleted": false,
   "tenant_id": "personal",
   "acl_scope": ["owner"],
   "source_id": "instagram:17841400000000000:ABC:0",
+  "knowledge_item_id": "ki-vpin-claim-v1",
+  "artifact_id": "artifact-learning-v1",
+  "canonical_id": "canonical-vpin-claim",
   "publisher_id": "17841400000000000",
   "platform": "instagram",
   "language": "fr",
-  "claim_id": "...",
+  "claim_ids": ["..."],
   "verification_status": "pending",
   "risk_level": "high",
   "evidence_level": "source-only"
@@ -486,6 +670,11 @@ ingestion_jobs
 ingestion_items
 media_artifacts
 knowledge_items
+knowledge_entities
+entity_aliases
+entity_relations
+knowledge_item_entities
+strategy_specs
 claims
 research_sources
 claim_evidence
@@ -514,6 +703,8 @@ Contraintes :
 - clés d'idempotence uniques ;
 - aucune URL signée/CDN comme identité ;
 - provenance et audit append-only ;
+- unicité des noms canoniques dans un namespace, alias normalisés et relations typées ;
+- `strategy_specs` versionne hypothèses, paramètres, univers, horizon, coûts, risques et métriques ;
 - ACL présentes dès le premier schéma, même en mono-utilisateur ;
 - suppression logique avant purge physique ;
 - Qdrant point IDs enregistrés pour audit, sans devenir l'autorité.
@@ -548,6 +739,9 @@ GET    /items/:id/artifacts
 POST   /items/:id/reanalyze
 POST   /items/:id/takedown
 DELETE /sources/:id
+GET    /entities
+GET    /entities/:id
+GET    /topics/:id
 ```
 
 ### Preuves
@@ -590,22 +784,54 @@ Chaque route possède rate limit, quota de coût et budget maximum configurables
 
 ## 8. Retrieval
 
-Pipeline par défaut :
+Le retrieval distingue cinq intentions : `explore`, `learn`, `verify`, `source` et `compare`.
+L'intention détermine les types de connaissance, la diversification et la pondération de
+provenance ; elle ne relâche jamais la sécurité.
+
+Pipeline :
 
 1. authentifier et construire un `SecurityContext` non optionnel ;
-2. construire le filtre `tenant_id + acl_scope + index_state=active + deleted_at=null +
-   valid_from<=as_of + (valid_to=null ou valid_to>as_of)` ;
-3. injecter ce filtre dans **chaque** prefetch dense top-30 et BM25 top-30 ;
-4. fusion RRF ;
-5. rerank top-5 uniquement après benchmark ;
-6. regrouper par `claim_id`/`source_id` pour éviter la domination d'une source ;
-7. dédupliquer toute coexistence transitoire de versions ;
-8. exclure les claims réfutés des recommandations ;
-9. générer avec citations ;
-10. vérifier que chaque affirmation de réponse possède une citation qui la supporte.
+2. analyser la requête en intention, entités, alias, `room`, `topic_path`, temporalité et
+   `provenance_constraint` explicite ;
+3. construire le filtre `tenant_id + acl_scope + index_state=active + is_deleted=false +
+   valid_from<=as_of + valid_to>as_of` ;
+4. appliquer le `SecurityContext` à **chaque** accès : `buildSecurityFilter()` dans chaque
+   prefetch Qdrant et `applySecurityScope(queryBuilder, ctx, asOf)` dans chaque requête SQL ;
+5. résoudre entity/alias/topic avant retrieval, puis récupérer les candidats dense et BM25 ;
+6. fusionner les deux distributions Qdrant avec RRF ou DBSF, stratégie choisie par évaluation ;
+7. enrichir les candidats autorisés via le graphe PostgreSQL ; la branche SQL n'entre pas comme
+   distribution non scorée dans DBSF, elle fournit des features et voisins explicitement tracés ;
+8. appliquer un rescoring applicatif borné : entité exacte, topic, adéquation
+   `doc_kind/knowledge_kind`,
+   qualité de vérification, temporalité et provenance conditionnée par l'intention ;
+9. regrouper par entité/claim/source, dédupliquer les versions par `canonical_id` en gardant le
+   `knowledge_item_id` actif le plus récent et pénaliser les quasi-doublons ;
+10. en mode `verify`, préserver preuves favorables et contradictoires et diversifier les
+   provenances ;
+11. reranker un petit top-k uniquement après benchmark ;
+12. exclure les claims réfutés des recommandations, sans les cacher des vues d'audit ;
+13. générer avec citations puis vérifier que chaque affirmation matérielle est supportée.
+
+Politique des métadonnées :
+
+| Champ | Effet par défaut |
+|---|---|
+| ACL, tenant, validité, suppression, index actif | filtre dur |
+| contrainte utilisateur explicite | filtre dur |
+| `entity_ids`, alias exacts, `topic_path` | boost fort/routage |
+| `room`, `doc_kind`, `knowledge_kind` | boost ou filtre selon intention |
+| `provenance_class` | boost conditionnel, facette et diversification |
+| vérification, niveau de preuve, fraîcheur | qualité conditionnelle |
+
+`provenance_class` n'est filtré durement que pour une demande explicite telle que « sources académiques
+uniquement ». Une recherche de vérification ne filtre jamais implicitement la provenance, car elle
+doit pouvoir retrouver la source sociale originale, l'autorité officielle, la littérature et les
+contre-preuves.
 
 Le runtime lit l'alias `knowledge_current`, jamais le nom physique en dur. Le wrapper refuse de
 construire une requête sans `SecurityContext`; les appels directs Qdrant sont interdits par lint.
+`buildValidationFilter()` est une API séparée, non exportée au web/MCP, qui conserve tenant et ACL
+mais autorise `index_state=staging` uniquement pour les validations de promotion.
 
 Le late interaction/multivecteur n'est pas activé au MVP. Il possède un spike séparé et n'est
 adopté que si le golden set réel démontre un gain supérieur au coût.
@@ -772,7 +998,9 @@ Le contenu complet n'est pas exporté par défaut.
 Jeux séparés :
 
 - `extraction`: claims attendus et timestamps ;
-- `retrieval`: requêtes réelles, cibles réparties ;
+- `retrieval`: requêtes réelles, acronymes/alias, exact-match, questions sémantiques, cibles
+  réparties, routage entity/topic et recherche cross-provenance ;
+- `retrieval-degraded`: le même jeu en BM25-only, avec mode explicitement visible dans l'API ;
 - `citation`: support, pertinence et indépendance ;
 - `verification`: verdict humain et limites ;
 - `security`: prompt injection, poisoning, SSRF ;
@@ -788,6 +1016,10 @@ Jeux séparés :
 | claim à risque élevé `supported` sans humain | 0 |
 | doublon après retry | 0 |
 | retrieval recall@5 | baseline puis seuil fixé sur golden réel |
+| entity routing recall@k | baseline puis seuil par type de requête |
+| diversité de provenance en mode verify | couverture attendue sur cas vérifiables |
+| filtre provenance implicite sans contrainte | 0, vérifié par trace de plan de requête |
+| projection PostgreSQL → Qdrant | lag baseline puis seuil/alerte fixé |
 | restauration bundle → Qdrant | 100 % sur canary |
 | ordre réel possible depuis experiment-runner | 0 |
 
@@ -865,6 +1097,7 @@ Un LXC dédié n'est créé que si `lxc-chat` ne satisfait pas les exigences d'i
 | moteur OCR/transcription | benchmark 10 vidéos |
 | LXC Banga dédié | mesure isolation/capacité |
 | reranker | gain mesuré sur golden réel |
+| fusion RRF ou DBSF | benchmark Prisme sur requêtes réelles |
 | multivecteur visuel | gain mesuré sur requêtes visuelles |
 | Langfuse | OpenTelemetry/Grafana insuffisant pour les evals |
 

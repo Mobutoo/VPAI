@@ -38,8 +38,8 @@ ctx = dict(
     memory_worker_auto_repair_target_service="llamaindex-memory-worker.service",
     memory_worker_auto_repair_memctl="__MEMCTL__",
     memory_worker_auto_repair_host_origin="waza",
-    memory_worker_auto_repair_journal_since="-6h",
     memory_worker_auto_repair_journal_lines=300,
+    memory_worker_auto_repair_journal_lookback_max_sec=86400,
     memory_worker_auto_repair_state_file="__STATE_FILE__",
     memory_worker_auto_repair_lock_file="__LOCK_FILE__",
     memory_worker_auto_repair_maintenance_file="__MAINT_FILE__",
@@ -49,6 +49,8 @@ ctx = dict(
     memory_worker_auto_repair_cooldown_sec=14400,
     memory_worker_auto_repair_unlock_ticks=8,
     memory_worker_auto_repair_reminder_sec=10800,
+    memory_worker_auto_repair_tick_sec=900,
+    memory_worker_auto_repair_blind_alert_every=4,
 )
 out = tpl.render(**ctx)
 open(out_path, "w").write(out)
@@ -73,7 +75,13 @@ ok "$([ $? -eq 0 ] && echo 1)" "script rendu: bash -n (syntaxe) OK"
 printf 'TG_BOT=faketoken\nTG_CHAT=fakechat\n' > "$ENV_FILE"
 
 # --- Fake curl (capture les appels notify() -> $CURL_LOG, un appel = un
-# bloc de lignes, pattern test_memctl.sh fake bin dans PATH). ---
+# bloc de lignes, pattern test_memctl.sh fake bin dans PATH). L3 fix (revue
+# Opus) : notify() envoie desormais le payload (token inclus) via
+# `--config -` (stdin), plus comme arguments de ligne de commande -> le mock
+# doit aussi capturer stdin (le fichier de config curl, qui contient les
+# directives url/data-urlencode dont le texte du message), pas seulement
+# "$@". Le mock imprime "200" sur stdout pour simuler un sendMessage reussi
+# (notify() lit -w '%{http_code}' -o /dev/null). ---
 FAKEBIN="$TMP/bin"
 mkdir -p "$FAKEBIN"
 CURL_LOG="$TMP/curl_calls.log"
@@ -82,7 +90,9 @@ cat > "$FAKEBIN/curl" <<EOF
 {
   echo "---CALL---"
   printf '%s\n' "\$@"
+  cat
 } >> "$CURL_LOG"
+printf '200'
 exit 0
 EOF
 chmod +x "$FAKEBIN/curl"
@@ -130,31 +140,67 @@ OLD_DRIFT=$((NOW - 6000))   # > AUTOREPAIR_DRIFT_SEC (5400) dans le passe
 
 # =====================================================================
 # 1) redact() — toutes les formes du §6, credentials factices distincts.
+# M6 fix (revue Opus) : `grep -qv X` reussit des qu'AU MOINS UNE LIGNE ne
+# contient pas X -- sur une sortie multi-ligne ou X fuit sur une SEULE des
+# lignes, l'assertion passait quand meme (faux positif). Remplace par
+# `! grep -q X` (echoue seulement si X n'apparait NULLE PART, quel que soit
+# le nombre de lignes).
 # =====================================================================
 echo "== redact() =="
 out="$(printf 'API_KEY=abcREDACT1def' | bash "$SCRIPT" __redact_test)"
-ok "$(echo "$out" | grep -qv 'abcREDACT1def' && echo 1)" "env KEY=v masque"
+ok "$(! echo "$out" | grep -q 'abcREDACT1def' && echo 1)" "env KEY=v masque"
 
 out="$(printf 'api_key: yamlSECRET2val' | bash "$SCRIPT" __redact_test)"
-ok "$(echo "$out" | grep -qv 'yamlSECRET2val' && echo 1)" "yaml key: v masque"
+ok "$(! echo "$out" | grep -q 'yamlSECRET2val' && echo 1)" "yaml key: v masque"
 
 out="$(printf '"api_key": "v a l SECRET3"' | bash "$SCRIPT" __redact_test)"
-ok "$(echo "$out" | grep -qv 'v a l SECRET3' && echo 1)" "JSON quote \"key\": \"v a l\" (espaces) masque en entier"
+ok "$(! echo "$out" | grep -q 'v a l SECRET3' && echo 1)" "JSON quote \"key\": \"v a l\" (espaces) masque en entier"
 
 out="$(printf '%s' "'token':'sekritSECRET4'" | bash "$SCRIPT" __redact_test)"
-ok "$(echo "$out" | grep -qv 'sekritSECRET4' && echo 1)" "quote simple 'token':'v' masque"
+ok "$(! echo "$out" | grep -q 'sekritSECRET4' && echo 1)" "quote simple 'token':'v' masque"
 
 out="$(printf 'Authorization: Bearer eyJSECRET5.payload' | bash "$SCRIPT" __redact_test)"
-ok "$(echo "$out" | grep -qv 'eyJSECRET5' && echo 1)" "Authorization: Bearer <token> masque"
+ok "$(! echo "$out" | grep -q 'eyJSECRET5' && echo 1)" "Authorization: Bearer <token> masque"
 
 out="$(printf 'Authorization: Basic dXNlcjpTRUNSRVQ2' | bash "$SCRIPT" __redact_test)"
-ok "$(echo "$out" | grep -qv 'dXNlcjpTRUNSRVQ2' && echo 1)" "Authorization: Basic <base64> masque"
+ok "$(! echo "$out" | grep -q 'dXNlcjpTRUNSRVQ2' && echo 1)" "Authorization: Basic <base64> masque"
 
 out="$(printf 'https://user:hunterSECRET7@example.com/path' | bash "$SCRIPT" __redact_test)"
-ok "$(echo "$out" | grep -qv 'hunterSECRET7' && echo 1)" "userinfo URL scheme://user:pass@ masque"
+ok "$(! echo "$out" | grep -q 'hunterSECRET7' && echo 1)" "userinfo URL scheme://user:pass@ masque"
 
 out="$(printf 'sk-ABCDEFSECRET8901234567890' | bash "$SCRIPT" __redact_test)"
-ok "$(echo "$out" | grep -qv 'ABCDEFSECRET8901234567890' && echo 1)" "chaine sk-\\S+ masquee en entier"
+ok "$(! echo "$out" | grep -q 'ABCDEFSECRET8901234567890' && echo 1)" "chaine sk-\\S+ masquee en entier"
+
+# --- C1 fix : les 7 formes qui fuyaient avant la revue Opus (valeur quotee
+# avec cle NON quotee -- TOKEN="v", password='v', export KEY='v', espaces
+# autour du delimiteur -- + Authorization avec '=' au lieu de ':'). ---
+out="$(printf 'TOKEN="quotedSECRET9val"' | bash "$SCRIPT" __redact_test)"
+ok "$(! echo "$out" | grep -q 'quotedSECRET9val' && echo 1)" "env TOKEN=\"v\" (valeur quotee double, cle non quotee) masque"
+
+out="$(printf "password='quotedSECRET10val'" | bash "$SCRIPT" __redact_test)"
+ok "$(! echo "$out" | grep -q 'quotedSECRET10val' && echo 1)" "env password='v' (valeur quotee simple, cle non quotee) masque"
+
+out="$(printf "export QDRANT_API_KEY='exportSECRET11val'" | bash "$SCRIPT" __redact_test)"
+ok "$(! echo "$out" | grep -q 'exportSECRET11val' && echo 1)" "export QDRANT_API_KEY='v' masque"
+
+out="$(printf 'qdrant_api_key = "spacedSECRET12val"' | bash "$SCRIPT" __redact_test)"
+ok "$(! echo "$out" | grep -q 'spacedSECRET12val' && echo 1)" "qdrant_api_key = \"v\" (espaces autour du delimiteur) masque"
+
+out="$(printf 'Authorization=Bearer eqSECRET13token' | bash "$SCRIPT" __redact_test)"
+ok "$(! echo "$out" | grep -q 'eqSECRET13token' && echo 1)" "Authorization=Bearer <token> (delimiteur '=' au lieu de ':') masque"
+
+out="$(printf '"secret": "jsonSECRET14 with spaces"' | bash "$SCRIPT" __redact_test)"
+ok "$(! echo "$out" | grep -q 'jsonSECRET14' && echo 1)" "JSON quote \"secret\": \"v a l\" masque"
+
+out="$(printf "'password':'quotedBothSECRET15'" | bash "$SCRIPT" __redact_test)"
+ok "$(! echo "$out" | grep -q 'quotedBothSECRET15' && echo 1)" "'password':'v' (quotes simples cle+valeur) masque"
+
+# --- M6 fix : test multi-ligne -- une seule des lignes contient le secret,
+# ! grep -q doit echouer sur TOUTE la sortie (pas juste la 1ere ligne
+# matchee), verifiant qu'aucun fragment ne survit sur aucune ligne. ---
+out="$(printf 'first line, nothing secret\napi_key: multiSECRET16line\nlast line, clean' | bash "$SCRIPT" __redact_test)"
+ok "$(! echo "$out" | grep -q 'multiSECRET16line' && echo 1)" "redact multi-ligne: secret sur la ligne du milieu masque"
+ok "$([ "$(echo "$out" | wc -l)" -ge 3 ] && echo 1)" "redact multi-ligne: les lignes non sensibles survivent (pas de troncature globale)"
 
 # =====================================================================
 # 2) Garde timer-disabled -> notif unique, aucune action.
@@ -294,7 +340,12 @@ ok "$([ ! -e "$LOCK_FILE" ] && echo 1)" "cooldown actif + succes transitoire: PA
 # =====================================================================
 echo "== echec post-reparation -> REPAIR_LOCKED =="
 reset_state
-REPAIR_EPOCH=$((NOW - 60))       # reparation il y a 1 min (largement < cooldown)
+# M1 fix : le predicat d'echec post-reparation exige NOW-LAST_REPAIR_EPOCH >
+# TICK_SEC (900s, cf script) -- le run declenche peut prendre plusieurs
+# minutes, un jugement trop precoce serait premature. 1000s > 900s et reste
+# tres en-deca du cooldown (14400s), donc la branche testee est bien
+# POST_REPAIR_FAILED, pas COOLDOWN_ACTIVE.
+REPAIR_EPOCH=$((NOW - 1000))     # reparation il y a >TICK_SEC (900s), < cooldown
 seed_state "$OLD_DRIFT" 3 0 "$REPAIR_EPOCH" 1 0 0   # LAST_SUCCESS_EPOCH <= LAST_REPAIR_EPOCH
 AUTOREPAIR_FAKE_ACTIVE_STATE=failed AUTOREPAIR_FAKE_EXEC_MAIN_STATUS=1 AUTOREPAIR_FAKE_RESULT=failed \
   AUTOREPAIR_FAKE_STATUS_JSON='{"lock_pid":"777","lock_alive":false,"timer_enabled":"enabled","timer_active":"active","qdrant_reachable":true}' \
@@ -354,7 +405,63 @@ AUTOREPAIR_FAKE_ACTIVE_STATE=failed AUTOREPAIR_FAKE_EXEC_MAIN_STATUS=1 AUTOREPAI
 ok "$([ "$(cat "$ACTIONS_LOG")" = "start" ] && echo 1)" "run concurrent detecte (Persistent catch-up): PAS de 2e memctl run"
 
 # =====================================================================
-# 10) Sonde aveugle (systemctl injoignable) -> exit 2, log fort, jamais
+# 10) H1 : state file corrompu -> notif + survie (PAS de mort silencieuse
+#     sous set -e). L'ancien code faisait `. "$STATE_FILE"` (source) -- un
+#     contenu non-shell tuait le script AVANT le premier notify() possible.
+#     Desormais : detection (grep de la 1ere cle attendue), notif dediee,
+#     rm + reinitialisation, le tick continue normalement et re-ecrit un
+#     state valide.
+# =====================================================================
+echo "== H1: state file corrompu -> notif + survie =="
+reset_state
+printf '\x00\x01 ceci n'"'"'est pas du KEY=VALUE shell valide {{{\n' > "$STATE_FILE"
+OUT="$(AUTOREPAIR_FAKE_ACTIVE_STATE=inactive AUTOREPAIR_FAKE_EXEC_MAIN_STATUS=0 AUTOREPAIR_FAKE_RESULT=success \
+  bash "$SCRIPT" 2>&1)"
+rc=$?
+ok "$([ "$rc" -eq 0 ] && echo 1)" "state corrompu: le script survit (exit 0, pas de mort silencieuse sous set -e)"
+ok "$(curl_log_contains 'corrompu' && echo 1)" "state corrompu: notification dediee envoyee"
+ok "$([ -s "$STATE_FILE" ] && grep -q '^LAST_SUCCESS_EPOCH=' "$STATE_FILE" && echo 1)" "state corrompu: nouveau state valide reecrit (write_state du tick courant)"
+
+# =====================================================================
+# 11) H2 : ActiveState=activating -> suspension de jugement, ni sain ni
+#     drift. Aucun compteur (DRIFT_TICKS/HEALTHY_TICKS/ALERTED) ne bouge, et
+#     aucune notification n'est envoyee -- un run EN COURS ne prouve rien.
+# =====================================================================
+echo "== H2: activating -> suspension de jugement (ni sain ni drift) =="
+reset_state
+seed_state "$OLD_DRIFT" 3 0 0 0 1 "$((NOW - 100))"
+AUTOREPAIR_FAKE_ACTIVE_STATE=activating AUTOREPAIR_FAKE_EXEC_MAIN_STATUS=0 AUTOREPAIR_FAKE_RESULT=success \
+  bash "$SCRIPT" >/dev/null
+ok "$([ "$(state_get DRIFT_TICKS)" = 3 ] && echo 1)" "activating: DRIFT_TICKS inchange (ni remis a zero -- faux all-clear --, ni incremente)"
+ok "$([ "$(state_get HEALTHY_TICKS)" = 0 ] && echo 1)" "activating: HEALTHY_TICKS inchange (pas de degel REPAIR_LOCKED sans run reussi)"
+ok "$([ "$(state_get ALERTED)" = 1 ] && echo 1)" "activating: ALERTED inchange (pas de faux retablissement)"
+ok "$([ "$(curl_call_count)" = 0 ] && echo 1)" "activating: aucune notification envoyee (tick suspendu)"
+
+# =====================================================================
+# 12) H3 : notification de resultat verifie post-reparation. L'action
+#     (classe A ici) pose ALERTED=1 -- sans ce fix, le tick suivant qui
+#     constate le retour a la sante ne notifiait JAMAIS le resultat de la
+#     reparation (branche "healthy" conditionnee a ALERTED=1, jamais posee).
+# =====================================================================
+echo "== H3: notif de resultat verifie post-reparation =="
+reset_state
+seed_state "$OLD_DRIFT" 5 0 0 0 0 0
+AUTOREPAIR_FAKE_ACTIVE_STATE=failed AUTOREPAIR_FAKE_EXEC_MAIN_STATUS=1 AUTOREPAIR_FAKE_RESULT=failed \
+  AUTOREPAIR_FAKE_STATUS_JSON='{"lock_pid":"555","lock_alive":false,"timer_enabled":"enabled","timer_active":"active","qdrant_reachable":true}' \
+  AUTOREPAIR_FAKE_JOURNAL='nothing special' \
+  AUTOREPAIR_FAKE_ACTIONS_LOG="$ACTIONS_LOG" \
+  bash "$SCRIPT" >/dev/null
+ok "$([ "$(state_get ALERTED)" = 1 ] && echo 1)" "H3: action classe A pose ALERTED=1 (prealable a la notif de resultat)"
+: > "$CURL_LOG"
+NEWSUCC="$(date +%s)"
+AUTOREPAIR_FAKE_ACTIVE_STATE=inactive AUTOREPAIR_FAKE_EXEC_MAIN_STATUS=0 AUTOREPAIR_FAKE_RESULT=success \
+  AUTOREPAIR_FAKE_EXEC_MAIN_EXIT_EPOCH="$NEWSUCC" \
+  bash "$SCRIPT" >/dev/null
+ok "$(curl_log_contains 'retour a la sante' && echo 1)" "H3: notification de resultat verifie emise au tick suivant (run reussi apres reparation)"
+ok "$([ "$(state_get ALERTED)" = 0 ] && echo 1)" "H3: ALERTED remis a zero apres confirmation du resultat"
+
+# =====================================================================
+# 13) Sonde aveugle (systemctl injoignable) -> exit 2, log fort, jamais
 #     silencieux.
 # =====================================================================
 echo "== sonde aveugle =="

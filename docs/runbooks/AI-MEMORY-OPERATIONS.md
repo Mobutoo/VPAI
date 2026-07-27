@@ -217,6 +217,129 @@ actif/inactif du workflow n8n `memory-healthcheck` n'a pas ete reverifie en
 direct lors de ce durcissement (session MCP n8n expiree) — a confirmer via
 l'UI n8n si on veut s'appuyer dessus comme filet redondant.
 
+### 4.1.3 Reparation bornee apres 1h de drift (`memory-worker-auto-repair`)
+
+Design normatif: `docs/design/2026-07-25-memory-worker-auto-repair.md` (valide
+au gate humain 2026-07-25, convergence Codex 4 rounds). Origine: incident
+`discover_sources: 31 repos > max_repos=30`, pipeline casse >21h,
+notifications "memory pipeline drift detected" en boucle sans jamais agir
+(le watchdog 4.1.2 voit un run BLOQUE, le healthcheck n8n 4.2 voit un run
+TERMINE en echec -- aucun des deux n'agit sur un run qui CRASHE avant de
+rapporter).
+
+Role: `roles/memory-worker-auto-repair/` (role FRERE de
+`memory-worker-watchdog`, deploye separement, meme mecanique: timer
+`systemd --user`, script `.sh.j2`, env 0600 `no_log`, linger guard). Tourne
+sur Waza, meme utilisateur que le worker surveille.
+
+- unite: `memory-worker-auto-repair.service` + `.timer` (`~/.config/systemd/user/`)
+- script: `/opt/workstation/ai-memory-worker-auto-repair/memory-worker-auto-repair.sh`
+- etat persistant: `/opt/workstation/data/ai-memory-worker-auto-repair/state`
+- cadence sonde: 15min (meme cadence que le watchdog 4.1.2, independante du
+  timer worker 30min)
+- seuil de drift: 5400s (30min d'intervalle nominal + 1h de drift effectif),
+  action exigee `DRIFT_TICKS >= 2` -> action effective ~75-90min apres le
+  premier run manque
+- signal de sante: dernier run TERMINE AVEC SUCCES (`ExecMainStatus==0` ET
+  `Result==success`, wall-clock systemd) -- PAS la fraicheur du log (un
+  crash systematique en quelques secondes rafraichirait le log en
+  permanence sans jamais etre detecte)
+
+Gardes "arret volontaire" (verifiees AVANT toute action, dans cet ordre):
+
+1. `timer_enabled == "disabled"` (`memctl status`) -- trace durable d'un
+   `/memory_stop` Telegram ou `memctl stop` manuel. Notif UNE fois par
+   episode de drift.
+2. Sentinelle operateur `${state_dir}/maintenance` -- voir procedure
+   ci-dessous.
+
+Classification des pannes (ordre d'evaluation STRICT, premier match
+gagne -- les classes "alerte seule" priment toujours sur les classes
+"action", cf design §5 pour la justification complete):
+
+| Classe | Signature | Action auto | Notif |
+|---|---|---|---|
+| D. Garde-fou discovery | traceback `discover_sources.*max_repos` dans le journal de la fenetre | AUCUNE -- decision requise (config a ajuster manuellement) | alerte seule |
+| E. Qdrant injoignable | `qdrant_reachable:false` | AUCUNE -- dependance externe, le spool absorbe | alerte seule |
+| A. Lock zombie | `lock_pid` non vide ET `lock_alive:false` | `memctl fix` (supprime le lock mort + relance un run) | avant + resultat |
+| B. Timer/service arrete par accident | `timer_active != "active"` MAIS `timer_enabled == "enabled"` | `memctl start` (+ `memctl run` seulement si aucun run n'a demarre entre-temps -- anti-course) | avant + resultat |
+| C. Run jamais relance, cause inconnue | `Result` en `exec-condition`/`exit-code`/`signal` OU `ExecMainStatus!=0`, sans signature D/E | 1 seul `memctl run` de relance | avant + resultat |
+| F. Inclassable | tout le reste (y compris sonde `memctl status` elle-meme HS, ou unite introuvable `LoadState=not-found`) | AUCUNE -- alerte enrichie avec extrait de traceback (redige) | alerte seule |
+
+Regles transverses:
+
+- budget de reparation: au plus 1 action auto par fenetre de 4h (cooldown),
+  calcule sur `LAST_REPAIR_EPOCH` qui survit a un retour transitoire a la
+  sante
+- gel apres echec: si le drift persiste apres une reparation (aucun run
+  reussi depuis l'action), escalade Telegram + pose de `REPAIR_LOCKED`
+  (fichier SEPARE du state file: `${state_dir}/repair-locked`)
+- les actions A/B/C sont toutes reversibles et deja exposees par
+  `memctl.sh` -- aucune commande nouvelle n'entre dans la surface d'action,
+  jamais `systemctl` directement pour AGIR
+
+Procedure -- sentinelle maintenance (gel manuel avant une intervention
+prevue, ex. migration, changement de config source):
+
+```bash
+# Geler (avant une intervention prevue sur le worker)
+touch /opt/workstation/data/ai-memory-worker-auto-repair/maintenance
+
+# Reprendre (la fenetre de drift redemarre a zero, pas d'action immediate
+# a la seconde ou la sentinelle tombe)
+rm /opt/workstation/data/ai-memory-worker-auto-repair/maintenance
+```
+
+Tant que la sentinelle est presente: notif au premier tick gele puis
+rappels anti-spam 3h (elle peut durer des jours), aucune action tentee.
+
+Procedure -- REPAIR_LOCKED (une reparation a echoue, intervention humaine
+requise):
+
+```bash
+# Diagnostiquer avant de degeler (cf §6.4 ci-dessous)
+/opt/workstation/ai-memory-worker/memctl.sh status
+journalctl --user -u llamaindex-memory-worker.service -n 100 --no-pager
+
+# Degel manuel (une fois la cause reglee) -- fichier SEPARE du state file,
+# ne touche jamais LAST_REPAIR_EPOCH/REPAIR_ATTEMPTS (le cooldown reste
+# intact, pas de contournement)
+rm /opt/workstation/data/ai-memory-worker-auto-repair/repair-locked
+```
+
+`REPAIR_LOCKED` se degele aussi automatiquement apres 8 ticks sains
+consecutifs (~2h de sante soutenue), avec notif de degel.
+
+Note: le healthcheck n8n (4.2) et le watchdog de stagnation (4.1.2) restent
+INCHANGES par cette brique -- elle ne les remplace pas, elle comble
+l'angle mort commun aux deux (run qui crashe avant de rapporter, cause
+jamais identifiee, alertes en boucle sans jamais agir).
+
+Verification:
+
+```bash
+systemctl --user is-enabled memory-worker-auto-repair.timer
+systemctl --user list-timers memory-worker-auto-repair.timer
+journalctl --user -u memory-worker-auto-repair.service -n 20 --no-pager
+```
+
+Test sans attendre le seuil reel (n'affecte pas le worker -- points
+d'injection `AUTOREPAIR_FAKE_*`, memes utilises par le harnais
+`roles/llamaindex-memory-worker/tests/test_auto_repair.sh`):
+
+```bash
+# Simuler une classe A (lock zombie) en drift confirme
+AUTOREPAIR_FAKE_ACTIVE_STATE=failed \
+AUTOREPAIR_FAKE_EXEC_MAIN_STATUS=1 \
+AUTOREPAIR_FAKE_RESULT=failed \
+AUTOREPAIR_FAKE_STATUS_JSON='{"lock_pid":"4242","lock_alive":false,"timer_enabled":"enabled","timer_active":"active","qdrant_reachable":true}' \
+  /opt/workstation/ai-memory-worker-auto-repair/memory-worker-auto-repair.sh
+
+# Isoler uniquement la redaction des credentials (stdin -> stdout)
+printf 'api_key: SECRETVALUE' | \
+  bash /opt/workstation/ai-memory-worker-auto-repair/memory-worker-auto-repair.sh __redact_test
+```
+
 ### 4.2 n8n
 
 Verifier:

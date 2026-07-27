@@ -12,8 +12,16 @@ comfyui_version: "v0.18.1"
 # Ports
 comfyui_port: 8188
 
-# Docker resource limits (RPi 5 16GB — ~4GB for models in memory)
-comfyui_memory_limit: "4096M"
+# Docker resource limits (RPi 5 16GB — CPU-only inference, pas de gros modèles chargés)
+# REVUE NO-GO 2026-07-27 (finding H4) : plafond redimensionné 4096M -> 2048M.
+# memory.peak mesuré = 1274 MiB en usage réel (le 4096M d'origine était donc
+# ~3,2x le pic constaté). La revue proposait AUSSI un MemoryMax agrégé sur
+# system.slice (sshd/tailscaled/systemd-networkd/docker/containerd) : REJETÉ
+# — un OOM de cgroup à ce niveau peut couper l'accès distant à une machine
+# sans accès physique. Le plafonnement conteneur par conteneur (ce fichier +
+# roles/remotion/defaults/main.yml) atteint le même but sans ce risque ;
+# ne PAS réintroduire un cap system.slice.
+comfyui_memory_limit: "2048M"
 comfyui_memory_reservation: "1024M"
 comfyui_cpu_limit: "3.0"
 

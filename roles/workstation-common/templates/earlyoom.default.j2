@@ -6,4 +6,20 @@
 # indépendant de l'ordonnanceur systemd, qui agit AVANT que le watchdog
 # matériel n'ait à intervenir. Voir roles/workstation-common/defaults/main.yml
 # pour le détail de la cause racine et le choix (earlyoom vs systemd-oomd).
-EARLYOOM_ARGS="-m {{ workstation_earlyoom_mem_percent }} -s {{ workstation_earlyoom_swap_percent }} --avoid '{{ workstation_earlyoom_avoid_regex }}' --prefer '{{ workstation_earlyoom_prefer_regex }}' -r {{ workstation_earlyoom_report_interval_sec }}{% if workstation_earlyoom_notify_dbus %} -n{% endif %}"
+#
+# REVUE NO-GO (finding B1) : -s 100 fait ignorer la condition swap (man
+# earlyoom: "Processes are killed once available memory drops below the
+# configured minimum, no matter how much swap is free") -> earlyoom
+# redevient purement piloté par -m, la condition swap AND-ée n'étant plus
+# jamais bloquante.
+# REVUE NO-GO (finding H1) : --prefer retiré (matchait sur /proc/PID/comm,
+# jamais sur la ligne de commande -> inopérant sur index.py/mcp_search.py et
+# contre-productif sur node). Le ciblage se fait via OOMScoreAdjust= sur les
+# units systemd (llamaindex-memory-worker = 1000).
+#
+# ATTENTION (finding L2/M3) : ceci est un EnvironmentFile systemd -> systemd
+# applique un déséchappement de type C sur les valeurs (`\.` devient `.`,
+# etc.). NE JAMAIS mettre de backslash dans EARLYOOM_ARGS ci-dessous
+# (bénin aujourd'hui car l'avoid-regex n'en contient pas, mais piège latent
+# pour un futur `\d`/`\s` dans --avoid/--prefer).
+EARLYOOM_ARGS="-m {{ workstation_earlyoom_mem_percent }} -s {{ workstation_earlyoom_swap_percent }} --avoid '{{ workstation_earlyoom_avoid_regex }}' -r {{ workstation_earlyoom_report_interval_sec }}{% if workstation_earlyoom_notify_dbus %} -n{% endif %}"

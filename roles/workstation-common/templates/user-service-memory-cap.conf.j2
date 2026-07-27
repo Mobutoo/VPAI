@@ -1,0 +1,38 @@
+# {{ ansible_managed }}
+# Couche 2 — REX 2026-07-27: user-{{ workstation_user_slice_uid }}.slice était
+# illimitée (MemoryMax=infinity), y compris les scopes tmux-spawn-*.scope :
+# N sessions Claude Code / serveurs MCP pouvaient y saturer toute la RAM sans
+# plafond ni sur la taille ni sur le nombre de process. Un throttle
+# (MemoryHigh) puis un kill CONTRÔLÉ est infiniment préférable au livelock de
+# reclaim qui a déclenché le hard-reset du watchdog matériel.
+# llamaindex-memory-worker (unit systemd --user, MemoryMax=4G) vit DANS
+# user@{{ workstation_user_slice_uid }}.service — ses 4G restent inclus dans
+# ce budget, c'est voulu.
+#
+# REVUE NO-GO (finding M6) : le cap ciblait avant la slice user-{{ workstation_user_slice_uid }}.slice
+# elle-même. Cartographie cgroup vérifiée : 100% de la consommation vit dans
+# user@{{ workstation_user_slice_uid }}.service (le manager systemd
+# utilisateur : worker, scopes tmux, claude, MCP) ; les SESSIONS SSH
+# INTERACTIVES FRAÎCHES vivent dans session-N.scope, un FRÈRE de
+# user@{{ workstation_user_slice_uid }}.service sous la même slice — donc
+# plafonnées sans y contribuer. Cibler [Service] sur user@.service directement
+# donne le même effet sur les consommateurs réels tout en laissant toute
+# nouvelle session SSH hors du cgroup contraint -> accès de secours garanti
+# par construction.
+#
+# REVUE NO-GO (finding M5) : mesuré 15 min après déploiement en régime
+# nominal avec l'ancien MemorySwapMax=2G -> memory.swap.current à 99,98% du
+# cap, memory.events "high" déjà franchi >1800 fois -> plus de pages
+# anonymes à dégager (swap plein), recyclage forcé de pages fichier
+# (réinjection de code, même contention I/O NVMe que l'incident). Le swap
+# n'est pas l'ennemi, c'est le reclaim SANS ISSUE qui l'est : MemorySwapMax=4G
+# donne une soupape, MemoryHigh=9G/MemoryMax=10G raccourcit la fenêtre de
+# throttle.
+#
+# Vérifié : un daemon-reload seul suffit à appliquer ces valeurs à l'unité
+# déjà active, sans la redémarrer (aucun impact sur les sessions en cours).
+[Service]
+MemoryAccounting=yes
+MemoryHigh={{ workstation_user_slice_memory_high }}
+MemoryMax={{ workstation_user_slice_memory_max }}
+MemorySwapMax={{ workstation_user_slice_memory_swap_max }}

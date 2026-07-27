@@ -19,7 +19,14 @@ workstation_packages:
   - git
   - build-essential
   - apt-transport-https
-  - earlyoom
+# earlyoom N'EST PAS ici (REVUE NO-GO finding M4) : il était installé
+# inconditionnellement via cette liste alors que sa config est conditionnée
+# par workstation_earlyoom_enabled -> au 1er `apt install`, avant que la
+# config soit posée, earlyoom tournait avec les défauts amont (-m 10 -s 10,
+# aucun avoid) et un `enabled: false` ne l'aurait PAS arrêté. Installé
+# désormais par une tâche apt dédiée conditionnée par
+# workstation_earlyoom_enabled (tasks/main.yml), avec branche inverse
+# (stopped + disabled) si le drapeau passe à false.
 
 workstation_hostname: "{{ workstation_pi_hostname | default('workstation-pi') }}"
 workstation_user: "{{ workstation_pi_user | default('pi') }}"
@@ -92,6 +99,7 @@ workstation_net_oom_score: -900            # plage [-1000,1000]; bas = épargné
 workstation_net_protected_units:
   - systemd-networkd
   - tailscaled
+  - systemd-resolved   # M2 (revue NO-GO 2026-07-27): DNS coupé = mayi.ewutelo.cloud injoignable (R7)
 #
 # P3 — watchdog passerelle: si la default route/gateway tombe durablement,
 # relance DHCP (networkctl reconfigure) puis tailscaled. Auto-réparation headless.
@@ -131,35 +139,85 @@ workstation_hw_watchdog_reboot_sec: "10min"        # délai max d'un shutdown/re
 # mlockall(), reste résident, et poll /proc/meminfo directement : indépendant
 # de l'ordonnanceur systemd pour sa boucle de décision.
 workstation_earlyoom_enabled: true
-# SIGTERM sous 8% MemAvailable (~1,25 Go), SIGKILL sous 4% (~640 Mo).
-# sar montrait kbavail descendre à 1,6-2,2 Go (10-14%) juste avant les
-# freezes -> 8% est la zone de mort documentée, pas un faux positif.
-workstation_earlyoom_mem_percent: "8,4"
-workstation_earlyoom_swap_percent: "5,2"
+# REVUE NO-GO 2026-07-27 (finding B1 — filet inerte, corrigé) : earlyoom
+# applique un ET entre la condition mémoire (-m) et la condition swap (-s) —
+# il ne tue QUE si les deux sont sous seuil. Preuve : au crash du 27/07,
+# `sar -r` donnait MemAvailable=13,6% à 17:30, AU-DESSUS du seuil SIGTERM
+# 8% d'origine -> earlyoom n'aurait pas tiré. Aggravant : le cap
+# MemorySwapMax=2G posé en Couche 2 empêche désormais de remplir le swap
+# (SwapFree observé ~66% en régime nominal) -> la condition swap devient
+# quasi inatteignable, ce qui rend le ET structurellement mort.
+# Correctif : -s 100 (documenté par le man earlyoom comme LA façon de faire
+# ignorer le swap : "Processes are killed once available memory drops below
+# the configured minimum, no matter how much swap is free") -> earlyoom
+# devient purement piloté par la RAM disponible.
+# -m 10,5 : SIGTERM à 10% MemAvailable (~1,6 Go), SIGKILL à 5% (~800 Mo).
+# `sar` montre que waza a passé des heures à 1,6-2,2 Go de kbavail les jours
+# de crash -> c'est précisément la spirale de mort, y tirer est le
+# comportement VOULU, pas un faux positif. (-m 15,8 suggéré par la revue
+# non retenu : trop de faux positifs en régime chargé normal, et les caps
+# cgroup Couche 2 agissent déjà avant ce seuil.)
+workstation_earlyoom_mem_percent: "10,5"
+workstation_earlyoom_swap_percent: "100"
 # Jamais tuer ce qui maintient l'accès distant (cohérent avec oom-protect.conf.j2
-# qui met déjà OOMScoreAdjust=-900 sur systemd-networkd et tailscaled).
-workstation_earlyoom_avoid_regex: '^(sshd|systemd|systemd-networkd|systemd-logind|tailscaled|dbus-daemon|earlyoom)$'
-# Cibler d'abord les gros consommateurs connus (sessions Claude Code / MCP).
-workstation_earlyoom_prefer_regex: '^(index\.py|mcp_search\.py|chrome|node)$'
+# qui met déjà OOMScoreAdjust=-900 sur systemd-networkd, systemd-resolved et
+# tailscaled). --avoid ne fait QUE retrancher 300 au oom_score (pondération,
+# PAS une garantie de survie — la vraie protection est OOMScoreAdjust=-900/
+# -1000, cf. oom-protect.conf.j2 / earlyoom-oom-protect.conf.j2). REVUE NO-GO
+# (finding M1) : /proc/PID/comm est tronqué à 15 caractères visibles
+# (TASK_COMM_LEN=16 avec le NUL) -> "systemd-networkd" (16 car.) apparaît
+# réellement comme comm="systemd-network" et "systemd-resolved" (16 car.)
+# comme comm="systemd-resolve". Vérifié en direct (cat /proc/$(pidof
+# systemd-networkd)/comm). Piège qui se re-tendra sur tout futur nom de 16+
+# caractères -> toujours vérifier le comm réel, pas le nom de l'unité.
+workstation_earlyoom_avoid_regex: '^(sshd|systemd|systemd-network|systemd-logind|systemd-resolve|tailscaled|dbus-daemon|earlyoom)$'
 workstation_earlyoom_report_interval_sec: 3600   # 1 rapport mémoire/heure max, évite de spammer le journal
 workstation_earlyoom_notify_dbus: true            # -n : notification d-bus/journal au moment du kill
 workstation_earlyoom_oom_score_adjust: -1000      # earlyoom ne doit jamais être la victime de son propre filet
+# REVUE NO-GO (finding H1) : --prefer SUPPRIMÉ. earlyoom matche --prefer/
+# --avoid sur /proc/PID/comm (tronqué, voir ci-dessus), jamais sur la ligne
+# de commande complète. Vérifié : index.py et mcp_search.py ont comm=python
+# -> jamais matchés par l'ancien pattern. Seul "node" matchait, et le +300
+# de --prefer désignait alors un petit process node (~75 Mio) au lieu du
+# vrai gros consommateur -> contre-productif. Le bon levier de ciblage est
+# OOMScoreAdjust= sur les units systemd (déjà en place et correct sur
+# llamaindex-memory-worker = 1000, la cible voulue).
 
-# --- Couche 2 — plafond mémoire de user-1000.slice ---
-# REX 2026-07-27: user-1000.slice (sessions SSH/tmux/Claude Code) est
-# aujourd'hui illimitée (MemoryMax=infinity), y compris les scopes
-# tmux-spawn-*.scope : N sessions Claude Code peuvent y spawner chacune un
-# mcp_search.py ~1 Go sans plafond ni sur la taille ni sur le nombre (3
-# process = 3,1 Go observés 10 min après un boot). Un throttle (MemoryHigh)
-# puis un kill CONTRÔLÉ à l'intérieur de la slice (MemoryMax) est infiniment
-# préférable au livelock de reclaim qui a fini par déclencher le hard-reset
-# watchdog. llamaindex-memory-worker (unit systemd --user, MemoryMax=4G) vit
-# DANS cette slice — ses 4G restent inclus dans le budget de 10G, c'est voulu.
+# --- Couche 2 — plafond mémoire de user@1000.service ---
+# REX 2026-07-27: user-1000.slice (sessions SSH/tmux/Claude Code) était
+# illimitée (MemoryMax=infinity), y compris les scopes tmux-spawn-*.scope :
+# N sessions Claude Code peuvent y spawner chacune un mcp_search.py ~1 Go
+# sans plafond ni sur la taille ni sur le nombre (3 process = 3,1 Go
+# observés 10 min après un boot). Un throttle (MemoryHigh) puis un kill
+# CONTRÔLÉ est infiniment préférable au livelock de reclaim qui a fini par
+# déclencher le hard-reset watchdog. llamaindex-memory-worker (unit systemd
+# --user, MemoryMax=4G) vit DANS user@1000.service — ses 4G restent inclus
+# dans ce budget, c'est voulu.
+# REVUE NO-GO (finding M6) : le cap posait initialement le drop-in sur
+# user-1000.slice lui-même. Cartographie cgroup vérifiée : 100% de la
+# consommation vit dans user@1000.service (le manager systemd utilisateur :
+# worker, scopes tmux, claude, MCP). Or les SESSIONS SSH INTERACTIVES
+# FRAÎCHES vivent dans session-N.scope, un FRÈRE de user@1000.service sous
+# user-1000.slice — donc soumises au même plafond de slice sans y
+# contribuer. Correctif : le drop-in cible désormais user@1000.service
+# directement ([Service], pas [Slice]) -> effet identique sur les
+# consommateurs réels, mais toute nouvelle session SSH reste hors du cgroup
+# contraint -> accès de secours garanti par construction (cohérent avec la
+# doctrine anti-lockout de handlers/main.yml).
+# REVUE NO-GO (finding M5) : mesuré 15 min après déploiement en régime
+# NOMINAL avec l'ancien MemorySwapMax=2G -> memory.swap.current = 99,98% du
+# cap, memory.events "high" déjà franchi >1800 fois. Entre MemoryHigh=8G et
+# MemoryMax=10G, le cgroup ne pouvait plus dégager de pages anonymes (swap
+# plein) -> il ne recyclait que des pages fichier -> réinjection de code ->
+# le motif majflt de l'incident, confiné mais avec la même contention I/O
+# NVMe. Le swap n'est pas l'ennemi, c'est le reclaim SANS ISSUE qui l'est :
+# MemorySwapMax=4G donne une soupape, et MemoryHigh=9G/MemoryMax=10G
+# raccourcit la fenêtre de throttle (9->10G au lieu de 8->10G).
 workstation_user_slice_memory_guard_enabled: true
 workstation_user_slice_uid: 1000
-workstation_user_slice_memory_high: "8G"
+workstation_user_slice_memory_high: "9G"
 workstation_user_slice_memory_max: "10G"
-workstation_user_slice_memory_swap_max: "2G"
+workstation_user_slice_memory_swap_max: "4G"
 
 # --- Intégrité FS après coupure de courant brutale ---
 # fsck.repair=yes : répare automatiquement l'ext4 au boot si le FS est sale

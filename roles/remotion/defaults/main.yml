@@ -20,7 +20,14 @@ remotion_port: 3200
 remotion_mesh_bind_ip: "100.64.0.1"
 
 # Docker resource limits (RPi 5 16GB — Chrome headless for rendering)
-remotion_memory_limit: "8G"
+# REVUE NO-GO 2026-07-27 (finding H4) : plafond redimensionné 8G -> 1536M.
+# memory.peak mesuré = 215 MiB en usage réel (le 8G d'origine était ~38x le
+# pic constaté). Cap system.slice agrégé (sshd/tailscaled/docker/...)
+# proposé par la revue REJETÉ (cf. justification complète dans
+# roles/comfyui/defaults/main.yml, comfyui_memory_limit) — risque de couper
+# l'accès distant sur une machine sans accès physique ; le plafonnement
+# conteneur par conteneur suffit.
+remotion_memory_limit: "1536M"
 remotion_memory_reservation: "512M"
 remotion_cpu_limit: "2.0"
 

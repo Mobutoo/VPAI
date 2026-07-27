@@ -57,7 +57,7 @@ lint: ## Lancer yamllint + ansible-lint
 	@echo "$(GREEN)>>> Running yamllint...$(NC)"
 	find . \( -name '*.yml' -o -name '*.yaml' \) ! -path './.git/*' ! -path './.venv/*' ! -path '*/molecule/*' ! -path '*/collections/*' ! -path '*/node_modules/*' ! -name 'secrets.yml' -print0 | xargs -0 $(YAMLLINT) -c .yamllint.yml
 	@echo "$(GREEN)>>> Running ansible-lint...$(NC)"
-	$(ANSIBLE_LINT) playbooks/stacks/site.yml
+	$(ANSIBLE_LINT) playbooks/stacks/site.yml playbooks/hosts/workstation.yml
 	@echo "$(GREEN)>>> All linting passed$(NC)"
 
 .PHONY: lint-yaml
@@ -66,7 +66,7 @@ lint-yaml: ## Lancer yamllint uniquement
 
 .PHONY: lint-ansible
 lint-ansible: ## Lancer ansible-lint uniquement
-	$(ANSIBLE_LINT) playbooks/stacks/site.yml
+	$(ANSIBLE_LINT) playbooks/stacks/site.yml playbooks/hosts/workstation.yml
 
 .PHONY: check-no-latest
 check-no-latest: ## Vérifier qu'aucune image Docker n'utilise :latest (versions.yml + templates des rôles de site.yml)

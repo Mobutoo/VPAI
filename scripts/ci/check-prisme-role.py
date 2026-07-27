@@ -28,7 +28,7 @@ require(any("pg_isready" in str(handler) for handler in listeners), "reload prob
 require(any("pg_reload_conf" in str(handler) for handler in listeners), "SQL reload missing")
 
 ordered = [
-    "host    prisme          all             {{ prisme_db_proxy_backend_ip }}/32    md5",
+    "host    prisme          prisme          {{ prisme_db_proxy_backend_ip }}/32    md5",
     "host    all             all             {{ prisme_db_proxy_backend_ip }}/32    reject",
     "host    prisme          all             {{ docker_network_backend_subnet }}    reject",
     "host    all             all             {{ prisme_service_backend_ip }}/32     reject",
@@ -38,12 +38,12 @@ positions = [hba.index(line) for line in ordered]
 require(positions == sorted(positions), "Prisme HBA rules are not before broad backend allow")
 require("{% if prisme_enabled | default(false) | bool %}" in hba, "HBA flag guard missing")
 
-service_block = compose.split("\nnetworks:", 1)[0]
+service_block = compose.split("\nservices:\n", 1)[1].split("\nnetworks:", 1)[0]
 services = re.findall(r"^  ([a-z][a-z0-9-]+):$", service_block, flags=re.MULTILINE)
 require(
     services
     == [
-        "web",
+        "prisme",
         "outbox",
         "research-worker",
         "browser",
@@ -56,6 +56,11 @@ require(
     f"unexpected Prisme service inventory: {services}",
 )
 require(compose.count("networks: [prisme_internal, egress]") == 2, "egress must have two consumers")
+require("recreate: always" in (ROOT / "roles/prisme/tasks/main.yml").read_text(), "forced recreate missing")
+require(compose.count("driver: json-file") == 2, "logging anchors/config missing")
+require(compose.count("healthcheck:") == 2, "healthcheck anchors/config missing")
+require("connector_internal: {}" in compose, "webhook receiver lacks connector network")
+require("expose: [\"3000\"]" in compose, "Prisme port 3000 missing")
 require("bind {{ prisme_db_proxy_internal_ip }}:5432" in (ROOT / "roles/prisme/templates/haproxy.cfg.j2").read_text(), "proxy bind missing")
 require("bind 0.0.0.0" not in (ROOT / "roles/prisme/templates/haproxy.cfg.j2").read_text(), "proxy must not bind all interfaces")
 

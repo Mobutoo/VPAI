@@ -1,0 +1,38 @@
+---
+- name: Converge Prisme role without Docker mutations
+  hosts: all
+  become: true
+  vars:
+    common_molecule_mode: true
+    prisme_enabled: true
+    prisme_deploy_enabled: false
+    prod_user: root
+    project_name: molecule
+    postgresql_password: molecule-shared-password
+    vault_prisme_session_token: molecule-session-secret-32-characters
+    prisme_image_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    prisme_db_proxy_image: "haproxy@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    prisme_web_memory_limit: 1G
+    prisme_web_memory_reservation: 512M
+    prisme_outbox_memory_limit: 384M
+    prisme_outbox_memory_reservation: 192M
+    prisme_research_memory_limit: 512M
+    prisme_research_memory_reservation: 256M
+    prisme_browser_memory_limit: 1536M
+    prisme_browser_memory_reservation: 768M
+    prisme_connector_memory_limit: 384M
+    prisme_connector_memory_reservation: 192M
+    prisme_indexer_memory_limit: 512M
+    prisme_indexer_memory_reservation: 256M
+    prisme_consolidation_memory_limit: 384M
+    prisme_consolidation_memory_reservation: 192M
+    prisme_sparse_memory_limit: 1G
+    prisme_sparse_memory_reservation: 512M
+    prisme_db_proxy_memory_limit: 128M
+    prisme_db_proxy_memory_reservation: 64M
+    prisme_db_proxy_backend_ip: 172.20.2.240
+    prisme_service_backend_ip: 172.20.2.241
+    docker_log_max_size: 10m
+    docker_log_max_file: "3"
+  roles:
+    - role: prisme

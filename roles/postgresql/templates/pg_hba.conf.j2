@@ -7,7 +7,7 @@ host    all             all             127.0.0.1/32            md5
 host    all             all             ::1/128                 md5
 {% if prisme_enabled | default(false) | bool %}
 # Prisme reaches only its database through the dedicated proxy.
-host    prisme          all             {{ prisme_db_proxy_backend_ip }}/32    md5
+host    prisme          prisme          {{ prisme_db_proxy_backend_ip }}/32    md5
 host    all             all             {{ prisme_db_proxy_backend_ip }}/32    reject
 host    prisme          all             {{ docker_network_backend_subnet }}    reject
 host    all             all             {{ prisme_service_backend_ip }}/32     reject

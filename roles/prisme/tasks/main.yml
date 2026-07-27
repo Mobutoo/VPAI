@@ -10,6 +10,7 @@
       - prisme_db_proxy_memory_reservation is defined
       - vault_prisme_session_token is defined
       - vault_prisme_session_token | length >= 32
+      - not (prisme_karakeep_enabled | bool) or vault_prisme_karakeep_token is defined
     fail_msg: "Prisme image digests or authoritative capacity/IP variables are missing"
     quiet: true
   when: prisme_enabled | bool
@@ -21,7 +22,9 @@
     internal: true
     state: present
   become: true
-  when: prisme_enabled | bool
+  when:
+    - prisme_enabled | bool
+    - not (common_molecule_mode | default(false) | bool)
   tags: [prisme]
 
 - name: Inspect backend network before reserving Prisme IPs
@@ -35,7 +38,9 @@
       - "{% raw %}{{json .Containers}}{% endraw %}"
   register: prisme_backend_network_state
   changed_when: false
-  when: prisme_enabled | bool
+  when:
+    - prisme_enabled | bool
+    - not (common_molecule_mode | default(false) | bool)
   tags: [prisme]
 
 - name: Refuse occupied Prisme backend IPs
@@ -45,7 +50,9 @@
       - prisme_service_backend_ip not in prisme_backend_network_state.stdout
     fail_msg: "Prisme fixed backend IP collision: G0 IP decision required"
     quiet: true
-  when: prisme_enabled | bool
+  when:
+    - prisme_enabled | bool
+    - not (common_molecule_mode | default(false) | bool)
   tags: [prisme]
 
 - name: Create Prisme directories
@@ -103,6 +110,7 @@
     files: [docker-compose.yml]
     state: present
     pull: never
+    recreate: always
   become: true
   when:
     - prisme_enabled | bool

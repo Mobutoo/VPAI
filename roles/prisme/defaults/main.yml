@@ -10,8 +10,6 @@ prisme_image_digest: ""
 prisme_db_proxy_image: ""
 prisme_internal_subnet: "172.30.10.0/24"
 prisme_db_proxy_internal_ip: "172.30.10.10"
-prisme_db_proxy_backend_ip: "172.20.2.240"
-prisme_service_backend_ip: "172.20.2.241"
 prisme_database_name: "prisme"
 prisme_database_user: "prisme"
 prisme_karakeep_enabled: false

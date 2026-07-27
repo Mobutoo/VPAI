@@ -17,6 +17,8 @@ docker_network_egress_subnet: "172.20.4.0/24"
 docker_network_sandbox_subnet: "172.20.5.0/24"
 
 # --- Prisme fixed backend endpoints (reserved only when prisme_enabled=true) ---
+prisme_enabled: false
+karakeep_enabled: false
 prisme_db_proxy_backend_ip: "172.20.2.240"
 prisme_service_backend_ip: "172.20.2.241"
 

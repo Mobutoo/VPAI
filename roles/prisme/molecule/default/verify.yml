@@ -1,0 +1,11 @@
+---
+- name: Verify rendered Prisme files
+  hosts: all
+  tasks:
+    - name: Stat rendered compose
+      ansible.builtin.stat:
+        path: /opt/molecule/configs/prisme/docker-compose.yml
+      register: prisme_compose
+    - name: Assert compose exists
+      ansible.builtin.assert:
+        that: prisme_compose.stat.exists

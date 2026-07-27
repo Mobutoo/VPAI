@@ -1,6 +1,7 @@
 ---
 galaxy_info:
   role_name: prisme
+  namespace: mobutoo
   author: VPAI
   description: Gated Prisme application stack
   license: proprietary

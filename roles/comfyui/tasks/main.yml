@@ -163,10 +163,13 @@
   until: comfyui_health.status == 200
   changed_when: false
   failed_when: false
+  # lecture seule: exécuter réellement même en --check (sinon comfyui_health
+  # reste {} et .status casse la tâche suivante — REX --check cassé)
+  check_mode: false
 
 - name: Display ComfyUI health status
   ansible.builtin.debug:
-    msg: "ComfyUI: {{ 'healthy' if comfyui_health.status == 200 else 'unhealthy (status: ' ~ comfyui_health.status ~ ')' }}"
+    msg: "ComfyUI: {{ 'healthy' if comfyui_health.status | default(0) == 200 else 'unhealthy (status: ' ~ (comfyui_health.status | default('unknown')) ~ ')' }}"
 
 # --- Concurrent Access: CLI + Git + Watcher ---
 

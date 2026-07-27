@@ -149,6 +149,9 @@
   register: remotion_health
   until: remotion_health.status == 200
   changed_when: false
+  # lecture seule: exécuter réellement même en --check (sinon remotion_health
+  # reste {} et .status casse la tâche suivante — REX --check cassé)
+  check_mode: false
 
 - name: Fail if Remotion is unhealthy
   ansible.builtin.fail:

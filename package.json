@@ -1,0 +1,9 @@
+{
+  "name": "vpai-ops-tools",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.14.0",
+  "dependencies": {
+    "yaml": "2.9.0"
+  }
+}

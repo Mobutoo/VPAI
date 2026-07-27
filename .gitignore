@@ -65,6 +65,7 @@ roles/*/molecule/default/.molecule/
 
 # --- Caches regénérables / résidus de scraping ---
 **/tiktoken_cache/
+/node_modules/
 .firecrawl/test_mcp*.py
 
 # --- Environment ---

@@ -1,0 +1,36 @@
+#!/usr/bin/env node
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { stringify } from 'yaml';
+
+import { readRegistry, registrySha256 } from './qdrant-registry-canonicalize.mjs';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const target = resolve(process.argv[2] ?? '../saas/prisme');
+const source = resolve(root, 'inventory/group_vars/all/qdrant_collections.yml');
+const snapshotPath = resolve(target, 'config/qdrant-collections.snapshot.yml');
+const hashPath = resolve(target, 'config/qdrant-collections.snapshot.sha256');
+const canonicalizerTarget = resolve(target, 'scripts/qdrant-registry-canonicalize.mjs');
+const canonicalizerHashTarget = resolve(target, 'config/qdrant-registry-canonicalizer.sha256');
+const registry = await readRegistry(source);
+registry.source_commit = execFileSync('git', ['rev-parse', 'HEAD'], {
+	cwd: root,
+	encoding: 'utf8'
+}).trim();
+
+await mkdir(dirname(snapshotPath), { recursive: true });
+await mkdir(dirname(canonicalizerTarget), { recursive: true });
+await writeFile(snapshotPath, stringify(registry, { lineWidth: 120 }), 'utf8');
+await writeFile(hashPath, `${registrySha256(registry)}\n`, 'utf8');
+const canonicalizer = await readFile(resolve(root, 'scripts/qdrant-registry-canonicalize.mjs'));
+await writeFile(canonicalizerTarget, canonicalizer);
+await writeFile(
+	canonicalizerHashTarget,
+	`${createHash('sha256').update(canonicalizer).digest('hex')}\n`,
+	'utf8'
+);
+console.log(`generated ${snapshotPath}`);

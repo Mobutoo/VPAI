@@ -1,0 +1,104 @@
+schema_version: 1
+prisme_registry_ref: "54d0375"
+endpoint:
+  controller: "https://qd.ewutelo.cloud:443"
+  runtime: "http://javisi_qdrant:6333"
+aliases:
+  knowledge_current: knowledge_v1
+test_targets:
+  prefix: prisme_test_
+  alias_prefix: prisme_test_alias_
+  require_test_mode: true
+  require_ephemeral_loopback: true
+collections:
+  - name: knowledge_v1
+    owner: prisme
+    purpose: Reconstructible verified knowledge index
+    source_of_truth: PostgreSQL and tank/knowledge
+    producer: prisme-indexer
+    consumers: [prisme-retrieval]
+    vector_schema:
+      dense: {name: dense, size: 768, distance: Cosine, hnsw_m: 16, hnsw_ef_construct: 100}
+      sparse: {name: bm25, modifier: idf}
+      on_disk_payload: true
+    payload_schema: prisme-knowledge-v1
+    retention: soft-validity-window
+    backup: reconstructible-plus-qdrant-snapshot
+    mutation_policy: allow-prisme-bootstrap-and-runtime
+  - name: memory_v3
+    owner: vpai-memory
+    purpose: Agent operational memory
+    source_of_truth: memory manifests and source repositories
+    producer: llamaindex-memory-worker
+    consumers: [memory-mcp, n8n]
+    vector_schema: owner-declared
+    payload_schema: owner-declared
+    retention: owner-declared
+    backup: qdrant-snapshot
+    mutation_policy: deny-from-prisme
+  - name: trading_v1
+    owner: hawktrade
+    purpose: Trading research corpus
+    source_of_truth: hawktrade corpus
+    producer: hawktrade-indexer
+    consumers: [hawktrade]
+    vector_schema: owner-declared
+    payload_schema: owner-declared
+    retention: owner-declared
+    backup: owner-declared
+    mutation_policy: deny-from-prisme
+  - name: content_index
+    owner: content-factory
+    purpose: Content production index
+    source_of_truth: owner-declared
+    producer: content-factory
+    consumers: [content-factory]
+    vector_schema: owner-declared
+    payload_schema: owner-declared
+    retention: owner-declared
+    backup: owner-declared
+    mutation_policy: deny-from-prisme
+  - name: model-registry
+    owner: videoref
+    purpose: Model registry search index
+    source_of_truth: owner-declared
+    producer: videoref-engine
+    consumers: [videoref-engine]
+    vector_schema: owner-declared
+    payload_schema: owner-declared
+    retention: owner-declared
+    backup: owner-declared
+    mutation_policy: deny-from-prisme
+  - name: palais_memory
+    owner: palais
+    purpose: Palais application memory
+    source_of_truth: owner-declared
+    producer: palais
+    consumers: [palais]
+    vector_schema: owner-declared
+    payload_schema: owner-declared
+    retention: owner-declared
+    backup: owner-declared
+    mutation_policy: deny-from-prisme
+  - name: semantic_cache
+    owner: litellm
+    purpose: Semantic response cache
+    source_of_truth: cache-only
+    producer: litellm
+    consumers: [litellm]
+    vector_schema: owner-declared
+    payload_schema: owner-declared
+    retention: owner-declared
+    backup: none
+    mutation_policy: deny-from-prisme
+  - name: videoref_styles
+    owner: videoref
+    purpose: Video style reference index
+    source_of_truth: owner-declared
+    producer: videoref-engine
+    consumers: [videoref-engine]
+    vector_schema: owner-declared
+    payload_schema: owner-declared
+    retention: owner-declared
+    backup: owner-declared
+    mutation_policy: deny-from-prisme

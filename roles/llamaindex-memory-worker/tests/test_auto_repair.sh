@@ -107,6 +107,11 @@ reset_state() {
 seed_state() {
   # $1=LAST_SUCCESS_EPOCH $2=DRIFT_TICKS $3=HEALTHY_TICKS $4=LAST_REPAIR_EPOCH
   # $5=REPAIR_ATTEMPTS $6=ALERTED $7=LAST_ALERT
+  # F5/F10 fix (revue Opus 2026-07-27) : la sonde de corruption teste
+  # desormais la DERNIERE cle ecrite par write_state (ACTIVATING_TICKS,
+  # ajoutee par F10) -- un state seede sans cette cle serait juge corrompu
+  # par TOUS les scenarios qui suivent. CONSECUTIVE_BLIND/ACTIVATING_TICKS
+  # toujours a 0 ici (aucun scenario seed_state n'en depend).
   cat > "$STATE_FILE" <<EOF
 LAST_SUCCESS_EPOCH=$1
 DRIFT_TICKS=$2
@@ -115,6 +120,8 @@ LAST_REPAIR_EPOCH=$4
 REPAIR_ATTEMPTS=$5
 ALERTED=$6
 LAST_ALERT=$7
+CONSECUTIVE_BLIND=0
+ACTIVATING_TICKS=0
 EOF
 }
 
@@ -201,6 +208,22 @@ ok "$(! echo "$out" | grep -q 'quotedBothSECRET15' && echo 1)" "'password':'v' (
 out="$(printf 'first line, nothing secret\napi_key: multiSECRET16line\nlast line, clean' | bash "$SCRIPT" __redact_test)"
 ok "$(! echo "$out" | grep -q 'multiSECRET16line' && echo 1)" "redact multi-ligne: secret sur la ligne du milieu masque"
 ok "$([ "$(echo "$out" | wc -l)" -ge 3 ] && echo 1)" "redact multi-ligne: les lignes non sensibles survivent (pas de troncature globale)"
+
+# --- F11 fix : private[-_]?key ajoute aux mots-cles. ---
+out="$(printf 'private_key: pemSECRET17val' | bash "$SCRIPT" __redact_test)"
+ok "$(! echo "$out" | grep -q 'pemSECRET17val' && echo 1)" "private_key: v (F11 -- mot-cle ajoute) masque"
+
+# =====================================================================
+# 1b) F1/F12 : html_escape() isolee -- point d'entree cache
+#     __html_escape_test (meme pattern que __redact_test). ORDRE STRICT :
+#     '&' doit etre traite EN PREMIER (verifie que les '&' injectes par
+#     &lt;/&gt; ne sont pas re-echappes en &amp;lt;/&amp;gt;).
+# =====================================================================
+echo "== html_escape() =="
+out="$(printf '%s' 'a < b > c & d' | bash "$SCRIPT" __html_escape_test)"
+ok "$([ "$out" = 'a &lt; b &gt; c &amp; d' ] && echo 1)" "html_escape: '<'/'>'/'&' echappes dans le bon ordre (F1)"
+out="$(printf '%s' '<script>alert(1)</script>' | bash "$SCRIPT" __html_escape_test)"
+ok "$([ "$out" = '&lt;script&gt;alert(1)&lt;/script&gt;' ] && echo 1)" "html_escape: balises completes echappees"
 
 # =====================================================================
 # 2) Garde timer-disabled -> notif unique, aucune action.
@@ -474,6 +497,84 @@ OUT="$(PATH="$FAKEBIN2:$PATH" bash "$SCRIPT" 2>&1)"
 rc=$?
 ok "$([ "$rc" -eq 2 ] && echo 1)" "systemctl injoignable: exit code 2"
 ok "$(echo "$OUT" | grep -qi 'sonde aveugle' && echo 1)" "systemctl injoignable: log fort explicite (pas de silence)"
+
+# =====================================================================
+# 14) F12/M8 : alerte sonde aveugle emise EXACTEMENT au 4e tick consecutif
+#     (BLIND_ALERT_EVERY=4 dans le contexte de rendu du harnais) -- jamais
+#     avant (1-3), jamais re-emise au 5e (5 % 4 != 0).
+# =====================================================================
+echo "== F12: alerte M8 exactement au 4e tick aveugle =="
+reset_state
+for _i in 1 2 3; do
+  : > "$CURL_LOG"
+  PATH="$FAKEBIN2:$PATH" bash "$SCRIPT" >/dev/null 2>&1 || true
+  ok "$([ "$(curl_call_count)" = 0 ] && echo 1)" "sonde aveugle tick ${_i}/4: pas d'alerte (avant le seuil)"
+done
+: > "$CURL_LOG"
+PATH="$FAKEBIN2:$PATH" bash "$SCRIPT" >/dev/null 2>&1 || true
+ok "$([ "$(curl_call_count)" = 1 ] && echo 1)" "sonde aveugle tick 4/4: alerte emise (exactement au seuil)"
+ok "$(curl_log_contains 'aveugle' && echo 1)" "sonde aveugle tick 4/4: message d'alerte correct"
+: > "$CURL_LOG"
+PATH="$FAKEBIN2:$PATH" bash "$SCRIPT" >/dev/null 2>&1 || true
+ok "$([ "$(curl_call_count)" = 0 ] && echo 1)" "sonde aveugle tick 5/4: pas de re-emission (5 % 4 != 0)"
+
+# =====================================================================
+# 15) F12/F5 : state tronque APRES la 1ere ligne (LAST_SUCCESS_EPOCH= seul
+#     present, cle DERNIERE ecrite -- ACTIVATING_TICKS -- absente) -> detecte
+#     comme corrompu, notification dediee. L'ancienne sonde (teste la 1ere
+#     cle) aurait laisse passer ce cas sans le voir.
+# =====================================================================
+echo "== F12/F5: state tronque apres la 1ere ligne -> notif corruption =="
+reset_state
+printf 'LAST_SUCCESS_EPOCH=%s\n' "$OLD_DRIFT" > "$STATE_FILE"
+OUT="$(AUTOREPAIR_FAKE_ACTIVE_STATE=inactive AUTOREPAIR_FAKE_EXEC_MAIN_STATUS=0 AUTOREPAIR_FAKE_RESULT=success \
+  bash "$SCRIPT" 2>&1)"
+rc=$?
+ok "$([ "$rc" -eq 0 ] && echo 1)" "state tronque (1ere ligne seule): le script survit (exit 0)"
+ok "$(curl_log_contains 'corrompu' && echo 1)" "state tronque (1ere ligne seule): notification de corruption emise (F5 -- sonde sur la DERNIERE cle)"
+
+# =====================================================================
+# 16) F12/F6 : valeur DRIFT_TICKS=- (non numerique, mais compatible avec
+#     l'ancien filtre bugue) retombe sur le defaut (0) sans casser
+#     l'arithmetique `$(( DRIFT_TICKS + 1 ))` en aval.
+# =====================================================================
+echo "== F12/F6: DRIFT_TICKS=- retombe sur le defaut sans casser l'arithmetique =="
+reset_state
+cat > "$STATE_FILE" <<EOF
+LAST_SUCCESS_EPOCH=$OLD_DRIFT
+DRIFT_TICKS=-
+HEALTHY_TICKS=0
+LAST_REPAIR_EPOCH=0
+REPAIR_ATTEMPTS=0
+ALERTED=0
+LAST_ALERT=0
+CONSECUTIVE_BLIND=0
+ACTIVATING_TICKS=0
+EOF
+OUT="$(AUTOREPAIR_FAKE_ACTIVE_STATE=failed AUTOREPAIR_FAKE_EXEC_MAIN_STATUS=1 AUTOREPAIR_FAKE_RESULT=failed \
+  bash "$SCRIPT" 2>&1)"
+rc=$?
+ok "$([ "$rc" -eq 0 ] && echo 1)" "DRIFT_TICKS=- : le script survit, pas d'erreur arithmetique (exit 0)"
+ok "$([ "$(state_get DRIFT_TICKS)" = 1 ] && echo 1)" "DRIFT_TICKS=- : retombe sur le defaut (0) puis incremente normalement (1)"
+
+# =====================================================================
+# 17) F12/F10 : ACTIVATING_TICKS -> alerte exactement au 4e tick consecutif
+#     en ActiveState=activating (meme cadence BLIND_ALERT_EVERY=4).
+# =====================================================================
+echo "== F12/F10: alerte ACTIVATING_TICKS au 4e tick =="
+reset_state
+for _i in 1 2 3; do
+  : > "$CURL_LOG"
+  AUTOREPAIR_FAKE_ACTIVE_STATE=activating AUTOREPAIR_FAKE_EXEC_MAIN_STATUS=0 AUTOREPAIR_FAKE_RESULT=success \
+    bash "$SCRIPT" >/dev/null
+  ok "$([ "$(curl_call_count)" = 0 ] && echo 1)" "activating tick ${_i}/4: pas d'alerte (avant le seuil)"
+done
+: > "$CURL_LOG"
+AUTOREPAIR_FAKE_ACTIVE_STATE=activating AUTOREPAIR_FAKE_EXEC_MAIN_STATUS=0 AUTOREPAIR_FAKE_RESULT=success \
+  bash "$SCRIPT" >/dev/null
+ok "$([ "$(curl_call_count)" = 1 ] && echo 1)" "activating tick 4/4: alerte emise (exactement au seuil, F10)"
+ok "$(curl_log_contains 'activating' && echo 1)" "activating tick 4/4: message d'alerte mentionne le run fige"
+ok "$([ "$(state_get DRIFT_TICKS)" = 0 ] && echo 1)" "activating tick 4/4: DRIFT_TICKS toujours inchange (H2 preserve)"
 
 # =====================================================================
 rm -rf "$TMP"

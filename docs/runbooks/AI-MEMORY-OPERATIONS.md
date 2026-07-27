@@ -315,6 +315,18 @@ INCHANGES par cette brique -- elle ne les remplace pas, elle comble
 l'angle mort commun aux deux (run qui crashe avant de rapporter, cause
 jamais identifiee, alertes en boucle sans jamais agir).
 
+Couplage avec le watchdog de stagnation (F10, revue Opus 2026-07-27) : quand
+`ActiveState=activating` (run en cours), auto-repair suspend tout jugement
+(§4.1.2/H2) -- ni sain, ni drift, aucune action tentee (un run legitime peut
+prendre du temps). Cette suspension elle-meme n'est plus muette sans borne :
+un compteur `ACTIVATING_TICKS` (etat persistant) declenche une alerte
+Telegram au 4e tick consecutif en `activating` (~1h, meme cadence/pattern que
+`CONSECUTIVE_BLIND`/M8), rappelant que `memory-worker-watchdog` (4.1.2) est le
+mecanisme qui BORNE effectivement ce cas (seuil stagnation 90min,
+`memory_worker_watchdog_stall_threshold_sec`) -- auto-repair n'agit jamais
+directement sur un run en cours, il alerte seulement en relais si le
+watchdog semble lui-meme silencieux.
+
 Verification:
 
 ```bash

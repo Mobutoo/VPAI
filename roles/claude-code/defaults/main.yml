@@ -24,8 +24,8 @@ claude_code_auth_mode: "oauth"
 # vault_claude_api_key defined in inventory/group_vars/all/secrets.yml
 
 # Default model for Claude Code orchestrator (main session)
-# Opus 4.6 = deep reasoning for planning, review, control
-claude_code_default_model: "claude-opus-4-6"
+# Opus = deep reasoning for planning, review, control (alias court, cf live 2026-07-28)
+claude_code_default_model: "opus"
 
 # --- MCP Servers ---
 # Each MCP server is installed as npm package + registered in mcp.json
@@ -59,7 +59,22 @@ claude_code_mcp_qdrant_enabled: true
 
 # Auto-compact threshold (% context used before triggering compaction)
 # Lower = compact earlier = more room for recovery. Default 83%, recommended 70%
-claude_code_autocompact_pct: 70
+# (65 = valeur en place sur waza depuis les sessions de tuning des hooks, cf live 2026-07-28)
+claude_code_autocompact_pct: 65
+
+# Docker context par défaut — sans lui, `docker` sur waza tape la prod Sese (REX
+# REX-SESSION-MCP-STACK-2026-04-13.md) ; ce var force explicitement l'intention.
+claude_code_docker_context: "sese-ai"
+
+# Seuil (nombre d'appels Bash) avant nudge de compaction — distinct du seuil global
+claude_code_bash_compact_threshold: 15
+
+# Nombre d'erreurs consécutives avant escalade (error-escalator-v2.js)
+claude_code_error_escalator_threshold: 3
+
+# Chat ID Telegram destinataire des notifications directes de hook (notify-telegram.sh) —
+# ID non-secret (le token bot, lui, reste dans le store secrets.env, jamais ici)
+claude_code_telegram_chat_id: "6619155988"
 
 # --- GSD (Get-Shit-Done) ---
 # Pinned version — Check: https://www.npmjs.com/package/get-shit-done-cc
@@ -72,7 +87,8 @@ claude_code_gsd_yolo_mode: true
 claude_code_gsd_auto_compact_enabled: true
 
 # Tool call threshold before suggesting compaction (lower = more aggressive)
-claude_code_gsd_compact_threshold: 40
+# (20 = valeur en place sur waza depuis les sessions de tuning des hooks, cf live 2026-07-28)
+claude_code_gsd_compact_threshold: 20
 
 # --- GSD Model Routing ---
 # model_profile: quality (Opus everywhere), balanced (Opus plans, Sonnet executes), budget (Sonnet everywhere)

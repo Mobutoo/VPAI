@@ -1,12 +1,14 @@
 {
-  "model": "{{ claude_code_default_model }}",
   "env": {
-{% if claude_code_auth_mode | default('oauth') == 'api_key' %}
-    "ANTHROPIC_API_KEY": "${CLAUDE_API_KEY}",
-{% endif %}
-    "N8N_API_KEY": "${N8N_API_KEY}",
+    "DOCKER_CONTEXT": "{{ claude_code_docker_context }}",
     "COMPACT_THRESHOLD": "{{ claude_code_gsd_compact_threshold | default(40) }}",
-    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "{{ claude_code_autocompact_pct | default(70) }}"
+    "BASH_COMPACT_THRESHOLD": "{{ claude_code_bash_compact_threshold }}",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "{{ claude_code_autocompact_pct | default(70) }}",
+    "ERROR_ESCALATOR_THRESHOLD": "{{ claude_code_error_escalator_threshold }}",
+    "TELEGRAM_CHAT_ID": "{{ claude_code_telegram_chat_id }}"
+{% if claude_code_auth_mode | default('oauth') == 'api_key' %}
+    ,"ANTHROPIC_API_KEY": "${CLAUDE_API_KEY}"
+{% endif %}
   },
   "permissions": {
     "allow": [
@@ -17,34 +19,267 @@
       "Bash(ansible-lint:*)",
       "Bash(yamllint:*)",
       "Read(**)",
-      "Write(/home/{{ claude_code_user }}/projects/**)"
+      "Edit(/home/{{ claude_code_user }}/work/**)",
+      "Bash(ssh -i '~/.ssh/seko-vpn-deploy' -p 804 mobuone@100.64.0.14 ':*)",
+      "Bash(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'docker exec javisi_n8n sh -c \"wget -qO- --post-data='\"'\"'{\\\\\"commands\\\\\":[{\\\\\"command\\\\\":\\\\\"memory_status\\\\\",\\\\\"description\\\\\":\\\\\"Etat du worker: dernier run + Qdrant live\\\\\"},{\\\\\"command\\\\\":\\\\\"memory_last\\\\\",\\\\\"description\\\\\":\\\\\"5 derniers runs \\(compact\\)\\\\\"},{\\\\\"command\\\\\":\\\\\"memory_health\\\\\",\\\\\"description\\\\\":\\\\\"Healthcheck a la demande\\\\\"},{\\\\\"command\\\\\":\\\\\"memory_help\\\\\",\\\\\"description\\\\\":\\\\\"Liste des commandes memory\\\\\"}]}'\"'\"' --header=\\\\\"Content-Type: application/json\\\\\" \\\\\"https://api.telegram.org/bot\\\\${TELEGRAM_MONITORING_BOT_TOKEN}/setMyCommands\\\\\"\"')",
+      "Bash(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'docker exec javisi_n8n sh -c \"wget -qO- \\\\\"https://api.telegram.org/bot\\\\${TELEGRAM_MONITORING_BOT_TOKEN}/getMyCommands\\\\\"\"')",
+      "Bash(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'docker exec javisi_n8n sh -c \"wget -qO- \\\\\"https://api.telegram.org/bot\\\\${TELEGRAM_MONITORING_BOT_TOKEN}/getWebhookInfo\\\\\"\"')",
+      "Bash(curl -sS -o /dev/null -w \"%{{ '{' }}http_code{{ '}' }}\\\\n\" -X POST https://mayi.ewutelo.cloud/webhook/memory-telegram-bot -H \"Content-Type: application/json\" -d \"{{ '{}' }}\")",
+      "Bash(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'docker exec javisi_caddy cat /etc/caddy/Caddyfile 2>/dev/null | grep -A 20 \"mayi\\\\.\"')",
+      "Bash(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'docker exec javisi_caddy cat /etc/caddy/Caddyfile 2>/dev/null | grep -B2 -A3 \"webhook\"')",
+      "Bash(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'docker exec javisi_postgresql psql -U n8n -d n8n -c \"SELECT id, \\\\\"workflowId\\\\\", mode, status, \\\\\"startedAt\\\\\", \\\\\"stoppedAt\\\\\" FROM execution_entity WHERE \\\\\"workflowId\\\\\"=\\(SELECT id FROM workflow_entity WHERE name=\\\\\"'\"'\"'memory-telegram-bot\\\\\"'\"'\"'\\) ORDER BY \\\\\"startedAt\\\\\" DESC LIMIT 10;\"')",
+      "Bash(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 \"docker exec -e PGPASSWORD=\\\\$\\(docker exec javisi_n8n printenv DB_POSTGRESDB_PASSWORD\\) javisi_postgresql psql -U n8n -d n8n -tAc \\\\\"SELECT id, workflow_id, mode, status, started_at FROM execution_entity WHERE workflow_id='fPBCNTxDuMp9izLW' ORDER BY started_at DESC LIMIT 10;\\\\\" 2>&1\")",
+      "Bash(ssh -i '~/.ssh/seko-vpn-deploy' -p 804 mobuone@100.64.0.14 'PWD=$\\(docker exec javisi_n8n printenv DB_POSTGRESDB_PASSWORD\\); docker exec -e PGPASSWORD=\"$PWD\" javisi_postgresql psql -U n8n -d n8n -c '\\\\''SELECT id, \"workflowId\", mode, status, \"startedAt\" FROM execution_entity WHERE \"workflowId\"='\\\\''\"'\\\\''\"'\\\\''fPBCNTxDuMp9izLW'\\\\''\"'\\\\''\"'\\\\'' ORDER BY \"startedAt\" DESC LIMIT 10;'\\\\''')",
+      "Bash(ssh -i '~/.ssh/seko-vpn-deploy' -p 804 mobuone@100.64.0.14 'PWD=$\\(docker exec javisi_n8n printenv DB_POSTGRESDB_PASSWORD\\); docker exec -e PGPASSWORD=\"$PWD\" javisi_postgresql psql -U n8n -d n8n -tAc \"SELECT data FROM execution_data WHERE \\\\\"executionId\\\\\"=11637;\" | head -c 4000')",
+      "Bash(ssh -i '~/.ssh/seko-vpn-deploy' -p 804 mobuone@100.64.0.14 'PWD=$\\(docker exec javisi_n8n printenv DB_POSTGRESDB_PASSWORD\\); docker exec -e PGPASSWORD=\"$PWD\" javisi_postgresql psql -U n8n -d n8n -c \"SELECT id, name, active FROM workflow_entity WHERE name LIKE '\\\\''memory-%'\\\\'';\"')",
+      "Bash(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'docker logs javisi_n8n 2>&1 | tail -30')",
+      "Bash(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'docker logs javisi_n8n 2>&1 | grep -i \"memory-telegram\\\\|webhook.*register\\\\|Starting.*workflow\\\\|listening\" | tail -30')",
+      "Bash(ssh -i '~/.ssh/seko-vpn-deploy' -p 804 mobuone@100.64.0.14 'PWD=$\\(docker exec javisi_n8n printenv DB_POSTGRESDB_PASSWORD\\); docker exec -e PGPASSWORD=\"$PWD\" javisi_postgresql psql -U n8n -d n8n -c \"SELECT id, mode, status, \\\\\"startedAt\\\\\" FROM execution_entity WHERE \\\\\"workflowId\\\\\"='\\\\''fPBCNTxDuMp9izLW'\\\\'' ORDER BY \\\\\"startedAt\\\\\" DESC LIMIT 3;\"')",
+      "Bash(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'docker exec javisi_n8n wget -qO- --timeout=4 http://javisi_qdrant:6333/collections/memory_v1 2>&1; echo \"---\"; docker ps --format \"{{ '{{' }}.Names{{ '}}' }} {{ '{{' }}.Status{{ '}}' }}\" | grep qdrant')",
+      "Bash(scp -i ~/.ssh/seko-vpn-deploy -P 804 /home/{{ claude_code_user }}/work/infra/VPAI/scripts/n8n-workflows/memory-telegram-bot.json mobuone@100.64.0.14:/tmp/memory-telegram-bot.json)",
+      "Bash(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'docker cp /tmp/memory-telegram-bot.json javisi_n8n:/tmp/memory-telegram-bot.json && docker exec javisi_n8n n8n update:workflow --id=fPBCNTxDuMp9izLW --active=false 2>&1 | tail -5')",
+      "Bash(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'docker cp /tmp/memory-telegram-bot.json javisi_postgresql:/tmp/mtb.json && docker exec javisi_postgresql sh -c \"python3 -c \\\\\"import json; d=json.load\\(open\\(\\\\\\\\\\\\\"/tmp/mtb.json\\\\\\\\\\\\\"\\)\\); print\\(json.dumps\\(d[\\\\\\\\\\\\\"nodes\\\\\\\\\\\\\"]\\)\\)\\\\\" > /tmp/nodes.json\" 2>&1')",
+      "Bash(npx gsd-core *)",
+      "Read(.planning/*)",
+      "Edit(.planning/*)",
+      "Read(STATE.md)",
+      "Edit(STATE.md)"
     ],
     "deny": [
       "Bash(rm -rf /*)",
       "Bash(sudo rm:*)",
       "Bash(dd:*)",
-      "Bash(mkfs:*)"
+      "Bash(mkfs:*)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(.secrets)"
     ]
   },
+  "model": "{{ claude_code_default_model }}",
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ claude_code_config_dir }}/hooks/bash-lint.js",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write",
         "hooks": [
           {
             "type": "command",
             "command": "bash {{ claude_code_config_dir }}/hooks/auto-compact.sh"
           }
         ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/usr/bin/node\" \"{{ claude_code_config_dir }}/hooks/gsd-prompt-guard.js\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/usr/bin/node\" \"{{ claude_code_config_dir }}/hooks/gsd-read-guard.js\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"{{ claude_code_config_dir }}/hooks/loi-op-enforcer.js\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"{{ claude_code_config_dir }}/hooks/r0-topic-injector.js\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"{{ claude_code_config_dir }}/hooks/mcp-intent-guard.js\"",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/gsd-validate-commit.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ claude_code_config_dir }}/hooks/risk-tier-guard.js",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ claude_code_config_dir }}/hooks/error-escalator-v2.js"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"{{ claude_code_config_dir }}/hooks/model-routing-advisor.js\"",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/usr/bin/node\" \"{{ claude_code_config_dir }}/hooks/gsd-workflow-guard.js\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/usr/bin/node\" \"{{ claude_code_config_dir }}/hooks/gsd-worktree-path-guard.js\"",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PostToolUse": [
+      {
+        "matcher": "Bash|mcp__qdrant__qdrant-find",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ claude_code_config_dir }}/hooks/r0-marker.js",
+            "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "node {{ claude_code_config_dir }}/hooks/n8n-validate-cli-marker.js",
+            "timeout": 3
+          }
+        ]
+      },
       {
         "matcher": ".*",
         "hooks": [
           {
             "type": "command",
-            "command": "node {{ claude_code_config_dir }}/hooks/gsd-context-monitor.js 2>/dev/null || true"
+            "command": "node {{ claude_code_config_dir }}/hooks/loop-detector.js",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ claude_code_config_dir }}/hooks/gsd-context-monitor.js 2>/dev/null || true",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/gsd-phase-boundary.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/usr/bin/node\" \"{{ claude_code_config_dir }}/hooks/gsd-read-injection-scanner.js\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ claude_code_config_dir }}/hooks/r0-rex-watcher.js",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__n8n-docs__validate_workflow|mcp__n8n-docs__n8n_validate_workflow",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ claude_code_config_dir }}/hooks/n8n-validate-marker.js",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Bash|Agent|Workflow|Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$HOME/.claude/hooks/r6-delegation-advisor.js\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"{{ claude_code_config_dir }}/hooks/gsd-graphify-update.sh\"",
+            "timeout": 5
           }
         ]
       }
@@ -54,7 +289,31 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"{{ claude_code_config_dir }}/hooks/gsd-check-update.js\""
+            "command": "\"/usr/bin/node\" \"{{ claude_code_config_dir }}/hooks/gsd-check-update.js\""
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/gsd-session-state.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/memory-search-start.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/pince-session-start.sh"
           }
         ]
       }
@@ -67,9 +326,28 @@
             "command": "touch /tmp/claude-compact-marker && bash {{ claude_code_config_dir }}/hooks/pre-compact-save.sh"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/usr/bin/node\" \"{{ claude_code_config_dir }}/hooks/gsd-context-monitor.js\"",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "UserPromptSubmit": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ claude_code_config_dir }}/hooks/prompt-preprocessor.js",
+            "timeout": 5
+          }
+        ]
+      },
       {
         "hooks": [
           {
@@ -87,6 +365,105 @@
             "command": "bash {{ claude_code_config_dir }}/hooks/stop-gate.sh"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/session-memory-writer.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node {{ claude_code_config_dir }}/hooks/r0-usage-tracker.js"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/metrics-aggregator.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/verify-stop-gate.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/gate-funnel-stop.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/output-guard.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/memory-size-guard.sh"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/usr/bin/node\" \"{{ claude_code_config_dir }}/hooks/gsd-context-monitor.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash {{ claude_code_config_dir }}/hooks/notify-telegram.sh"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/usr/bin/node\" \"{{ claude_code_config_dir }}/hooks/gsd-context-monitor.js\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "FileChanged": [
+      {
+        "matcher": "config.json",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"/usr/bin/node\" \"{{ claude_code_config_dir }}/hooks/gsd-config-reload.js\"",
+            "timeout": 8
+          }
+        ]
       }
     ]
   },
@@ -94,8 +471,17 @@
     "type": "command",
     "command": "node \"{{ claude_code_config_dir }}/hooks/gsd-statusline.js\""
   },
-  "preferredNotifChannel": "terminal_bell",
+  "enabledPlugins": {
+    "figma@claude-plugins-official": true,
+    "superpowers@superpowers-dev": true
+  },
+  "effortLevel": "xhigh",
+  "advisorModel": "opus",
+  "tui": "fullscreen",
+  "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
   "verbose": false,
-  "skipDangerousModePermissionPrompt": true
+  "preferredNotifChannel": "terminal_bell",
+  "remoteControlAtStartup": false,
+  "agentPushNotifEnabled": true
 }

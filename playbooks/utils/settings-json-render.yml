@@ -1,0 +1,79 @@
+---
+# Rend `roles/claude-code/templates/settings.json.j2` SANS rien déployer, puis le
+# compare au settings.json live de la workstation.
+#
+# Pourquoi : landmine heurtée 2026-07-24 — `make deploy-workstation` a écrasé le
+# settings.json live (42 hooks accumulés, model=opus, deny .env/.secrets) avec un
+# template à 7 hooks, jamais synchronisé. Réparé le 2026-07-28 (git checkout).
+# Même arbitrage que CLAUDE.md (2026-07-21) : **le live fait foi**. Le template
+# doit rendre exactement le live ; sinon un futur `make deploy-workstation`
+# reproduit la même casse.
+#
+# Usage :
+#   source .venv/bin/activate
+#   ansible-playbook -i inventory/hosts.yml playbooks/utils/settings-json-render.yml
+#   # rc = 0 si le rendu est identique au live ; sinon le diff est affiché.
+#
+# `connection: local` : aucune connexion à la cible, aucun changement sur elle.
+- name: Rendu hors déploiement du settings.json (contrôle de dérive live/template)
+  hosts: "{{ target_env | default('workstation') }}"
+  connection: local
+  gather_facts: false
+  vars:
+    settings_json_render_dir: "/tmp/settings-json-render"
+  vars_files:
+    - ../../roles/claude-code/defaults/main.yml
+
+  tasks:
+    - name: Créer le répertoire de rendu
+      ansible.builtin.file:
+        path: "{{ settings_json_render_dir }}"
+        state: directory
+        mode: "0755"
+
+    - name: Rendre le template hors déploiement
+      ansible.builtin.template:
+        src: ../../roles/claude-code/templates/settings.json.j2
+        dest: "{{ settings_json_render_dir }}/settings.rendered.json"
+        mode: "0644"
+
+    - name: Vérifier que le rendu est un JSON valide
+      ansible.builtin.command:
+        cmd: python3 -c "import json; json.load(open('{{ settings_json_render_dir }}/settings.rendered.json'))"
+      register: settings_json_valid
+      changed_when: false
+      failed_when: false
+
+    - name: Échouer si le rendu n'est pas un JSON valide
+      ansible.builtin.assert:
+        that: settings_json_valid.rc == 0
+        fail_msg: "Le rendu du template n'est pas un JSON valide : {{ settings_json_valid.stderr }}"
+        success_msg: "JSON valide."
+
+    - name: Comparer le rendu (JSON normalisé) au settings.json live
+      ansible.builtin.shell:
+        cmd: >-
+          diff -u
+          <(python3 -c "import json; print(json.dumps(json.load(open('{{ claude_code_config_dir }}/settings.json')), indent=2, sort_keys=True))")
+          <(python3 -c "import json; print(json.dumps(json.load(open('{{ settings_json_render_dir }}/settings.rendered.json')), indent=2, sort_keys=True))")
+        executable: /bin/bash
+      register: settings_json_diff
+      changed_when: false
+      failed_when: false
+
+    - name: Afficher le résultat
+      ansible.builtin.debug:
+        msg: >-
+          {{ 'IDENTIQUE — le template rend bien le live (comparaison JSON normalisée).'
+             if settings_json_diff.rc == 0
+             else 'DÉRIVE (' ~ settings_json_diff.stdout_lines | length ~ ' lignes de diff) :
+             ' ~ settings_json_diff.stdout }}
+
+    - name: Échouer si le template a dérivé du live
+      ansible.builtin.assert:
+        that: settings_json_diff.rc == 0
+        fail_msg: >-
+          Le rendu du template diffère du live (au sens JSON, ordre des clés
+          ignoré) : un déploiement écraserait la référence. Corriger le
+          TEMPLATE (le live fait foi).
+        success_msg: "Aucune dérive."

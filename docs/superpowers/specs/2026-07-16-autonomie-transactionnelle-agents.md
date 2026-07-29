@@ -45,7 +45,7 @@ Agent LLM (Claude Code / n8n / OpenClaw)  ── intents only ──►  EXÉCUT
 
 ### Intentions exposées à l'agent (API MCP/HTTP)
 - `login(ref, url)` → Skyvern (statut only)
-- `fill_form(ref, steps)` → Skyvern (`use_vision=OFF` forcé, `allowed_domains` strict) → snapshot re-tokenisé
+- `fill_form(ref, steps)` → Skyvern (`use_vision=OFF` forcé, restriction réseau proxy squid + firewall — cf §4 point 7) → snapshot re-tokenisé
 - `run_authenticated_call(ref, method, url, body)` → header injecté, réponse caviardée
 - `pay(merchant, montant, ref_panier)` → pay-broker : émet carte scoped → Skyvern remplit le checkout → reçu sans PAN
 
@@ -62,8 +62,8 @@ Findings mi-2026 (à intégrer, sinon la solution est théâtrale) :
 3. **Identité agent ≠ identité user** (OAuth 2.1 client-credentials) : l'agent s'authentifie séparément.
 4. **Audit non-répudiable** : chaque intent→action→résultat loggé (ref/merchant/montant/statut, **jamais la valeur**) → Loki/Grafana X58.
 5. **Kill-switch** : anomalie velocity / canary → **freeze cartes** + révoque sessions Skyvern.
-6. **Backstop I1** : le redacteur PostToolUse (coffre P2) rattrape toute valeur qui fuirait en contexte.
-7. **Skyvern durci** : `use_vision` OFF, `allowed_domains` strict + **patcher CVE-2025-47241** (bypass allowed_domains), traiter l'**injection de prompt** comme la menace #1 (double-LLM trusted/untrusted à évaluer).
+6. **Backstop I1** : le redacteur PostToolUse (coffre P2) rattrape toute valeur qui fuirait en contexte. **Scope actuel = secrets/tokens uniquement** (regex+entropie, `scripts/secrets-migration-check.sh`) — insuffisant pour PAN/PII (texte libre, pas de format fixe, une regex de secret ne détecte ni un nom propre ni une adresse). **Presidio comme 2e moteur de scan dédié PAN/PII est implémenté** (sidecar `presidio-analyzer`+`presidio-anonymizer` self-hosté, EN+FR, API `/analyze`+`/anonymize`, LXC `skyvern` du repo `banga` — recognizer `CREDIT_CARD` natif à check de Luhn + NER noms/adresses/emails/tel, cf `banga/roles/lxc-skyvern/`, chantier A.4). Statut : service déployé et smoke-testé (détection EN+FR confirmée sur chaînes synthétiques) — **pas encore câblé en pipeline de rédaction actif sur le flux DOM réel de Skyvern**, à valider avant toute Phase B (credentials réels). PAS un remplacement du détecteur secrets, un moteur additionnel pour un format différent.
+7. **Skyvern durci** : `use_vision` OFF — mitigation **partielle** contre l'injection indirecte via captures d'écran, **ne suffit PAS seule** : complétée par le triptyque Rule-of-Two (tâches à étapes pré-déclarées) + gate HITL non-aveugle (écran réel, pas un résumé agent) + scan anti-fuite post-remplissage, codés côté contrôleur (chantier A.6, `banga/docs/runbooks/RUNBOOK-SKYVERN-GUARDRAILS.md`) — même statut que le point 6 : syntaxiquement validés et testés contre des fixtures synthétiques, **jamais exécutés contre un run Skyvern réel** (bloqué par un gate GPU indisponible côté `banga` au moment de l'écriture). Restriction réseau : PAS un `allowed_domains` applicatif fiable côté Skyvern lui-même (mécanisme non vérifié en profondeur, proxy Playwright natif `ENABLE_PROXY`/`HOSTED_PROXY_POOL` plutôt qu'un filtrage DOM/URL garanti — la référence à un CVE `allowed_domains` d'une version antérieure de cette spec était erronée, retirée) — implémentée à la place comme **restriction réseau au niveau infrastructure**, hors de portée d'un contournement applicatif : proxy sortant squid en allowlist de domaines + firewall LXC `policy_out DROP` en backstop (chantier A.5, `banga/roles/lxc-skyvern/templates/squid.conf.j2` + `vmid.fw.j2`). Traiter l'**injection de prompt** comme la menace #1 (double-LLM trusted/untrusted à évaluer).
 
 ## 5. Intégration au plan coffre (place dans la séquence)
 - Tier 1 (secret-run, classe A) + classe B (.env) : **P1a/P1b** — en cours.

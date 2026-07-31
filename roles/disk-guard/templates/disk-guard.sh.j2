@@ -112,7 +112,7 @@ load_state() {
   a="$(state_field LAST_ALERT)"
   case "$a" in '' | *[!0-9]*) : ;; *) LAST_ALERT="$a" ;; esac
   g="$(state_field PENDING_GAIN)"
-  case "$g" in 0 | 1) PENDING_GAIN="$g" ;; esac
+  case "$g" in '' | *[!0-9]*) : ;; *) PENDING_GAIN="$g" ;; esac
 }
 
 # Ecriture reellement atomique : `install` DETRUIT la cible puis la recree (openat O_EXCL)
@@ -328,11 +328,15 @@ TIER_IN="$(tier_of "$BEFORE" "$LAST_TIER")"
 TIER_OUT="$(tier_of "$AFTER" "$TIER_IN")"
 
 # Un gain de purge est le seul declencheur NON rejouable (au poll suivant, AFTER n'est plus
-# < BEFORE). On le memorise pour qu'un echec curl ne le perde pas. Delta minimal exige :
-# sans lui, un simple point d'ecart entre deux mesures du meme run (rotation de logs,
-# conteneur qui sort) suffirait a notifier a CHAQUE poll — le spam d'origine, deguise.
-if [ "$((BEFORE - AFTER))" -ge "$GAIN_MIN_DELTA" ]; then
-  PENDING_GAIN=1
+# < BEFORE). On memorise LE NOMBRE DE POINTS, pas un simple drapeau : un gain reporte (echec
+# curl, plancher) serait sinon annonce plus tard avec le delta du run COURANT — souvent 0,
+# soit un message « purge effective (−0 pt) », exactement le genre d'affirmation fausse que
+# ce correctif elimine par ailleurs. Delta minimal exige : sans lui, un point d'ecart entre
+# deux mesures du meme run (rotation de logs, conteneur qui sort) suffirait a notifier a
+# CHAQUE poll — le spam d'origine, deguise.
+GAIN="$((BEFORE - AFTER))"
+if [ "$GAIN" -ge "$GAIN_MIN_DELTA" ] && [ "$GAIN" -gt "$PENDING_GAIN" ]; then
+  PENDING_GAIN="$GAIN"
 fi
 
 RSEC="$(reminder_for "$TIER_OUT")"
@@ -352,8 +356,8 @@ if [ "$TIER_IN" != "$LAST_TIER" ]; then
   REASON="detection ${LAST_TIER} → ${TIER_IN}"
 elif [ "$TIER_OUT" != "$LAST_TIER" ]; then
   REASON="retour ${LAST_TIER} → ${TIER_OUT} apres purge"
-elif [ "$PENDING_GAIN" = "1" ]; then
-  REASON="purge effective (−$((BEFORE - AFTER)) pt)"
+elif [ "$PENDING_GAIN" -ge "$GAIN_MIN_DELTA" ]; then
+  REASON="purge effective (−${PENDING_GAIN} pt)"
 elif [ "$((NOW - LAST_ALERT))" -ge "$RSEC" ]; then
   REASON="rappel (toujours ≥ ${SOFT}%)"
 fi
@@ -371,7 +375,7 @@ if [ "$ESCALATION" = "0" ] && [ "$((NOW - LAST_ALERT))" -lt "$MIN_NOTIFY_SEC" ];
   # escalade au poll suivant, et la boucle recommencerait. La transition reste en attente
   # et partira a l'expiration du plancher (staleness bornee a MIN_NOTIFY_SEC).
   # Seul PENDING_GAIN est persiste — c'est la seule information non rejouable.
-  if [ "$PENDING_GAIN" = "1" ]; then
+  if [ "$PENDING_GAIN" -gt 0 ]; then
     write_state || RC=1
   fi
   exit "$RC"

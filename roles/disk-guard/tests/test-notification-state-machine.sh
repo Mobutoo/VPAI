@@ -213,6 +213,36 @@ age_state 4000
 run_purge 80 76
 expect "apres expiration du plancher = 1 notif" 1
 
+echo "== H1d. Gain differe puis panne df : le delta annonce doit rester VRAI =="
+# Un gain memorise comme simple drapeau serait re-annonce plus tard avec le delta du run
+# COURANT — souvent 0, donc un message « purge effective (−0 pt) » mensonger.
+# Etat vierge : sinon le plancher, deja consomme par le bloc precedent, differerait le
+# run d'amorcage et l'etat ne monterait jamais a SOFT — le cas teste serait un autre.
+rm -f "$STATE"
+: >"$SENT"
+run 80 # detection OK->SOFT (escalade, passe le plancher) et fixe LAST_ALERT
+: >"$SENT"
+run_purge 80 75 # gain de 5 pts -> differe par le plancher
+if grep -qx "PENDING_GAIN=5" "$STATE"; then
+  echo "  PASS  gain memorise en POINTS (PENDING_GAIN=5), pas en drapeau"
+  PASS=$((PASS + 1))
+else
+  echo "  FAIL  gain mal memorise : $(tr '\n' ' ' <"$STATE")"
+  FAIL=$((FAIL + 1))
+fi
+FAKE_DF_FAIL=1 run 80 # panne df : sortie avant le bloc de decision
+age_state 4000        # le plancher expire
+run 80                # run sans gain (BEFORE == AFTER)
+if grep -q -- "−5 pt" "$SENT"; then
+  echo "  PASS  le gain reporte annonce -5 pt (le vrai), pas -0 pt"
+  PASS=$((PASS + 1))
+else
+  echo "  FAIL  delta faux ou notif absente :"
+  sed 's/^/        /' "$SENT"
+  FAIL=$((FAIL + 1))
+fi
+: >"$SENT"
+
 echo "== H1c. Oscillation autour du palier MID (le 4e canal de spam) =="
 # 88% -> purge -> 84% -> se remplit -> 88% ... Chaque run REDETECTE MID. Si l'escalade se
 # jugeait sur l'etat courant et non sur le dernier palier NOTIFIE, chaque run contournerait

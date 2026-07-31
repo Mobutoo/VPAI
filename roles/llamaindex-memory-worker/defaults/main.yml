@@ -297,8 +297,17 @@ memory_worker_max_chunks_per_file: 200
 memory_worker_batch_size: 8
 memory_worker_progress_every: 10
 memory_worker_loadavg_threshold: 6.0
-memory_worker_timer_on_boot_sec: "5m"
-memory_worker_timer_on_unit_active_sec: "30m"
+# Fenetre de nuit (incident 2026-07-28..31 : load moyen 1.1 -> 44.9, %system 2 ->
+# 45, pgsteal/s 40 -> 12986 = reclaim memoire du noyau, sessions Claude Code
+# inutilisables). Cause : le relevement max_repos 30->40 (11b84c3, 25/07) a
+# debloque la decouverte de ~10 depots jamais indexes (prisme en tete) ; le
+# premier passage complet a fait passer les runs de 5-10 min a plusieurs heures,
+# donc un worker resident en PERMANENCE au lieu de 10 min toutes les 30 min.
+# OnBootSec=5m relancait en plus un run 5 min apres chaque redemarrage, en pleine
+# journee. Persistent=false : pas de rattrapage au boot, la nuit suivante suffit.
+memory_worker_timer_on_calendar: "*-*-* 02:00:00"
+memory_worker_timer_randomized_delay_sec: "15m"
+memory_worker_timer_persistent: false
 memory_worker_index_mode: "incremental"
 memory_worker_enable_gc: true
 memory_worker_gc_flag: "{{ '--gc' if memory_worker_enable_gc | bool else '' }}"
@@ -312,16 +321,20 @@ memory_worker_memory_high: "3G"      # throttle doux (reclaim agressif au-delà)
 memory_worker_memory_max: "4G"       # plafond dur (cgroup OOM-kill le worker seul)
 memory_worker_memory_swap_max: "512M"
 memory_worker_oom_score_adjust: 1000
-# Borne dure de duree (incident 2026-07-27 : run incrementale figee ~2h41,
-# freeze systeme, reset watchdog materiel BCM2835 -- toutes les sessions
-# coupees d'un coup). Ni memory-worker-auto-repair (ActiveState=activating =
-# suspension de jugement permanente, cf F10) ni memory-worker-watchdog (alerte
-# seule, jamais d'action -- un run de 26h54m avait deja ete observe sans
-# intervention, audit 2026-07-17 angle mort #4) ne peuvent tuer un run fige :
-# c'etait le seul gardien restant avant que le systeme entier ne cede.
-# Superieur au seuil watchdog (5400s/90min) : l'alerte Telegram arrive
-# toujours AVANT le kill, jamais le kill sans alerte prealable.
-memory_worker_runtime_max_sec: 7200
+# Plafond CPU (waza = 4 coeurs). Nice=19 + IOSchedulingClass=idle ne protegent
+# RIEN sous pression memoire : l'ordonnanceur CPU n'a pas son mot a dire quand
+# le noyau passe son temps en reclaim. 200% = 2 coeurs, les 2 autres restent aux
+# sessions interactives. Ne resserrer qu'une fois le retard d'indexation purge :
+# un quota plus bas allonge les runs, donc la fenetre de nuit necessaire.
+memory_worker_cpu_quota: "200%"
+#
+# PAS de RuntimeMaxSec ici : man 5 systemd.service -- "this setting does not have
+# any effect on Type=oneshot services". La valeur 7200 posee apres l'incident du
+# 2026-07-27 etait donc INERTE : le run du 2026-07-31 10:32 tournait encore
+# 13690 s (3h48) au reboot de 14:21, sans que systemd n'intervienne. Le seul
+# reglage qui borne un oneshot est TimeoutStartSec= -- il sera pose SEULEMENT
+# une fois index.py rendu reprenable (ecriture incrementale de memory_state.json),
+# sinon chaque nuit se termine par un run tue ayant persiste zero progres.
 # Cap threads torch/BLAS de l'embed (waza = 4 cœurs). Borne l'indexation à N cœurs
 # -> laisse les autres aux sessions interactives (Claude Code). Combiné à Nice=19 +
 # IO idle + calm-wait, contrôle la charge même en co-activité multi-sessions.

@@ -2,10 +2,14 @@
 Description=Run LlamaIndex memory worker on schedule (user)
 
 [Timer]
-OnBootSec={{ memory_worker_timer_on_boot_sec }}
-OnUnitActiveSec={{ memory_worker_timer_on_unit_active_sec }}
+# Fenetre de nuit 02:00-05:00 (cf defaults/main.yml pour l'incident 2026-07-28..31).
+# Ni OnBootSec= ni OnUnitActiveSec= : l'ancien couple 5m/30m relancait un run en
+# pleine journee apres chaque redemarrage, et rechargeait toutes les 30 min un
+# worker dont les runs duraient desormais plusieurs heures.
+OnCalendar={{ memory_worker_timer_on_calendar }}
+RandomizedDelaySec={{ memory_worker_timer_randomized_delay_sec }}
 Unit=llamaindex-memory-worker.service
-Persistent=true
+Persistent={{ memory_worker_timer_persistent | bool | lower }}
 
 [Install]
 WantedBy=timers.target

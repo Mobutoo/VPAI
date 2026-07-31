@@ -20,12 +20,20 @@ MemoryMax={{ memory_worker_memory_max }}
 MemorySwapMax={{ memory_worker_memory_swap_max }}
 OOMScoreAdjust={{ memory_worker_oom_score_adjust }}
 
-# REX 2026-07-27: run figé ~2h41 -> freeze système -> reset watchdog matériel
-# (toutes les sessions coupées). Ni auto-repair ni memory-worker-watchdog ne
-# tuent jamais un run en cours (cf leurs REX respectifs) — RuntimeMaxSec est le
-# seul filet restant. SIGTERM à l'expiration, laisse index.py fermer le client
-# Qdrant proprement ; SIGKILL après TimeoutStopSec (défaut systemd) si besoin.
-RuntimeMaxSec={{ memory_worker_runtime_max_sec }}
+# Plafond CPU — incident 2026-07-28..31 (load 1.1 -> 44.9, %system 45 %, reclaim
+# noyau, sessions Claude Code inutilisables). Nice=19 + IOSchedulingClass=idle
+# ci-dessus ne bornent rien sous pression mémoire.
+CPUQuota={{ memory_worker_cpu_quota }}
+
+# NE PAS remettre RuntimeMaxSec= ici. man 5 systemd.service : « this setting does
+# not have any effect on Type=oneshot services ». La valeur 7200 posée après
+# l'incident du 2026-07-27 était donc INERTE — vérifié le 2026-07-31 : run de
+# 13690 s (3h48) toujours actif au reboot, aucune intervention de systemd, et
+# `systemctl --user show -p TimeoutStartUSec` renvoyait `infinity`.
+# Le seul réglage qui borne un oneshot est TimeoutStartSec=, et il ne pourra
+# être posé qu'une fois index.py rendu reprenable : aujourd'hui memory_state.json
+# n'est écrit qu'après la boucle complète (index.py.j2:726), donc un SIGTERM en
+# cours de run perd 100 % du travail effectué.
 
 # No [Install] section: this is a timer-triggered Type=oneshot. Only the timer is
 # enabled (systemctl --user enable …timer). Omitting [Install] prevents a stray

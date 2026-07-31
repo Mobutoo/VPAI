@@ -1,0 +1,32 @@
+[Unit]
+Description=memory-search-daemon — modèle d'embedding résident partagé par toutes les sessions (user)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{ memory_worker_install_dir }}
+EnvironmentFile={{ memory_worker_env_file }}
+Environment=MEMORY_SEARCH_SOCKET={{ memory_search_daemon_socket }}
+Environment=MEMORY_SEARCH_IDLE_UNLOAD_SEC={{ memory_search_daemon_idle_unload_sec }}
+ExecStart={{ memory_worker_venv_dir }}/bin/python {{ memory_worker_install_dir }}/memory_search_daemon.py
+Restart=always
+RestartSec=5
+
+# Ce démon existe POUR économiser de la mémoire : chaque serveur MCP mcp_search.py
+# (un par session Claude Code) chargeait sa propre copie d'embeddinggemma-300m en
+# fp32, soit 1,1 Go RSS par session. Ici, une seule copie sert tout le monde.
+# Le plafond est dimensionné sur ce modèle + le sparse BM25, avec de la marge ;
+# s'il est franchi, c'est ce processus qui tombe (et redémarre), jamais le reste
+# de la session utilisateur — REX 2026-06-05 : un process non borné avait affamé
+# systemd-networkd jusqu'à faire tomber SSH.
+MemoryHigh={{ memory_search_daemon_memory_high }}
+MemoryMax={{ memory_search_daemon_memory_max }}
+OOMScoreAdjust={{ memory_search_daemon_oom_score_adjust }}
+
+# Priorité BASSE sur le CPU : une recherche R0 est interactive, mais elle ne doit
+# jamais disputer le CPU aux sessions elles-mêmes sur un Pi à 4 cœurs.
+Nice=5
+
+[Install]
+WantedBy=default.target

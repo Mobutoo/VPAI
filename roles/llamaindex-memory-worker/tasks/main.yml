@@ -138,6 +138,27 @@
   become: true
   tags: [llamaindex-memory-worker, memory_remote]
 
+- name: Deploy resident search daemon (une seule copie du modèle pour toutes les sessions)
+  ansible.builtin.copy:
+    src: memory_search_daemon.py
+    dest: "{{ memory_worker_install_dir }}/memory_search_daemon.py"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0755"
+  become: true
+  notify: Restart memory search daemon
+  tags: [llamaindex-memory-worker, memory_remote]
+
+- name: Ensure runtime dir for the search daemon socket
+  ansible.builtin.file:
+    path: "{{ memory_search_daemon_run_dir }}"
+    state: directory
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0700"
+  become: true
+  tags: [llamaindex-memory-worker, memory_remote]
+
 - name: Deploy rerank module (lazy bge-reranker ONNX — consommé par search_memory.py --rerank)
   ansible.builtin.copy:
     src: "{{ role_path }}/../../scripts/memory/rerank.py"
@@ -346,6 +367,19 @@
   notify: Reload systemd (user)
   tags: [llamaindex-memory-worker, memory_remote]
 
+- name: Deploy search daemon USER unit
+  ansible.builtin.template:
+    src: memory-search-daemon.service.user.j2
+    dest: "{{ memory_worker_user_unit_dir }}/{{ memory_search_daemon_service_name }}.service"
+    owner: "{{ memory_worker_user }}"
+    group: "{{ memory_worker_user }}"
+    mode: "0644"
+  become: true
+  notify:
+    - Reload systemd (user)
+    - Restart memory search daemon
+  tags: [llamaindex-memory-worker, memory_remote]
+
 - name: Deploy REX consolidation USER units (oneshot + timer hebdo)
   ansible.builtin.template:
     src: "{{ item.src }}"
@@ -382,6 +416,20 @@
 
 - name: Flush handlers so daemon-reload happens before enable
   ansible.builtin.meta: flush_handlers
+
+- name: Enable + start search daemon USER service
+  ansible.builtin.systemd:
+    name: "{{ memory_search_daemon_service_name }}.service"
+    scope: user
+    enabled: true
+    state: started
+    daemon_reload: true
+  become: true
+  become_user: "{{ memory_worker_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ memory_worker_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_uid }}/bus"
+  tags: [llamaindex-memory-worker, memory_remote]
 
 - name: Enable + start USER timer (kills the dormancy root cause — non-negotiable)
   ansible.builtin.systemd:

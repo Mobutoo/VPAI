@@ -1,6 +1,32 @@
 ---
 # llamaindex-memory-worker — defaults
 
+# === Demon de recherche resident (memory-search-daemon) ======================
+# mcp_search.py est un serveur MCP stdio : Claude Code en demarre UNE INSTANCE
+# PAR SESSION, chacune chargeant embeddinggemma-300m en fp32 -> 1,1 Go RSS par
+# session ouverte (mesure waza 2026-07-31). Le demon garde UNE copie du modele
+# et sert les recherches sur une socket UNIX ; les serveurs MCP deviennent des
+# clients minces. L'empreinte devient CONSTANTE au lieu de croitre avec le
+# nombre de sessions. Repli automatique cote client si le demon est absent.
+memory_search_daemon_service_name: "memory-search-daemon"
+memory_search_daemon_run_dir: "{{ memory_worker_data_dir }}/run"
+memory_search_daemon_socket: "{{ memory_search_daemon_run_dir }}/memory-search.sock"
+# Dechargement du modele apres inactivite : rend la RAM quand personne ne
+# travaille, en particulier AVANT le run du worker a 02:00 qui a besoin de 3 Go.
+# 2 h = plus long qu'une pause de travail normale, donc pas de rechargement
+# a froid (~14 s) en pleine journee.
+memory_search_daemon_idle_unload_sec: 7200
+# Mesure waza 2026-07-31 : 1487 Mo RSS modele charge (embeddinggemma-300m fp32
+# + encodeur sparse BM25). MemoryHigh doit rester AU-DESSUS, sinon le noyau
+# reclaime en continu sur un demon parfaitement sain -- exactement le mecanisme
+# de l'incident de charge du 28-31/07. Marge ~35 % sur le pic mesure.
+memory_search_daemon_memory_high: "2G"
+memory_search_daemon_memory_max: "2500M"
+# Victime privilegiee en cas d'OOM global : son modele est reconstructible, et
+# il redemarre seul (Restart=always). Moins prioritaire a tuer que le worker
+# (1000) qui, lui, reprend son travail au run suivant.
+memory_search_daemon_oom_score_adjust: 500
+
 memory_worker_service_name: "llamaindex-memory-worker"
 memory_worker_timer_name: "llamaindex-memory-worker"
 memory_worker_user: "{{ workstation_pi_user | default('pi') }}"

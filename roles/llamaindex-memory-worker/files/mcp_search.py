@@ -50,7 +50,7 @@ Contrat 2026-06-10 (docs/superpowers/specs/2026-06-10-rag-v3-contracts.md §Rech
 Uses same embeddings as the ai-memory-worker (google/embeddinggemma-300m, 768d).
 Model preloads in background thread; tool calls wait up to 120s.
 """
-import sys, json, os, threading, logging
+import sys, json, os, socket, threading, logging
 from pathlib import Path
 import yaml
 
@@ -79,6 +79,68 @@ _sparse_encoder = None  # Bm25SparseEncoder si named + fastembed dispo, sinon No
 _rerank_fn = None       # rerank.rerank si RERANK_ENABLED et import OK, sinon None
 _ready = threading.Event()
 _lock = threading.Lock()
+
+# --- Client du démon de recherche résident -----------------------------------
+# Ce serveur MCP est démarré UNE FOIS PAR SESSION Claude Code, et chaque instance
+# chargeait embeddinggemma-300m en fp32 : 1,1 Go RSS PAR SESSION (mesuré waza
+# 2026-07-31), soit une empreinte qui croît linéairement avec le nombre de
+# sessions ouvertes. memory_search_daemon.py garde UNE copie du modèle et sert
+# les recherches sur une socket UNIX ; on devient alors un client mince.
+# Repli garanti : socket absente, démon muet, modèle indisponible côté démon ->
+# on recharge en propre et on sert la requête comme avant. Démon arrêté =
+# dégradation de performance, JAMAIS perte de fonction.
+_DAEMON_SOCKET = os.environ.get(
+    "MEMORY_SEARCH_SOCKET",
+    "/opt/workstation/data/ai-memory-worker/run/memory-search.sock",
+)
+# 0/false -> ignore le démon et charge en propre (échappatoire de diagnostic).
+_DAEMON_ENABLED = os.environ.get("MEMORY_SEARCH_USE_DAEMON", "true").strip().lower() \
+    in ("1", "true", "yes")
+# Généreux : une recherche froide côté démon inclut le chargement du modèle.
+_DAEMON_TIMEOUT = float(os.environ.get("MEMORY_SEARCH_DAEMON_TIMEOUT", "180"))
+_loader_started = threading.Lock()
+_loader_done = False
+
+
+def _daemon_call(payload: dict, timeout: float) -> dict | None:
+    """Un aller-retour JSON-ligne sur la socket. None = démon injoignable/illisible."""
+    if not _DAEMON_ENABLED:
+        return None
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(timeout)
+        try:
+            sock.connect(_DAEMON_SOCKET)
+            sock.sendall((json.dumps(payload, ensure_ascii=True) + "\n").encode())
+            buf = b""
+            while not buf.endswith(b"\n"):
+                chunk = sock.recv(65536)
+                if not chunk:
+                    break
+                buf += chunk
+        finally:
+            sock.close()
+        if not buf:
+            return None
+        return json.loads(buf.decode().strip())
+    except (OSError, json.JSONDecodeError, ValueError):
+        return None
+
+
+def _daemon_available() -> bool:
+    """Sonde SANS rien charger — sert à décider si l'on précharge le modèle."""
+    resp = _daemon_call({"op": "ping"}, timeout=5)
+    return bool(resp and resp.get("ok"))
+
+
+def _ensure_local_model() -> None:
+    """Démarre le chargement en propre, au plus une fois (repli hors démon)."""
+    global _loader_done
+    with _loader_started:
+        if _loader_done:
+            return
+        _loader_done = True
+        threading.Thread(target=_load, daemon=True).start()
 
 
 def _load() -> None:
@@ -243,6 +305,22 @@ def _apply_scope_boost(kept: list[dict], scope: dict, weight: float) -> list[dic
 
 
 def _do_search(args: dict) -> str:
+    """Point d'entrée du tool : démon résident d'abord, repli en propre sinon.
+
+    memory_search_daemon.py appelle `_do_search_local` directement — surtout PAS
+    cette fonction, qui rappellerait la socket en boucle.
+    """
+    resp = _daemon_call({"op": "search", "args": args}, timeout=_DAEMON_TIMEOUT)
+    if resp is not None and resp.get("ok") and isinstance(resp.get("text"), str):
+        return resp["text"]
+    if resp is not None:
+        print(f"WARN démon de recherche en erreur ({resp.get('error')}) — repli en propre",
+              file=sys.stderr)
+    _ensure_local_model()
+    return _do_search_local(args)
+
+
+def _do_search_local(args: dict) -> str:
     _ready.wait(timeout=120)
     with _lock:
         m, c, cfg, named, sparse, rerank_fn = (
@@ -364,7 +442,15 @@ def _do_search(args: dict) -> str:
 
 
 def main() -> None:
-    threading.Thread(target=_load, daemon=True).start()
+    # Ne PRÉCHARGE le modèle que si le démon résident est absent. C'est ici que se
+    # joue le 1,1 Go par session : avec démon, cette instance reste un client mince
+    # (~50 Mo) et ne charge rien, jamais. Sans démon, comportement historique exact
+    # (préchargement en tâche de fond dès le démarrage, pour que le 1er appel ne
+    # paie pas le cold-load).
+    if not _daemon_available():
+        print("WARN démon de recherche injoignable — préchargement du modèle en propre "
+              f"({_DAEMON_SOCKET})", file=sys.stderr)
+        _ensure_local_model()
     for raw in sys.stdin:
         raw = raw.strip()
         if not raw:

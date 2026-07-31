@@ -14,3 +14,18 @@
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ memory_worker_uid }}"
     DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_uid }}/bus"
+
+# Type=simple avec le modèle en mémoire : un restart est la seule façon de
+# recharger le code. Les serveurs MCP clients survivent (repli en propre pendant
+# les quelques secondes d'indisponibilité, puis retour automatique au démon).
+- name: Restart memory search daemon
+  ansible.builtin.systemd:
+    name: "{{ memory_search_daemon_service_name }}.service"
+    scope: user
+    state: restarted
+    daemon_reload: true
+  become: true
+  become_user: "{{ memory_worker_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ memory_worker_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ memory_worker_uid }}/bus"

@@ -38,10 +38,12 @@ CPUQuota={{ memory_worker_cpu_quota }}
 # l'incident du 2026-07-27 était donc INERTE — vérifié le 2026-07-31 : run de
 # 13690 s (3h48) toujours actif au reboot, aucune intervention de systemd, et
 # `systemctl --user show -p TimeoutStartUSec` renvoyait `infinity`.
-# Le seul réglage qui borne un oneshot est TimeoutStartSec=, et il ne pourra
-# être posé qu'une fois index.py rendu reprenable : aujourd'hui memory_state.json
-# n'est écrit qu'après la boucle complète (index.py.j2:726), donc un SIGTERM en
-# cours de run perd 100 % du travail effectué.
+# TimeoutStartSec= est le seul réglage qui borne un Type=oneshot : le run reste
+# en état `activating` du début à la fin, jamais `active`.
+TimeoutStartSec={{ memory_worker_timeout_start_sec }}
+# Laisse à index.py le temps de persister son état et de libérer le lock sur
+# SIGTERM (mesuré : ~3 s, le handler écrit puis lève SystemExit).
+TimeoutStopSec=90
 
 # No [Install] section: this is a timer-triggered Type=oneshot. Only the timer is
 # enabled (systemctl --user enable …timer). Omitting [Install] prevents a stray

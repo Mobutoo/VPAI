@@ -333,13 +333,16 @@ memory_worker_oom_score_adjust: 1000
 # un quota plus bas allonge les runs, donc la fenetre de nuit necessaire.
 memory_worker_cpu_quota: "200%"
 #
-# PAS de RuntimeMaxSec ici : man 5 systemd.service -- "this setting does not have
-# any effect on Type=oneshot services". La valeur 7200 posee apres l'incident du
-# 2026-07-27 etait donc INERTE : le run du 2026-07-31 10:32 tournait encore
-# 13690 s (3h48) au reboot de 14:21, sans que systemd n'intervienne. Le seul
-# reglage qui borne un oneshot est TimeoutStartSec= -- il sera pose SEULEMENT
-# une fois index.py rendu reprenable (ecriture incrementale de memory_state.json),
-# sinon chaque nuit se termine par un run tue ayant persiste zero progres.
+# Borne dure de duree. PAS RuntimeMaxSec= : man 5 systemd.service -- "this
+# setting does not have any effect on Type=oneshot services". La valeur 7200
+# posee apres l'incident du 2026-07-27 etait donc INERTE : le run du 2026-07-31
+# 10:32 tournait encore 13690 s (3h48) au reboot de 14:21 sans que systemd
+# n'intervienne. TimeoutStartSec= est le SEUL reglage qui borne un oneshot.
+# 3 h = la fenetre 02:00-05:00 : un run ne peut plus deborder sur la journee.
+# Sur, depuis que index.py persiste son etat dans le handler SIGTERM et reprend
+# au run suivant (sinon chaque nuit rejouerait le meme debut de corpus).
+# Superieur au seuil watchdog (5400 s) : l'alerte precede toujours la coupure.
+memory_worker_timeout_start_sec: 10800
 # Cap threads torch/BLAS de l'embed (waza = 4 cœurs). Borne l'indexation à N cœurs
 # -> laisse les autres aux sessions interactives (Claude Code). Combiné à Nice=19 +
 # IO idle + calm-wait, contrôle la charge même en co-activité multi-sessions.

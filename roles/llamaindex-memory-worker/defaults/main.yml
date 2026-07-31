@@ -311,6 +311,10 @@ memory_worker_loadavg_threshold: 6.0
 # OnBootSec=5m relancait en plus un run 5 min apres chaque redemarrage, en pleine
 # journee. Persistent=false : pas de rattrapage au boot, la nuit suivante suffit.
 memory_worker_timer_on_calendar: "*-*-* 02:00:00"
+# Rattrapage dans la meme fenetre si calm-wait a fait echouer la 1re tentative
+# (charge trop haute 10 min d'affilee -> run entierement saute). 03:30 + 15 min
+# d'alea + TimeoutStartSec 90 min = 05:15 au pire, la fenetre tient.
+memory_worker_timer_on_calendar_retry: "*-*-* 03:30:00"
 memory_worker_timer_randomized_delay_sec: "15m"
 memory_worker_timer_persistent: false
 memory_worker_index_mode: "incremental"
@@ -338,11 +342,16 @@ memory_worker_cpu_quota: "200%"
 # posee apres l'incident du 2026-07-27 etait donc INERTE : le run du 2026-07-31
 # 10:32 tournait encore 13690 s (3h48) au reboot de 14:21 sans que systemd
 # n'intervienne. TimeoutStartSec= est le SEUL reglage qui borne un oneshot.
-# 3 h = la fenetre 02:00-05:00 : un run ne peut plus deborder sur la journee.
+# 90 min : dimensionne sur la 2e tentative (03:30 + 15 min d'alea + 90 min =
+# 05:15 au pire), pour qu'AUCUN run ne puisse deborder sur la journee de travail.
+# Large : les runs en regime etabli durent ~20 min (14 409 candidats balayes,
+# 3 a 8 fichiers reellement indexes -- le retard du premier passage sur les
+# depots debloques le 25/07 est resorbe).
 # Sur, depuis que index.py persiste son etat dans le handler SIGTERM et reprend
 # au run suivant (sinon chaque nuit rejouerait le meme debut de corpus).
-# Superieur au seuil watchdog (5400 s) : l'alerte precede toujours la coupure.
-memory_worker_timeout_start_sec: 10800
+# Doit rester SUPERIEUR au seuil de memory-worker-watchdog : l'alerte precede
+# toujours la coupure, jamais l'inverse.
+memory_worker_timeout_start_sec: 5400
 # Cap threads torch/BLAS de l'embed (waza = 4 cœurs). Borne l'indexation à N cœurs
 # -> laisse les autres aux sessions interactives (Claude Code). Combiné à Nice=19 +
 # IO idle + calm-wait, contrôle la charge même en co-activité multi-sessions.

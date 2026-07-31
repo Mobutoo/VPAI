@@ -7,6 +7,13 @@ Description=Run LlamaIndex memory worker on schedule (user)
 # pleine journee apres chaque redemarrage, et rechargeait toutes les 30 min un
 # worker dont les runs duraient desormais plusieurs heures.
 OnCalendar={{ memory_worker_timer_on_calendar }}
+# Seconde tentative dans la MEME fenetre : ExecStartPre=memory-wait-calm.sh sort
+# en echec (donc run entierement saute) si la charge reste > seuil pendant 10 min.
+# Sous l'ancien timer de 30 min c'etait sans consequence ; a une seule occurrence
+# par nuit et Persistent=false, un echec de calm-wait couterait 24 h d'indexation.
+# Declencheurs reels : memory-eval-golden.timer (dimanche 02:00) et tout reboot
+# chevauchant 02:00 (waza a redemarre 4 fois en juillet).
+OnCalendar={{ memory_worker_timer_on_calendar_retry }}
 RandomizedDelaySec={{ memory_worker_timer_randomized_delay_sec }}
 Unit=llamaindex-memory-worker.service
 Persistent={{ memory_worker_timer_persistent | bool | lower }}

@@ -32,11 +32,13 @@ memory_worker_watchdog_timer_name: "memory-worker-watchdog"
 memory_worker_watchdog_user_unit_dir: "/home/{{ memory_worker_watchdog_user }}/.config/systemd/user"
 
 # Seuil de stagnation : run en 'activating' depuis plus longtemps que ca ->
-# alerte. Consigne de durcissement : >2x l'intervalle nominal du timer worker
-# (OnUnitActiveSec=30min -> 2x = 60min) ; 90min par defaut = la marge donnee
-# en exemple par la consigne (evite les faux positifs sur un run legitime mais
-# lent d'un gros lot incremental).
-memory_worker_watchdog_stall_threshold_sec: 5400
+# alerte. Ce seuil porte sur la DUREE D'UN RUN, pas sur l'intervalle entre runs :
+# il reste donc pertinent malgre le passage du worker en cadence nocturne.
+# RECALIBRE 2026-07-31 : doit rester STRICTEMENT INFERIEUR au TimeoutStartSec du
+# worker (5400 s depuis VPAI 00f6fed), sinon systemd couperait le run avant que
+# l'alerte ne parte -- on perdrait la trace du probleme. 60 min = 3x la duree
+# d'un run en regime etabli (~20 min), donc pas de faux positif.
+memory_worker_watchdog_stall_threshold_sec: 3600
 
 # Cadence de la sonde : << seuil pour detecter rapidement une fois franchi, et
 # INDEPENDANTE du timer worker (30min) — ne depend jamais de l'unite qu'elle

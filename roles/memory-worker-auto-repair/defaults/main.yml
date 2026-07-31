@@ -60,11 +60,22 @@ memory_worker_auto_repair_service_name: "memory-worker-auto-repair"
 memory_worker_auto_repair_timer_name: "memory-worker-auto-repair"
 memory_worker_auto_repair_user_unit_dir: "/home/{{ memory_worker_auto_repair_user }}/.config/systemd/user"
 
-# === Seuils (§3/§5/§8.2 du design — validés au gate, conservés tels quels) ===
-# Drift : 30min d'intervalle nominal du worker + 1h de drift effectif.
-memory_worker_auto_repair_drift_sec: 5400
-# Budget de réparation : au plus 1 action auto par fenêtre (> 2x le seuil drift).
-memory_worker_auto_repair_cooldown_sec: 14400
+# === Seuils (§3/§5/§8.2 du design — validés au gate) ===
+# Drift : intervalle nominal du worker + une marge de drift effectif.
+# RECALIBRÉ 2026-07-31 : le worker est passé de 48 runs/jour (OnUnitActiveSec=30m)
+# à UN SEUL run nocturne (OnCalendar 02:00, VPAI 27c8854). L'ancienne valeur de
+# 5400 s (90 min) aurait rendu IS_DRIFT vrai ~22 h par jour, TOUS les jours : la
+# garde DRIFT_TICKS>=2 aurait été franchie en 30 min de sonde, déclenchant une
+# action de réparation et une alerte Telegram quotidiennes sur un worker
+# parfaitement sain — et potentiellement un run relancé en pleine journée, soit
+# exactement l'incident que la fenêtre de nuit corrige.
+# 30 h = une nuit manquée est tolérée jusqu'au lendemain matin ; deux nuits
+# consécutives sans succès sont un vrai drift.
+memory_worker_auto_repair_drift_sec: 108000
+# Budget de réparation : au plus 1 action auto par fenêtre. Doit rester >= la
+# cadence nominale (24 h) pour ne pas enchaîner deux réparations sur la même
+# nuit manquée.
+memory_worker_auto_repair_cooldown_sec: 86400
 # Dégel automatique de REPAIR_LOCKED : 8 ticks sains soutenus (= 2h à 15min/tick).
 memory_worker_auto_repair_unlock_ticks: 8
 # M1 fix (revue Opus 2026-07-25) : au moins 1 tick de cadence sonde doit

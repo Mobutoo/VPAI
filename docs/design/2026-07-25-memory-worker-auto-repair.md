@@ -73,6 +73,22 @@ drift silencieusement faux après un reboot) et maintient dans son state :
 - `drift := now - LAST_SUCCESS_EPOCH > AUTOREPAIR_DRIFT_SEC (déf. 5400)
   ET ActiveState != activating` (jamais d'action pendant un run en cours).
 
+> **RECALIBRÉ le 2026-07-31 — le seuil de 5400 s de ce design n'est plus la
+> valeur en vigueur.** Ce design a été dimensionné sur un worker cadencé à
+> `OnUnitActiveSec=30m` (48 runs/jour). Depuis l'incident de charge du 28-31/07
+> (load moyen 1,1 → 44,9, reclaim mémoire, sessions inutilisables), le worker
+> ne tourne plus qu'**une fois par nuit** dans la fenêtre 02:00–05:00
+> (VPAI `27c8854`). Avec 5400 s, `now - LAST_SUCCESS > seuil` serait devenu vrai
+> ~22 h par jour, TOUS les jours : `DRIFT_TICKS >= 2` franchi en 30 min de sonde
+> ⇒ réparation et alerte Telegram quotidiennes sur un worker parfaitement sain,
+> et un run potentiellement relancé en pleine journée — soit exactement
+> l'incident que la fenêtre de nuit corrige.
+> Valeurs en vigueur : `AUTOREPAIR_DRIFT_SEC = 108000` (30 h — une nuit manquée
+> est tolérée, deux nuits consécutives sont un vrai drift) et
+> `COOLDOWN_SEC = 86400` (≥ la cadence nominale, pour ne pas enchaîner deux
+> réparations sur la même nuit manquée). Le raisonnement ci-dessous reste
+> valable ; seule l'échelle de temps change.
+
 Latence d'action réelle, documentée : le run attendu survient au plus tard
 `LAST_SUCCESS + 30 min` (timer worker) ; le seuil 5400 s = 30 min d'intervalle
 nominal + 1h de drift effectif, PLUS l'exigence `DRIFT_TICKS >= 2` (§ suivant)

@@ -16,6 +16,12 @@ memory_search_daemon_socket: "{{ memory_search_daemon_run_dir }}/memory-search.s
 # 2 h = plus long qu'une pause de travail normale, donc pas de rechargement
 # a froid (~14 s) en pleine journee.
 memory_search_daemon_idle_unload_sec: 7200
+# Boost in-scope sur le chemin R0 interactif (qdrant-find). false = defaut du
+# code mcp_search.py = comportement du serveur MCP AVANT le demon. memory-worker.env
+# pose true pour search_memory.py ; ne pas laisser le demon heriter de cette
+# valeur ferait basculer le chemin interactif par effet de bord. Cf le bloc de
+# commentaires du template de l'unit.
+memory_search_daemon_scope_boost: false
 # Mesure waza 2026-07-31 : 1487 Mo RSS modele charge (embeddinggemma-300m fp32
 # + encodeur sparse BM25). MemoryHigh doit rester AU-DESSUS, sinon le noyau
 # reclaime en continu sur un demon parfaitement sain -- exactement le mecanisme

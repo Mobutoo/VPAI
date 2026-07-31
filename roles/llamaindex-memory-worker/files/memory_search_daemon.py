@@ -87,15 +87,30 @@ def _ensure_loaded() -> None:
 
 
 def _unload() -> None:
-    """Libère le modèle. Appelé sous _search_lock."""
+    """Rend la RAM en SORTANT du processus ; systemd (Restart=always) en relance un neuf.
+
+    MESURÉ le 2026-07-31 : annuler les références (`_model = None` + gc.collect())
+    ne fait retomber le RSS que de 1486 Mo à 1065 Mo — torch/numpy conservent leurs
+    arènes et ne les rendent pas à l'OS. Un déchargement « logique » aurait donc
+    laissé 1 Go résident en permanence, ce qui vide de son sens l'inactivité :
+    l'objectif est précisément de rendre la RAM avant le run du worker à 02:00.
+    Sortir remet le processus à ~14 Mo, sans état à reconstruire (le modèle est
+    rechargé paresseusement à la première requête suivante).
+
+    La socket disparaît le temps du redémarrage (~5 s, RestartSec) : les clients
+    retombent alors sur un chargement en propre — dégradation de perf, jamais
+    perte de fonction. Le chemin « socket résiduelle » est celui déjà validé au
+    test kill -9 : le nouveau processus ne trouve personne à l'écoute, délie et
+    rebinde.
+    """
     if not _is_loaded():
         return
-    mcp_search._model = None
-    mcp_search._sparse_encoder = None
-    mcp_search._rerank_fn = None
-    mcp_search._ready.clear()
+    _log(f"inactif depuis {IDLE_UNLOAD_SEC}s — sortie pour rendre la RAM "
+         "(systemd relance un processus neuf)")
+    SOCKET_PATH.unlink(missing_ok=True)
+    sys.stderr.flush()
     gc.collect()
-    _log(f"modèle déchargé après {IDLE_UNLOAD_SEC}s d'inactivité — RAM rendue")
+    os._exit(0)
 
 
 def _idle_watcher() -> None:

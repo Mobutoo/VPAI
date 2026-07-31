@@ -9,6 +9,25 @@ WorkingDirectory={{ memory_worker_install_dir }}
 EnvironmentFile={{ memory_worker_env_file }}
 Environment=MEMORY_SEARCH_SOCKET={{ memory_search_daemon_socket }}
 Environment=MEMORY_SEARCH_IDLE_UNLOAD_SEC={{ memory_search_daemon_idle_unload_sec }}
+
+# ATTENTION — le levier de reglage a DEMENAGE ici.
+# mcp_search.py lit MEMORY_MIN_SCORE / MEMORY_FUSION_MODE / RERANK_ENABLED /
+# MEMORY_SCOPE_BOOST* a l'IMPORT du module. Des lors que la recherche est servie
+# par ce demon, ce sont ces variables-CI qui font foi, plus celles du serveur MCP
+# de la session (dont l'entree ~/.claude.json ne porte que QDRANT_*/HF_HUB_OFFLINE).
+# Le "rollback instantane MEMORY_FUSION_MODE=rrf" documente dans mcp_search.py se
+# fait donc DESORMAIS ICI (ou dans memory-worker.env), pas cote session.
+#
+# Consequence non triviale : le serveur MCP ne chargeait PAS memory-worker.env,
+# il tournait donc sur les defauts du code. memory-worker.env, lui, pose
+# MEMORY_SCOPE_BOOST=true (pour search_memory.py). Brancher le demon dessus
+# aurait active le boost in-scope sur le chemin R0 interactif sans que personne
+# ne l'ait decide -- alors que boost vs non-boost est justement ce que compare
+# l'eval golden hebdomadaire (.planning/eval/eval-memory_v3-hybrid{,-boost}-*).
+# On restaure donc explicitement le comportement anterieur. Passer ce flag a
+# true est une decision a prendre sur les chiffres de l'eval, pas un effet de
+# bord de la mise en place du demon.
+Environment=MEMORY_SCOPE_BOOST={{ memory_search_daemon_scope_boost | string | lower }}
 ExecStart={{ memory_worker_venv_dir }}/bin/python {{ memory_worker_install_dir }}/memory_search_daemon.py
 Restart=always
 RestartSec=5

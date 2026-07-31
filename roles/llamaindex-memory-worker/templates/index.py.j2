@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import shutil
+import signal
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -74,9 +75,20 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def dump_json(path: Path, payload: dict[str, Any]) -> None:
+    """Écriture ATOMIQUE (tmp + os.replace dans le même répertoire).
+
+    Indispensable depuis que memory_state.json est écrit périodiquement en cours
+    de run (cf checkpoint_state) et non plus une seule fois à la fin : une
+    troncature `open("w")` interrompue par un SIGTERM/OOM laisserait un JSON
+    invalide, et load_json planterait au run suivant sur un state de plusieurs Mo.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as handle:
+    tmp_path = path.with_name(path.name + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, ensure_ascii=False, sort_keys=True)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp_path, path)
 
 
 def ensure_lock(lock_path: Path) -> None:
@@ -419,6 +431,82 @@ def backup_state_file(state_path: Path) -> None:
         shutil.copy2(state_path, state_path.with_name(state_path.name + ".bak"))
 
 
+# --- Reprise sur interruption ------------------------------------------------
+# Incident 2026-07-28..31 : les runs sont passés de 5-10 min à plusieurs heures
+# (premier passage sur ~10 dépôts débloqués par max_repos 30->40), saturant la
+# RAM de waza en permanence. La fenêtre de nuit 02:00-05:00 et le TimeoutStartSec
+# qui l'accompagne n'ont de sens QUE si un run coupé conserve son travail :
+# jusqu'ici memory_state.json n'était écrit qu'après la boucle complète, donc un
+# SIGTERM perdait 100 % des fichiers indexés et le run suivant recommençait de
+# zéro — indéfiniment, chaque nuit sur le même début de corpus.
+_STOP_REQUESTED = False
+_CHECKPOINT_TARGET: tuple[Path, dict[str, Any]] | None = None
+
+
+def arm_checkpoint(state_path: Path, state: dict[str, Any]) -> None:
+    """Rend l'état joignable depuis le handler de signal."""
+    global _CHECKPOINT_TARGET
+    _CHECKPOINT_TARGET = (state_path, state)
+
+
+def _request_stop(signum: int, _frame: Any) -> None:
+    """Handler SIGTERM/SIGINT : PERSISTE IMMÉDIATEMENT, puis demande l'arrêt.
+
+    L'écriture se fait DANS le handler, pas au prochain tour de boucle. Mesuré le
+    2026-07-31 : le test de boucle n'a pas été atteint dans les 90 s de
+    TimeoutStopSec (le worker était dans un os.walk sur un dépôt volumineux, sans
+    point de sortie entre deux candidats), systemd a envoyé SIGKILL et tout le
+    travail du run a été perdu — exactement ce que ce mécanisme doit empêcher.
+    Un handler Python s'exécute entre deux bytecodes du thread principal : le dict
+    d'état y est cohérent, et dump_json écrit dans un tmp distinct avant
+    os.replace, donc aucune écriture partielle n'est observable.
+    """
+    global _STOP_REQUESTED
+    if _STOP_REQUESTED:
+        return
+    _STOP_REQUESTED = True
+    LOG.warning("signal %s reçu — persistance immédiate de l'état puis arrêt propre", signum)
+    if _CHECKPOINT_TARGET is not None:
+        state_path, state = _CHECKPOINT_TARGET
+        try:
+            dump_json(state_path, state)
+            LOG.warning("état persisté sur signal (entries=%s)", len(state))
+        except Exception as exc:  # noqa: BLE001
+            LOG.error("persistance sur signal ÉCHOUÉE: %s", short_error_message(exc))
+    # SystemExit déroule la pile depuis N'IMPORTE OÙ dans du code Python, donc les
+    # `finally` de main() s'exécutent : release_lock (sans quoi on recrée le lock
+    # zombie qui avait endormi le worker 6 semaines) et emit_run_report. Attendre
+    # un test en tête de boucle ne suffit pas : mesuré le 2026-07-31, le worker
+    # était dans un os.walk sur un gros dépôt et n'y est pas revenu avant les 90 s
+    # de TimeoutStopSec -> SIGKILL -> travail perdu.
+    raise SystemExit(0)
+
+
+def install_stop_handlers() -> None:
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            signal.signal(sig, _request_stop)
+        except (ValueError, OSError):  # pragma: no cover — thread non principal
+            LOG.debug("impossible d'installer le handler pour %s", sig)
+
+
+def stop_requested() -> bool:
+    return _STOP_REQUESTED
+
+
+def checkpoint_state(state_path: Path, state: dict[str, Any], indexed_files: int) -> None:
+    """Persiste l'état en cours de run. Best-effort : jamais fatal.
+
+    Un échec d'écriture ne doit pas faire perdre le run entier — le pire cas
+    reste l'ancien comportement (état de la dernière écriture réussie).
+    """
+    try:
+        dump_json(state_path, state)
+        LOG.info("checkpoint state écrit indexed_files=%s entries=%s", indexed_files, len(state))
+    except Exception as exc:  # noqa: BLE001
+        LOG.warning("checkpoint state échoué (non fatal): %s", short_error_message(exc))
+
+
 def emit_run_report(report: dict[str, Any], report_path: str | None) -> None:
     rendered = json.dumps(report, ensure_ascii=False, sort_keys=True)
     if report_path:
@@ -558,18 +646,24 @@ def main() -> int:
     report_repos: list[str] = []
     acquired = False
     named_vectors = False
+    interrupted = False
+    state: dict[str, Any] = {}
+    state_written = False
 
     try:
         ensure_lock(lock_path)
         acquired = True
         check_loadavg(float(config["limits"]["loadavg_threshold"]))
         state = load_json(state_path)
+        arm_checkpoint(state_path, state)
         include_ext = set(config["filters"]["include_extensions"])
         exclude_dirs = set(config["filters"]["exclude_dirs"])
         repo_roots = list_repo_roots(config)
         report_repos = selected_repo_names(args, repo_roots)
         report_repo = report_repos[0] if len(report_repos) == 1 else None
         progress_every = max(1, int(config["limits"].get("progress_every", 10)))
+        checkpoint_every = max(1, int(config["limits"].get("checkpoint_every", 50)))
+        install_stop_handlers()
         LOG.info(
             "run started run_id=%s mode=%s dry_run=%s gc=%s repo_filters=%s path_filters=%s max_files=%s",
             run_id,
@@ -671,6 +765,14 @@ def main() -> int:
             if args.max_files > 0 and attempted_files >= args.max_files:
                 LOG.info("max-files limit reached: %s", args.max_files)
                 break
+            if stop_requested():
+                LOG.warning(
+                    "arrêt demandé — sortie de boucle après %s candidats (%s fichiers indexés)",
+                    attempted_files,
+                    indexed_files,
+                )
+                interrupted = True
+                break
             attempted_files += 1
             if attempted_files == 1 or attempted_files % progress_every == 0:
                 LOG.info(
@@ -717,16 +819,20 @@ def main() -> int:
             if chunk_count > 0:
                 indexed_files += 1
                 indexed_chunks += chunk_count
+                if indexed_files % checkpoint_every == 0:
+                    checkpoint_state(state_path, state, indexed_files)
             else:
                 skipped_count += 1
 
-        if args.gc:
+        if args.gc and not interrupted:
             gc_missing_entries(args, state, vector_store, repo_roots)
 
         backup_state_file(state_path)
         dump_json(state_path, state)
+        state_written = True
         LOG.info(
-            "memory worker completed attempted_files=%s indexed_files=%s indexed_chunks=%s skipped=%s errors=%s",
+            "memory worker %s attempted_files=%s indexed_files=%s indexed_chunks=%s skipped=%s errors=%s",
+            "interrupted (state conservé, reprise au prochain run)" if interrupted else "completed",
             attempted_files,
             indexed_files,
             indexed_chunks,
@@ -742,6 +848,17 @@ def main() -> int:
         exit_code = 1
         return exit_code
     finally:
+        # Dernier filet : si on sort par exception (ou par un SIGTERM tombé
+        # pendant process_file, donc hors du test de boucle), le travail déjà
+        # effectué doit survivre. Sans ça, un run tué perd tout et le suivant
+        # recommence au même endroit — le mode d'échec qui a rendu la fenêtre
+        # de nuit inutilisable tant que rien n'était persisté en cours de route.
+        if not state_written and indexed_files > 0:
+            checkpoint_state(state_path, state, indexed_files)
+        if stop_requested() and exit_code != 0:
+            # Arrêt demandé et état persisté = succès, pas échec. Sans ça le
+            # run-report annoncerait exit_code=1 alors que le process sort en 0.
+            exit_code = 0
         if acquired:
             release_lock(lock_path)
         duration_s = (datetime.now(timezone.utc) - started_dt).total_seconds()
@@ -787,6 +904,10 @@ def main() -> int:
             "prompt_version": PROMPT_VERSION if named_vectors else PROMPT_VERSION_V1,
             "truncated_files": len(truncations),
             "truncations": truncations[:20],
+            # Champ additif : run coupé par SIGTERM (fenêtre de nuit / TimeoutStartSec)
+            # avec état persisté. Ce n'est PAS un échec — la reprise se fait au run
+            # suivant. À distinguer d'un exit_code != 0 côté supervision.
+            "interrupted": interrupted or stop_requested(),
         }
         emit_run_report(report, args.report_path)
 

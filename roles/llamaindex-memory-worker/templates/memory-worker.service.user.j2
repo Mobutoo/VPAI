@@ -12,6 +12,14 @@ ExecStart={{ memory_worker_run_report_script }} --mode {{ memory_worker_index_mo
 Nice=19
 IOSchedulingClass=idle
 
+# Un arrêt DÉLIBÉRÉ (systemctl stop, ou la coupure de fin de fenêtre de nuit) tue
+# d'abord run-and-report.sh, donc systemd voit son main process mourir par signal
+# et marque l'unité `failed` — un faux positif pour memory-worker-watchdog et
+# memory-worker-auto-repair, qui lisent Result/ExecMainStatus. Depuis que index.py
+# persiste son état dans le handler SIGTERM, une interruption n'est PAS un échec :
+# le run suivant reprend là où il s'est arrêté.
+SuccessExitStatus=SIGTERM
+
 # Resource control (cgroup) — REX 2026-06-05: worker non-borné -> OOM global ->
 # systemd-networkd affamé -> bail DHCP eth0 perdu -> tailscale ENETUNREACH -> SSH mort.
 # Le worker est OOM-killed dans son cgroup AVANT d'affamer le stack réseau.

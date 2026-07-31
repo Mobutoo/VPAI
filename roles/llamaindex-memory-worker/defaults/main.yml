@@ -296,6 +296,11 @@ memory_worker_chunk_overlap: 200
 memory_worker_max_chunks_per_file: 200
 memory_worker_batch_size: 8
 memory_worker_progress_every: 10
+# Ecriture periodique de memory_state.json (tous les N fichiers INDEXES, pas
+# candidats). Rend un run interrompu reprenable : prerequis a la fenetre de nuit
+# et au TimeoutStartSec. 50 = compromis entre le cout d'ecriture (l'etat fait
+# ~6,7 Mo, ecrit atomiquement) et le travail reperdu au pire cas.
+memory_worker_checkpoint_every: 50
 memory_worker_loadavg_threshold: 6.0
 # Fenetre de nuit (incident 2026-07-28..31 : load moyen 1.1 -> 44.9, %system 2 ->
 # 45, pgsteal/s 40 -> 12986 = reclaim memoire du noyau, sessions Claude Code

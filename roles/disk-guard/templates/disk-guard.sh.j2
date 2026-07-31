@@ -2,15 +2,38 @@
 # {{ ansible_managed }}
 # disk-guard — purge le disque sous pression (paliers SOFT→HARD).
 # Idempotent : no-op tant que l'usage < SOFT. Lock flock anti-concurrence.
+#
+# STATEFUL depuis 2026-07-31 : la notification Telegram ne part QUE sur une detection de
+# palier, un gain de purge significatif, un rappel periodique, ou un retour a la normale.
+# Avant, l'appel notify() etait inconditionnel des que l'usage depassait SOFT : un disque
+# stable a 80% produisait 96 messages identiques par jour (timer = 15 min).
+#
+# Trois garde-fous, chacun repare une facon distincte de re-spammer ou de devenir muet :
+#   1. BANDE MORTE  — le seuil de sortie (CLEAR) est < au seuil d'entree (SOFT). Un disque
+#      parque pile sur SOFT oscille 79<->80 ; sans elle, chaque poll alternerait rouge/vert.
+#   2. PLANCHER     — toute notification NON escaladante attend MIN_NOTIFY_SEC. Une montee
+#      de palier passe toujours immediatement : on ne retarde jamais une mauvaise nouvelle.
+#   3. NON-COLLANT VERS LE HAUT — dans la bande morte on retrograde MID/HARD vers SOFT.
+#      Sinon un disque redescendu a 78 garde l'etat HARD, et sa remontee a 95 est SILENCIEUSE.
+#
+# Sortie non nulle = probleme a voir (etat non ecrivable, mesure impossible, notif perdue) :
+# l'unite systemd doit echouer plutot que de mentir en vert.
 set -euo pipefail
 
 SOFT={{ disk_guard_threshold_soft }}
 MID={{ disk_guard_threshold_mid }}
 HARD={{ disk_guard_threshold_hard }}
+CLEAR={{ disk_guard_threshold_clear }}
 MOUNT="{{ disk_guard_mountpoint }}"
 LEASE_MIN_AGE_DAYS={{ disk_guard_lease_min_age_days }}
 IMAGE_MAX_AGE_HOURS={{ disk_guard_image_max_age_hours }}
 ENV_FILE="{{ disk_guard_env_file }}"
+STATE_FILE="{{ disk_guard_state_file }}"
+REMINDER_SEC={{ disk_guard_reminder_sec }}
+REMINDER_CRITICAL_SEC={{ disk_guard_reminder_critical_sec }}
+MIN_NOTIFY_SEC={{ disk_guard_min_notify_sec }}
+GAIN_MIN_DELTA={{ disk_guard_gain_min_delta }}
+NOTIFY_ENABLED={{ 1 if disk_guard_notify_telegram | bool else 0 }}
 
 # Secrets Telegram (fichier 0600). Absents = pas de notif.
 TG_BOT=""
@@ -18,20 +41,140 @@ TG_CHAT=""
 # shellcheck disable=SC1090
 [ -r "$ENV_FILE" ] && . "$ENV_FILE"
 
+RC=0
+
 log() { echo "[disk-guard] $*"; }
 
 usage_pct() {
-  df --output=pcent "$MOUNT" | tail -1 | tr -dc '0-9'
+  local p
+  p="$(df --output=pcent "$MOUNT" 2>/dev/null | tail -1 | tr -dc '0-9')" || p=""
+  # -1 = mesure impossible. Sans ce garde-fou, une chaine vide fait echouer les
+  # comparaisons arithmetiques sous `set -e` (ou pire, passe pour "< CLEAR" et
+  # declenche une fausse notif de retour a la normale).
+  case "$p" in
+    '' | *[!0-9]*) echo "-1" ;;
+    *) echo "$p" ;;
+  esac
 }
 
+# Retourne le code de curl : l'appelant n'avance l'etat QUE si la notif est partie.
+# Un echec transitoire ne doit jamais faire disparaitre silencieusement un franchissement.
 notify() {
   local msg="$1"
-  [ -n "$TG_BOT" ] && [ -n "$TG_CHAT" ] || return 0
-  curl -fsS --max-time 15 \
+  if [ "$NOTIFY_ENABLED" != "1" ]; then
+    # Toggle a false : no-op assume, l'etat avance normalement (sinon la machine a etats
+    # se figerait et re-tenterait indefiniment).
+    log "notification desactivee (disk_guard_notify_telegram=false)"
+    return 0
+  fi
+  if [ -z "$TG_BOT" ] || [ -z "$TG_CHAT" ]; then
+    log "creds Telegram absentes — notif impossible, etat non avance"
+    return 1
+  fi
+  if curl -fsS --max-time 15 \
     "https://api.telegram.org/bot${TG_BOT}/sendMessage" \
     -d chat_id="${TG_CHAT}" \
     -d parse_mode="HTML" \
-    --data-urlencode text="$msg" >/dev/null 2>&1 || log "notify telegram echec (non bloquant)"
+    --data-urlencode text="$msg" >/dev/null 2>&1; then
+    return 0
+  fi
+  log "notify telegram echec (non bloquant, retente au prochain poll)"
+  return 1
+}
+
+# --- Etat persistant (fichier 0600 root, ecrit par write_state) ---
+# Lecture par sed, JAMAIS par `source` : rien ne justifie d'executer son contenu, et une
+# troncature partielle passerait inapercue.
+LAST_TIER="OK"
+LAST_NOTIF_TIER="OK"
+LAST_ALERT=0
+PENDING_GAIN=0
+
+state_field() {
+  local key="$1" val
+  val="$(sed -n "s/^${key}=\(.*\)\$/\1/p" "$STATE_FILE" 2>/dev/null | tail -1)" || val=""
+  printf '%s' "$val"
+}
+
+load_state() {
+  [ -r "$STATE_FILE" ] || return 0
+  # LAST_ALERT est la DERNIERE cle ecrite par write_state : son absence signale une
+  # ecriture tronquee -> on repart des defauts plutot que d'un etat a moitie faux.
+  if ! grep -q '^LAST_ALERT=' "$STATE_FILE"; then
+    log "state file tronque ou corrompu — reinitialisation"
+    return 0
+  fi
+  local t n a g
+  t="$(state_field LAST_TIER)"
+  case "$t" in OK | SOFT | MID | HARD) LAST_TIER="$t" ;; esac
+  n="$(state_field LAST_NOTIF_TIER)"
+  case "$n" in OK | SOFT | MID | HARD) LAST_NOTIF_TIER="$n" ;; esac
+  a="$(state_field LAST_ALERT)"
+  case "$a" in '' | *[!0-9]*) : ;; *) LAST_ALERT="$a" ;; esac
+  g="$(state_field PENDING_GAIN)"
+  case "$g" in 0 | 1) PENDING_GAIN="$g" ;; esac
+}
+
+# Ecriture reellement atomique : `install` DETRUIT la cible puis la recree (openat O_EXCL)
+# — il existe une fenetre ou l'etat est absent. `mv` dans le meme repertoire = rename(2).
+write_state() {
+  local tmp="${STATE_FILE}.tmp.$$"
+  {
+    echo "LAST_TIER=${LAST_TIER}"
+    echo "LAST_NOTIF_TIER=${LAST_NOTIF_TIER}"
+    echo "PENDING_GAIN=${PENDING_GAIN}"
+    echo "LAST_ALERT=${LAST_ALERT}"
+  } >"$tmp" 2>/dev/null || {
+    rm -f "$tmp"
+    log "ECHEC ecriture etat (${tmp}) — l'anti-spam est desarme"
+    return 1
+  }
+  if chmod 0600 "$tmp" 2>/dev/null && mv -f "$tmp" "$STATE_FILE" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "$tmp"
+  log "ECHEC installation etat (${STATE_FILE}) — l'anti-spam est desarme"
+  return 1
+}
+
+# Palier d'un pourcentage, avec hysteresis dans la bande morte [CLEAR, SOFT) :
+#  - on y CONSERVE SOFT (pas de retour au vert tant qu'on n'est pas passe sous CLEAR) ;
+#  - mais on y RETROGRADE MID/HARD vers SOFT. Garder HARD a 78% rendrait une remontee
+#    ulterieure a 95% invisible (TIER == LAST_TIER => aucune notif jusqu'au rappel).
+tier_of() {
+  local pct="$1" last="$2"
+  if [ "$pct" -ge "$HARD" ]; then
+    echo "HARD"
+  elif [ "$pct" -ge "$MID" ]; then
+    echo "MID"
+  elif [ "$pct" -ge "$SOFT" ]; then
+    echo "SOFT"
+  elif [ "$pct" -ge "$CLEAR" ]; then
+    case "$last" in
+      MID | HARD) echo "SOFT" ;;
+      *) echo "$last" ;;
+    esac
+  else
+    echo "OK"
+  fi
+}
+
+rank() {
+  case "$1" in
+    HARD) echo 3 ;;
+    MID) echo 2 ;;
+    SOFT) echo 1 ;;
+    *) echo 0 ;;
+  esac
+}
+
+# Cadence de rappel selon la gravite : 24 h a SOFT, mais un disque a 90% peut se remplir
+# entierement en bien moins que 24 h — il ne doit pas rester silencieux si longtemps.
+reminder_for() {
+  case "$1" in
+    MID | HARD) echo "$REMINDER_CRITICAL_SEC" ;;
+    *) echo "$REMINDER_SEC" ;;
+  esac
 }
 
 # --- Anti-concurrence ---
@@ -41,20 +184,79 @@ if ! flock -n 9; then
   exit 0
 fi
 
-BEFORE="$(usage_pct)"
-if [ "$BEFORE" -lt "$SOFT" ]; then
-  log "usage ${BEFORE}% < ${SOFT}% — rien a faire"
-  exit 0
+# Le lock garantit qu'aucun autre run n'est en cours : tout .tmp.<pid> restant est le
+# reliquat d'un run tue (SIGKILL, OOM) et peut etre nettoye sans risque.
+rm -f "${STATE_FILE}".tmp.* 2>/dev/null || true
+
+load_state
+HOST="$(hostname -s)"
+NOW="$(date +%s)"
+
+# Horloge qui recule (RTC en avance au boot, avant resynchro NTP) : un LAST_ALERT dans le
+# futur rendrait le rappel — dernier filet de securite — impossible a echoir.
+if [ "$LAST_ALERT" -gt "$NOW" ]; then
+  log "LAST_ALERT dans le futur (${LAST_ALERT} > ${NOW}) — horloge revenue en arriere, remise a zero"
+  LAST_ALERT=0
 fi
 
-HOST="$(hostname -s)"
+BEFORE="$(usage_pct)"
+if [ "$BEFORE" -lt 0 ]; then
+  # Sortie NON nulle : un point de montage disparu ou mal configure rendrait sinon le role
+  # muet ET vert a vie.
+  log "mesure d'usage impossible sur ${MOUNT} — abandon (etat inchange)"
+  exit 1
+fi
+
+# ---------- Sous le seuil : rien a purger, eventuellement une bonne nouvelle ----------
+if [ "$BEFORE" -lt "$SOFT" ]; then
+  NEW_TIER="$(tier_of "$BEFORE" "$LAST_TIER")"
+  if [ "$LAST_TIER" = "OK" ]; then
+    log "usage ${BEFORE}% < ${SOFT}% — rien a faire"
+  elif [ "$NEW_TIER" != "OK" ]; then
+    # Bande morte : pas de retour au vert, mais on persiste une eventuelle retrogradation
+    # MID/HARD -> SOFT pour ne pas masquer une remontee future.
+    if [ "$NEW_TIER" != "$LAST_TIER" ]; then
+      log "usage ${BEFORE}% dans la bande morte [${CLEAR}-${SOFT}) — retrogradation ${LAST_TIER} -> ${NEW_TIER} (silencieuse)"
+      LAST_TIER="$NEW_TIER"
+      write_state || RC=1
+    else
+      log "usage ${BEFORE}% dans la bande morte [${CLEAR}-${SOFT}) — palier ${LAST_TIER} conserve, pas de notif"
+    fi
+  else
+    if notify "✅ <b>disk-guard</b> @ ${HOST}
+Disque ${MOUNT} : retour a la normale — <b>${BEFORE}%</b> (seuil de sortie ${CLEAR}%)"; then
+      LAST_TIER="OK"
+      LAST_NOTIF_TIER="OK"
+      PENDING_GAIN=0
+      LAST_ALERT="$NOW"
+      write_state || RC=1
+      log "retour a la normale notifie (${BEFORE}%)"
+    else
+      log "retour a la normale NON notifie — etat conserve (${LAST_TIER}), retente au prochain poll"
+      RC=1
+    fi
+  fi
+  exit "$RC"
+fi
+
 log "PRESSION disque ${BEFORE}% >= ${SOFT}% — purge SURE"
 
 # ---------- PALIER 1 : SUR (zero re-pull) ----------
+ACTIONS=""
+add_action() { ACTIONS="${ACTIONS:+${ACTIONS} + }$1"; }
+
 # 1a. Cache de build buildkit
-docker builder prune -af >/dev/null 2>&1 || log "builder prune skip"
+if docker builder prune -af >/dev/null 2>&1; then
+  add_action "cache build"
+else
+  log "builder prune skip"
+fi
 # 1b. Images dangling uniquement (pas -a)
-docker image prune --force >/dev/null 2>&1 || log "image prune skip"
+if docker image prune --force >/dev/null 2>&1; then
+  add_action "images dangling"
+else
+  log "image prune skip"
+fi
 
 # 1c. Leases containerd orphelines > N jours — UNIQUEMENT si driver overlay2
 #     (le store image-store containerd n'est alors pas l'actif → leases = reliquats).
@@ -68,16 +270,24 @@ if [ "$DRIVER" = "overlay2" ] && command -v ctr >/dev/null 2>&1; then
     LTS="$(date -d "$LCREATED" +%s 2>/dev/null || echo 0)"
     if [ "$LTS" -gt 0 ] && [ "$LTS" -lt "$CUTOFF" ]; then
       if ctr -n moby leases delete --sync "$LID" >/dev/null 2>&1; then
-        N_DEL=$((N_DEL+1))
+        N_DEL=$((N_DEL + 1))
       fi
     fi
   done < <(ctr -n moby leases list 2>/dev/null | tail -n +2)
   [ "$N_DEL" -gt 0 ] && log "leases containerd orphelines supprimees: ${N_DEL}"
+  # Le compte reel, pas une promesse : l'ancien message annoncait "cache+dangling+leases"
+  # en dur, y compris quand la branche leases n'avait pas tourne.
+  add_action "${N_DEL} lease(s) containerd"
 else
   log "driver=${DRIVER} — skip nettoyage leases containerd"
+  add_action "leases ignorees (driver=${DRIVER})"
 fi
+[ -n "$ACTIONS" ] || ACTIONS="aucune action aboutie"
 
 AFTER_SOFT="$(usage_pct)"
+# Repli conservateur : une panne `df` en cours de run ne doit PAS annuler silencieusement
+# l'escalade vers MID/HARD (-1 est inferieur a tous les seuils).
+[ "$AFTER_SOFT" -ge 0 ] || AFTER_SOFT="$BEFORE"
 log "apres palier SUR: ${AFTER_SOFT}%"
 
 # ---------- PALIER 2 : MID (si toujours >= MID) ----------
@@ -93,6 +303,7 @@ if [ "$AFTER_SOFT" -ge "$MID" ]; then
 fi
 
 AFTER_MID="$(usage_pct)"
+[ "$AFTER_MID" -ge 0 ] || AFTER_MID="$AFTER_SOFT"
 log "apres palier MID: ${AFTER_MID}%"
 
 # ---------- PALIER 3 : AGRESSIF (si toujours >= HARD) ----------
@@ -104,9 +315,87 @@ if [ "$AFTER_MID" -ge "$HARD" ]; then
 fi
 
 AFTER="$(usage_pct)"
+[ "$AFTER" -ge 0 ] || AFTER="$AFTER_MID"
 log "FINAL: ${BEFORE}% -> ${AFTER}%"
 
-# Notif uniquement si une action a eu lieu (on est >= SOFT par construction)
-notify "🧹 <b>disk-guard</b> @ ${HOST}
-Disque ${MOUNT} : <b>${BEFORE}% → ${AFTER}%</b>
-Palier SUR (cache+dangling+leases)${TIER_MID}${TIER_HARD}"
+# ---------- Decision de notifier ----------
+# Deux paliers distincts, et c'est necessaire :
+#   TIER_IN  = ce qu'on a DETECTE a l'entree (BEFORE) -> gouverne l'escalade.
+#   TIER_OUT = ce qui RESTE apres purge (AFTER)       -> gouverne l'etat persiste.
+# Ne juger que sur AFTER rendrait un run 95% -> 78% totalement silencieux ; ne juger que
+# sur BEFORE ecrirait un palier que le poll suivant contredirait (clignotement).
+TIER_IN="$(tier_of "$BEFORE" "$LAST_TIER")"
+TIER_OUT="$(tier_of "$AFTER" "$TIER_IN")"
+
+# Un gain de purge est le seul declencheur NON rejouable (au poll suivant, AFTER n'est plus
+# < BEFORE). On le memorise pour qu'un echec curl ne le perde pas. Delta minimal exige :
+# sans lui, un simple point d'ecart entre deux mesures du meme run (rotation de logs,
+# conteneur qui sort) suffirait a notifier a CHAQUE poll — le spam d'origine, deguise.
+if [ "$((BEFORE - AFTER))" -ge "$GAIN_MIN_DELTA" ]; then
+  PENDING_GAIN=1
+fi
+
+RSEC="$(reminder_for "$TIER_OUT")"
+
+# Escalade = on detecte un palier STRICTEMENT PLUS HAUT que celui de la derniere notif
+# envoyee (LAST_NOTIF_TIER), et non que l'etat courant. La difference est tout sauf
+# cosmetique : un disque qui repasse la barre a chaque poll (88% -> purge -> 84% -> se
+# remplit -> 88%) verrait sinon chaque run comme une nouvelle escalade, laquelle contourne
+# le plancher — 96 messages/jour, le bug d'origine par un quatrieme chemin. Ici le 2e run
+# a TIER_IN == LAST_NOTIF_TIER : pas d'escalade, le plancher s'applique. Une vraie
+# aggravation (SOFT deja notifie -> HARD) passe toujours immediatement.
+ESCALATION=0
+[ "$(rank "$TIER_IN")" -gt "$(rank "$LAST_NOTIF_TIER")" ] && ESCALATION=1
+
+REASON=""
+if [ "$TIER_IN" != "$LAST_TIER" ]; then
+  REASON="detection ${LAST_TIER} → ${TIER_IN}"
+elif [ "$TIER_OUT" != "$LAST_TIER" ]; then
+  REASON="retour ${LAST_TIER} → ${TIER_OUT} apres purge"
+elif [ "$PENDING_GAIN" = "1" ]; then
+  REASON="purge effective (−$((BEFORE - AFTER)) pt)"
+elif [ "$((NOW - LAST_ALERT))" -ge "$RSEC" ]; then
+  REASON="rappel (toujours ≥ ${SOFT}%)"
+fi
+
+if [ -z "$REASON" ]; then
+  log "palier ${TIER_OUT} inchange, aucun gain significatif, rappel non echu — pas de notif"
+  exit "$RC"
+fi
+
+# Plancher anti-rafale : tout ce qui n'est pas une MONTEE de palier attend MIN_NOTIFY_SEC.
+# Une escalade passe toujours — on ne retarde jamais l'annonce d'une degradation.
+if [ "$ESCALATION" = "0" ] && [ "$((NOW - LAST_ALERT))" -lt "$MIN_NOTIFY_SEC" ]; then
+  log "notif '${REASON}' differee (plancher ${MIN_NOTIFY_SEC}s, dernier envoi il y a $((NOW - LAST_ALERT))s)"
+  # LAST_TIER n'est PAS avance ici : le baisser sans avoir notifie ferait relire une
+  # escalade au poll suivant, et la boucle recommencerait. La transition reste en attente
+  # et partira a l'expiration du plancher (staleness bornee a MIN_NOTIFY_SEC).
+  # Seul PENDING_GAIN est persiste — c'est la seule information non rejouable.
+  if [ "$PENDING_GAIN" = "1" ]; then
+    write_state || RC=1
+  fi
+  exit "$RC"
+fi
+
+SCOPE="palier ${TIER_OUT}"
+[ "$TIER_IN" = "$TIER_OUT" ] || SCOPE="palier ${TIER_IN} → ${TIER_OUT}"
+
+if notify "🧹 <b>disk-guard</b> @ ${HOST}
+Disque ${MOUNT} : <b>${BEFORE}% → ${AFTER}%</b> (${SCOPE})
+${ACTIONS}${TIER_MID}${TIER_HARD}
+<i>${REASON}</i>"; then
+  LAST_TIER="$TIER_OUT"
+  LAST_NOTIF_TIER="$TIER_IN"
+  LAST_ALERT="$NOW"
+  PENDING_GAIN=0
+  write_state || RC=1
+  log "notif envoyee (${REASON})"
+else
+  # Etat de palier non avance : la transition sera retentee au prochain poll. On persiste
+  # tout de meme PENDING_GAIN pour ne pas perdre un gain de purge deja realise.
+  write_state || true
+  log "notif ECHOUEE — palier ${LAST_TIER} conserve, retente au prochain poll"
+  RC=1
+fi
+
+exit "$RC"

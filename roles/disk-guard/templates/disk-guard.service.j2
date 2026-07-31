@@ -9,6 +9,11 @@ User={{ disk_guard_user }}
 ExecStart={{ disk_guard_script }}
 Nice=19
 IOSchedulingClass=idle
+# Sans borne, un `docker image prune` bloqué sur un daemon coincé (état plausible sous
+# pression disque réelle, cf. incident containerd 2026-06-02) garde /run/disk-guard.lock
+# à vie : TOUS les polls suivants sortent en « run deja en cours » et le rôle devient muet.
+# NB : RuntimeMaxSec est INERTE sur Type=oneshot — TimeoutStartSec est le bon levier.
+TimeoutStartSec={{ disk_guard_timeout_start_sec }}
 
 [Install]
 WantedBy=multi-user.target

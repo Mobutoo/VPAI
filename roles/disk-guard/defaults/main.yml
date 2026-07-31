@@ -6,6 +6,10 @@ disk_guard_user: "root"
 disk_guard_install_dir: "/opt/disk-guard"
 disk_guard_script: "{{ disk_guard_install_dir }}/disk-guard.sh"
 disk_guard_env_file: "{{ disk_guard_install_dir }}/disk-guard.env"
+# Etat persistant (palier courant, date de derniere alerte, gain de purge en attente).
+# Ecrit par le script en 0600, JAMAIS templaté : le templater le remettrait à zéro à
+# chaque déploiement et relancerait une notification de franchissement.
+disk_guard_state_file: "{{ disk_guard_install_dir }}/state"
 
 disk_guard_service_name: "disk-guard"
 disk_guard_timer_name: "disk-guard"
@@ -17,6 +21,12 @@ disk_guard_mountpoint: "/"
 disk_guard_threshold_soft: 80   # purge SÛRE (cache + dangling + leases orphelines)
 disk_guard_threshold_mid: 85    # ajoute `docker image prune -a` filtré (images inutilisées > N h, re-pull possible)
 disk_guard_threshold_hard: 90   # ajoute `docker image prune -a` sans filtre (re-pull possible)
+
+# Seuil de SORTIE d'alerte (bande morte / hystérésis), volontairement < threshold_soft.
+# Sans lui, un disque parqué pile sur 80 % oscille 79↔80 et le script alterne alerte rouge
+# et retour au vert à chaque poll — soit le spam qu'on cherche justement à supprimer.
+# La PURGE reste déclenchée à threshold_soft ; seule la notification est concernée.
+disk_guard_threshold_clear: 77
 
 # Âge minimal (jours) d'une lease containerd orpheline avant suppression auto.
 # Protège les leases fraîches d'une opération en cours.
@@ -30,11 +40,37 @@ disk_guard_lease_min_age_days: 7
 # versions.yml restent re-pullables au prochain deploy.
 disk_guard_image_max_age_hours: 168
 
+# Borne de durée d'un run (Type=oneshot → TimeoutStartSec, RuntimeMaxSec est inerte).
+# Empêche un `docker prune` bloqué de garder le lock à vie et de rendre le rôle muet.
+disk_guard_timeout_start_sec: "10min"
+
 # Cadence du timer
 disk_guard_timer_on_boot_sec: "10min"
 disk_guard_timer_on_unit_active_sec: "15min"
 
-# Notification Telegram (réutilise le bot monitoring existant)
+# Rappel périodique tant que l'usage stagne au-dessus du seuil. Hors franchissement de
+# palier, gain de purge réel et retour à la normale, c'est le seul message qui part.
+# 86400 s = 1 notification par jour (au lieu des 96 de l'ancienne notif inconditionnelle).
+disk_guard_reminder_sec: 86400
+
+# Rappel aux paliers MID/HARD. Un disque à 90 % peut se remplir entièrement en bien moins
+# de 24 h : le rappel « stagnation » nominal serait trop lent pour servir à quoi que ce soit.
+disk_guard_reminder_critical_sec: 3600
+
+# Plancher anti-rafale : délai minimal entre deux notifications NON escaladantes (gain de
+# purge, retour après purge, rappel). Une MONTÉE de palier n'est jamais retardée.
+# Sans ce plancher, le déclencheur « gain de purge » re-spamme à chaque poll dès qu'un
+# point d'écart apparaît entre les deux mesures d'un même run (rotation de logs, conteneur
+# qui sort) — le bug d'origine, déguisé.
+disk_guard_min_notify_sec: 3600
+
+# Écart minimal (points de %) pour qu'une baisse compte comme « purge effective ».
+# 1 point d'écart est du bruit de mesure, pas un résultat.
+disk_guard_gain_min_delta: 2
+
+# Notification Telegram (réutilise le bot monitoring existant).
+# Ce toggle est réellement câblé dans le script depuis 2026-07-31 (avant : variable morte,
+# la mettre à false ne coupait rien). À false, le script purge mais n'envoie plus rien.
 disk_guard_notify_telegram: true
 disk_guard_telegram_bot_token: "{{ telegram_monitoring_bot_token | default('') }}"
 disk_guard_telegram_chat_id: "{{ telegram_monitoring_chat_id | default('') }}"

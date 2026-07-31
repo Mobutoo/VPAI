@@ -2325,3 +2325,60 @@ MISSING=$(comm -23 <(echo "$DEFINED") <(echo "$HEALTHY"))
 ```
 
 Réf : `roles/docker-stack/tasks/main.yml` tâche « Verify Phase B », commit `8a6d342`.
+
+---
+
+## 61. disk-guard — 96 notifications Telegram par jour à usage disque stable (2026-07-31)
+
+**Symptôme** : Telegram reçoit `🧹 disk-guard @ sese / Disque / : 80% → 80% / Palier SUR (cache+dangling+leases)` **toutes les 15 minutes**, pendant des semaines, alors que l'usage disque ne bouge pas d'un point.
+
+**Cause racine** : dans `roles/disk-guard/templates/disk-guard.sh.j2`, l'appel `notify()` était en **fin de script, sans aucune condition**. Le commentaire juste au-dessus affirmait « Notif uniquement si une action a eu lieu » — rien ne gardait l'appel. Dès que l'usage atteignait `SOFT` (80 %), chaque déclenchement du timer (`OnUnitActiveSec=15min`) envoyait un message, purge effective ou non. 24 h / 15 min = **96 messages/jour**. Aucun état persistant, aucune hystérésis, aucun cooldown.
+
+Aggravant : entre `SOFT` (80) et `MID` (85) le rôle n'a **aucune action utile** — le palier SÛR ne trouve rien quand le cache de build est vide et qu'il n'y a ni image dangling ni lease ancienne. Il alertait donc en boucle sur une situation qu'il ne pouvait pas corriger.
+
+**Fix** — rendre le script *stateful* (`/opt/disk-guard/state`, 0600) et ne notifier que sur : détection d'un palier différent, gain de purge **significatif**, rappel périodique, retour sous le seuil de sortie. Trois garde-fous sont nécessaires, pas un seul : chacun ferme une porte différente (pièges 1, 6 et 7 ci-dessous).
+
+**Piège n° 1 — le seuil pile sur la valeur mesurée.** Ici `df` renvoie 80 et `SOFT` vaut 80. Une règle « notifier au changement de palier » seule ne suffit **pas** : le disque oscille 79↔80 et le script alterne ⚠️/✅ à chaque poll, soit le même spam en pire. Il faut un **seuil de sortie distinct du seuil d'entrée** (`disk_guard_threshold_clear: 77`) et un `tier_of()` **collant** dans la bande morte :
+
+```bash
+tier_of() {                       # pct, last_tier
+  if   [ "$1" -ge "$HARD" ];  then echo HARD
+  elif [ "$1" -ge "$MID" ];   then echo MID
+  elif [ "$1" -ge "$SOFT" ];  then echo SOFT
+  elif [ "$1" -ge "$CLEAR" ]; then echo "$2"   # bande morte : on CONSERVE le palier
+  else echo OK; fi
+}
+```
+Sans la ligne `CLEAR`, une purge qui ramène 80 → 78 produit `tier=OK != SOFT` → notif de descente, alors que la sortie précoce du script refuse justement cette descente. L'hystérésis se fait contourner par la porte de derrière.
+
+**Piège n° 2 — `TIER` se calcule sur `AFTER`, jamais sur `BEFORE`.** C'est `AFTER` qui persiste jusqu'au poll suivant. Sur `BEFORE`, une purge MID réussie (85 → 84) écrirait `LAST_TIER=MID` alors que le poll d'après lit `SOFT` → clignotement.
+
+**Piège n° 3 — le gain de purge n'est pas rejouable.** Les autres déclencheurs se re-évaluent au poll suivant ; `AFTER < BEFORE` non. Si le `curl` échoue, l'information est perdue à jamais. D'où un `PENDING_GAIN=1` persisté, effacé seulement après envoi réussi. Corollaire général : **l'état n'avance que si `notify()` a réussi** — donc `notify()` doit retourner le code de `curl`, et non l'avaler dans un `|| log ...`.
+
+**Piège n° 4 — le journal qui paraît vide.** `journalctl -u disk-guard.service` ne renvoyait « No entries » : l'utilisateur de déploiement n'est ni dans `adm` ni dans `systemd-journal`, donc il ne voit pas les units système. **`sudo journalctl`** montre tout. Ne pas conclure « le service ne loggue rien » sans sudo.
+
+**Piège n° 5 — variable de configuration morte.** `disk_guard_notify_telegram` était documentée dans le README comme un toggle mais n'était référencée **nulle part** dans le template ni les tasks : la mettre à `false` ne coupait rien. Vérifier qu'un toggle est réellement câblé avant de le documenter.
+
+**Piège n° 6 — le déclencheur « gain de purge » re-spamme s'il n'est pas borné.** *Trouvé en revue adversariale, pas au premier banc d'essai* (dont les stubs gardaient `BEFORE == AFTER`, donc n'exerçaient jamais ce chemin). Le run mesure l'usage deux fois : un seul point d'écart — rotation `journald`, conteneur qui sort, build qui se termine — suffit à faire passer `AFTER < BEFORE` et à notifier **à chaque poll**. Il faut deux bornes : un **delta minimal** (`disk_guard_gain_min_delta: 2`) et surtout un **plancher anti-rafale** (`disk_guard_min_notify_sec: 3600`) appliqué à toute notification qui n'est pas une **montée** de palier. Une escalade n'est jamais retardée — on ne diffère pas une mauvaise nouvelle.
+
+**Piège n° 7 — l'hystérésis collante rend muet le palier le plus grave.** Symétrique du n° 1, et bien plus dangereux. Si le palier est conservé *tel quel* dans la bande morte, un disque monté à 95 % (état `HARD`), redescendu à 78 %, puis **remonté à 95 %** ne déclenche plus rien : `TIER == LAST_TIER`. Silence jusqu'au rappel, soit 24 h — là où l'ancien script alertait en 15 min. La bande morte doit **conserver `SOFT` mais rétrograder `MID`/`HARD` vers `SOFT`** (silencieusement, en persistant). Corollaire : le rappel doit dépendre du palier — 24 h à SOFT, **1 h à MID/HARD**, un disque à 90 % pouvant se remplir en bien moins de 24 h.
+
+**Piège n° 7-bis — l'escalade qui se juge sur le mauvais palier.** Le plancher anti-rafale (n° 6) doit être contourné par une escalade, sinon on retarde une mauvaise nouvelle. Mais si l'escalade se juge par rapport à l'**état courant**, un disque qui repasse la barre à chaque poll (88 % → purge → 84 % → se remplit → 88 %) redétecte `MID` à chaque run et **contourne le plancher à chaque fois** : 96 messages/jour par un quatrième chemin. L'escalade doit se juger par rapport au **dernier palier effectivement notifié** (`LAST_NOTIF_TIER`), pas à `LAST_TIER`. Conséquence assumée : la répétition d'un palier déjà annoncé est différée d'au plus `MIN_NOTIFY_SEC` ; seule une **aggravation réelle** (SOFT déjà notifié → HARD) passe immédiatement.
+
+**Piège n° 7-ter — ne pas faire redescendre l'état quand on diffère.** Dans la branche « notification différée », baisser `LAST_TIER` fait relire une escalade au poll suivant et la boucle recommence. On ne persiste que `PENDING_GAIN` ; la transition reste en attente et part à l'expiration du plancher.
+
+**Piège n° 8 — `TIER_IN` vs `TIER_OUT`.** Un run purge : le palier détecté à l'entrée (`BEFORE`) et celui qui reste à la sortie (`AFTER`) peuvent différer. Ne juger que sur `AFTER` rend un run 95 % → 78 % **totalement silencieux** ; ne juger que sur `BEFORE` écrit un palier que le poll suivant contredit. Il faut les deux : `TIER_IN` gouverne l'escalade, `TIER_OUT` gouverne l'état persisté.
+
+**Piège n° 9 — l'anti-spam qui meurt à disque plein.** L'état est écrit **sur le système de fichiers surveillé**. À `ENOSPC`, `write_state` échoue, l'état ne s'écrit jamais, et chaque poll re-notifie « franchissement » — le spam revient exactement au moment où le rôle sert. Ne jamais avaler cet échec : sortir en code ≠ 0 pour que l'unité systemd le signale.
+
+**Piège n° 10 — `install(1)` n'est PAS atomique.** `strace install -m 0600 <src> <dst>` ne montre **aucun `rename`** : la cible est détruite puis recréée (`openat O_CREAT|O_EXCL`). Il existe une fenêtre où le fichier d'état est absent. Pour une écriture réellement atomique : `chmod 0600 "$tmp" && mv -f "$tmp" "$dst"` (rename(2), même système de fichiers).
+
+**Piège n° 11 — `Type=oneshot` + `flock -n` sans borne de durée = mutisme permanent.** Un `docker image prune` bloqué sur un daemon coincé (état plausible sous pression disque réelle, cf. §54) garde `/run/disk-guard.lock` indéfiniment : tous les polls suivants sortent en « run deja en cours », unité verte. Poser `TimeoutStartSec` — **`RuntimeMaxSec` est inerte sur `Type=oneshot`**.
+
+**Piège n° 12 — horloge qui recule.** Un `LAST_ALERT` dans le futur (RTC en avance au boot, avant resynchro NTP) rend le rappel — dernier filet de sécurité — impossible à échoir. Le borner : `[ "$LAST_ALERT" -le "$NOW" ] || LAST_ALERT=0`.
+
+**Leçon générale** : **tout rôle à timer court doit être stateful avant de notifier** — et « stateful » ne se résume pas à mémoriser un palier. Il faut, ensemble : une bande morte, un plancher anti-rafale sur les événements non escaladants, une rétrogradation dans la bande morte, un rappel dépendant de la gravité, et des sorties non nulles sur les pannes de l'état / de la mesure / de la notification. Le pattern de départ est `roles/waza-deadman` (simple) et `roles/memory-worker-auto-repair/templates/memory-worker-auto-repair.sh.j2:214-292` (lecture par `sed` sans `source`, dernière clé écrite servant de sentinelle de troncature) — mais leur écriture par `install` est à remplacer par `mv` (piège n° 10). Le jumeau `banga/roles/disk-guard` appliquait déjà la règle du franchissement ; il n'est simplement pas exposé au piège n° 1, sa valeur n'étant pas parquée sur la frontière.
+
+**Leçon de méthode** : le premier banc d'essai (21 cas, tous verts) laissait passer les pièges 6, 7 et 9 parce que ses stubs gardaient `BEFORE == AFTER` et ne testaient jamais un disque revenant sur un palier déjà visité. Un banc écrit par l'auteur du correctif teste les scénarios auxquels il a pensé. **La revue adversariale n'est pas optionnelle** : c'est elle qui a produit les 3 HIGH, avec bancs de preuve reproductibles.
+
+Réf : `roles/disk-guard/` (script + defaults + service + README), constaté sur sese le 2026-07-31 (80 % stable, 20 G libres).

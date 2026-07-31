@@ -1,6 +1,22 @@
 ---
 # disk-guard — déploie le script + units systemd + active le timer.
 
+- name: Assert disk-guard thresholds are strictly ordered
+  # L'hystérésis n'existe que si le seuil de SORTIE est strictement sous le seuil d'entrée.
+  # Un `disk_guard_threshold_clear` >= soft rendrait la bande morte inatteignable et le
+  # rôle re-spammerait, sans le moindre message d'erreur au déploiement.
+  ansible.builtin.assert:
+    that:
+      - disk_guard_threshold_clear | int < disk_guard_threshold_soft | int
+      - disk_guard_threshold_soft | int < disk_guard_threshold_mid | int
+      - disk_guard_threshold_mid | int < disk_guard_threshold_hard | int
+      - disk_guard_gain_min_delta | int >= 1
+    fail_msg: >-
+      Seuils disk-guard incohérents : exigé clear({{ disk_guard_threshold_clear }})
+      < soft({{ disk_guard_threshold_soft }}) < mid({{ disk_guard_threshold_mid }})
+      < hard({{ disk_guard_threshold_hard }}), et gain_min_delta >= 1.
+    quiet: true
+
 - name: Ensure disk-guard install dir
   ansible.builtin.file:
     path: "{{ disk_guard_install_dir }}"

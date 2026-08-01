@@ -1,7 +1,7 @@
 # Design — Prisme, application de connaissance vérifiable
 
 > Date : 2026-07-27
-> Statut : **v3 post-revue Claude Opus 5 — READY**, prêt pour décisions G0, aucune mutation autorisée
+> Statut : **v4 READY — revue Claude Opus 5 passe 29, 0 P0 / 0 P1**
 > Nom produit : **Prisme** (nom de travail, renommable avant création du repo)
 > Repo cible : `/home/mobuone/work/saas/prisme`
 > Collection Qdrant cible : `knowledge_v1`
@@ -16,9 +16,16 @@ Prisme est une **application autonome de bout en bout**, et non un module de Pal
 - Open WebUI est une façade conversationnelle optionnelle.
 - Jellyfin est un lecteur de sources archivées, pas un catalogue métier.
 - `trading_v1` appartient à un autre projet et est **strictement hors périmètre** :
-  aucun read, write, alias, migration, retrieval fédéré ou dépendance.
+  aucune lecture de points/vecteurs/payloads, write, alias, migration, retrieval fédéré ou
+  dépendance. Seul l'inventaire read-only des métadonnées de collection est autorisé pour le
+  registre et la preuve d'absence de mutation G3.
 - `memory_v3` reste la mémoire opérationnelle des agents.
 - Prisme crée et utilise exclusivement `knowledge_v1` pour son index métier.
+- Karakeep est une **Inbox documentaire et un journal de consultation optionnel** : il capture les
+  URL, pages, PDF, notes et vidéos retenus par l'opérateur ou le research worker. Il ne porte ni
+  verdict, ni graphe de preuves, ni vérité métier.
+- L'intégration Karakeep se fait exclusivement par API REST et webhooks versionnés. Prisme ne lit
+  jamais sa base SQLite et n'importe ni son index Meilisearch ni ses embeddings.
 
 La source de vérité n'est jamais Qdrant :
 
@@ -29,6 +36,13 @@ La source de vérité n'est jamais Qdrant :
 | recherche dense/sparse | Qdrant `knowledge_v1`, reconstructible |
 | encodage dense/sparse | service Embedding Prisme pinné sur Banga |
 | état local de téléchargement/reprise | SQLite du worker Waza |
+| capture, lecture différée et copie de commodité d'une URL | Karakeep, non canonique |
+| requête, sélection, qualification et décision de recherche | PostgreSQL Prisme |
+| original pérenne autorisé et artefacts de recherche | Banga, `/tank/knowledge` |
+
+La règle de promotion est explicite : **trouvé dans Karakeep ne signifie ni vrai, ni vérifié, ni
+archivé durablement**. Prisme décide ce qui devient une source de recherche, Banga conserve ce qui
+doit être canonique, et PostgreSQL porte l'évaluation intellectuelle.
 
 ## 2. Produit
 
@@ -98,6 +112,7 @@ Sese, VPN-only                  catalogue + workflow + preuve + ACL
      ├── Qdrant `knowledge_v1`  index reconstructible
      ├── LiteLLM                extraction, synthèse, judges
      ├── Research worker        recherche externe bornée
+     │       └── Karakeep       Inbox URL/API/webhooks, non autoritaire
      ├── MCP server             agents et clients
      └── Outbox                 commandes/événements
              │
@@ -107,6 +122,12 @@ Waza acquisition             Banga knowledge plane
 official API/gallery-dl      ZFS + GPU + expériences
 SQLite + spool HOT           `/tank/knowledge`
 ```
+
+Prisme utilise une clé virtuelle LiteLLM dédiée, avec allocation quotidienne décidée en G0 à
+l'intérieur du hard cap partagé VPAI `$5/day`. Cette clé borne la contribution Prisme mais ne
+l'isole pas physiquement des dépenses des autres applications ; G0 documente la répartition et
+ne relève le cap global qu'après décision explicite de doctrine/coût. Spend, restant et refus sont
+métriqués ; Prisme arrête ses jobs avant d'épuiser son allocation.
 
 ### 3.1 Plan de contrôle — Sese
 
@@ -144,12 +165,20 @@ SQLite + spool HOT           `/tank/knowledge`
 - montage Jellyfin read-only des sources archivées ;
 - aucune dépendance catalogue indispensable au boot de Banga.
 
+Le rôle `knowledge-store` expose sur le mesh VPN une API interne mTLS/service-token, non publique :
+lecture de manifest par IDs stables, transcript/artefact avec HTTP Range, limites taille/temps et
+aucun chemin libre. Chaque chemin relatif est reconstruit côté serveur depuis les IDs puis validé
+sous les racines canoniques. L'indexer Sese utilise cette API ; les routes utilisateur Prisme
+revalident tenant/ACL en PostgreSQL puis proxifient les octets autorisés, sans URL Banga directe.
+
 ## 4. Arborescence du repo Prisme
 
 ```text
 prisme/
 ├── AGENTS.md
 ├── README.md
+├── .planning/
+│   └── EXECUTION.md
 ├── package.json
 ├── pnpm-lock.yaml
 ├── svelte.config.js
@@ -167,6 +196,8 @@ prisme/
 │   │   │   ├── qdrant/
 │   │   │   ├── retrieval/
 │   │   │   ├── research/
+│   │   │   ├── connectors/
+│   │   │   │   └── karakeep/
 │   │   │   └── telemetry/
 │   │   └── stores/
 │   └── routes/
@@ -185,6 +216,8 @@ prisme/
 │       └── api/v1/
 ├── workers/
 │   ├── research/
+│   ├── connectors/
+│   │   └── karakeep/
 │   ├── consolidation/
 │   └── indexer/
 ├── packages/
@@ -192,6 +225,9 @@ prisme/
 │   ├── embeddings/
 │   ├── qdrant-schema/
 │   └── evals/
+├── config/
+│   ├── qdrant-collections.snapshot.yml
+│   └── qdrant-collections.snapshot.sha256
 ├── migrations/
 ├── tests/
 │   ├── unit/
@@ -204,6 +240,9 @@ prisme/
 │   ├── runbooks/
 │   ├── adr/
 │   └── rex/
+├── scripts/
+│   ├── verify-qdrant-registry
+│   └── qdrant-registry-canonicalize.mjs
 └── docker/
 ```
 
@@ -214,8 +253,10 @@ uniquement sa documentation et son code ; elle est indépendante de `knowledge_v
 ### 4.1 Séparation immuable code/contenu
 
 `/home/mobuone/work/saas/prisme` ne contient que code, migrations, contrats, tests, petites
-fixtures synthétiques, documentation et configuration sans secret. Aucun média réel, transcript
-d'exploitation, frame, OCR, export utilisateur, cache modèle ou volume de base n'y est écrit.
+fixtures synthétiques ou transcripts de benchmark explicitement redistribuables, documentation
+et configuration sans secret. Aucun média binaire réel, transcript d'exploitation, frame, OCR,
+export utilisateur, cache modèle ou volume de base n'y est écrit. Les manifests de golden
+référencent licence, URL et hash ; les binaires sont réhydratés hors Git.
 
 Les contenus sont adressés par identifiants stables, jamais par taxonomie métier :
 
@@ -238,8 +279,13 @@ un contenu peut couvrir plusieurs sujets. PostgreSQL porte le catalogue et l'ont
 manifestes Banga portent la traçabilité, Qdrant porte un index reconstructible. Le spool Waza est
 transitoire, borné et placé hors de tout repo Git.
 
-`tank/knowledge` est rattaché à la politique backup 3-2-1-1-0 Banga avec copie offsite et restore
-drill. Toute perte acceptée ou exception de rétention est une décision explicite de l'ADR 0001.
+`tank/knowledge` possède une politique backup 3-2-1-1-0 Prisme avec copie offsite et restore
+drill via le hub unique zerobyte v3 PULL SSH (phases P6/P6b), livrée avant G10 sans déclarer
+résolu le NO-GO offsite global Banga. Prisme ne crée aucun bucket/credential parallèle ; les
+gates Object-Lock/billing/escrow/prune restent ceux de zerobyte v3. P4 peut créer le
+dataset lorsque le pool et son provisioning ZFS sont verts, puis active immédiatement ses
+snapshots locaux ; l'offsite Prisme reste un gate terminal propre au dataset. Toute perte acceptée
+ou exception de rétention est une décision explicite de l'ADR 0001.
 
 ## 5. Contrat Qdrant `knowledge_v1`
 
@@ -254,9 +300,16 @@ drill. Toute perte acceptée ou exception de rétention est une décision explic
 7. Aucun bootstrap ne supprime/recrée automatiquement une collection incompatible.
 8. Le client est **default-deny** : seules `knowledge_v1`, `knowledge_current` et des collections
    de test au préfixe imposé sont acceptées.
+   Les cibles de test exigent simultanément un mode test et un endpoint local/éphémère ; elles sont
+   refusées sur le Qdrant production avant tout appel réseau.
 9. `inventory/group_vars/all/qdrant_collections.yml` est l'unique registre des propriétaires et
    politiques de mutation ; l'allowlist/denylist Prisme et ses tests en sont générés.
 10. Aucun code Prisme n'importe directement le client Qdrant officiel hors du package wrapper.
+
+Avant création sur le Qdrant partagé Sese, un préflight mesure son plafond conteneur, son usage
+réel et l'empreinte projetée de `knowledge_v1` avec 30 % de marge ; aucune réserve de
+`memory_v3` ou `trading_v1` n'est consommée implicitement. Les drills de reconstruction tournent
+sur une instance Qdrant éphémère dédiée et localement isolée, jamais sur cette production.
 
 ### 5.2 Configuration
 
@@ -288,7 +341,9 @@ sparse_vectors:
 - `embedding_prompt_version` identifie ces transformations.
 - RRF et DBSF sont implémentés ; la stratégie active est choisie sur le golden Prisme réel et
   versionnée. Aucun résultat de `memory_v3` n'est transposé sans mesure.
-- `knowledge_current` pointe vers `knowledge_v1` après validation du bootstrap et des evals.
+- `knowledge_current` pointe vers `knowledge_v1` après validation du bootstrap vide et du smoke
+  de schéma G3. Les evals P10 conditionnent le passage production et toute future bascule vers
+  `knowledge_v2`, pas la création initiale de l'alias.
 - Une future migration crée `knowledge_v2` côte à côte puis bascule l'alias ; aucun wipe.
 
 ### 5.3 Taxonomie — adaptation maximale du Memory Manifest
@@ -296,14 +351,14 @@ sparse_vectors:
 Le patron du Memory Manifest est conservé, mais ses enums ne sont pas copiés : `memory_v3` classe
 des fichiers de repos, Prisme classe des sources et unités de connaissance. Pour éviter qu'un
 `wing=saas` de `memory_v3` soit confondu avec une provenance Prisme, le champ canonique est
-`provenance_class`. `wing` reste un alias de compatibilité en lecture, dérivé côté serveur et
+`provenance_class`. `wing` reste un alias local Prisme de transition API en lecture, dérivé côté serveur et
 strictement égal à `provenance_class`.
 
 La taxonomie porte `taxonomy_namespace=prisme.knowledge`, `taxonomy_version=1` et
 `ontology_version`. `taxonomy_version` versionne schémas, enums et hiérarchie ; `ontology_version`
 versionne le snapshot des entités, alias et affectations de topics injecté dans les embeddings.
 
-#### `provenance_class` — famille de provenance (`wing` compatible)
+#### `provenance_class` — famille de provenance (`wing` alias local transitoire)
 
 ```text
 social       contenu issu d'une plateforme sociale
@@ -407,6 +462,11 @@ La fonction probatoire n'est pas intrinsèque au document : `supports`, `contrad
 - le même identifiant est exposé avec le nom métier `corpus_id` ;
 - `repo` est dérivé côté serveur de `corpus_id` et ne peut pas être fourni séparément par un client ;
 - `relative_path` pointe vers l'artefact canonique sous `/tank/knowledge`, sans préfixe absolu ;
+- pour un point indexable, `relative_path` commence par l'une des racines canoniques :
+  `library/<tenant>/<corpus>/<item>/<version>/{source|derived|knowledge}/...`,
+  `research/<claim>/<run>/...` ou `experiments/<experiment>/<run>/...` ;
+- `incoming/`, `exports/` et `quarantine/` sont physiques et validées par le store mais ne
+  produisent jamais de point Qdrant ni de `relative_path` indexable ;
 - le changement de username ou de titre ne modifie ni `repo` ni `source_id`.
 
 ### 5.4 Payload commun obligatoire
@@ -414,7 +474,7 @@ La fonction probatoire n'est pas intrinsèque au document : `supports`, `contrad
 | Champ | Type | Rôle |
 |---|---|---|
 | `provenance_class` | keyword | provenance canonique |
-| `wing` | keyword | alias compatible dérivé de `provenance_class` |
+| `wing` | keyword | alias local transitoire dérivé de `provenance_class` |
 | `room` | keyword | domaine |
 | `doc_kind` | keyword | représentation indexée |
 | `repo` | keyword | compatibilité : corpus stable |
@@ -433,13 +493,14 @@ La fonction probatoire n'est pas intrinsèque au document : `supports`, `contrad
 | `embedding_dim` | integer | 768 |
 | `sparse_model` | keyword | modèle sparse et version |
 | `chunking_strategy_version` | keyword | stratégie de chunking |
-| `prompt_version` | keyword | prompt documentaire |
-| `embedding_prompt_version` | keyword | prompts asymétriques document/requête |
+| `prompt_version` | keyword | extraction/construction du texte canonique |
+| `embedding_prompt_version` | keyword | seul formatage asymétrique document/requête envoyé au modèle |
 | `host_origin` | keyword | producteur technique |
 | `source_kind` | keyword | type de source |
 | `content_sha256` | keyword | intégrité |
 | `chunk_index` | integer | position déterministe |
 | `chunk_total` | integer | nombre de chunks |
+| `index_generation` | integer | génération d'encodage, croissante par `knowledge_item_id` |
 | `index_state` | keyword | `staging` ou `active` |
 | `deleted_at` | datetime/null | retrait logique |
 | `is_deleted` | bool | filtre runtime, PostgreSQL conserve le null métier |
@@ -498,12 +559,16 @@ taxonomy_namespace, taxonomy_version, ontology_version, valid_from, text,
 schema_version, embedding_model, embedding_model_version, embedding_dim,
 sparse_model, chunking_strategy_version, prompt_version,
 embedding_prompt_version, host_origin, source_kind, content_sha256,
-chunk_index, chunk_total, tenant_id, corpus_id, source_id,
+chunk_index, chunk_total, index_generation, tenant_id, corpus_id, source_id,
 knowledge_item_id, artifact_id, canonical_id, publisher_id, platform,
 canonical_url, language, published_at, created_at, start_ms, end_ms,
 topic_path, topic_ancestors, entity_ids, entity_kinds, knowledge_kind,
 source_provenance_classes
 ```
+
+`index_generation` appartient à cette partition immuable ; une mutation exige un nouveau point
+ID. Un test rend la partition immuable/mutable exhaustive et refuse tout champ obligatoire non
+classé.
 
 Mutables par `set_payload` uniquement :
 
@@ -522,14 +587,14 @@ mutation de projection ne modifie jamais les vecteurs ni l'identité du point.
 Indexes `keyword` :
 
 ```text
-provenance_class, wing, room, doc_kind, repo, tags, taxonomy_namespace,
+provenance_class, room, doc_kind, repo, tags, taxonomy_namespace,
 topic_path, topic_ancestors, entity_ids, entity_kinds, knowledge_kind,
 source_provenance_classes,
 schema_version, embedding_model, embedding_model_version, sparse_model,
 chunking_strategy_version, prompt_version,
 embedding_prompt_version, index_state,
 host_origin, source_kind, tenant_id, acl_scope, corpus_id, source_id,
-knowledge_item_id, artifact_id, canonical_id,
+knowledge_item_id, artifact_id, canonical_id, canonical_url,
 publisher_id, platform, language, claim_ids, verification_status,
 risk_level, evidence_level, experiment_status
 ```
@@ -543,7 +608,7 @@ valid_from, valid_to, published_at, created_at, last_verified_at
 Indexes `integer` :
 
 ```text
-taxonomy_version, ontology_version, start_ms, end_ms, chunk_index
+taxonomy_version, ontology_version, start_ms, end_ms, chunk_index, index_generation
 ```
 
 Index booléen : `is_deleted`.
@@ -552,6 +617,8 @@ Le bootstrap vérifie type et présence de chaque index. Toute divergence produi
 et un plan de migration ; elle ne déclenche jamais de correction destructive implicite.
 `relative_path` et `content_sha256` restent filtrables dans PostgreSQL et ne reçoivent pas d'index
 Qdrant à haute cardinalité sans mesure démontrant son utilité.
+`wing` reste un payload local transitoire égal à `provenance_class`; les filtres legacy `wing` sont
+réécrits vers ce dernier et aucun index Qdrant redondant n'est créé.
 
 ### 5.7 Identifiants et versionnement
 
@@ -570,12 +637,16 @@ Identité point :
 
 ```text
 UUIDv5(PRISME_NAMESPACE,
-  knowledge_item_id + ":" + artifact_id + ":" + canonical_id + ":" +
-  doc_kind + ":" + knowledge_kind + ":" + chunk_index + ":" +
-  content_sha256 + ":" + schema_version + ":" + taxonomy_version + ":" +
-  ontology_version + ":" + embedding_model_version + ":" + sparse_model + ":" +
-  chunking_strategy_version + ":" + prompt_version + ":" + embedding_prompt_version)
+  join(SEP, knowledge_item_id, artifact_id, canonical_id, doc_kind, knowledge_kind,
+       chunk_index, content_sha256, schema_version, taxonomy_version, ontology_version,
+       embedding_model_version, sparse_model, chunking_strategy_version, prompt_version,
+       embedding_prompt_version, index_generation))
 ```
+
+`SEP` est exclusivement l'octet `\x1f`; le séparateur littéral `:` est interdit. La concaténation
+inter-runtime utilise UTF-8 et la sentinelle ASCII `-`
+pour toute valeur nullable, notamment `knowledge_kind`; une valeur métier réelle égale à `-` est
+interdite.
 
 `content_sha256` est toujours le SHA-256 du `text` exact de l'unité indexée, pas celui du média ni
 du bundle. Deux unités issues du même chunk ont des `knowledge_item_id` distincts.
@@ -586,11 +657,13 @@ Lorsqu'un contenu change :
 2. nouveau point distinct upserté avec `index_state=staging` ;
 3. contrôle de comptage/retrieval avec `buildValidationFilter()`, réservé à l'indexeur : ACL et
    tenant obligatoires, `staging` explicitement autorisé ;
-4. nouveau point passe `active`, puis ancien point reçoit `valid_to` ;
-5. le retrieval déduplique transitoirement par identité canonique et prend le `valid_from`
-   le plus récent ;
-6. version PostgreSQL devient active ;
-7. un reconciler corrige tout état partiel après crash.
+4. nouveau point Qdrant passe `active`, sans invalider l'ancien ;
+5. nouvelle version PostgreSQL devient active ; jusqu'ici la revalidation SQL continue de servir
+   l'ancienne, puis autorise la nouvelle sans fenêtre vide ;
+6. pendant la coexistence Qdrant, le retrieval déduplique par identité canonique et prend le
+   `valid_from` actif le plus récent confirmé en PostgreSQL ;
+7. l'ancienne version PostgreSQL devient superseded, puis l'ancien point reçoit `valid_to` ;
+8. un reconciler corrige tout état partiel après crash.
 
 La fenêtre entre activation Qdrant et activation PostgreSQL est tracée. Le runtime ne présente
 jamais une connaissance dont l'enregistrement PostgreSQL n'est pas actif ; un test de crash entre
@@ -598,6 +671,13 @@ chaque étape prouve la convergence.
 
 Un test échoue si l'ancien et le nouvel artefact produisent le même point ID après changement de
 modèle, chunker ou prompt.
+
+Un réencodage sans nouvelle version métier utilise `index_generation` dans `index_points` :
+nouvelle génération Qdrant en staging puis active, même `knowledge_item_id` PostgreSQL déjà actif,
+coexistence dédupliquée vers la génération la plus récente validée, puis expiration de l'ancienne.
+Le point ID inclut la génération ; le retrieval déduplique par `knowledge_item_id` et garde la
+génération active maximale validée dans le ledger. Le crash entre chaque étape conserve au moins
+une génération servable ; aucune fausse nouvelle version PostgreSQL n'est créée.
 
 ### 5.8 Exemple minimal
 
@@ -665,6 +745,8 @@ Tables minimales :
 
 ```text
 users
+idempotency_records
+webhook_delivery_receipts
 sources
 ingestion_jobs
 ingestion_items
@@ -676,7 +758,15 @@ entity_relations
 knowledge_item_entities
 strategy_specs
 claims
-research_sources
+research_runs
+research_queries
+research_candidates
+research_candidate_merges
+external_connectors
+external_resources
+external_resource_merges
+research_candidate_resources
+external_sync_attempts
 claim_evidence
 claim_verifications
 experiments
@@ -707,9 +797,80 @@ Contraintes :
 - `strategy_specs` versionne hypothèses, paramètres, univers, horizon, coûts, risques et métriques ;
 - ACL présentes dès le premier schéma, même en mono-utilisateur ;
 - suppression logique avant purge physique ;
-- Qdrant point IDs enregistrés pour audit, sans devenir l'autorité.
+- Qdrant point IDs enregistrés pour audit, sans devenir l'autorité ;
 - `index_points` relie point, item, artefact, collection, versions et validité ;
-- `answers`/`answer_citations` figent les preuves réellement présentées.
+- `answers`/`answer_citations` figent les preuves réellement présentées ;
+- leur relecture reste dynamique côté sécurité : chaque citation repasse par
+  `applySecurityScope(ctx, securityAsOf=now())`, indépendamment de l'`asOf` historique de la
+  question ; une citation révoquée/takedown est masquée et
+  la réponse GET calcule `effective_visibility_status=stale_redacted` sans écrire. L'événement
+  transactionnel de révocation/takedown persiste ensuite idempotemment
+  `answers.visibility_status=stale_redacted`; aucune fuite du texte ou de l'URL retirés. Enum
+  versionné : `active|stale_redacted` ;
+- `research_runs` porte `claim_id` nullable, tenant/ACL, `topic_path` autoritaire/versionné, état,
+  budget et horodatages ; les
+  requêtes et candidats lui sont rattachés par FK ;
+- `research_candidates` est unique par `(research_run_id, canonical_url_hash)` sur les lignes
+  `merged_into_candidate_id IS NULL` et porte la
+  qualification propre au run : rôle, décision et motif de rejet. Un bump de canonicalisation
+  exécute d'abord un dry-run sans mutation. Une collision aux qualifications identiques est
+  fusionnable avec audit ; une collision aux rôles/décisions divergents fait créer et committer
+  une tâche de revue dans une transaction séparée, puis bloque la mutation. Après résolution
+  seulement, le recalcul et les fusions s'exécutent dans une nouvelle transaction atomique.
+  L'unique reste immédiat et compatible `ON CONFLICT`; sous lock, une double passe par hashes
+  sentinelles `migration:<migration_id>:<row_id>` couvre aussi les permutations avant les hashes
+  finaux. Une CHECK n'autorise ce préfixe que si `canonicalization_migration_id` concorde et est
+  ensuite remis à null. Une fusion identique repointe les liaisons, ajoute la ligne append-only
+  `research_candidate_merges(loser_id, survivor_id)`, tombstone le perdant via
+  `merged_into_candidate_id` et interdit tout DELETE. L'upsert répète le prédicat partiel ; une
+  liaison ressource déjà présente côté survivant conserve l'ancienne et tombstone la redondante
+  via `merged_into_link_id`. Un rollback conserve donc la tâche de revue. Aucune nouvelle version
+  n'est activée avant résolution ;
+- les chaînes candidates se résolvent récursivement vers la racine, profondeur max 8, compression
+  sous lock et rejet de tout cycle/dépassement ;
+- `external_resources` représente une projection externe dédupliquée, unique par
+  `(connector_id, canonical_url_hash)` sur les seules lignes actives
+  `merged_into_resource_id IS NULL`; `(connector_id, external_id)` reste unique sur toutes les
+  lignes, y compris tombstonées, afin d'interdire sa réutilisation. La
+  version de canonicalisation est une colonne non-clé. Sous advisory lock et gel des écritures,
+  un bump exécute dry-run, fusionne/repointe les perdants, place les survivants sur les mêmes
+  sentinelles protégées par CHECK, puis écrit les hashes finaux avant commit ; il couvre ainsi
+  les permutations sous unique immédiat. Elle ne
+  porte ni rôle ni décision de recherche et n'a pas de FK directe vers un run ;
+- `research_candidate_resources` relie plusieurs qualifications par run à une unique ressource
+  externe, unique `(research_candidate_id, external_resource_id)` pour les lignes
+  `merged_into_link_id IS NULL`, et conserve l'historique sans écrasement ;
+- une fusion repointe transactionnellement `research_candidate_resources` vers le survivant,
+  ajoute une ligne append-only `external_resource_merges(loser_id, survivor_id)` et conserve le
+  perdant tombstoné avec `merged_into_resource_id`. Les `external_sync_attempts` restent
+  immuables et se résolvent par cette chaîne ; aucune suppression physique du perdant ;
+- si une liaison active identique existe déjà après repointage, la plus ancienne reste active et
+  la redondante est tombstonée via `merged_into_link_id`, sans DELETE ni perte d'historique ;
+- le reconciler suit la merge-map vers le survivant, ignore les perdants tombstonés et ne les
+  ressuscite jamais par `external_id`. Il résout récursivement jusqu'à la racine avec profondeur
+  maximale 8 ; la transaction de merge verrouille la chaîne, compresse les chemins et refuse tout
+  cycle ou dépassement ;
+- chaque ressource conserve URL originale, URL résolue, URL canonique,
+  `url_canonicalization_version`, hash versionné et identifiants Prisme séparés ;
+- `canonical_url` des ressources externes reste hors index Qdrant : la déduplication et la
+  canonicalisation sont exclusivement autoritaires dans PostgreSQL. Ce champ externe est
+  distinct du `canonical_url` documentaire du payload `knowledge-point.v1`, qui peut être indexé
+  pour retrouver la source canonique d'un item ;
+- une collision divergente crée un `review_tasks.kind=canonicalization_collision` avec les IDs,
+  versions, hashes et qualifications conflictuels ; elle est distincte des revues de claim et
+  d'entité ;
+- `research_queries` conserve requête, provider, budget et session. Les résultats bruts non
+  examinés restent éphémères ; `research_candidates` conserve toute URL effectivement ouverte,
+  analysée, citée ou explicitement rejetée ;
+- `tenant_id` et `acl_scope` sont obligatoires sur `research_queries`, `research_candidates`,
+  `external_connectors`, `external_resources`, `research_candidate_resources` et
+  `external_sync_attempts`. Un connecteur lie exactement un tenant à un compte Karakeep ;
+- aucun secret Karakeep, corps HTML complet ou asset binaire dans PostgreSQL.
+- `idempotency_records` conserve tenant, route, clé, hash de requête, statut/réponse minimale et
+  expiration 24 h, unique par `(tenant_id, route, key)` avec purge bornée auditée.
+- `webhook_delivery_receipts` conserve tenant/ACL, connecteur, job, bookmark, opération et
+  expiration 30 jours, unique par
+  `(tenant_id, connector_id, job_id, bookmark_id, operation)` avec purge auditée.
 
 ## 7. API
 
@@ -774,8 +935,37 @@ GET    /experiments/:id/events
 POST   /search
 POST   /ask
 GET    /answers/:id/citations
+GET    /research/:id
 GET    /research/:id/events
+GET    /research/:id/resources
+POST   /research/:id/resources/:resource_id/save
+POST   /research/:id/resources/:resource_id/retry-sync
+POST   /research/:id/resources/:resource_id/promote
 ```
+
+### Connecteurs
+
+```text
+GET    /connectors
+POST   /connectors/karakeep/:connector_id/test
+POST   /connectors/karakeep/:connector_id/webhooks
+POST   /connectors/karakeep/:connector_id/reconcile
+```
+
+Le webhook Karakeep est authentifié par Bearer token comparé en temps constant, rate-limité,
+borné en taille et dédupliqué par `(connector_id, jobId, bookmarkId, operation)` pendant 30 jours,
+au-delà des trois tentatives totales/deux retries upstream pinnés. `payload.userId` doit égaler
+`connector.external_owner_id`. Le
+webhook reste un signal d'invalidation non fiable : Prisme relit l'état via l'API officielle et
+applique seulement une observation dont `external_state_read_at` est plus récente. Les appels
+sortants utilisent un jeton API provenant du coffre. Les réponses API enregistrent
+`connector_id`, `external_id` et l'URL profonde, jamais les jetons.
+
+La route POST `/connectors/karakeep/:connector_id/webhooks` est un récepteur d'événements, pas une
+route de création de webhook. Elle est exemptée de la session utilisateur mais refuse toute
+requête sans Bearer valide pour ce `connector_id` exact. Le hash du token est stocké/résolu par
+connecteur et un token d'un autre connecteur est rejeté avant lecture du payload ; toutes les
+autres routes connecteur exigent la session et les ACL habituelles.
 
 Toutes les mutations acceptent `Idempotency-Key`. Les jobs longs retournent `202` avec un lien de
 statut. Les erreurs suivent Problem Details JSON et n'exposent jamais de secrets ni de contenu brut
@@ -799,13 +989,20 @@ Pipeline :
    prefetch Qdrant et `applySecurityScope(queryBuilder, ctx, asOf)` dans chaque requête SQL ;
 5. résoudre entity/alias/topic avant retrieval, puis récupérer les candidats dense et BM25 ;
 6. fusionner les deux distributions Qdrant avec RRF ou DBSF, stratégie choisie par évaluation ;
-7. enrichir les candidats autorisés via le graphe PostgreSQL ; la branche SQL n'entre pas comme
-   distribution non scorée dans DBSF, elle fournit des features et voisins explicitement tracés ;
+7. revalider chaque candidat top-k dans PostgreSQL via `applySecurityScope(ctx, asOf)` et écarter
+   toute ligne absente, révoquée, expirée, supprimée ou non active avant rescoring/citation/retour,
+   même si la projection Qdrant est en retard ; sur-récupérer au plus `min(3*k, 200)` et mesurer
+   l'épuisement avant de compléter k.
+   Enrichir ensuite ces seuls candidats autorisés via le graphe PostgreSQL ; la branche SQL
+   n'entre pas comme distribution non scorée dans DBSF, elle fournit des features et voisins
+   explicitement tracés ;
 8. appliquer un rescoring applicatif borné : entité exacte, topic, adéquation
    `doc_kind/knowledge_kind`,
    qualité de vérification, temporalité et provenance conditionnée par l'intention ;
-9. regrouper par entité/claim/source, dédupliquer les versions par `canonical_id` en gardant le
-   `knowledge_item_id` actif le plus récent et pénaliser les quasi-doublons ;
+9. pour chaque `knowledge_item_id`, garder d'abord l'`index_generation` active maximale confirmée
+   par `index_points`, puis regrouper par entité/claim/source et dédupliquer les versions par
+   `canonical_id` en gardant le `knowledge_item_id` actif le plus récent ; pénaliser les
+   quasi-doublons ;
 10. en mode `verify`, préserver preuves favorables et contradictoires et diversifier les
    provenances ;
 11. reranker un petit top-k uniquement après benchmark ;
@@ -873,8 +1070,45 @@ Règles :
 
 - fournisseurs de recherche interchangeables ;
 - allowlists pour domaines sensibles ;
+- base URL Karakeep issue exclusivement de l'allowlist Ansible, jamais d'une valeur libre fournie
+  par l'API ;
+- canonicalisation, résolution DNS publique et filtre SSRF avant toute insertion outbox, sur les
+  chemins worker, sauvegarde manuelle et reconciler ; chaque redirection est bornée et revalidée ;
+- une URL refusée par Prisme n'est jamais déléguée au crawler Karakeep ;
 - priorité aux sources primaires ;
 - URL canonique, date, éditeur, hash et date de consultation conservés ;
+- chaque URL effectivement ouverte, analysée, citée ou explicitement rejetée est journalisée dans
+  PostgreSQL puis, si `karakeep_enabled=true`, envoyée de manière asynchrone vers Karakeep par
+  l'outbox ; le fake prouve ce contrat lorsque le connecteur est désactivé ;
+- une URL seulement apparue dans une page de résultats n'est pas sauvegardée par défaut ;
+- la requête et la stratégie restent dans Prisme ; une note récapitulative Karakeep par
+  `research_run_id` est optionnelle et ne remplace jamais le journal PostgreSQL ;
+- les listes et tags Karakeep sont une projection reconstructible, par exemple
+  `Prisme / Recherches`, `prisme`, `research:<research_run_id>`, `topic:<slug>`,
+  `role:<research_run_id>:<role>`, `status:<research_run_id>:<status>` et
+  `decision:<research_run_id>:<decision>`. Les enums fermés sont :
+  `role=supporting|contradicting|context|primary_source|rejected` avec champ nullable (`null`
+  signifie absence de rôle et n'appartient pas à l'enum),
+  `status=opened|analyzed|cited|archived_banga` et
+  `decision=pending|selected|rejected|promotion_requested|promoted`. Un rôle `null` n'émet aucun
+  tag `role:*` ; il n'émet jamais la chaîne littérale `role:<run>:null` ;
+- le tag `topic:<slug>` dérive exclusivement du dernier segment normalisé du `topic_path`
+  autoritaire et versionné, jamais d'un texte produit par LLM ;
+- la déduplication repose sur URL canonique et identifiant externe ; les paramètres de tracking,
+  fragments non sémantiques et redirections sont normalisés avant création ;
+- `canonicalizeUrl()` est un contrat partagé versionné. Son hash inclut
+  `url_canonicalization_version`; tout changement produit un recalcul tracé et une
+  réconciliation de `research_candidates` et `external_resources`, jamais une dérive silencieuse ;
+- un échec Karakeep ne bloque ni la vérification ni l'enregistrement Prisme : état
+  `pending|synced|failed_retryable|failed_terminal|disabled|deleted_external`, retry borné et
+  réconciliation ;
+- Karakeep peut capturer une copie de commodité ; seul un bundle promu, hashé et manifesté sur
+  Banga constitue l'archive canonique ;
+- la promotion utilise une commande séparée et écrit sous
+  `research/<claim_id>/<research_run_id>/`. Sans claim attaché, la commande reste
+  `awaiting_claim` et n'invente aucun chemin canonique ;
+- toute suppression ou modification dans Karakeep est un événement externe à réconcilier, jamais
+  une instruction implicite de purge Banga ou PostgreSQL ;
 - copie locale uniquement lorsque les droits le permettent ;
 - une citation inaccessible n'est pas une preuve ;
 - un LLM ne peut pas attribuer seul `supported` à un claim à risque élevé ;
@@ -938,12 +1172,20 @@ expriment la provenance ou la chronologie.
 /items/:id
 /claims/:id
 /research/:id
+/research/:id/resources
 /experiments/:id
 /review
 /topics/:id
 /ask
 /settings
+/settings/connectors
 ```
+
+La vue recherche affiche séparément : requêtes, résultats non retenus, sources examinées, état de
+synchronisation Karakeep, qualification, motifs de rejet et état d'archivage Banga. Elle expose
+les actions `Enregistrer dans Karakeep`, `Réessayer`, `Ouvrir dans Karakeep` et
+`Promouvoir vers Banga` selon les droits. Une indisponibilité Karakeep est visible mais n'empêche
+pas de poursuivre la vérification.
 
 ### 10.4 États produit
 
@@ -968,6 +1210,10 @@ Les écrans doivent être conçus pour :
 - ACL ajoutée à toute requête Qdrant ;
 - secrets via le coffre VPAI, jamais dans le repo ;
 - cookies Instagram read-only ;
+- jeton Karakeep via le coffre, jamais exposé au navigateur, aux logs ou aux artefacts ;
+- webhook Karakeep authentifié par Bearer token, dédupliqué sur
+  `(connector_id, jobId, bookmarkId, operation)` et convergent par relecture API ;
+- une suppression Karakeep ne déclenche jamais implicitement une purge Prisme/Banga ;
 - contenu récupéré toujours traité comme donnée non fiable ;
 - aucune instruction d'un média/page ne déclenche un outil ;
 - research browser isolé, egress borné, protection SSRF ;
@@ -1015,12 +1261,19 @@ Jeux séparés :
 | claims matériels avec citation dans `/ask` | 100 % |
 | claim à risque élevé `supported` sans humain | 0 |
 | doublon après retry | 0 |
+| résultat ou citation servi après révocation ACL/takedown pendant lag | 0 |
+| citation figée relue après retrait | masquée, answer `stale_redacted` |
+| fusion ressource | 0 liaison dupliquée, 0 sync attempt perdu, perdant résolu vers survivant |
 | retrieval recall@5 | baseline puis seuil fixé sur golden réel |
 | entity routing recall@k | baseline puis seuil par type de requête |
 | diversité de provenance en mode verify | couverture attendue sur cas vérifiables |
 | filtre provenance implicite sans contrainte | 0, vérifié par trace de plan de requête |
 | projection PostgreSQL → Qdrant | lag baseline puis seuil/alerte fixé |
 | restauration bundle → Qdrant | 100 % sur canary |
+| URL ouvertes/analysées/citées/rejetées capturées | 100 % sur fake ou instance de test activée |
+| SERP non examinés sauvegardés | 0 |
+| doublon canonicalisation multi-runs | 0 bookmark, qualification par run conservée |
+| suppression Karakeep causant une cascade canonique | 0 |
 | ordre réel possible depuis experiment-runner | 0 |
 
 ## 13. SLO et capacité
@@ -1060,13 +1313,94 @@ roles/prisme/
 Intégrations :
 
 - image pinnée dans `inventory/group_vars/all/versions.yml` ;
+- `prisme_enabled=false` par défaut garde le rôle entier dans `site.yml`; il ne passe à true
+  qu'après gate capacité vert, afin de ne jamais bloquer les rôles étrangers ;
+- compose propriétaire de web/API+MCP `1 GiB`, outbox `384 MiB`, research worker `512 MiB`,
+  navigateur isolé `1536 MiB`, connecteur Karakeep `384 MiB`, indexer `512 MiB`, consolidation
+  `384 MiB`, sidecar `sparse-query-only` `1 GiB` et proxy DB `128 MiB`; les hard limits totalisent
+  `5 888 MiB` et les réservations explicites `2 944 MiB`. Le proxy joint `prisme_internal` au backend à IP
+  fixe ; le service `prisme` rejoint aussi explicitement les réseaux externes
+  `javisi_frontend` de Caddy et `javisi_backend` pour joindre Qdrant/LiteLLM par leurs noms Docker
+  internes. Le proxy DB n'accepte que le CIDR source `prisme_internal`; un test depuis
+  `javisi_backend` vers le proxy doit échouer. HBA autorise ce `/32` pour tous les rôles puis refuse toute connexion à la DB Prisme
+  depuis le reste du backend, superuser `postgres` inclus. L'IP backend fixe du service `prisme`
+  est ensuite rejetée vers toutes les DB avant le broad allow backend ; Prisme accède à sa DB
+  uniquement via proxy. Après l'allow DB Prisme/proxy, le HBA rejette aussi l'IP proxy vers toute
+  autre DB. Les IP `.240`/`.241` sont vérifiées libres par inspect avant déploiement, sans mutation
+  de l'IPAM existant ; toutes les règles HBA Prisme sont conditionnées à `prisme_enabled`, dont le
+  rendu false reste byte-identique. Reload sans restart ;
+- seuls le research worker et le navigateur isolé rejoignent `javisi_egress`, avec egress
+  allowlisté et tests SSRF ; web/API, outbox, indexer, consolidation, sidecar sparse et proxy DB
+  en sont exclus ;
 - DB/user PostgreSQL dédiés ;
 - route Caddy VPN-only ;
+- route Caddy Prisme limitée aux deux CIDR du registre. Karakeep, sur le même hôte, envoie ses
+  webhooks via le réseau Docker externe partagé `prisme_connector_internal`, marqué
+  `internal: true` et joint explicitement par les deux composes, vers `http://prisme:3000`, pas
+  via la route VPN Caddy ;
 - réseau Docker interne ;
 - secrets avec `no_log` ;
 - healthchecks et limites ;
 - backup PostgreSQL ;
 - dashboards/alertes.
+
+### Karakeep
+
+Le rôle VPAI `roles/karakeep/` rend l'instance optionnelle déployable et testée sur fake avant G7.
+Il ne la déploie réellement qu'après présence du service/réseau Prisme en T11.2, si
+`karakeep_enabled=true` et si le gate de capacité propre à cette branche est vert :
+
+Le web Karakeep rejoint `javisi_frontend` pour Caddy. Seuls ses composants de crawl sortant
+rejoignent `javisi_egress` sous allowlist et contrôles SSRF ; le réseau interne
+`prisme_connector_internal` reste le seul transport Karakeep↔Prisme.
+
+Les FQDN Prisme et Karakeep sont publiés par le split-DNS Headscale de Seko-VPN
+(`roles/vpn-dns`), résolvent l'IP Tailscale Sese et n'exigent aucun A public grâce à ACME DNS-01.
+Les appels sortants Prisme→Karakeep utilisent `http://karakeep:3000` sur
+`prisme_connector_internal`, jamais le FQDN Caddy.
+
+- FQDN `karakeep.ewutelo.cloud`, VPN-only sur les deux CIDR du registre Caddy ;
+- Karakeep `v0.32.0`, commit upstream
+  `b9b252ecb6d2af379192778ec24f766d4cd60da3`, image pinnée par digest ;
+- snapshot OpenAPI
+  `packages/contracts/karakeep/openapi-v0.32.0.json`, SHA-256
+  `69b85ed2cdbfb0904bd04c83dd3d3d24b44838815ebd2031d0ad89b9cc7f7f24` ;
+- compte opérateur local mono-tenant, sans dépendance SSO au MVP ;
+- API key sortante et Bearer entrant distincts au coffre. Le Bearer entrant, généré par Prisme,
+  est configuré idempotemment par setup Playwright dans `/settings/webhooks` pour le connecteur
+  et les événements `created`, `crawled`, `edited`, `deleted`; credentials et captures sont
+  caviardés. L'URL est
+  `http://prisme:3000/api/v1/connectors/karakeep/:connector_id/webhooks` sur le réseau interne. Il
+  fait au plus 100 caractères et n'est pas une variable d'environnement Karakeep ;
+- backup des données Karakeep et restore smoke ; Meilisearch reste un index reconstructible ;
+- healthchecks et ressources mesurées avant ajustement de capacité ;
+- `karakeep_enabled=false` par défaut dans Prisme.
+
+Avant déploiement réel, le rôle réserve les limites web `2 GiB`, Chrome `2 GiB`, Meilisearch
+`1536 MiB`, puis exige
+`MemAvailable + RSS_Karakeep_déjà_running - somme(limites Karakeep) >= 1 GiB`, PSI mémoire
+`avg10 < 10 %`, aucune activité swap-in/swap-out soutenue sur 15 minutes, espace libre
+`/ >= 25 GiB` et utilisation `/ <= 75 %`. Ajouter du swap ne peut pas rendre ce gate vert. La
+baseline Sese interdit actuellement ce déploiement réel par réserve RAM/disque, sans bloquer les
+branches fake et `karakeep_enabled=false`.
+
+Le rôle `roles/prisme/` possède un pré-check distinct avant son propre déploiement sur Sese. Les
+hard limits totalisent `5 888 MiB`, les réservations Docker explicites `2 944 MiB`; le gate exige
+`MemAvailable + RSS_Prisme_déjà_running -
+max(somme(réservations), RSS_p95_mesuré×1,3) >= 1 GiB`, un ratio hard limits actifs / `MemTotal`
+`<= 1,5`, et
+`RSS_étrangers_p95×1,3 + réservations_Prisme + 1 GiB <= MemTotal`. L'overcommit borné est accepté
+dans l'ADR 0001. Puis PSI mémoire
+`avg10 < 10 %`, absence de swap-in/swap-out soutenu sur 15 minutes, espace libre `/ >= 15 GiB`
+et utilisation `/ <= 80 %`. Ajouter du swap ne peut pas rendre ce gate vert. La branche de
+déploiement Prisme reste rouge jusqu'à mesure/remédiation conforme ; elle ne bloque pas les
+builds, tests et déploiements isolés précédents.
+Si ce gate reste rouge après remédiations réversibles, le projet livre tous les artefacts et
+preuves non-production mais reste `AWAITING_G0_CAPACITY_DECISION`; il ne revendique ni production
+accessible ni DoD complète avant décision de placement/capacité.
+
+L'usage et le déploiement de l'image AGPL-3.0 sont acceptés pour ce composant isolé. Aucun code
+Karakeep n'est copié, lié ou modifié dans Prisme sans nouvel ADR et revue de licence.
 
 ### Waza
 
@@ -1085,7 +1419,24 @@ roles/knowledge-embedding/
 roles/experiment-runner/
 ```
 
-Un LXC dédié n'est créé que si `lxc-chat` ne satisfait pas les exigences d'isolation et de capacité.
+Un gate de placement en lecture seule inventorie LXC, Docker, GPU/passthrough, RAM, disque et
+charges avant tout worker, embedding ou experiment runner. La cible doit être un LXC existant
+déjà approuvé, Docker-capable et GPU-capable, ou un futur `lxc-prisme-knowledge`; `lxc-chat` et
+`lxc-infer` ne sont jamais présumés conformes. Créer un LXC ou étendre un passthrough GPU exige
+une décision G0 placement/capacité avant mutation.
+Si aucune cible n'est déjà approuvée ou si le credential GHCR Banga manque, l'état est
+`AWAITING_G0_BANGA_PLACEMENT`; seuls P0–P3 et P8 sur fixtures sont alors atteignables.
+
+`tank/knowledge` est déclaré dans le `zfs_datasets` autoritaire de Banga sous le nom pool-relatif
+`knowledge` (`recordsize: 1M`, `compression: lz4`, quota mesuré, `reservation: none`) afin que le provisioning
+ZFS et `disk-guard` le couvrent. Le rôle `knowledge-store` vérifie dataset, mountpoint, owner et
+quota mais ne crée pas un dataset invisible au guard. Le quota n'est applicable que si
+l'utilisation projetée, réserve snapshots comprise, reste au plus à 80 % et laisse au moins
+5 TiB libres.
+
+Les images Prisme consommées sur Banga sont tirées uniquement par digest avec le
+`vault_ghcr_pull_token` du coffre Banga sous `no_log`, sans valeur par défaut ; une absence de
+credential bloque le déploiement.
 
 ## 15. Décisions différées
 
@@ -1093,6 +1444,9 @@ Un LXC dédié n'est créé que si `lxc-chat` ne satisfait pas les exigences d'i
 |---|---|
 | nom définitif et domaine | avant scaffold du repo |
 | auth session locale ou SSO | avant première route privée |
+| upgrade Karakeep/OpenAPI | nouvelle revue de snapshot avant bump depuis v0.32.0 |
+| activer Karakeep en production | après fake contractuel, backup et gate G7 |
+| SSO Karakeep | différé ; compte local mono-tenant VPN-only au MVP |
 | fournisseur de recherche web | benchmark qualité/coût/conditions |
 | moteur OCR/transcription | benchmark 10 vidéos |
 | LXC Banga dédié | mesure isolation/capacité |

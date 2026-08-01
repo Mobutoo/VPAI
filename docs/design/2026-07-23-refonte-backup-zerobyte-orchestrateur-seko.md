@@ -185,6 +185,16 @@ illimitée). **Test de chevauchement** requis. À porter dans les PR A/B ou en g
 4. **Si non mergé sous délai raisonnable → fork épinglé** (`zerobyte_version` pointant le fork) — dette explicite à
    re-synchroniser à chaque upstream.
 
+**État Brique A (2026-07-28)** : PR soumise — [nicotsx/zerobyte#1077](https://github.com/nicotsx/zerobyte/pull/1077),
+fork `Mobutoo/zerobyte`, branche `fix/sequential-backup-execution`, re-clonée fraîche sur `main` (pas le clone
+éphémère de la session de conception — risque R3 traité). Diff d'une ligne (`await` ajouté), le contexte englobant
+était déjà `async`. **En attente** : merge mainteneur (CLA bot va commenter au premier push, signature = action
+opérateur, pas automatisable) — si pas mergé sous délai raisonnable, décision fork épinglé à prendre (§8). **Résiduel
+non traité par cette PR** : le **verrou singleton inter-exécutions** (§3.3) — la boucle `await` sérialise *au sein*
+d'une exécution de `BackupExecutionJob`, mais ne protège pas contre deux exécutions planifiées qui se chevaucheraient
+(ou `mirror-sync` en Brique B recouvrant un backup en cours). Le "test de chevauchement" exigé par §3.3 reste à faire
+avant P3/le déploiement effectif de la séquentialité multi-source.
+
 ---
 
 ## 4. Plan d'upgrade v0.26.0 → v0.41.x (préprod d'abord)
@@ -203,13 +213,17 @@ in-place-prod à l'aveugle.**
 
 ### Validation préprod (critères GO/NO-GO)
 
-- [ ] Boot du conteneur sans crash.
-- [ ] **Toutes les migrations Drizzle du tag retenu** appliquées sans erreur (**consigner le nombre observé** — ~18 attendu, à confirmer).
-- [ ] Login admin fonctionnel **post-upgrade**.
-- [ ] restic embarqué = v0.19, repo existant lisible (pas de migration).
-- [ ] (si Briques A/B intégrées via fork) build + boot du fork OK.
+- [x] Boot du conteneur sans crash.
+- [x] **Toutes les migrations Drizzle du tag retenu** appliquées sans erreur (**nombre observé : 4** — `00004-concat-path-name`, `00005-split-backup-include-paths`, `00006-map-smb-files-to-container-uid-gid`, `00007-require-recovery-key-redownload` — le repo de test partait déjà au checkpoint `00003` via un boot v0.26.0 préalable ; **~18 était une estimation, non confirmée** — le nombre réel de migrations à appliquer depuis v0.26.0 est 4).
+- [x] Login admin fonctionnel **post-upgrade** (logout/login réel avec les identifiants créés sous v0.26.0, testé via Playwright).
+- [x] restic embarqué = v0.19 (**0.19.1 confirmé**, `restic version` dans le conteneur v0.41.0). **Résiduel non couvert** : aucun repository restic réel n'a été configuré dans ce drill (uniquement onboarding + admin) — la lecture d'un **repo restic existant** après upgrade reste à valider avec un volume/repository réellement créé.
+- [ ] (si Briques A/B intégrées via fork) build + boot du fork OK — hors périmètre de ce drill (Brique A pas encore intégrée).
 
-**GO préprod = prérequis de l'upgrade prod** (gate humain, §8).
+**Preuve (2026-07-28)** : drill local sur waza, `docker --context local`, image `ghcr.io/nicotsx/zerobyte:v0.26.0` bootée avec `APP_SECRET` fixe et un volume vierge → admin créé (Playwright) → conteneur remplacé par `ghcr.io/nicotsx/zerobyte:v0.41.0` **sur le même volume** (même `APP_SECRET`) → migrations rejouées en clair dans les logs → login post-upgrade confirmé. Aucun conteneur/volume prod touché ; tout supprimé après le test. **Tag stable cible confirmé : `v0.41.0`** (`git ls-remote --tags` — le doute du §4 sur l'existence d'un stable est levé).
+
+**GO préprod = prérequis de l'upgrade prod** (gate humain, §8). **Verdict : GO préprod** sur les 3 critères couverts ; le résiduel restic-repo est à couvrir avant le déploiement prod P2 (test complémentaire léger, pas bloquant pour le reste de la préparation P2).
+
+**P2 DÉPLOYÉ EN PROD 2026-07-28** (Seko, par l'opérateur — `--ask-vault-pass` hors de portée de l'agent). Vérifié live : conteneur `zerobyte:v0.41.0-vpai-fixA` up, **4 migrations rejouées identiques au drill préprod** (`00004`→`00007`, 0 erreur), page `/login` opérationnelle. Image = **fork épinglé** (`Mobutoo/zerobyte` + Brique A cherry-pickée sur le tag `v0.41.0` exact), pas l'image upstream — cf. §3.4 pour l'état de la PR #1077 et la dette de resynchronisation.
 
 ---
 

@@ -4,17 +4,58 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
 import shutil
 import signal
 import sqlite3
+import subprocess
+import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
 
 ROOT = Path("{{ prisme_fetcher_root }}")
 INCOMING = ROOT / "incoming"
 OUTGOING = ROOT / "outgoing"
+JOBS = ROOT / "jobs"
+WORK = ROOT / "work"
+CACHE = ROOT / ".cache"
 DATABASE = ROOT / "state.sqlite3"
 STOP = False
+
+MIN_FREE_BYTES = {{ prisme_fetcher_min_free_bytes }}
+POLL_SECONDS = {{ prisme_fetcher_poll_seconds }}
+
+# --- Adapters reseau generiques (HTTP + yt-dlp). Instagram (ou tout adapter
+# specifique plateforme) est HORS PERIMETRE par arbitrage explicite : gate
+# humain separe, non tranche ici. AUCUN contournement d'allowlist/CAPTCHA.
+ALLOWED_DOMAINS = {{ prisme_fetcher_allowed_domains | to_json }}
+HTTP_USER_AGENT = {{ prisme_fetcher_http_user_agent | to_json }}
+HTTP_TIMEOUT_SECONDS = {{ prisme_fetcher_http_timeout_seconds }}
+HTTP_MAX_BYTES = {{ prisme_fetcher_http_max_bytes }}
+HTTP_MAX_REDIRECTS = {{ prisme_fetcher_http_max_redirects }}
+HTTP_ALLOWED_CONTENT_TYPES = {{ prisme_fetcher_http_allowed_content_types | to_json }}
+YTDLP_FORMAT = {{ prisme_fetcher_ytdlp_format | to_json }}
+YTDLP_MAX_FILESIZE = {{ prisme_fetcher_ytdlp_max_filesize | to_json }}
+RATE_LIMIT_SECONDS = {{ prisme_fetcher_rate_limit_seconds }}
+MAX_ATTEMPTS = {{ prisme_fetcher_max_attempts }}
+RETRY_BACKOFF_SECONDS = {{ prisme_fetcher_retry_backoff_seconds }}
+
+REDIRECT_CODES = (301, 302, 303, 307, 308)
+
+
+class AllowlistViolation(RuntimeError):
+    """Raised when a URL (or one of its redirect hops) is not allowlisted."""
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
 
 
 def stop(_signum: int, _frame: object) -> None:
@@ -24,6 +65,7 @@ def stop(_signum: int, _frame: object) -> None:
 
 def connect() -> sqlite3.Connection:
     db = sqlite3.connect(DATABASE)
+    db.row_factory = sqlite3.Row
     db.execute("pragma journal_mode=wal")
     db.execute("""create table if not exists items (
         source_path text primary key,
@@ -36,17 +78,39 @@ def connect() -> sqlite3.Connection:
         singleton integer primary key check(singleton=1),
         updated_at integer not null
     )""")
+    db.execute("""create table if not exists jobs (
+        job_id text primary key,
+        url text not null,
+        adapter text not null,
+        note text,
+        state text not null,
+        attempts integer not null default 0,
+        next_attempt_at integer not null default 0,
+        domain text,
+        manifest_path text,
+        output_path text,
+        error text,
+        created_at integer not null,
+        updated_at integer not null
+    )""")
+    db.execute("""create table if not exists domain_state (
+        domain text primary key,
+        last_fetch_at integer not null
+    )""")
     return db
 
 
-def process(db: sqlite3.Connection, source: Path) -> None:
-    if shutil.disk_usage(ROOT).free < {{ prisme_fetcher_min_free_bytes }}:
+# --- Mode fixture (inchange) : depot local incoming/*.ready -> outgoing/<sha256>/ ---
+
+
+def process_fixture(db: sqlite3.Connection, source: Path) -> None:
+    if shutil.disk_usage(ROOT).free < MIN_FREE_BYTES:
         raise RuntimeError("disk_low")
     digest = hashlib.sha256(source.read_bytes()).hexdigest()
     previous = db.execute(
         "select state, sha256 from items where source_path=?", (str(source),)
     ).fetchone()
-    if previous == ("transferred_ready", digest):
+    if previous is not None and previous["state"] == "transferred_ready" and previous["sha256"] == digest:
         return
     bundle = OUTGOING / digest
     part = OUTGOING / f".{digest}.part"
@@ -76,8 +140,306 @@ def process(db: sqlite3.Connection, source: Path) -> None:
     db.commit()
 
 
+# --- Mode job reseau : jobs/*.json -> manifest AVANT telechargement -> outgoing/<sha256>/ ---
+
+
+def domain_allowed(host: str) -> bool:
+    if not host:
+        return False
+    host = host.lower()
+    for pattern in ALLOWED_DOMAINS:
+        pattern = pattern.lower()
+        if pattern.startswith("."):
+            if host == pattern[1:] or host.endswith(pattern):
+                return True
+        elif host == pattern:
+            return True
+    return False
+
+
+def content_type_allowed(content_type: str) -> bool:
+    if not content_type:
+        return False
+    for pattern in HTTP_ALLOWED_CONTENT_TYPES:
+        if pattern.endswith("/"):
+            if content_type.startswith(pattern):
+                return True
+        elif content_type == pattern:
+            return True
+    return False
+
+
+def write_manifest(workdir: Path, manifest: dict) -> Path:
+    part = workdir / ".manifest.json.part"
+    part.write_text(json.dumps(manifest, sort_keys=True) + "\n")
+    final = workdir / "manifest.json"
+    part.replace(final)
+    return final
+
+
+def update_job(db: sqlite3.Connection, job_id: str, **fields: object) -> None:
+    fields.setdefault("updated_at", int(time.time()))
+    columns = ", ".join(f"{key}=:{key}" for key in fields)
+    fields["job_id"] = job_id
+    db.execute(f"update jobs set {columns} where job_id=:job_id", fields)  # noqa: S608
+    db.commit()
+
+
+def rate_limited(db: sqlite3.Connection, domain: str, now: int) -> bool:
+    row = db.execute(
+        "select last_fetch_at from domain_state where domain=?", (domain,)
+    ).fetchone()
+    return bool(row) and (now - row["last_fetch_at"]) < RATE_LIMIT_SECONDS
+
+
+def mark_domain_fetch(db: sqlite3.Connection, domain: str, now: int) -> None:
+    if not domain:
+        return
+    db.execute(
+        """insert into domain_state(domain,last_fetch_at) values(?,?)
+        on conflict(domain) do update set last_fetch_at=excluded.last_fetch_at""",
+        (domain, now),
+    )
+    db.commit()
+
+
+def load_job(path: Path) -> dict | None:
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    url = payload.get("url")
+    adapter = payload.get("adapter")
+    if not isinstance(url, str) or adapter not in ("http", "ytdlp"):
+        return None
+    return {"url": url, "adapter": adapter, "note": payload.get("note")}
+
+
+def fetch_http(url: str, workdir: Path) -> tuple[str, str, str]:
+    current = url
+    for _hop in range(HTTP_MAX_REDIRECTS + 1):
+        parsed = urllib.parse.urlsplit(current)
+        if parsed.scheme not in ("http", "https"):
+            raise AllowlistViolation("unsupported_scheme")
+        host = (parsed.hostname or "").lower()
+        if not domain_allowed(host):
+            raise AllowlistViolation("redirect_left_allowlist")
+        request = urllib.request.Request(current, headers={"User-Agent": HTTP_USER_AGENT})
+        try:
+            response = _OPENER.open(request, timeout=HTTP_TIMEOUT_SECONDS)
+        except urllib.error.HTTPError as error:
+            if error.code in REDIRECT_CODES:
+                location = error.headers.get("Location")
+                if not location:
+                    raise RuntimeError("redirect_without_location") from error
+                current = urllib.parse.urljoin(current, location)
+                continue
+            raise
+        with response:
+            if response.status in REDIRECT_CODES:
+                location = response.headers.get("Location")
+                if not location:
+                    raise RuntimeError("redirect_without_location")
+                current = urllib.parse.urljoin(current, location)
+                continue
+            content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            if not content_type_allowed(content_type):
+                raise RuntimeError(f"content_type_rejected:{content_type or 'unknown'}")
+            digest_ctx = hashlib.sha256()
+            tmp = workdir / ".download.part"
+            total = 0
+            with tmp.open("wb") as writer:
+                while True:
+                    chunk = response.read(65536)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > HTTP_MAX_BYTES:
+                        writer.close()
+                        tmp.unlink(missing_ok=True)
+                        raise RuntimeError("max_bytes_exceeded")
+                    writer.write(chunk)
+                    digest_ctx.update(chunk)
+                writer.flush()
+                os.fsync(writer.fileno())
+            digest = digest_ctx.hexdigest()
+            filename = Path(parsed.path).name or digest
+            target = workdir / filename
+            tmp.replace(target)
+            return digest, filename, content_type
+    raise RuntimeError("too_many_redirects")
+
+
+def fetch_ytdlp(url: str, workdir: Path) -> tuple[str, str]:
+    # Limitation connue et assumee : l'allowlist ne couvre que l'URL d'entree
+    # soumise au job. yt-dlp resout ensuite des CDN media arbitraires en
+    # interne (non re-verifies) -> jamais presente comme une garantie
+    # bout-en-bout dans le manifest (cf champ allowlist_scope).
+    output_template = str(workdir / "%(id)s.%(ext)s")
+    env = dict(os.environ)
+    env["HOME"] = str(ROOT)
+    env["XDG_CACHE_HOME"] = str(CACHE)
+    command = [
+        "yt-dlp",
+        "--no-playlist",
+        "--max-filesize", YTDLP_MAX_FILESIZE,
+        "--format", YTDLP_FORMAT,
+        "--user-agent", HTTP_USER_AGENT,
+        "--no-progress",
+        "--restrict-filenames",
+        "-o", output_template,
+        url,
+    ]
+    result = subprocess.run(  # noqa: S603
+        command,
+        cwd=workdir,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=HTTP_TIMEOUT_SECONDS * 20,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"ytdlp_failed:{result.returncode}:{result.stderr[-500:]}")
+    produced = sorted(p for p in workdir.iterdir() if p.is_file() and not p.name.startswith("."))
+    if not produced:
+        raise RuntimeError("ytdlp_no_output")
+    source = produced[0]
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    return digest, source.name
+
+
+def handle_failure(db: sqlite3.Connection, job_id: str, now: int, error: Exception) -> None:
+    row = db.execute("select attempts from jobs where job_id=?", (job_id,)).fetchone()
+    attempts = (row["attempts"] if row else 0) + 1
+    if attempts >= MAX_ATTEMPTS:
+        update_job(db, job_id, state="failed", attempts=attempts, error=str(error))
+    else:
+        delay = RETRY_BACKOFF_SECONDS * (2 ** (attempts - 1))
+        update_job(
+            db, job_id, state="retry_wait", attempts=attempts,
+            next_attempt_at=now + delay, error=str(error),
+        )
+
+
+def process_job(db: sqlite3.Connection, job_id: str, job: dict, domain: str, now: int) -> None:
+    if shutil.disk_usage(ROOT).free < MIN_FREE_BYTES:
+        raise RuntimeError("disk_low")
+    workdir = WORK / job_id
+    workdir.mkdir(parents=True, exist_ok=True)
+    allowed = domain_allowed(domain)
+    manifest = {
+        "schema": "prisme.source-bundle.v2",
+        "job_id": job_id,
+        "url": job["url"],
+        "adapter": job["adapter"],
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+        "allowlist_match": allowed,
+        "user_agent": HTTP_USER_AGENT,
+    }
+    if job["adapter"] == "ytdlp":
+        manifest["allowlist_scope"] = "input_url_only"
+    if job.get("note"):
+        manifest["note"] = job["note"]
+    # Manifeste ecrit AVANT tout telechargement (exigence design), dans le
+    # staging par job_id : le sha256 final n'est connu qu'apres coup, et un
+    # job rejete n'en aura jamais un.
+    manifest_path = write_manifest(workdir, manifest)
+    if not allowed:
+        manifest["state"] = "rejected"
+        manifest["reason"] = "domain_not_allowlisted"
+        write_manifest(workdir, manifest)
+        update_job(
+            db, job_id, state="rejected", error="domain_not_allowlisted",
+            manifest_path=str(manifest_path),
+        )
+        return
+    try:
+        if job["adapter"] == "http":
+            digest, filename, content_type = fetch_http(job["url"], workdir)
+        else:
+            digest, filename = fetch_ytdlp(job["url"], workdir)
+            content_type = None
+        mark_domain_fetch(db, domain, now)
+    except AllowlistViolation as error:
+        mark_domain_fetch(db, domain, now)
+        manifest["state"] = "rejected"
+        manifest["reason"] = str(error)
+        write_manifest(workdir, manifest)
+        update_job(
+            db, job_id, state="rejected", error=str(error),
+            manifest_path=str(manifest_path),
+        )
+    except Exception as error:  # noqa: BLE001
+        mark_domain_fetch(db, domain, now)
+        manifest["state"] = "failed_attempt"
+        manifest["reason"] = str(error)
+        write_manifest(workdir, manifest)
+        handle_failure(db, job_id, now, error)
+    else:
+        bundle = OUTGOING / digest
+        bundle.mkdir(mode=0o750, exist_ok=True)
+        target = bundle / filename
+        (workdir / filename).replace(target)
+        manifest["state"] = "done"
+        manifest["sha256"] = digest
+        manifest["filename"] = filename
+        if content_type:
+            manifest["content_type"] = content_type
+        bundle_manifest_part = bundle / ".manifest.json.part"
+        bundle_manifest_part.write_text(json.dumps(manifest, sort_keys=True) + "\n")
+        bundle_manifest_part.replace(bundle / "manifest.json")
+        shutil.rmtree(workdir, ignore_errors=True)
+        update_job(
+            db, job_id, state="done", output_path=str(bundle),
+            manifest_path=str(bundle / "manifest.json"),
+        )
+
+
+def scan_jobs(db: sqlite3.Connection) -> None:
+    for path in sorted(JOBS.glob("*.json")):
+        now = int(time.time())
+        raw = path.read_bytes()
+        job_id = hashlib.sha256(raw).hexdigest()
+        row = db.execute(
+            "select state, next_attempt_at, domain from jobs where job_id=?", (job_id,)
+        ).fetchone()
+        if row is not None and row["state"] in ("done", "rejected", "failed"):
+            continue
+        if row is not None and row["state"] == "retry_wait" and now < row["next_attempt_at"]:
+            continue
+        job = load_job(path)
+        if job is None:
+            if row is None:
+                db.execute(
+                    """insert into jobs(job_id,url,adapter,state,error,created_at,updated_at)
+                    values(?,?,?,?,?,?,?)""",
+                    (job_id, "", "", "rejected", "invalid_job_payload", now, now),
+                )
+                db.commit()
+            continue
+        parsed = urllib.parse.urlsplit(job["url"])
+        domain = (parsed.hostname or "").lower()
+        if row is None:
+            db.execute(
+                """insert into jobs(job_id,url,adapter,note,state,attempts,
+                next_attempt_at,domain,created_at,updated_at)
+                values(?,?,?,?,?,0,0,?,?,?)""",
+                (job_id, job["url"], job["adapter"], job["note"], "pending", domain, now, now),
+            )
+            db.commit()
+        if domain and rate_limited(db, domain, now):
+            continue
+        try:
+            process_job(db, job_id, job, domain, now)
+        except Exception as error:
+            print(json.dumps({"event": "acquisition_error", "code": type(error).__name__, "job_id": job_id}))
+            handle_failure(db, job_id, now, error)
+
+
 def main() -> None:
     db = connect()
+    once = "--once" in sys.argv or os.environ.get("PRISME_FETCHER_ONESHOT") == "1"
     while not STOP:
         db.execute(
             """insert into heartbeat(singleton,updated_at) values(1,?)
@@ -87,10 +449,13 @@ def main() -> None:
         db.commit()
         for source in sorted(INCOMING.glob("*.ready")):
             try:
-                process(db, source)
+                process_fixture(db, source)
             except Exception as error:
                 print(json.dumps({"event": "acquisition_error", "code": type(error).__name__}))
-        time.sleep({{ prisme_fetcher_poll_seconds }})
+        scan_jobs(db)
+        if once:
+            break
+        time.sleep(POLL_SECONDS)
     db.close()
 
 

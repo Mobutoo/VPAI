@@ -1,0 +1,20 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Prisme fetcher -> banga transfer (rsync, oneshot, drained by timer)
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User={{ prisme_fetcher_user }}
+Group={{ prisme_fetcher_group }}
+ExecStart={{ prisme_fetcher_bin }}-transfer
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ prisme_fetcher_root }}
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=

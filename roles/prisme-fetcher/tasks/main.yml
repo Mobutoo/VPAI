@@ -36,6 +36,9 @@
     - "{{ prisme_fetcher_root }}"
     - "{{ prisme_fetcher_root }}/incoming"
     - "{{ prisme_fetcher_root }}/outgoing"
+    - "{{ prisme_fetcher_root }}/jobs"
+    - "{{ prisme_fetcher_root }}/work"
+    - "{{ prisme_fetcher_root }}/.cache"
   become: true
   tags: [prisme-fetcher]
 
@@ -49,7 +52,40 @@
   become: true
   tags: [prisme-fetcher]
 
-- name: Prisme fetcher | Install local-fixture acquisition worker
+- name: Prisme fetcher | Install yt-dlp adapter dependency (apt, generic)
+  ansible.builtin.apt:
+    name: >-
+      {{ prisme_fetcher_ytdlp_apt_package
+         ~ ('=' + prisme_fetcher_ytdlp_apt_version if prisme_fetcher_ytdlp_apt_version else '') }}
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Create environment directory
+  ansible.builtin.file:
+    path: "{{ prisme_fetcher_env_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Deploy worker environment file (control-plane token)
+  ansible.builtin.template:
+    src: prisme-fetcher.env.j2
+    dest: "{{ prisme_fetcher_env_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  become: true
+  no_log: true
+  notify: Prisme fetcher | Restart
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Install local-fixture + network acquisition worker
   ansible.builtin.template:
     src: prisme-fetcher.py.j2
     dest: "{{ prisme_fetcher_bin }}"
@@ -78,6 +114,97 @@
     name: "{{ prisme_fetcher_service }}"
     enabled: true
     state: started
+  become: true
+  when: not (common_molecule_mode | default(false) | bool)
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Create SSH directory for the banga transfer step
+  ansible.builtin.file:
+    path: "{{ prisme_transfer_ssh_key | dirname }}"
+    state: directory
+    owner: "{{ prisme_fetcher_user }}"
+    group: "{{ prisme_fetcher_group }}"
+    mode: "0700"
+  become: true
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Generate dedicated transfer SSH keypair (idempotent)
+  community.crypto.openssh_keypair:
+    path: "{{ prisme_transfer_ssh_key }}"
+    type: ed25519
+    owner: "{{ prisme_fetcher_user }}"
+    group: "{{ prisme_fetcher_group }}"
+    mode: "0600"
+    comment: "prisme-fetcher@{{ ansible_facts['hostname'] }}"
+  become: true
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Read generated public key
+  ansible.builtin.slurp:
+    src: "{{ prisme_transfer_ssh_key }}.pub"
+  become: true
+  register: prisme_transfer_pubkey
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | GATE — enroll this public key on banga (prisme-transfer, uid 2101)
+  ansible.builtin.debug:
+    msg: >-
+      Cle publique du transfert Prisme a enroler manuellement cote banga
+      (compte prisme-transfer uid 2101, ~/.ssh/authorized_keys) et a ajouter
+      a {{ prisme_transfer_known_hosts_file }} (host key banga) AVANT
+      d'activer prisme_transfer_enabled: {{ prisme_transfer_pubkey.content | b64decode | trim }}
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Ensure known_hosts placeholder exists (populated by the banga enrolment gate)
+  ansible.builtin.file:
+    path: "{{ prisme_transfer_known_hosts_file }}"
+    state: touch
+    access_time: preserve
+    modification_time: preserve
+    owner: "{{ prisme_fetcher_user }}"
+    group: "{{ prisme_fetcher_group }}"
+    mode: "0600"
+  become: true
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Install banga transfer script
+  ansible.builtin.template:
+    src: prisme-transfer.sh.j2
+    dest: "{{ prisme_fetcher_bin }}-transfer"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  notify: Prisme fetcher | Reload systemd
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Install banga transfer service (oneshot)
+  ansible.builtin.template:
+    src: prisme-transfer.service.j2
+    dest: "/etc/systemd/system/{{ prisme_transfer_service }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Prisme fetcher | Reload systemd
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Install banga transfer timer
+  ansible.builtin.template:
+    src: prisme-transfer.timer.j2
+    dest: "/etc/systemd/system/{{ prisme_transfer_timer }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Prisme fetcher | Reload systemd
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Enable/disable banga transfer timer per prisme_transfer_enabled
+  ansible.builtin.systemd_service:
+    name: "{{ prisme_transfer_timer }}"
+    enabled: "{{ prisme_transfer_enabled | bool }}"
+    state: "{{ 'started' if prisme_transfer_enabled | bool else 'stopped' }}"
   become: true
   when: not (common_molecule_mode | default(false) | bool)
   tags: [prisme-fetcher]

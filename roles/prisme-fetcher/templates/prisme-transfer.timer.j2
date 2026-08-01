@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Periodic drain of Prisme fetcher outgoing/ towards banga
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec={{ prisme_transfer_interval_seconds }}s
+Unit={{ prisme_transfer_service }}
+Persistent=false
+
+[Install]
+WantedBy=timers.target

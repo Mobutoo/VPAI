@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Transfert des bundles Prisme (outgoing/) vers banga (prisme-transfer, uid 2101).
+# banga est OFFLINE aujourd'hui : desactive par defaut (prisme_transfer_enabled).
+# rsync --remove-source-files ne supprime QUE les fichiers effectivement
+# transferes avec succes -> un echec partiel/total laisse le backlog local
+# intact pour le tick suivant (aucune perte, aucune suppression avant
+# confirmation de transfert).
+set -euo pipefail
+
+OUTGOING="{{ prisme_fetcher_root }}/outgoing"
+TARGET="{{ prisme_transfer_target }}"
+SSH_KEY="{{ prisme_transfer_ssh_key }}"
+KNOWN_HOSTS="{{ prisme_transfer_known_hosts_file }}"
+SSH_PORT="{{ prisme_transfer_ssh_port }}"
+
+if [ ! -s "${KNOWN_HOSTS}" ]; then
+  echo "prisme-transfer: known_hosts vide (${KNOWN_HOSTS}) — enrolement banga non fait, on saute ce tick." >&2
+  exit 0
+fi
+
+rsync -a --partial --remove-source-files \
+  -e "ssh -i ${SSH_KEY} -p ${SSH_PORT} -o UserKnownHostsFile=${KNOWN_HOSTS} -o StrictHostKeyChecking=yes -o BatchMode=yes" \
+  "${OUTGOING}/" "${TARGET}"
+
+# Nettoyage des repertoires de bundle vides laisses par --remove-source-files
+# (rsync ne supprime jamais de repertoires). Jamais OUTGOING lui-meme.
+find "${OUTGOING}" -mindepth 1 -type d -empty -delete

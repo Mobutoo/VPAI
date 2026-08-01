@@ -7,3 +7,76 @@ prisme_fetcher_bin: /usr/local/libexec/prisme-fetcher
 prisme_fetcher_service: prisme-fetcher.service
 prisme_fetcher_min_free_bytes: 1073741824
 prisme_fetcher_poll_seconds: 2
+prisme_fetcher_env_file: /etc/prisme-fetcher/env
+
+# --- Adapters reseau (HTTP generique + yt-dlp generique) ---
+# Instagram (ou tout adapter specifique plateforme) est HORS PERIMETRE : gate
+# humain separe, non tranche ici. Seuls http/ytdlp generiques sont livres.
+#
+# Choix stdlib-only (urllib) plutot que python3-requests : le role n'installe
+# aujourd'hui AUCUNE dependance Python sur waza, et le controle manuel des
+# redirections (obligatoire pour re-verifier l'allowlist a chaque saut, cf
+# prisme_fetcher_http_max_redirects) est de toute facon explicite avec l'un
+# comme l'autre. urllib evite d'ajouter python3-requests comme dependance apt
+# pour un gain marginal.
+#
+# Allowlist de domaines : VIDE par defaut = tout refus (design). Un job dont
+# le domaine (netloc, sans port) n'est pas dans cette liste passe en
+# state=rejected avec la raison dans le manifest. AUCUN contournement
+# (CAPTCHA/bypass) : hors perimetre par design.
+prisme_fetcher_allowed_domains: []
+prisme_fetcher_http_user_agent: "PrismeFetcher/1.0 (+https://prisme.ewutelo.cloud)"
+prisme_fetcher_http_timeout_seconds: 20
+prisme_fetcher_http_max_bytes: 52428800
+# Sauts de redirection maximum. L'allowlist est re-verifiee a CHAQUE saut
+# (sinon une URL allowlistee qui redirige vers un hote arbitraire est un
+# contournement pur et simple).
+prisme_fetcher_http_max_redirects: 5
+# Prefixes/valeurs Content-Type acceptes (comparaison par prefixe si le motif
+# se termine par "/").
+prisme_fetcher_http_allowed_content_types:
+  - "application/pdf"
+  - "text/html"
+  - "image/"
+  - "audio/"
+  - "video/"
+
+# yt-dlp : paquet apt disponible nativement sur la cible reelle du role
+# (Ubuntu 24.04 noble, cf meta/main.yml + molecule) — confirme via
+# `apt-cache madison yt-dlp` (noble/universe: 2024.04.09-1 ; noble-backports:
+# plus recent). On installe le paquet du depot deja active par defaut
+# (pas d'activation de backports par ce role — hors perimetre), SANS pin de
+# version exacte : les extracteurs yt-dlp perissent vite et epingler une
+# version d'archive precise casse le deploiement des qu'elle est retiree du
+# miroir a la prochaine mise a jour de securite. Limitation connue a documenter
+# au demandeur : yt-dlp noble/main est vieux (~2024-04) ; si la fraicheur des
+# extracteurs devient bloquante, activer noble-backports au niveau host
+# (hors perimetre de ce role) plutot que d'epingler ici.
+prisme_fetcher_ytdlp_apt_package: "yt-dlp"
+# Non-vide => pin exact "paquet=version" (maintenance a la charge de
+# l'operateur, cf commentaire ci-dessus).
+prisme_fetcher_ytdlp_apt_version: ""
+prisme_fetcher_ytdlp_format: "best[height<=1080]"
+prisme_fetcher_ytdlp_max_filesize: "1G"
+# L'allowlist ne couvre que l'URL d'entree soumise au job : les CDN media
+# resolus en interne par yt-dlp sont arbitraires et NE SONT PAS re-verifies
+# (limitation connue, documentee dans le manifest de sortie).
+
+# Anti-abus : au moins N secondes entre deux fetches vers le meme domaine,
+# et backoff exponentiel (base * 2^(attempts-1)) sur echec avant retry.
+prisme_fetcher_rate_limit_seconds: 30
+prisme_fetcher_max_attempts: 5
+prisme_fetcher_retry_backoff_seconds: 60
+
+# --- Transfert vers banga (etape separee, banga OFFLINE aujourd'hui) ---
+# Desactive par defaut : a activer seulement une fois la cle publique
+# enrolee cote banga (prisme-transfer uid 2101) ET le repertoire cible
+# rendu inscriptible pour ce compte (gate banga, hors perimetre de ce repo).
+prisme_transfer_enabled: false
+prisme_transfer_service: prisme-transfer.service
+prisme_transfer_timer: prisme-transfer.timer
+prisme_transfer_target: "prisme-transfer@100.64.0.32:/data/knowledge/incoming/"
+prisme_transfer_ssh_port: 22
+prisme_transfer_ssh_key: "{{ prisme_fetcher_root }}/.ssh/id_ed25519"
+prisme_transfer_known_hosts_file: "{{ prisme_fetcher_root }}/.ssh/known_hosts"
+prisme_transfer_interval_seconds: 300

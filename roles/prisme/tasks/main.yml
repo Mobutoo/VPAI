@@ -133,6 +133,9 @@
       - "{% raw %}{{json .Containers}}{% endraw %}"
   register: prisme_backend_network_state
   changed_when: false
+  # Read-only inspection: must also run under --check, otherwise the assert below
+  # parses an empty stdout and the whole dry-run fails on a non-existent collision.
+  check_mode: false
   when:
     - prisme_enabled | bool
     - not (common_molecule_mode | default(false) | bool)

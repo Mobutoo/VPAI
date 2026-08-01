@@ -17,20 +17,48 @@ Environment=XDG_CACHE_HOME={{ prisme_fetcher_root }}/.cache
 ExecStart={{ prisme_fetcher_bin }}
 Restart=on-failure
 RestartSec=5
+TimeoutStopSec=30
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths={{ prisme_fetcher_root }}
+# B5 : la clef privee de transfert vers banga n'a rien a faire dans le
+# process qui telecharge du contenu reseau arbitraire — seul
+# prisme-transfer.service (oneshot separe) doit pouvoir la lire.
+InaccessiblePaths={{ prisme_fetcher_root }}/.ssh
 # AF_INET/AF_INET6 : requis par les adapters reseau (HTTP + yt-dlp). Si la
 # resolution DNS echoue avec un "Address family not supported" au runtime,
 # le coupable habituel est la sonde de disponibilite IPv6 de la glibc qui
 # passe par AF_NETLINK — non couvert ici par design (pas de socket routing
 # necessaire pour de simples requetes sortantes).
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# A5 : SSRF — ce worker telecharge des URLs arbitraires soumises via jobs/.
+# Seul le trafic sortant vers l'internet public est legitime ; localhost,
+# link-local, multicast et tous les RFC1918/tailnet CIDR (dont le tailnet
+# Prisme lui-meme, 100.64.0.0/10) sont interdits. Volontairement absent de
+# prisme-transfer.service (qui DOIT joindre banga sur le tailnet).
+IPAddressAllow=any
+IPAddressDeny=localhost link-local multicast 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 169.254.0.0/16
 LockPersonality=true
 MemoryDenyWriteExecute=true
 CapabilityBoundingSet=
+# A2 : bornes de ressources (REX OOM/livelock waza project_waza_ssh_dhcp_oom_2026_06_05
+# + project_waza_livelock_oom_2026_07_27) — yt-dlp/ffmpeg heritent de ces
+# limites via le cgroup de l'unite.
+MemoryMax=1G
+MemoryHigh=768M
+TasksMax=64
+CPUQuota=150%
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+ProtectProc=invisible
 
 [Install]
 WantedBy=multi-user.target

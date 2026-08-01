@@ -59,6 +59,7 @@ id_*
 /incidents.xlsx
 /incidents-otn-oob-*.xlsx
 Thumbs.db
+*.deb
 
 # --- Molecule ---
 roles/*/molecule/default/.molecule/

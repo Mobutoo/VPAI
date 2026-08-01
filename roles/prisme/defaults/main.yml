@@ -23,6 +23,11 @@ prisme_karakeep_base_url: "http://karakeep:3000"
 prisme_litellm_key: "sk-prisme-{{ vault_prisme_fetcher_token | hash('sha256') }}"
 # Indirection rôle-locale sur la clé Qdrant partagée (pattern llamaindex-memory-worker).
 prisme_qdrant_api_key: "{{ qdrant_api_key }}"
+# Fusion du retrieval hybride (rrf|dbsf) — une seule source, consommée par l'app.
+prisme_fusion_mode: "rrf"
+# Endpoint dense (banga knowledge-embedding :18082). Vide = mode dégradé bm25-only
+# tant que le gate G-réseau Sese→banga n'est pas ouvert.
+prisme_dense_embedding_url: ""
 prisme_litellm_daily_budget: 0.50
 prisme_sparse_model: "Qdrant/bm25"
 prisme_sparse_revision: "e499a1f8d6bec960aab5533a0941bf914e70faf9"

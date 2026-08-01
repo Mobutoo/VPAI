@@ -6,14 +6,14 @@
       - vault_prisme_fetcher_token is defined
       - vault_prisme_fetcher_token | length >= 32
     quiet: true
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Create service group
   ansible.builtin.group:
     name: "{{ prisme_fetcher_group }}"
     system: true
   become: true
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Create restricted service account
   ansible.builtin.user:
@@ -23,7 +23,7 @@
     create_home: false
     shell: /usr/sbin/nologin
   become: true
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Create durable state directories
   ansible.builtin.file:
@@ -38,9 +38,10 @@
     - "{{ prisme_fetcher_root }}/outgoing"
     - "{{ prisme_fetcher_root }}/jobs"
     - "{{ prisme_fetcher_root }}/work"
+    - "{{ prisme_fetcher_root }}/rejects"
     - "{{ prisme_fetcher_root }}/.cache"
   become: true
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Create local executable directory
   ansible.builtin.file:
@@ -50,7 +51,7 @@
     group: root
     mode: "0755"
   become: true
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Install yt-dlp adapter dependency (apt, generic)
   ansible.builtin.apt:
@@ -61,7 +62,7 @@
     update_cache: true
     cache_valid_time: 3600
   become: true
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Create environment directory
   ansible.builtin.file:
@@ -71,7 +72,7 @@
     group: root
     mode: "0755"
   become: true
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Deploy worker environment file (control-plane token)
   ansible.builtin.template:
@@ -83,7 +84,7 @@
   become: true
   no_log: true
   notify: Prisme fetcher | Restart
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Install local-fixture + network acquisition worker
   ansible.builtin.template:
@@ -94,7 +95,7 @@
     mode: "0755"
   become: true
   notify: Prisme fetcher | Restart
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Install hardened service
   ansible.builtin.template:
@@ -107,7 +108,7 @@
   notify:
     - Prisme fetcher | Reload systemd
     - Prisme fetcher | Restart
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Enable local fixture worker
   ansible.builtin.systemd_service:
@@ -116,7 +117,7 @@
     state: started
   become: true
   when: not (common_molecule_mode | default(false) | bool)
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Create SSH directory for the banga transfer step
   ansible.builtin.file:
@@ -126,7 +127,7 @@
     group: "{{ prisme_fetcher_group }}"
     mode: "0700"
   become: true
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Generate dedicated transfer SSH keypair (idempotent)
   community.crypto.openssh_keypair:
@@ -137,14 +138,14 @@
     mode: "0600"
     comment: "prisme-fetcher@{{ ansible_facts['hostname'] }}"
   become: true
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Read generated public key
   ansible.builtin.slurp:
     src: "{{ prisme_transfer_ssh_key }}.pub"
   become: true
   register: prisme_transfer_pubkey
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | GATE — enroll this public key on banga (prisme-transfer, uid 2101)
   ansible.builtin.debug:
@@ -153,7 +154,7 @@
       (compte prisme-transfer uid 2101, ~/.ssh/authorized_keys) et a ajouter
       a {{ prisme_transfer_known_hosts_file }} (host key banga) AVANT
       d'activer prisme_transfer_enabled: {{ prisme_transfer_pubkey.content | b64decode | trim }}
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Ensure known_hosts placeholder exists (populated by the banga enrolment gate)
   ansible.builtin.file:
@@ -165,7 +166,18 @@
     group: "{{ prisme_fetcher_group }}"
     mode: "0600"
   become: true
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+- name: Prisme fetcher | Install banga transfer dependencies (rsync, ssh client)
+  ansible.builtin.apt:
+    name:
+      - rsync
+      - openssh-client
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Install banga transfer script
   ansible.builtin.template:
@@ -176,7 +188,7 @@
     mode: "0755"
   become: true
   notify: Prisme fetcher | Reload systemd
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Install banga transfer service (oneshot)
   ansible.builtin.template:
@@ -187,7 +199,7 @@
     mode: "0644"
   become: true
   notify: Prisme fetcher | Reload systemd
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Install banga transfer timer
   ansible.builtin.template:
@@ -198,7 +210,7 @@
     mode: "0644"
   become: true
   notify: Prisme fetcher | Reload systemd
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Enable/disable banga transfer timer per prisme_transfer_enabled
   ansible.builtin.systemd_service:
@@ -207,4 +219,4 @@
     state: "{{ 'started' if prisme_transfer_enabled | bool else 'stopped' }}"
   become: true
   when: not (common_molecule_mode | default(false) | bool)
-  tags: [prisme-fetcher]
+  tags: [prisme-fetcher, prisme_fetcher, phase3]

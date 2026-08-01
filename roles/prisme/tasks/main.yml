@@ -272,6 +272,20 @@
   when: prisme_enabled | bool
   tags: [prisme]
 
+- name: Render Prisme embedding sidecar environment
+  ansible.builtin.template:
+    src: prisme-embedding.env.j2
+    dest: "{{ prisme_config_dir }}/prisme-embedding.env"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    # 0640 (pas 0600) : le fichier est lu par compose sous {{ prod_user }}, et il ne
+    # contient QUE le token embedding — jamais DATABASE_URL (fichier dédié au sidecar).
+    mode: "0640"
+  become: true
+  no_log: true
+  when: prisme_enabled | bool
+  tags: [prisme]
+
 - name: Render Prisme DB proxy configuration
   ansible.builtin.template:
     src: haproxy.cfg.j2

@@ -122,8 +122,10 @@ services:
     user: "2102:2100"
     security_opt: ["no-new-privileges:true"]
     cap_drop: ["ALL"]
+    # Secret hors du compose (fichier 0640 lisible par docker inspect sinon) ; env_file
+    # DÉDIÉ — surtout pas prisme.env, le sidecar ne doit jamais voir DATABASE_URL.
+    env_file: ["{{ prisme_config_dir }}/prisme-embedding.env"]
     environment:
-      PRISME_EMBEDDING_TOKEN: "{{ vault_prisme_embedding_token }}"
       PRISME_EMBEDDING_MODE: sparse-query-only
       PRISME_EMBEDDING_DEVICE: cpu
       PRISME_EMBEDDING_CACHE_CAPACITY: "4096"

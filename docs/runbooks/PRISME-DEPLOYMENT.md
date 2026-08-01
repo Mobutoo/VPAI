@@ -58,6 +58,15 @@ Repinner le digest applicatif précédent dans `inventory/group_vars/all/version
 déploiement ciblé et conserver les migrations additives. Ne jamais purger PostgreSQL, Qdrant ou
 `tank/knowledge` pour un rollback applicatif.
 
+## Secrets partagés VPAI ↔ banga
+
+`vault_prisme_embedding_token`, `vault_prisme_knowledge_store_token` et
+`vault_prisme_knowledge_worker_token` existent dans **les deux vaults** (VPAI et banga) et rien ne
+garantit mécaniquement leur synchronisation. Toute rotation doit mettre à jour les deux vaults puis
+redéployer les deux côtés (sidecar `sparse-query` sur Sese, rôles `knowledge-*` sur banga) dans la
+même fenêtre. Le token embedding n'apparaît plus dans le compose : il est rendu dans
+`prisme-embedding.env` (0640, `no_log`), fichier dédié au sidecar — jamais `prisme.env`.
+
 ## PostgreSQL
 
 Le drill restaure `pg_dump -Fc` dans une base temporaire, vérifie tables, migrations et clés

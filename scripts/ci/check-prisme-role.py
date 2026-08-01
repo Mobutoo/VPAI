@@ -43,6 +43,7 @@ services = re.findall(r"^  ([a-z][a-z0-9-]+):$", service_block, flags=re.MULTILI
 require(
     services
     == [
+        "migrate",
         "prisme",
         "outbox",
         "research-worker",
@@ -58,7 +59,7 @@ require(
 require(compose.count("networks: [prisme_internal, egress]") == 2, "egress must have two consumers")
 require("recreate: always" in (ROOT / "roles/prisme/tasks/main.yml").read_text(), "forced recreate missing")
 require(compose.count("driver: json-file") == 2, "logging anchors/config missing")
-require(compose.count("healthcheck:") == 2, "healthcheck anchors/config missing")
+require(compose.count("healthcheck:") == 3, "healthcheck anchors/config missing")
 require("connector_internal: {}" in compose, "webhook receiver lacks connector network")
 require("expose: [\"3000\"]" in compose, "Prisme port 3000 missing")
 require("bind {{ prisme_db_proxy_internal_ip }}:5432" in (ROOT / "roles/prisme/templates/haproxy.cfg.j2").read_text(), "proxy bind missing")

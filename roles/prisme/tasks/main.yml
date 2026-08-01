@@ -267,7 +267,9 @@
     dest: "{{ prisme_config_dir }}/haproxy.cfg"
     owner: "{{ prod_user }}"
     group: "{{ prod_user }}"
-    mode: "0640"
+    # World-readable on purpose: no secret in the config, and the haproxy image runs
+    # non-root with cap_drop:ALL (no CAP_DAC_OVERRIDE) — 0640 is unreadable for it.
+    mode: "0644"
   become: true
   when: prisme_enabled | bool
   tags: [prisme]

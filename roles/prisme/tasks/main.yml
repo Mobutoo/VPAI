@@ -98,11 +98,15 @@
   when: prisme_enabled | bool
   tags: [prisme]
 
-- name: Pull immutable Prisme control-plane image
+- name: Pull immutable Prisme images
   community.docker.docker_image:
-    name: "{{ prisme_image_repository }}@{{ prisme_image_digest }}"
+    name: "{{ item }}"
     source: pull
     state: present
+  loop:
+    - "{{ prisme_image_repository }}@{{ prisme_image_digest }}"
+    - "{{ prisme_knowledge_embedding_image }}"
+    - "{{ prisme_db_proxy_image }}"
   become: true
   when: prisme_enabled | bool
   tags: [prisme]

@@ -12,6 +12,13 @@ postgresql_maintenance_work_mem: "128MB"
 # Redis
 redis_maxmemory: "384mb"
 
+# === Prisme (control plane) ===
+# Persistant en prod (2026-08-01) : le vhost prisme.ewutelo.cloud (Caddy VPN-only) ET
+# la stack prisme sont gatés sur ce flag — même doctrine que content_factory ci-dessous :
+# le laisser en -e-only ferait tomber le vhost au prochain deploy caddy sans le flag.
+# prisme_deploy_enabled reste -e-only (rollout ciblé, cf PRISME-DEPLOYMENT.md).
+prisme_enabled: true
+
 # === Content Factory (M1) ===
 # Persistant en prod (2026-07-06) : la vhost publique cf.ewutelo.cloud (Caddy) ET le
 # stack cf-api/conductor sont gatés sur ce flag. Le laisser en -e-only ferait tomber

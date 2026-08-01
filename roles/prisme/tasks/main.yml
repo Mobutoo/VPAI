@@ -157,7 +157,19 @@
     - "{{ prisme_config_dir }}"
     - "{{ prisme_data_dir }}"
     - "{{ prisme_backup_dir }}"
-    - "{{ prisme_model_dir }}"
+  become: true
+  when: prisme_enabled | bool
+  tags: [prisme]
+
+- name: Create Prisme model directory owned by the sparse service UID
+  ansible.builtin.file:
+    path: "{{ prisme_model_dir }}"
+    state: directory
+    # 2102:2100 = sparse-query container user (docker-compose.yml.j2); the cap_drop:ALL
+    # bootstrap and the read-only sidecar both need plain POSIX access to this tree.
+    owner: "2102"
+    group: "2100"
+    mode: "0750"
   become: true
   when: prisme_enabled | bool
   tags: [prisme]
@@ -200,6 +212,7 @@
         name: prisme-sparse-bootstrap
         image: "{{ prisme_hf_downloader_image }}"
         state: started
+        user: "2102:2100"
         detach: false
         cleanup: true
         command: >-

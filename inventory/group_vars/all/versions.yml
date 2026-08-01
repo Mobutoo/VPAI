@@ -42,7 +42,7 @@ caddy_image: "caddy:2.11.3-alpine"  # CVE-2026-30851/30852 identity injection + 
 # 2026-07-28; never replace with an unpinned HAProxy tag.
 prisme_db_proxy_image: "haproxy:3.2.5-alpine@sha256:8007effce89a08af0236b9529a0daab5b8b36fa939f4162f28201f1bf8731dbf"
 prisme_image_repository: "git.ewutelo.cloud/mobuone/prisme"
-prisme_image_digest: "sha256:66ba229be39f89855a4503df3108ecbfb00de90d370e3d2c6e8cb8f94473c7c3"
+prisme_image_digest: "sha256:5f11f0973b1cb4a12700226ce87e11c8c37ccf066fe0449d52f963a4a8e83986"
 prisme_knowledge_embedding_image: "git.ewutelo.cloud/mobuone/prisme-knowledge-embedding@sha256:73ecca0f25ffec4f4dca4af5b6d05c5c2ea7ec744e51583ff69865b524750190"
 # Bootstrap-only image for the sparse BM25 snapshot download; same pins as Banga
 # inventory/group_vars/all/versions.yml (amd64 digest resolved 2026-07-28).

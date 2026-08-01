@@ -29,6 +29,8 @@ prisme_fusion_mode: "rrf"
 # tant que le gate G-réseau Sese→banga n'est pas ouvert.
 prisme_dense_embedding_url: ""
 prisme_litellm_daily_budget: 0.50
+# Modèle de synthèse /ask via LiteLLM (doit exister dans roles/litellm model_name).
+prisme_ask_model: "claude-haiku"
 prisme_sparse_model: "Qdrant/bm25"
 prisme_sparse_revision: "e499a1f8d6bec960aab5533a0941bf914e70faf9"
 prisme_sparse_model_config: >-

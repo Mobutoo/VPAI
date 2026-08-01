@@ -189,7 +189,10 @@
       ansible.builtin.template:
         src: download-sparse-model.py.j2
         dest: "{{ prisme_sparse_downloader.path }}"
-        mode: "0600"
+        # World-readable on purpose: no secret in the rendered script (token stays in env)
+        # and the cap_drop:ALL container loses CAP_DAC_OVERRIDE, so root inside cannot
+        # read a 0600 file owned by the SSH user (REX flash-infra 2026-03-22).
+        mode: "0644"
       changed_when: false
 
     - name: Download pinned sparse model

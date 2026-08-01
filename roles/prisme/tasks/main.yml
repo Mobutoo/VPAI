@@ -209,7 +209,7 @@
           - "{{ prisme_sparse_downloader.path }}:/download.py:ro"
         read_only: true
         tmpfs:
-          /tmp: "rw,noexec,nosuid,nodev,size=256m"
+          - "/tmp:rw,noexec,nosuid,nodev,size=256m"
         cap_drop:
           - ALL
         security_opts:

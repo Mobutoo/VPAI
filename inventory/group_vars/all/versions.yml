@@ -44,6 +44,10 @@ prisme_db_proxy_image: "haproxy:3.2.5-alpine@sha256:8007effce89a08af0236b9529a0d
 prisme_image_repository: "git.ewutelo.cloud/mobuone/prisme"
 prisme_image_digest: "sha256:66ba229be39f89855a4503df3108ecbfb00de90d370e3d2c6e8cb8f94473c7c3"
 prisme_knowledge_embedding_image: "git.ewutelo.cloud/mobuone/prisme-knowledge-embedding@sha256:73ecca0f25ffec4f4dca4af5b6d05c5c2ea7ec744e51583ff69865b524750190"
+# Bootstrap-only image for the sparse BM25 snapshot download; same pins as Banga
+# inventory/group_vars/all/versions.yml (amd64 digest resolved 2026-07-28).
+prisme_hf_downloader_image: "python:3.12.11-slim-bookworm@sha256:c00fc7b44d844b6da22861ec24af43968a5200eac4ec607b4725d585165d6b49"
+prisme_huggingface_hub_version: "0.34.3"
 
 # --- Content Factory (Hetzner app-prod) ---
 # temporalio/auto-setup: dernier stable 1.29.7 (Docker Hub, juin 2026). Image deprecated

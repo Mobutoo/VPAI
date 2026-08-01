@@ -11,6 +11,23 @@ Source d’autorité : rôle `roles/prisme`, exécuté dans `playbooks/stacks/si
 - capacité Sese conforme ;
 - DNS VPN traité séparément par `playbooks/utils/vpn-dns.yml`.
 
+## DNS — les deux enregistrements sont obligatoires
+
+Le vhost est VPN-only, mais son certificat vient d'ACME : il faut **aussi** un
+enregistrement public, sinon Let's Encrypt échoue en `NXDOMAIN looking up A` et Caddy ne sert
+aucun certificat (handshake TLS en `internal error`). Même doctrine que `qd`/`mayi`/`tala`.
+
+| Enregistrement | Cible | Source |
+|---|---|---|
+| Tailnet (split-DNS) | `100.64.0.14` | `roles/vpn-dns/defaults/main.yml` |
+| Public OVH (ACME) | IP publique Sese | `ansible-playbook playbooks/utils/ovh-dns-add.yml -e dns_subdomain=prisme -e 'dns_target={{ prod_ip }}'` |
+
+Le nom devient résoluble publiquement ; l'accès reste fermé par l'ACL `vpn_only` de Caddy.
+
+Si l'enregistrement public est ajouté **après** un démarrage de Caddy, le job ACME reste bloqué
+sur son verrou (`/data/caddy/locks/issue_cert_<host>.lock`, rafraîchi en continu) et un
+`caddy reload` ne le relance pas : redémarrer le conteneur `javisi_caddy`.
+
 ## Déploiement ciblé
 
 ```bash

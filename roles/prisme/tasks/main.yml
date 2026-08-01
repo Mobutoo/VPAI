@@ -204,6 +204,9 @@
           huggingface_hub=={{ prisme_huggingface_hub_version }} && python /download.py"
         env:
           HF_TOKEN: "{{ vault_prisme_embedding_token }}"
+          # read_only rootfs: route pip's implicit --user install onto the /tmp tmpfs
+          HOME: "/tmp"
+          PYTHONUSERBASE: "/tmp/python-user"
         volumes:
           - "{{ prisme_model_dir }}:/cache"
           - "{{ prisme_sparse_downloader.path }}:/download.py:ro"

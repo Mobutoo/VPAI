@@ -27,10 +27,11 @@ groups:
   {
     'uid': 'prisme-projection-drift',
     'title': 'Prisme projection drift',
-    'expr': 'prisme_projection_drift_total',
+    'expr': 'increase(prisme_projection_drift_total[15m])',
     'threshold': 0,
     'severity': 'critical',
-    'for': '5m'
+    'for': '5m',
+    'noData': 'OK'
   },
   {
     'uid': 'prisme-queue-stalled',
@@ -47,7 +48,8 @@ groups:
     'threshold': 0.01,
     'severity': 'warning',
     'for': '1m',
-    'operator': 'lt'
+    'operator': 'lt',
+    'noData': 'OK'
   },
   {
     'uid': 'prisme-quality-low',
@@ -56,7 +58,8 @@ groups:
     'threshold': 0.75,
     'severity': 'warning',
     'for': '15m',
-    'operator': 'lt'
+    'operator': 'lt',
+    'noData': 'OK'
   },
   {
     'uid': 'prisme-backup-stale',
@@ -102,6 +105,11 @@ groups:
                     type: "{{ alert.operator | default('gt') }}"
                     params: [{{ alert.threshold }}]
         for: "{{ alert['for'] }}"
+        # Séries contractuellement toujours présentes → Alerting sur trou (le silence
+        # D3 ne doit pas revenir par la porte du NoData) ; séries omittables par design
+        # (budget si LiteLLM down, ndcg si eval périmé, drift increase sans donnée) → OK.
+        noDataState: "{{ alert.noData | default('Alerting') }}"
+        execErrState: Error
         annotations:
           summary: "{{ alert.title }}"
           dashboard_uid: prisme-operations

@@ -74,7 +74,7 @@
     - name: Verify a prisme.source-bundle.v2 manifest was written BEFORE any download and marks the job rejected
       ansible.builtin.assert:
         that:
-          - rejected_manifests.matched >= 1
+          - rejected_manifests.matched == 1
           - "'\"schema\": \"prisme.source-bundle.v2\"' in lookup('ansible.builtin.file', rejected_manifests.files[0].path)"
           - "'\"state\": \"rejected\"' in lookup('ansible.builtin.file', rejected_manifests.files[0].path)"
           - "'\"reason\": \"domain_not_allowlisted\"' in lookup('ansible.builtin.file', rejected_manifests.files[0].path)"

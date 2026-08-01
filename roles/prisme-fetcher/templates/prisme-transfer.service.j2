@@ -8,6 +8,11 @@ Wants=network-online.target
 Type=oneshot
 User={{ prisme_fetcher_user }}
 Group={{ prisme_fetcher_group }}
+# Meme raison que prisme-fetcher.service.j2 : ProtectHome=true masque
+# /home /root /run/user et le compte de service n'a pas de home
+# (create_home: false) -> ssh resout "~" (identity file, config) vers un
+# repertoire inaccessible sans ce HOME explicite.
+Environment=HOME={{ prisme_fetcher_root }}
 ExecStart={{ prisme_fetcher_bin }}-transfer
 NoNewPrivileges=true
 PrivateTmp=true

@@ -14,5 +14,11 @@
       ansible.builtin.group:
         name: prisme-fetcher
         system: true
+    - name: Install acl (required for become_user to a nologin service account in verify.yml)
+      ansible.builtin.apt:
+        name: acl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
   roles:
     - role: prisme-fetcher

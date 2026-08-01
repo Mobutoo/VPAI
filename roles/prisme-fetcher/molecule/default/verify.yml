@@ -19,11 +19,15 @@
         src: /etc/systemd/system/prisme-fetcher.service
       register: unit_raw
 
-    - name: Verify unit opens AF_INET/AF_INET6 and wires the environment file
+    - name: Verify unit opens AF_INET/AF_INET6, wires the environment file, and bounds resources (A2/A5/B5)
       ansible.builtin.assert:
         that:
           - "'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' in (unit_raw.content | b64decode)"
           - "'EnvironmentFile=/etc/prisme-fetcher/env' in (unit_raw.content | b64decode)"
+          - "'MemoryMax=1G' in (unit_raw.content | b64decode)"
+          - "'TasksMax=64' in (unit_raw.content | b64decode)"
+          - "'IPAddressDeny=' in (unit_raw.content | b64decode)"
+          - "'InaccessiblePaths=' in (unit_raw.content | b64decode)"
 
     - name: Inspect environment file permissions
       ansible.builtin.stat:
@@ -48,33 +52,171 @@
         cmd: bash -n /usr/local/libexec/prisme-fetcher-transfer
       changed_when: false
 
-    - name: Drop a fixture http job outside the (empty) allowlist
+    - name: Create fixture directory for the loopback HTTP test server (A9)
+      ansible.builtin.file:
+        path: /tmp/prisme-verify-http
+        state: directory
+        mode: "0755"
+
+    - name: Write a known-content test payload
+      ansible.builtin.copy:
+        dest: /tmp/prisme-verify-http/testfile.pdf
+        content: "prisme-fetcher molecule verify fixture — A9 success scenario\n"
+        mode: "0644"
+
+    - name: Write a minimal HTTP redirect server (redirects OUTSIDE the allowlist)
+      ansible.builtin.copy:
+        dest: /tmp/prisme-verify-http/redirect_server.py
+        mode: "0644"
+        content: |
+          import http.server
+
+
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def do_GET(self):
+                  self.send_response(302)
+                  self.send_header("Location", "http://example.invalid/blocked")
+                  self.end_headers()
+
+              def log_message(self, *args):
+                  pass
+
+
+          http.server.HTTPServer(("127.0.0.1", 8074), Handler).serve_forever()
+
+    - name: Start the loopback HTTP test server as a transient systemd unit
+      ansible.builtin.command:
+        cmd: >-
+          systemd-run --unit=prisme-verify-http --collect
+          python3 -m http.server 8073 --directory /tmp/prisme-verify-http --bind 127.0.0.1
+      changed_when: true
+
+    - name: Start the redirect test server as a transient systemd unit
+      ansible.builtin.command:
+        cmd: systemd-run --unit=prisme-verify-redirect --collect python3 /tmp/prisme-verify-http/redirect_server.py
+      changed_when: true
+
+    - name: Wait for the loopback test servers to accept connections
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: "{{ item }}"
+        timeout: 5
+      loop:
+        - 8073
+        - 8074
+
+    - name: Drop a fixture http job outside the allowlist (rejected before download)
       ansible.builtin.copy:
         dest: /var/lib/prisme-fetcher/jobs/molecule-rejected.json
         content: |
-          {"url": "https://example.invalid/some/asset.pdf", "adapter": "http", "note": "molecule verify"}
+          {"url": "https://example.invalid/some/asset.pdf", "adapter": "http", "note": "molecule verify: outside allowlist"}
         owner: prisme-fetcher
         group: prisme-fetcher
         mode: "0640"
 
-    - name: Run one worker pass in oneshot mode (no daemon, no network in molecule)
+    - name: Drop a fixture http job INSIDE the allowlist against the loopback server (A9 success)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-accepted.json
+        content: |
+          {"url": "http://127.0.0.1:8073/testfile.pdf", "adapter": "http", "note": "molecule verify: success path"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Drop a fixture http job whose allowlisted URL redirects OUTSIDE the allowlist (A9 redirect rejection)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-redirect-rejected.json
+        content: |
+          {"url": "http://127.0.0.1:8074/", "adapter": "http", "note": "molecule verify: redirect leaves allowlist"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Run one worker pass in oneshot mode
       ansible.builtin.command:
         cmd: python3 /usr/local/libexec/prisme-fetcher --once
       become: true
       become_user: prisme-fetcher
       changed_when: false
 
-    - name: Find the staged manifest for the rejected job
+    - name: Find the archived manifest for jobs rejected before/around download (A3 — no longer staged in work/)
       ansible.builtin.find:
-        paths: /var/lib/prisme-fetcher/work
+        paths: /var/lib/prisme-fetcher/rejects
         patterns: "manifest.json"
         recurse: true
       register: rejected_manifests
 
-    - name: Verify a prisme.source-bundle.v2 manifest was written BEFORE any download and marks the job rejected
+    - name: Verify the fetcher's work/ directory holds no residual job workdir after a completed pass (A3)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/work
+        file_type: directory
+        recurse: false
+      register: leftover_workdirs
+
+    - name: Verify no workdir leak survives a completed scan (A3)
       ansible.builtin.assert:
         that:
-          - rejected_manifests.matched == 1
+          - leftover_workdirs.matched == 0
+
+    - name: Verify BOTH rejected jobs (domain-not-allowlisted + redirect-left-allowlist) archived a v2 manifest
+      ansible.builtin.assert:
+        that:
+          - rejected_manifests.matched == 2
           - "'\"schema\": \"prisme.source-bundle.v2\"' in lookup('ansible.builtin.file', rejected_manifests.files[0].path)"
+          - "'\"schema\": \"prisme.source-bundle.v2\"' in lookup('ansible.builtin.file', rejected_manifests.files[1].path)"
           - "'\"state\": \"rejected\"' in lookup('ansible.builtin.file', rejected_manifests.files[0].path)"
-          - "'\"reason\": \"domain_not_allowlisted\"' in lookup('ansible.builtin.file', rejected_manifests.files[0].path)"
+          - "'\"state\": \"rejected\"' in lookup('ansible.builtin.file', rejected_manifests.files[1].path)"
+
+    - name: Verify one rejection reason is domain_not_allowlisted and the other redirect_left_allowlist
+      ansible.builtin.assert:
+        that:
+          - >-
+            (lookup('ansible.builtin.file', rejected_manifests.files[0].path) + lookup('ansible.builtin.file', rejected_manifests.files[1].path))
+            is search('domain_not_allowlisted')
+          - >-
+            (lookup('ansible.builtin.file', rejected_manifests.files[0].path) + lookup('ansible.builtin.file', rejected_manifests.files[1].path))
+            is search('redirect_left_allowlist')
+
+    - name: Find the delivered bundle for the accepted job (A9 success — A1 regression guard)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/outgoing
+        patterns: "testfile.pdf"
+        recurse: true
+      register: delivered_payload
+
+    - name: Verify exactly one real media payload was delivered (never manifest.json mistaken for the media, cf A1)
+      ansible.builtin.assert:
+        that:
+          - delivered_payload.matched == 1
+
+    - name: Read the delivered bundle's manifest
+      ansible.builtin.slurp:
+        src: "{{ (delivered_payload.files[0].path | dirname) }}/manifest.json"
+      register: delivered_manifest_raw
+
+    - name: Compute the sha256 of the delivered media payload
+      ansible.builtin.stat:
+        path: "{{ delivered_payload.files[0].path }}"
+        checksum_algorithm: sha256
+      register: delivered_payload_stat
+
+    - name: Verify the manifest's sha256 matches the actual delivered media (A1 regression guard — this is the check the manifest/media swap bug would have failed)
+      ansible.builtin.assert:
+        that:
+          - (delivered_manifest_raw.content | b64decode | from_json).state == "done"
+          - (delivered_manifest_raw.content | b64decode | from_json).sha256 == delivered_payload_stat.stat.checksum
+          - (delivered_manifest_raw.content | b64decode | from_json).filename == "testfile.pdf"
+
+    - name: Verify no partial ".part" bundle directory survives under outgoing/ (B1 atomic publish)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/outgoing
+        patterns: ".*"
+        file_type: directory
+        hidden: true
+        recurse: false
+      register: leftover_part_bundles
+
+    - name: Assert no leftover .part bundle directory
+      ansible.builtin.assert:
+        that:
+          - leftover_part_bundles.matched == 0

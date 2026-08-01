@@ -103,6 +103,11 @@ _vpn_dns_records_default: >-
      if (obsidian_subdomain | default('')) | length > 0
      else [])
     +
+    ([{"name": prisme_subdomain ~ "." ~ domain_name, "type": "A",
+       "value": _vpn_dns_vps_ts_ip}]
+     if (prisme_subdomain | default('')) | length > 0
+     else [])
+    +
     ([{"name": oc_subdomain ~ "." ~ domain_name, "type": "A",
        "value": _vpn_dns_workstation_ts_ip}]
      if (oc_subdomain | default('')) | length > 0

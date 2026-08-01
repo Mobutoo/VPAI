@@ -265,6 +265,30 @@ BOOTSTRAP 200
 }
 {% endif %}
 
+# === lxc-chat (Open WebUI, Banga) — 2e saut vers un hôte hors Sese ===
+# REX: contrairement aux blocs ci-dessus, l'upstream n'est PAS un conteneur du même hôte mais
+# lxc-chat sur Banga (LXC Debian+Docker), joignable via la route Headscale 192.168.1.0/24
+# (subnet router banga-node, déjà approuvée — headscale nodes list-routes). Le Caddy local de
+# lxc-chat sert son Open WebUI en TLS auto-signé (`tls internal`, cf banga docs/superpowers/specs/
+# 2026-07-24-lxc-chat-design.md §6) — skip-verify accepté ici car c'est un hop interne entre deux
+# Caddy qu'on contrôle (même doctrine que roles/webhook-relay/templates/Caddyfile-relay.j2) ; le
+# vrai certificat public reste celui de CE Caddy face aux clients. Port 8443 (API M2M whisper/
+# ffmpeg, jeton bearer) volontairement PAS exposé ici — seul le port 443 (Open WebUI) l'est.
+{% if lxc_chat_subdomain | default('') | length > 0 and lxc_chat_upstream_ip | default('') | length > 0 %}
+{{ caddy_lxc_chat_domain }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy https://{{ lxc_chat_upstream_ip }}:443 {
+        transport http {
+            tls_insecure_skip_verify
+        }
+    }
+
+    import security_headers
+}
+{% endif %}
+
 # === Palais — Cockpit IA Afrofuturiste ===
 {{ caddy_palais_domain }} {
     import vpn_only

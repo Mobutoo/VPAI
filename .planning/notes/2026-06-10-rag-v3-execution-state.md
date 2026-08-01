@@ -20,6 +20,18 @@ autonome (clé Headscale valide, confirmé). Contrat normatif :
 | 10 | Flip `memory_collection_name=memory_v3` + redeploy + smoke | ✅ | inventory/group_vars/all/main.yml + redeploy (changed=1) ; smoke : hit exact GUIDE-CADDY §3.2 Deux CIDRs, floor → "not found" |
 | 11 | REX + commits finaux + MAJ mémoire | 🔄 | |
 
+## Réorg refdocs (2026-06-10, GO utilisateur — commit 6b9483a)
+
+- `~/work/refdocs/` : DOCS éclaté → `litellm-docs`, `n8n-docs`, `openclaw-docs` au premier
+  niveau ; repo DOCS (qui ne trackait que wiki/) → renommé `wiki` (git mv, historique préservé).
+- `classify_room(wing, rp, repo=None)` : refdocs repo-direct → room = repo sans `-docs`
+  (fixe les rooms poubelle de typebot-docs). Manifeste §3 mis à jour. 123 tests pass.
+- Qdrant v3 : purge `repo=DOCS` (9 544 pts delta jetés — assumé, évite double embed
+  n8n-docs), patch `room=typebot` (3 275 pts), total 24 403 (= baseline pod).
+- Delta relancé : unit `memory-delta-v3b.service` sur
+  litellm-docs,n8n-docs,openclaw-docs,wiki + 13 saas/tools. Watcher `/tmp/watch_delta_v3b.sh`.
+- Entrée manuelle DOCS supprimée des defaults (auto-découverte couvre les 5 doc-sets).
+
 ## Post-session (rappels)
 
 - Timer worker : ré-armé automatiquement par `/tmp/watch_delta_v3.sh` à la fin du delta (suspendu pendant, lock unique).

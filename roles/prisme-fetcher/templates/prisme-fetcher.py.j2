@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import sqlite3
@@ -21,6 +22,7 @@ INCOMING = ROOT / "incoming"
 OUTGOING = ROOT / "outgoing"
 JOBS = ROOT / "jobs"
 WORK = ROOT / "work"
+REJECTS = ROOT / "rejects"
 CACHE = ROOT / ".cache"
 DATABASE = ROOT / "state.sqlite3"
 STOP = False
@@ -44,6 +46,38 @@ MAX_ATTEMPTS = {{ prisme_fetcher_max_attempts }}
 RETRY_BACKOFF_SECONDS = {{ prisme_fetcher_retry_backoff_seconds }}
 
 REDIRECT_CODES = (301, 302, 303, 307, 308)
+
+_SIZE_UNITS = {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
+_SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)([KMGT]?)B?", re.IGNORECASE)
+_UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def parse_size(value: str) -> int:
+    match = _SIZE_RE.fullmatch(value.strip())
+    if not match:
+        raise ValueError(f"invalid_size:{value}")
+    number, unit = match.groups()
+    return int(float(number) * _SIZE_UNITS[unit.upper()])
+
+
+def sanitize_filename(name: str, fallback: str) -> str:
+    # A6/A1 : neutralise toute tentative de traversee de chemin ou d'ecrasement
+    # du manifeste via un nom de fichier hostile venant d'un serveur distant
+    # (Content-Disposition/URL path pour http, nom yt-dlp pour ytdlp). Le nom
+    # final doit rester strictement dans le repertoire de destination et ne
+    # jamais pouvoir collisionner avec manifest.json.
+    cleaned = _UNSAFE_FILENAME_CHARS.sub("_", name)
+    if not cleaned or cleaned in (".", "..") or cleaned.startswith(".") or cleaned.lower() == "manifest.json":
+        return fallback
+    return cleaned
+
+
+def dir_size(path: Path) -> int:
+    total = 0
+    for entry in path.rglob("*"):
+        if entry.is_file():
+            total += entry.stat().st_size
+    return total
 
 
 class AllowlistViolation(RuntimeError):
@@ -112,24 +146,27 @@ def process_fixture(db: sqlite3.Connection, source: Path) -> None:
     ).fetchone()
     if previous is not None and previous["state"] == "transferred_ready" and previous["sha256"] == digest:
         return
+    # B1 : meme discipline d'atomicite que process_job — le bundle complet
+    # (media + manifest) est construit sous un repertoire cache puis publie
+    # par un seul rename() de repertoire.
     bundle = OUTGOING / digest
-    part = OUTGOING / f".{digest}.part"
-    bundle.mkdir(mode=0o750, exist_ok=True)
-    target = bundle / source.name.removesuffix(".ready")
-    with source.open("rb") as reader, part.open("wb") as writer:
-        shutil.copyfileobj(reader, writer)
-        writer.flush()
-        os.fsync(writer.fileno())
-    part.replace(target)
-    manifest = {
-        "schema": "prisme.source-bundle.v1",
-        "adapter": "local-upload-fixture",
-        "sha256": digest,
-        "filename": target.name,
-    }
-    manifest_part = bundle / ".manifest.json.part"
-    manifest_part.write_text(json.dumps(manifest, sort_keys=True) + "\n")
-    manifest_part.replace(bundle / "manifest.json")
+    if not bundle.exists():
+        bundle_part = OUTGOING / f".{digest}.part"
+        shutil.rmtree(bundle_part, ignore_errors=True)
+        bundle_part.mkdir(mode=0o750, exist_ok=True)
+        target = bundle_part / source.name.removesuffix(".ready")
+        with source.open("rb") as reader, target.open("wb") as writer:
+            shutil.copyfileobj(reader, writer)
+            writer.flush()
+            os.fsync(writer.fileno())
+        manifest = {
+            "schema": "prisme.source-bundle.v1",
+            "adapter": "local-upload-fixture",
+            "sha256": digest,
+            "filename": target.name,
+        }
+        (bundle_part / "manifest.json").write_text(json.dumps(manifest, sort_keys=True) + "\n")
+        bundle_part.replace(bundle)
     db.execute(
         """insert into items(source_path,sha256,state,output_path,updated_at)
         values(?,?,?,?,?) on conflict(source_path) do update set
@@ -203,6 +240,15 @@ def mark_domain_fetch(db: sqlite3.Connection, domain: str, now: int) -> None:
     db.commit()
 
 
+def touch_heartbeat(db: sqlite3.Connection) -> None:
+    db.execute(
+        """insert into heartbeat(singleton,updated_at) values(1,?)
+        on conflict(singleton) do update set updated_at=excluded.updated_at""",
+        (int(time.time()),),
+    )
+    db.commit()
+
+
 def load_job(path: Path) -> dict | None:
     try:
         payload = json.loads(path.read_text())
@@ -211,6 +257,11 @@ def load_job(path: Path) -> dict | None:
     url = payload.get("url")
     adapter = payload.get("adapter")
     if not isinstance(url, str) or adapter not in ("http", "ytdlp"):
+        return None
+    # A8 : le scheme est verifie ici pour les DEUX adapters (http et ytdlp).
+    # yt-dlp accepte des schemes non-http (fichiers locaux via extracteur
+    # generique, IE) que ce worker ne doit jamais soumettre sans revalidation.
+    if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
         return None
     return {"url": url, "adapter": adapter, "note": payload.get("note")}
 
@@ -230,10 +281,12 @@ def fetch_http(url: str, workdir: Path) -> tuple[str, str, str]:
         except urllib.error.HTTPError as error:
             if error.code in REDIRECT_CODES:
                 location = error.headers.get("Location")
+                error.close()
                 if not location:
                     raise RuntimeError("redirect_without_location") from error
                 current = urllib.parse.urljoin(current, location)
                 continue
+            error.close()
             raise
         with response:
             if response.status in REDIRECT_CODES:
@@ -250,6 +303,10 @@ def fetch_http(url: str, workdir: Path) -> tuple[str, str, str]:
             total = 0
             with tmp.open("wb") as writer:
                 while True:
+                    if STOP:
+                        writer.close()
+                        tmp.unlink(missing_ok=True)
+                        raise RuntimeError("worker_stopping")
                     chunk = response.read(65536)
                     if not chunk:
                         break
@@ -263,7 +320,10 @@ def fetch_http(url: str, workdir: Path) -> tuple[str, str, str]:
                 writer.flush()
                 os.fsync(writer.fileno())
             digest = digest_ctx.hexdigest()
-            filename = Path(parsed.path).name or digest
+            # A6 : le nom de fichier distant (path URL / Content-Disposition non
+            # consulte ici par choix) est assaini avant tout usage disque —
+            # jamais de traversee de chemin ni de collision avec manifest.json.
+            filename = sanitize_filename(Path(parsed.path).name or digest, digest)
             target = workdir / filename
             tmp.replace(target)
             return digest, filename, content_type
@@ -279,34 +339,82 @@ def fetch_ytdlp(url: str, workdir: Path) -> tuple[str, str]:
     env = dict(os.environ)
     env["HOME"] = str(ROOT)
     env["XDG_CACHE_HOME"] = str(CACHE)
+    # A11 : jamais de config utilisateur/systeme implicite pour un binaire qui
+    # tourne avec des privileges reseau sortants.
+    env["XDG_CONFIG_HOME"] = str(CACHE)
     command = [
         "yt-dlp",
+        "--ignore-config",
         "--no-playlist",
         "--max-filesize", YTDLP_MAX_FILESIZE,
+        "--no-continue",
         "--format", YTDLP_FORMAT,
         "--user-agent", HTTP_USER_AGENT,
         "--no-progress",
         "--restrict-filenames",
         "-o", output_template,
+        "--",
         url,
     ]
-    result = subprocess.run(  # noqa: S603
-        command,
-        cwd=workdir,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=HTTP_TIMEOUT_SECONDS * 20,
-        check=False,
+    # A4 : --max-filesize ne couvre pas les manifestes HLS/DASH (segments non
+    # annonces a l'avance) ni le remux ffmpeg final (copie temporaire du
+    # fichier deja telecharge -> jusqu'a x2-x3 pendant la fusion). On borne
+    # donc durement en surveillant la taille reelle du repertoire de travail
+    # et on tue le process au-dela d'une marge de securite x3.
+    hard_cap = parse_size(YTDLP_MAX_FILESIZE) * 3
+    existing = {p.name for p in workdir.iterdir()}
+    stdout_path = workdir / ".ytdlp.stdout"
+    stderr_path = workdir / ".ytdlp.stderr"
+    deadline = time.monotonic() + HTTP_TIMEOUT_SECONDS * 20
+    killed_reason = None
+    with stdout_path.open("wb") as out, stderr_path.open("wb") as err:
+        proc = subprocess.Popen(command, cwd=workdir, env=env, stdout=out, stderr=err)  # noqa: S603
+        while True:
+            try:
+                proc.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                pass
+            else:
+                break
+            if STOP:
+                killed_reason = "worker_stopping"
+            elif dir_size(workdir) > hard_cap:
+                killed_reason = "ytdlp_size_cap_exceeded"
+            elif time.monotonic() > deadline:
+                killed_reason = "ytdlp_timeout"
+            if killed_reason:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=10)
+                break
+    if killed_reason:
+        raise RuntimeError(killed_reason)
+    if proc.returncode != 0:
+        stderr_tail = stderr_path.read_bytes()[-500:].decode("utf-8", "replace")
+        raise RuntimeError(f"ytdlp_failed:{proc.returncode}:{stderr_tail}")
+    # A1 : delta AVANT/APRES l'appel adapter (jamais un tri global sur
+    # workdir qui pourrait re-selectionner un fichier de log/etat au lieu du
+    # media reel). Les *.part residuels sont rejetes explicitement.
+    produced = sorted(
+        p for p in workdir.iterdir()
+        if p.is_file()
+        and p.name not in existing
+        and not p.name.startswith(".")
+        and not p.name.endswith(".part")
     )
-    if result.returncode != 0:
-        raise RuntimeError(f"ytdlp_failed:{result.returncode}:{result.stderr[-500:]}")
-    produced = sorted(p for p in workdir.iterdir() if p.is_file() and not p.name.startswith("."))
-    if not produced:
-        raise RuntimeError("ytdlp_no_output")
+    if len(produced) != 1:
+        raise RuntimeError(f"ytdlp_ambiguous_output:{len(produced)}")
     source = produced[0]
     digest = hashlib.sha256(source.read_bytes()).hexdigest()
-    return digest, source.name
+    filename = sanitize_filename(source.name, digest)
+    if filename != source.name:
+        renamed = workdir / filename
+        source.replace(renamed)
+        source = renamed
+    return digest, filename
 
 
 def handle_failure(db: sqlite3.Connection, job_id: str, now: int, error: Exception) -> None:
@@ -322,11 +430,54 @@ def handle_failure(db: sqlite3.Connection, job_id: str, now: int, error: Excepti
         )
 
 
+def archive_manifest_snapshot(job_id: str, manifest_path: Path) -> None:
+    # A3 : conserve une trace du manifeste final pour debug, hors du
+    # repertoire de travail purge juste apres. Best-effort : un echec de
+    # copie ne doit jamais empecher la purge (deja passe le point de non-retour
+    # fonctionnel du job).
+    try:
+        dest_dir = REJECTS / job_id
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(manifest_path, dest_dir / "manifest.json")
+    except OSError:
+        pass
+
+
+def deliver_bundle(digest: str, filename: str, source: Path, manifest: dict) -> Path:
+    # B1 : bundle construit entierement (media + manifest) sous un repertoire
+    # cache ".<sha>.part/" puis publie par un seul rename() de repertoire,
+    # atomique sur un meme filesystem. Aucun lecteur externe (rsync sur
+    # outgoing/) ne peut donc jamais observer un bundle partiel ou depourvu
+    # de manifest.json.
+    bundle_final = OUTGOING / digest
+    if bundle_final.exists():
+        # Contenu deja livre par une tentative/job precedent (dedup par
+        # sha256) : rien a refaire, l'appelant purge le workdir courant.
+        return bundle_final
+    bundle_part = OUTGOING / f".{digest}.part"
+    shutil.rmtree(bundle_part, ignore_errors=True)
+    bundle_part.mkdir(mode=0o750, exist_ok=True)
+    source.replace(bundle_part / filename)
+    (bundle_part / "manifest.json").write_text(json.dumps(manifest, sort_keys=True) + "\n")
+    bundle_part.replace(bundle_final)
+    return bundle_final
+
+
 def process_job(db: sqlite3.Connection, job_id: str, job: dict, domain: str, now: int) -> None:
     if shutil.disk_usage(ROOT).free < MIN_FREE_BYTES:
         raise RuntimeError("disk_low")
     workdir = WORK / job_id
+    # A3 : purge d'une tentative precedente avortee (crash, kill -9, panne
+    # secteur) AVANT de relancer l'adapter — jamais de residu entre deux
+    # tentatives d'un meme job.
+    shutil.rmtree(workdir, ignore_errors=True)
     workdir.mkdir(parents=True, exist_ok=True)
+    # A1 : le manifeste vit HORS du repertoire de telechargement (dl/) : le
+    # delta produit par l'adapter ne peut donc jamais inclure le manifeste
+    # lui-meme (REX : un tri alphabetique global pouvait auparavant
+    # selectionner manifest.json a la place du media reel -> perte silencieuse).
+    dl = workdir / "dl"
+    dl.mkdir(parents=True, exist_ok=True)
     allowed = domain_allowed(domain)
     manifest = {
         "schema": "prisme.source-bundle.v2",
@@ -349,16 +500,18 @@ def process_job(db: sqlite3.Connection, job_id: str, job: dict, domain: str, now
         manifest["state"] = "rejected"
         manifest["reason"] = "domain_not_allowlisted"
         write_manifest(workdir, manifest)
+        archive_manifest_snapshot(job_id, manifest_path)
         update_job(
             db, job_id, state="rejected", error="domain_not_allowlisted",
             manifest_path=str(manifest_path),
         )
+        shutil.rmtree(workdir, ignore_errors=True)
         return
     try:
         if job["adapter"] == "http":
-            digest, filename, content_type = fetch_http(job["url"], workdir)
+            digest, filename, content_type = fetch_http(job["url"], dl)
         else:
-            digest, filename = fetch_ytdlp(job["url"], workdir)
+            digest, filename = fetch_ytdlp(job["url"], dl)
             content_type = None
         mark_domain_fetch(db, domain, now)
     except AllowlistViolation as error:
@@ -366,29 +519,27 @@ def process_job(db: sqlite3.Connection, job_id: str, job: dict, domain: str, now
         manifest["state"] = "rejected"
         manifest["reason"] = str(error)
         write_manifest(workdir, manifest)
+        archive_manifest_snapshot(job_id, manifest_path)
         update_job(
             db, job_id, state="rejected", error=str(error),
             manifest_path=str(manifest_path),
         )
+        shutil.rmtree(workdir, ignore_errors=True)
     except Exception as error:  # noqa: BLE001
         mark_domain_fetch(db, domain, now)
         manifest["state"] = "failed_attempt"
         manifest["reason"] = str(error)
         write_manifest(workdir, manifest)
+        archive_manifest_snapshot(job_id, manifest_path)
         handle_failure(db, job_id, now, error)
+        shutil.rmtree(workdir, ignore_errors=True)
     else:
-        bundle = OUTGOING / digest
-        bundle.mkdir(mode=0o750, exist_ok=True)
-        target = bundle / filename
-        (workdir / filename).replace(target)
         manifest["state"] = "done"
         manifest["sha256"] = digest
         manifest["filename"] = filename
         if content_type:
             manifest["content_type"] = content_type
-        bundle_manifest_part = bundle / ".manifest.json.part"
-        bundle_manifest_part.write_text(json.dumps(manifest, sort_keys=True) + "\n")
-        bundle_manifest_part.replace(bundle / "manifest.json")
+        bundle = deliver_bundle(digest, filename, dl / filename, manifest)
         shutil.rmtree(workdir, ignore_errors=True)
         update_job(
             db, job_id, state="done", output_path=str(bundle),
@@ -398,6 +549,7 @@ def process_job(db: sqlite3.Connection, job_id: str, job: dict, domain: str, now
 
 def scan_jobs(db: sqlite3.Connection) -> None:
     for path in sorted(JOBS.glob("*.json")):
+        touch_heartbeat(db)
         now = int(time.time())
         raw = path.read_bytes()
         job_id = hashlib.sha256(raw).hexdigest()
@@ -405,6 +557,10 @@ def scan_jobs(db: sqlite3.Connection) -> None:
             "select state, next_attempt_at, domain from jobs where job_id=?", (job_id,)
         ).fetchone()
         if row is not None and row["state"] in ("done", "rejected", "failed"):
+            # A3 : GC du fichier job une fois l'etat terminal atteint (le
+            # manifeste/bundle correspondant vit deja dans outgoing/ ou
+            # rejects/ — le fichier jobs/*.json n'a plus de raison d'exister).
+            path.unlink(missing_ok=True)
             continue
         if row is not None and row["state"] == "retry_wait" and now < row["next_attempt_at"]:
             continue
@@ -441,12 +597,7 @@ def main() -> None:
     db = connect()
     once = "--once" in sys.argv or os.environ.get("PRISME_FETCHER_ONESHOT") == "1"
     while not STOP:
-        db.execute(
-            """insert into heartbeat(singleton,updated_at) values(1,?)
-            on conflict(singleton) do update set updated_at=excluded.updated_at""",
-            (int(time.time()),),
-        )
-        db.commit()
+        touch_heartbeat(db)
         for source in sorted(INCOMING.glob("*.ready")):
             try:
                 process_fixture(db, source)

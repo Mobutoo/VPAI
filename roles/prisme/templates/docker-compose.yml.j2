@@ -50,6 +50,7 @@ services:
       prisme_internal: {}
       connector_internal: {}
       frontend: {}
+      monitoring: {}
       backend:
         ipv4_address: "{{ prisme_service_backend_ip }}"
 
@@ -57,57 +58,96 @@ services:
   outbox:
     <<: *prisme_env
     image: *prisme_image
-    command: ["node", "workers/outbox.js"]
+    command: ["node", "dist-workers/worker.js"]
+    environment: {PRISME_WORKER_KIND: outbox}
     mem_limit: "{{ prisme_outbox_memory_limit }}"
     mem_reservation: "{{ prisme_outbox_memory_reservation }}"
+    depends_on: {migrate: {condition: service_completed_successfully}}
     networks: [prisme_internal]
 
   research-worker:
     <<: *prisme_env
     image: *prisme_image
-    command: ["node", "workers/research.js"]
+    command: ["node", "dist-workers/worker.js"]
+    environment: {PRISME_WORKER_KIND: research}
     mem_limit: "{{ prisme_research_memory_limit }}"
     mem_reservation: "{{ prisme_research_memory_reservation }}"
+    depends_on: {migrate: {condition: service_completed_successfully}}
     networks: [prisme_internal, egress]
 
   browser:
     <<: *prisme_env
     image: *prisme_image
-    command: ["node", "workers/browser.js"]
+    command: ["node", "dist-workers/worker.js"]
+    environment: {PRISME_WORKER_KIND: browser}
     mem_limit: "{{ prisme_browser_memory_limit }}"
     mem_reservation: "{{ prisme_browser_memory_reservation }}"
+    depends_on: {migrate: {condition: service_completed_successfully}}
     networks: [prisme_internal, egress]
 
   connector:
     <<: *prisme_env
     image: *prisme_image
-    command: ["node", "workers/connectors/karakeep.js"]
+    command: ["node", "dist-workers/worker.js"]
+    environment: {PRISME_WORKER_KIND: connector}
     mem_limit: "{{ prisme_connector_memory_limit }}"
     mem_reservation: "{{ prisme_connector_memory_reservation }}"
+    depends_on: {migrate: {condition: service_completed_successfully}}
     networks: [prisme_internal, connector_internal]
 
   indexer:
     <<: *prisme_env
     image: *prisme_image
-    command: ["node", "workers/indexer.js"]
+    command: ["node", "dist-workers/worker.js"]
+    environment: {PRISME_WORKER_KIND: indexer}
     mem_limit: "{{ prisme_indexer_memory_limit }}"
     mem_reservation: "{{ prisme_indexer_memory_reservation }}"
+    depends_on: {migrate: {condition: service_completed_successfully}}
     networks: [prisme_internal]
 
   consolidation:
     <<: *prisme_env
     image: *prisme_image
-    command: ["node", "workers/consolidation.js"]
+    command: ["node", "dist-workers/worker.js"]
+    environment: {PRISME_WORKER_KIND: consolidation}
     mem_limit: "{{ prisme_consolidation_memory_limit }}"
     mem_reservation: "{{ prisme_consolidation_memory_reservation }}"
+    depends_on: {migrate: {condition: service_completed_successfully}}
     networks: [prisme_internal]
 
   sparse-query:
-    <<: *prisme_env
-    image: *prisme_image
-    command: ["python", "-m", "prisme_embeddings", "--mode", "sparse-query-only"]
+    image: "{{ prisme_knowledge_embedding_image }}"
+    restart: unless-stopped
+    read_only: true
+    user: "2102:2100"
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: ["ALL"]
+    environment:
+      PRISME_EMBEDDING_TOKEN: "{{ vault_prisme_embedding_token }}"
+      PRISME_EMBEDDING_MODE: sparse-query-only
+      PRISME_EMBEDDING_DEVICE: cpu
+      PRISME_EMBEDDING_CACHE_CAPACITY: "4096"
+      PRISME_SPARSE_THREADS: "2"
+      HF_HOME: /models
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    expose: ["8080"]
+    volumes: ["{{ prisme_model_dir }}:/models:ro"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=256m"]
+    pids_limit: 256
     mem_limit: "{{ prisme_sparse_memory_limit }}"
     mem_reservation: "{{ prisme_sparse_memory_reservation }}"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health/ready', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
     networks: [prisme_internal]
 {% endif %}
 
@@ -154,3 +194,6 @@ networks:
   egress:
     external: true
     name: "{{ prisme_egress_network }}"
+  monitoring:
+    external: true
+    name: "{{ prisme_monitoring_network }}"

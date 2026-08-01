@@ -83,6 +83,21 @@ prometheus.scrape "litellm" {
 }
 
 // ============================================================
+// METRICS: Prisme knowledge application
+// ============================================================
+
+prometheus.scrape "prisme" {
+  targets = [{
+    __address__ = "prisme:3000",
+  }]
+  forward_to      = [prometheus.remote_write.victoriametrics.receiver]
+  scrape_interval = "30s"
+  job_name        = "prisme"
+  metrics_path    = "/metrics"
+  bearer_token    = "{{ vault_prisme_metrics_token }}"
+}
+
+// ============================================================
 // METRICS: Qdrant (vector DB — collections, points, latency)
 // ============================================================
 

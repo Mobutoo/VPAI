@@ -7,6 +7,7 @@ prisme_workers_enabled: true
 prisme_config_dir: "/opt/{{ project_name }}/configs/prisme"
 prisme_data_dir: "/opt/{{ project_name }}/data/prisme"
 prisme_backup_dir: "/opt/{{ project_name }}/backups/prisme"
+prisme_model_dir: "/opt/{{ project_name }}/data/prisme/models"
 
 prisme_registry_server: "git.ewutelo.cloud"
 prisme_registry_user: "mobuone"
@@ -19,8 +20,15 @@ prisme_database_name: "prisme"
 prisme_database_user: "prisme"
 prisme_karakeep_enabled: false
 prisme_karakeep_base_url: "http://karakeep:3000"
+prisme_litellm_key: "sk-prisme-{{ vault_prisme_fetcher_token | hash('sha256') }}"
+prisme_litellm_daily_budget: 0.50
+prisme_sparse_model: "Qdrant/bm25"
+prisme_sparse_revision: "e499a1f8d6bec960aab5533a0941bf914e70faf9"
+prisme_sparse_model_config: >-
+  {{ prisme_model_dir }}/models--Qdrant--bm25/snapshots/{{ prisme_sparse_revision }}/config.json
 
 prisme_frontend_network: "javisi_frontend"
 prisme_backend_network: "javisi_backend"
 prisme_egress_network: "javisi_egress"
 prisme_connector_network: "prisme_connector_internal"
+prisme_monitoring_network: "javisi_monitoring"

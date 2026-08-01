@@ -55,6 +55,11 @@
       tags: [always]
 
   roles:
+    # Intentionally excluded from untagged/shared workstation runs.
+    - role: prisme-fetcher
+      when: prisme_fetcher_enabled | default(false) | bool
+      tags: [never, prisme-fetcher]
+
     - role: workstation-common
       tags: [workstation-common, workstation, infra]
 

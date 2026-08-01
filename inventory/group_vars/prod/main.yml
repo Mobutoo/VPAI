@@ -53,3 +53,22 @@ cf_qc_live: "1"
 cf_render_concurrency: "3"
 cf_render_mem_limit: "1536m"
 cf_podpilot_url: "http://100.64.0.1:8000"
+
+# === Grafana plugins (HawkTrade Workstream D-Cockpit, 2026-07-16) ===
+# Persistant en prod : le dashboard hawktrade-cockpit + la datasource HawkTrade-Freqtrade
+# (repo hawktrade, infra/grafana/README.md) dependent du plugin yesoreyeram-infinity-datasource.
+# Ajoute manuellement au grafana.env deploye le 2026-07-16 sans passer par ce fichier — un
+# prochain "ansible-playbook ... --tags monitoring" aurait ecrase grafana.env et supprime cette
+# ligne (GF_PLUGINS_PREINSTALL_SYNC absent du template), cassant silencieusement le dashboard
+# HawkTrade au redemarrage suivant de Grafana. Meme doctrine que cf_gpu_live/content_factory_enabled
+# ci-dessus : persistant, pas -e-only.
+grafana_plugins_preinstall_sync: "yesoreyeram-infinity-datasource"
+
+# === lxc-chat (Banga) — reverse proxy chat.ewutelo.cloud, 2e saut Caddy Sese → Banga ===
+# IP confirmée opérateur 2026-07-27 (MAC BC:24:11:3D:41:13, cf banga/roles/lxc-chat/defaults/main.yml).
+# RISQUE CONNU : réservation DHCP statique Freebox pas encore posée côté banga au moment de cette
+# écriture (session /factor factor-lxc-chat-finalize toujours en cours) — bail DHCP dynamique,
+# peut changer au prochain renouvellement. Si chat.ewutelo.cloud cesse de répondre après un reboot
+# de lxc-chat, vérifier le bail réel avant d'incriminer Caddy (cf handoff
+# .planning/handoffs/2026-07-27-chat-ewutelo-cloud-reverse-proxy.md).
+lxc_chat_upstream_ip: "192.168.1.125"

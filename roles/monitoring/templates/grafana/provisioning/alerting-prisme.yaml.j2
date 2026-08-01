@@ -1,0 +1,111 @@
+# {{ ansible_managed }}
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: "Prisme — SLO"
+    folder: "Prisme"
+    interval: 1m
+    rules:
+{% for alert in [
+  {
+    'uid': 'prisme-stalled',
+    'title': 'Prisme unavailable',
+    'expr': 'absent(up{job="prisme"}) or up{job="prisme"} == 0',
+    'threshold': 0,
+    'severity': 'critical',
+    'for': '3m'
+  },
+  {
+    'uid': 'prisme-index-lag',
+    'title': 'Prisme Qdrant projection lag',
+    'expr': 'qdrant_projection_lag_seconds',
+    'threshold': 300,
+    'severity': 'critical',
+    'for': '5m'
+  },
+  {
+    'uid': 'prisme-projection-drift',
+    'title': 'Prisme projection drift',
+    'expr': 'prisme_projection_drift_total',
+    'threshold': 0,
+    'severity': 'critical',
+    'for': '5m'
+  },
+  {
+    'uid': 'prisme-queue-stalled',
+    'title': 'Prisme outbox queue stalled',
+    'expr': 'prisme_queue_depth{queue="outbox"}',
+    'threshold': 100,
+    'severity': 'warning',
+    'for': '10m'
+  },
+  {
+    'uid': 'prisme-budget-low',
+    'title': 'Prisme AI budget exhausted',
+    'expr': 'prisme_budget_remaining_usd',
+    'threshold': 0.01,
+    'severity': 'warning',
+    'for': '1m',
+    'operator': 'lt'
+  },
+  {
+    'uid': 'prisme-quality-low',
+    'title': 'Prisme retrieval quality regression',
+    'expr': 'prisme_retrieval_ndcg',
+    'threshold': 0.75,
+    'severity': 'warning',
+    'for': '15m',
+    'operator': 'lt'
+  },
+  {
+    'uid': 'prisme-backup-stale',
+    'title': 'Prisme backup stale',
+    'expr': '(time() - prisme_backup_last_success_timestamp_seconds) and prisme_backup_last_success_timestamp_seconds > 0',
+    'threshold': 93600,
+    'severity': 'critical',
+    'for': '5m'
+  },
+  {
+    'uid': 'prisme-karakeep-circuit',
+    'title': 'Prisme Karakeep circuit open',
+    'expr': 'karakeep_connector_state{state="circuit_open"}',
+    'threshold': 0,
+    'severity': 'warning',
+    'for': '5m'
+  }
+] %}
+      - uid: "{{ alert.uid }}"
+        title: "{{ alert.title }}"
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: {from: 900, to: 0}
+            datasourceUid: VictoriaMetrics
+            model:
+              expr: '{{ alert.expr }}'
+              intervalMs: 30000
+              maxDataPoints: 43200
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator:
+                    type: "{{ alert.operator | default('gt') }}"
+                    params: [{{ alert.threshold }}]
+        for: "{{ alert['for'] }}"
+        annotations:
+          summary: "{{ alert.title }}"
+          dashboard_uid: prisme-operations
+        labels:
+          severity: "{{ alert.severity }}"
+          service: prisme
+{% endfor %}

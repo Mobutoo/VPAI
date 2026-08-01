@@ -253,6 +253,18 @@ BOOTSTRAP 200
 }
 {% endif %}
 
+# === Prisme — private knowledge control plane ===
+{% if prisme_enabled | default(false) | bool %}
+{{ caddy_prisme_domain }} {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy {{ prisme_service_backend_ip }}:3000
+
+    import security_headers
+}
+{% endif %}
+
 # === Palais — Cockpit IA Afrofuturiste ===
 {{ caddy_palais_domain }} {
     import vpn_only

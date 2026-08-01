@@ -28,3 +28,8 @@ grafana_dashboards_dir: "{{ grafana_config_dir }}/dashboards"
 grafana_admin_user: "admin"
 grafana_root_url: "https://{{ caddy_grafana_domain }}/"
 grafana_serve_from_sub_path: "false"
+# Comma-separated plugin IDs to preinstall (GF_PLUGINS_PREINSTALL_SYNC). Empty by default;
+# override per-environment (e.g. inventory/group_vars/prod/main.yml) when a stack's Grafana
+# needs a plugin not bundled by default (see HawkTrade repo, infra/grafana/README.md, for the
+# yesoreyeram-infinity-datasource precedent).
+grafana_plugins_preinstall_sync: ""

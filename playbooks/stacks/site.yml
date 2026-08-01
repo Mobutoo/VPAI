@@ -108,6 +108,12 @@
       tags: [trek, phase3, apps]
     - role: content-factory
       tags: [content-factory, phase3, apps]
+    - role: prisme
+      when: prisme_enabled | default(false) | bool
+      tags: [prisme, phase3, apps]
+    - role: karakeep
+      when: karakeep_enabled | default(false) | bool
+      tags: [karakeep, phase3, apps]
     - role: postiz
       tags: [postiz, phase4, apps]
 
@@ -122,9 +128,6 @@
     # Phase 4.5 — Déploiement de la stack Docker
     - role: docker-stack
       tags: [docker-stack, phase4, platform]
-    - role: prisme
-      tags: [prisme, phase3, apps]
-
     # Phase 4.6 — Provisioning post-déploiement
     - role: n8n-provision
       tags: [n8n-provision, phase4, provision]

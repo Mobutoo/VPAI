@@ -1,0 +1,67 @@
+{
+  "uid": "prisme-operations",
+  "title": "Prisme — Operations",
+  "tags": ["prisme", "knowledge", "slo"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {"from": "now-6h", "to": "now"},
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Service up",
+      "gridPos": {"h": 8, "w": 4, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "targets": [{"refId": "A", "expr": "up{job=\"prisme\"}"}]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Projection lag",
+      "gridPos": {"h": 8, "w": 4, "x": 4, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "targets": [{"refId": "A", "expr": "qdrant_projection_lag_seconds"}]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Budget remaining USD",
+      "gridPos": {"h": 8, "w": 4, "x": 8, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "targets": [{"refId": "A", "expr": "prisme_budget_remaining_usd"}]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Queue and projection drift",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "targets": [
+        {"refId": "A", "expr": "prisme_queue_depth"},
+        {"refId": "B", "expr": "prisme_projection_drift_total"}
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Retrieval quality",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "targets": [{"refId": "A", "expr": "prisme_retrieval_ndcg"}]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Karakeep sync state",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "targets": [
+        {"refId": "A", "expr": "karakeep_connector_state"},
+        {"refId": "B", "expr": "karakeep_retry_total"},
+        {"refId": "C", "expr": "karakeep_dead_letter_total"}
+      ]
+    }
+  ]
+}

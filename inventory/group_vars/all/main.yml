@@ -19,6 +19,13 @@ grafana_subdomain: "tala"
 n8n_subdomain: "mayi"
 litellm_subdomain: "llm"
 qdrant_subdomain: "qd"
+prisme_subdomain: "prisme"
+lxc_chat_subdomain: "chat"          # → chat.<domain> (Open WebUI lxc-chat sur Banga, 2e saut via Caddy Sese)
+# IP LAN de lxc-chat sur Banga (route Headscale 192.168.1.0/24 déjà approuvée) — vide tant que
+# la réservation DHCP Freebox n'est pas posée côté banga (session /factor factor-lxc-chat-finalize,
+# cf .planning/handoffs/2026-07-27-chat-ewutelo-cloud-reverse-proxy.md). Le bloc Caddy reste absent
+# du Caddyfile rendu tant que cette valeur est vide (garde explicite dans Caddyfile.j2).
+lxc_chat_upstream_ip: ""
 nocodb_subdomain: "hq"              # → hq.<domain>
 plane_subdomain: "work"             # → work.<domain>
 dufs_subdomain: "drop"              # → drop.<domain> (file drop zone bidirectionnel)

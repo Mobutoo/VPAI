@@ -124,6 +124,16 @@
   become: true
   notify: Restart grafana stack
 
+- name: Deploy Prisme Grafana alerting provisioning
+  ansible.builtin.template:
+    src: grafana/provisioning/alerting-prisme.yaml.j2
+    dest: "{{ grafana_provisioning_dir }}/alerting/prisme.yaml"
+    owner: "472"
+    group: "472"
+    mode: "0644"
+  become: true
+  notify: Restart grafana stack
+
 # === GRAFANA DASHBOARDS ===
 
 - name: Deploy Grafana dashboards

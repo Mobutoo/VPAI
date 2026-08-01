@@ -10,7 +10,12 @@
     project_name: molecule
     postgresql_password: molecule-shared-password
     vault_prisme_session_token: molecule-session-secret-32-characters
+    vault_prisme_operator_token: molecule-operator-secret-32-characters
+    vault_prisme_metrics_token: molecule-metrics-secret-32-characters
+    vault_prisme_embedding_token: molecule-embedding-secret-32-characters
+    vault_prisme_registry_pull_token: molecule-registry-token-40-characters-long
     prisme_image_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    prisme_knowledge_embedding_image: "embedding@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
     prisme_db_proxy_image: "haproxy@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     prisme_web_memory_limit: 1G
     prisme_web_memory_reservation: 512M

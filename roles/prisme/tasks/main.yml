@@ -3,6 +3,7 @@
   ansible.builtin.assert:
     that:
       - prisme_image_digest is match('^sha256:[a-f0-9]{64}$')
+      - "'@sha256:' in prisme_knowledge_embedding_image"
       - "'@sha256:' in prisme_db_proxy_image"
       - prisme_db_proxy_backend_ip == "172.20.2.240"
       - prisme_service_backend_ip == "172.20.2.241"
@@ -10,12 +11,80 @@
       - prisme_db_proxy_memory_reservation is defined
       - vault_prisme_session_token is defined
       - vault_prisme_session_token | length >= 32
+      - vault_prisme_operator_token is defined
+      - vault_prisme_operator_token | length >= 32
+      - vault_prisme_metrics_token is defined
+      - vault_prisme_metrics_token | length >= 32
+      - vault_prisme_embedding_token is defined
+      - vault_prisme_embedding_token | length >= 32
+      - vault_prisme_fetcher_token is defined
+      - vault_prisme_fetcher_token | length >= 32
       - vault_prisme_registry_pull_token is defined
       - vault_prisme_registry_pull_token | length >= 40
       - not (prisme_karakeep_enabled | bool) or vault_prisme_karakeep_token is defined
     fail_msg: "Prisme image digests or authoritative capacity/IP variables are missing"
     quiet: true
   when: prisme_enabled | bool
+  tags: [prisme]
+
+- name: Provision the isolated Prisme LiteLLM virtual key and daily budget
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - --env
+      - "PRISME_LITELLM_KEY={{ prisme_litellm_key }}"
+      - --env
+      - "PRISME_LITELLM_BUDGET={{ prisme_litellm_daily_budget }}"
+      - "{{ project_name }}_litellm"
+      - python
+      - -c
+      - |
+        import json, os, urllib.request, urllib.error
+        base = "http://127.0.0.1:4000"
+        headers = {
+          "Authorization": "Bearer " + os.environ["LITELLM_MASTER_KEY"],
+          "Content-Type": "application/json",
+        }
+        body = {
+          "key": os.environ["PRISME_LITELLM_KEY"],
+          "key_alias": "prisme-production",
+          "models": ["*"],
+          "max_budget": float(os.environ["PRISME_LITELLM_BUDGET"]),
+          "budget_duration": "1d",
+          "metadata": {"service": "prisme", "allocation": "shared-global-cap"},
+        }
+        request = urllib.request.Request(
+          base + "/key/generate", data=json.dumps(body).encode(), headers=headers, method="POST"
+        )
+        try:
+          response = urllib.request.urlopen(request, timeout=20)
+        except urllib.error.HTTPError as error:
+          if error.code not in (400, 409):
+            raise
+          update = urllib.request.Request(
+            base + "/key/update",
+            data=json.dumps(body).encode(),
+            headers=headers,
+            method="POST",
+          )
+          response = urllib.request.urlopen(update, timeout=20)
+        payload = json.load(response)
+        if float(payload.get("max_budget") or 0) != float(os.environ["PRISME_LITELLM_BUDGET"]):
+          raise RuntimeError("PrismeLiteLLMBudgetMismatch")
+        print(json.dumps({
+          "key_alias": payload.get("key_alias"),
+          "max_budget": payload.get("max_budget"),
+          "budget_duration": payload.get("budget_duration"),
+          "spend": payload.get("spend"),
+        }, sort_keys=True))
+  register: prisme_litellm_key_result
+  changed_when: false
+  become: true
+  no_log: true
+  when:
+    - prisme_enabled | bool
+    - not (common_molecule_mode | default(false) | bool)
   tags: [prisme]
 
 - name: Authenticate Docker to private Seko registry
@@ -88,9 +157,71 @@
     - "{{ prisme_config_dir }}"
     - "{{ prisme_data_dir }}"
     - "{{ prisme_backup_dir }}"
+    - "{{ prisme_model_dir }}"
   become: true
   when: prisme_enabled | bool
   tags: [prisme]
+
+- name: Check exact Prisme sparse model snapshot
+  ansible.builtin.stat:
+    path: "{{ prisme_sparse_model_config }}"
+  register: prisme_sparse_model_state
+  when:
+    - prisme_enabled | bool
+    - not (common_molecule_mode | default(false) | bool)
+  tags: [prisme]
+
+- name: Bootstrap exact Prisme sparse model without persisting the token
+  when:
+    - prisme_enabled | bool
+    - not (common_molecule_mode | default(false) | bool)
+    - not prisme_sparse_model_state.stat.exists
+  tags: [prisme]
+  block:
+    - name: Create ephemeral sparse model downloader
+      ansible.builtin.tempfile:
+        state: file
+        suffix: .py
+      register: prisme_sparse_downloader
+      changed_when: false
+
+    - name: Render sparse model downloader
+      ansible.builtin.template:
+        src: download-sparse-model.py.j2
+        dest: "{{ prisme_sparse_downloader.path }}"
+        mode: "0600"
+      changed_when: false
+
+    - name: Download pinned sparse model
+      community.docker.docker_container:
+        name: prisme-sparse-bootstrap
+        image: "{{ prisme_hf_downloader_image }}"
+        state: started
+        detach: false
+        cleanup: true
+        command: >-
+          sh -c "python -m pip install --disable-pip-version-check --no-cache-dir
+          huggingface_hub=={{ prisme_huggingface_hub_version }} && python /download.py"
+        env:
+          HF_TOKEN: "{{ vault_prisme_embedding_token }}"
+        volumes:
+          - "{{ prisme_model_dir }}:/cache"
+          - "{{ prisme_sparse_downloader.path }}:/download.py:ro"
+        read_only: true
+        tmpfs:
+          /tmp: "rw,noexec,nosuid,nodev,size=256m"
+        cap_drop:
+          - ALL
+        security_opts:
+          - no-new-privileges:true
+      become: true
+      no_log: true
+  always:
+    - name: Remove ephemeral sparse model downloader
+      ansible.builtin.file:
+        path: "{{ prisme_sparse_downloader.path | default('/run/prisme-downloader-absent') }}"
+        state: absent
+      no_log: true
 
 - name: Render Prisme environment
   ansible.builtin.template:

@@ -1,0 +1,11 @@
+---
+karakeep_enabled: false
+karakeep_activation_authorized: false
+karakeep_config_dir: "/opt/{{ project_name }}/configs/karakeep"
+karakeep_data_dir: "/opt/{{ project_name }}/data/karakeep"
+karakeep_connector_network: prisme_connector_internal
+karakeep_frontend_network: javisi_frontend
+karakeep_egress_network: javisi_egress
+karakeep_web_memory_limit: 2G
+karakeep_chrome_memory_limit: 2G
+karakeep_meilisearch_memory_limit: 1536M

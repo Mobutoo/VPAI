@@ -1,0 +1,12 @@
+---
+- name: Converge disabled Karakeep branch twice
+  hosts: all
+  vars:
+    karakeep_enabled: false
+  tasks:
+    - name: First disabled convergence
+      ansible.builtin.include_role:
+        name: karakeep
+    - name: Second disabled convergence
+      ansible.builtin.include_role:
+        name: karakeep

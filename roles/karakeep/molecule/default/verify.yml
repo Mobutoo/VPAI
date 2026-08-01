@@ -1,0 +1,11 @@
+---
+- name: Verify disabled Karakeep branch
+  hosts: all
+  tasks:
+    - name: Confirm no Karakeep directory was created
+      ansible.builtin.stat:
+        path: /opt/molecule/configs/karakeep
+      register: karakeep_path
+    - name: Assert zero mutation
+      ansible.builtin.assert:
+        that: not karakeep_path.stat.exists

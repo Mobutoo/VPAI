@@ -1,0 +1,23 @@
+---
+- name: Karakeep | Refuse activation before the dedicated capacity and DNS gate
+  ansible.builtin.assert:
+    that:
+      - not (karakeep_enabled | bool) or karakeep_activation_authorized | bool
+    fail_msg: >-
+      Karakeep remains disabled until the T11.2 capacity, VPN DNS and webhook registration
+      gates are explicitly green.
+    quiet: true
+  tags: [karakeep, phase3, apps]
+
+- name: Karakeep | Report the tested disabled connector branch
+  ansible.builtin.debug:
+    msg: "Karakeep disabled: canonical Prisme/Banga workflows remain independent"
+  when: not (karakeep_enabled | bool)
+  changed_when: false
+  tags: [karakeep, phase3, apps]
+
+- name: Karakeep | Stop before any real mutation in the preparatory role
+  ansible.builtin.fail:
+    msg: "Real Karakeep deployment is intentionally deferred to T11.2"
+  when: karakeep_enabled | bool
+  tags: [karakeep, phase3, apps]

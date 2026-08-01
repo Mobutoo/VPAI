@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  role_name: karakeep
+  author: VPAI
+  description: Capacity-gated optional Prisme research connector
+  license: AGPL-3.0-only
+  min_ansible_version: "2.17"
+  platforms:
+    - name: Ubuntu
+      versions: ["noble"]

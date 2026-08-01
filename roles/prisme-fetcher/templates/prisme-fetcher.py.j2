@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import signal
+import sqlite3
+import time
+
+ROOT = Path("{{ prisme_fetcher_root }}")
+INCOMING = ROOT / "incoming"
+OUTGOING = ROOT / "outgoing"
+DATABASE = ROOT / "state.sqlite3"
+STOP = False
+
+
+def stop(_signum: int, _frame: object) -> None:
+    global STOP
+    STOP = True
+
+
+def connect() -> sqlite3.Connection:
+    db = sqlite3.connect(DATABASE)
+    db.execute("pragma journal_mode=wal")
+    db.execute("""create table if not exists items (
+        source_path text primary key,
+        sha256 text not null,
+        state text not null,
+        output_path text,
+        updated_at integer not null
+    )""")
+    db.execute("""create table if not exists heartbeat (
+        singleton integer primary key check(singleton=1),
+        updated_at integer not null
+    )""")
+    return db
+
+
+def process(db: sqlite3.Connection, source: Path) -> None:
+    if shutil.disk_usage(ROOT).free < {{ prisme_fetcher_min_free_bytes }}:
+        raise RuntimeError("disk_low")
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    previous = db.execute(
+        "select state, sha256 from items where source_path=?", (str(source),)
+    ).fetchone()
+    if previous == ("transferred_ready", digest):
+        return
+    bundle = OUTGOING / digest
+    part = OUTGOING / f".{digest}.part"
+    bundle.mkdir(mode=0o750, exist_ok=True)
+    target = bundle / source.name.removesuffix(".ready")
+    with source.open("rb") as reader, part.open("wb") as writer:
+        shutil.copyfileobj(reader, writer)
+        writer.flush()
+        os.fsync(writer.fileno())
+    part.replace(target)
+    manifest = {
+        "schema": "prisme.source-bundle.v1",
+        "adapter": "local-upload-fixture",
+        "sha256": digest,
+        "filename": target.name,
+    }
+    manifest_part = bundle / ".manifest.json.part"
+    manifest_part.write_text(json.dumps(manifest, sort_keys=True) + "\n")
+    manifest_part.replace(bundle / "manifest.json")
+    db.execute(
+        """insert into items(source_path,sha256,state,output_path,updated_at)
+        values(?,?,?,?,?) on conflict(source_path) do update set
+        sha256=excluded.sha256,state=excluded.state,
+        output_path=excluded.output_path,updated_at=excluded.updated_at""",
+        (str(source), digest, "transferred_ready", str(bundle), int(time.time())),
+    )
+    db.commit()
+
+
+def main() -> None:
+    db = connect()
+    while not STOP:
+        db.execute(
+            """insert into heartbeat(singleton,updated_at) values(1,?)
+            on conflict(singleton) do update set updated_at=excluded.updated_at""",
+            (int(time.time()),),
+        )
+        db.commit()
+        for source in sorted(INCOMING.glob("*.ready")):
+            try:
+                process(db, source)
+            except Exception as error:
+                print(json.dumps({"event": "acquisition_error", "code": type(error).__name__}))
+        time.sleep({{ prisme_fetcher_poll_seconds }})
+    db.close()
+
+
+signal.signal(signal.SIGTERM, stop)
+signal.signal(signal.SIGINT, stop)
+main()

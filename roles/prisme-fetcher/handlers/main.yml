@@ -1,0 +1,12 @@
+---
+- name: Prisme fetcher | Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+  become: true
+
+- name: Prisme fetcher | Restart
+  ansible.builtin.systemd_service:
+    name: "{{ prisme_fetcher_service }}"
+    state: restarted
+  become: true
+  when: not (common_molecule_mode | default(false) | bool)

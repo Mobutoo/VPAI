@@ -1,0 +1,13 @@
+---
+- name: Verify Prisme fetcher
+  hosts: all
+  tasks:
+    - name: Inspect installed fetcher
+      ansible.builtin.stat:
+        path: /usr/local/libexec/prisme-fetcher
+      register: fetcher
+    - name: Verify executable and state directory
+      ansible.builtin.assert:
+        that:
+          - fetcher.stat.executable
+          - fetcher.stat.pw_name == 'root'

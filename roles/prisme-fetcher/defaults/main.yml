@@ -1,0 +1,9 @@
+---
+prisme_fetcher_enabled: false
+prisme_fetcher_user: prisme-fetcher
+prisme_fetcher_group: prisme-fetcher
+prisme_fetcher_root: /var/lib/prisme-fetcher
+prisme_fetcher_bin: /usr/local/libexec/prisme-fetcher
+prisme_fetcher_service: prisme-fetcher.service
+prisme_fetcher_min_free_bytes: 1073741824
+prisme_fetcher_poll_seconds: 2

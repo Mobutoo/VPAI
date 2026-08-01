@@ -1,0 +1,9 @@
+---
+dependency: {name: galaxy}
+driver: {name: docker}
+platforms:
+  - name: prisme-fetcher-role-test
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    pre_build_image: true
+provisioner: {name: ansible}
+verifier: {name: ansible}

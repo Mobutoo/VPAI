@@ -1,0 +1,15 @@
+---
+- name: Converge Prisme fetcher
+  hosts: all
+  become: true
+  vars:
+    common_molecule_mode: true
+    prisme_fetcher_enabled: true
+    vault_prisme_fetcher_token: molecule-fetcher-token-32-characters
+  pre_tasks:
+    - name: Create service group
+      ansible.builtin.group:
+        name: prisme-fetcher
+        system: true
+  roles:
+    - role: prisme-fetcher

@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  role_name: prisme_fetcher
+  author: VPAI
+  description: Disabled-by-default local fixture acquisition worker for Prisme
+  license: proprietary
+  min_ansible_version: "2.17"
+  platforms:
+    - name: Ubuntu
+      versions: ["noble"]

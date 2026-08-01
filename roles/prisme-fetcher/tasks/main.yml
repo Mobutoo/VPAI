@@ -1,0 +1,83 @@
+---
+- name: Prisme fetcher | Validate disabled-by-default deployment contract
+  ansible.builtin.assert:
+    that:
+      - prisme_fetcher_enabled | bool
+      - vault_prisme_fetcher_token is defined
+      - vault_prisme_fetcher_token | length >= 32
+    quiet: true
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Create service group
+  ansible.builtin.group:
+    name: "{{ prisme_fetcher_group }}"
+    system: true
+  become: true
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Create restricted service account
+  ansible.builtin.user:
+    name: "{{ prisme_fetcher_user }}"
+    group: "{{ prisme_fetcher_group }}"
+    system: true
+    create_home: false
+    shell: /usr/sbin/nologin
+  become: true
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Create durable state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ prisme_fetcher_user }}"
+    group: "{{ prisme_fetcher_group }}"
+    mode: "0750"
+  loop:
+    - "{{ prisme_fetcher_root }}"
+    - "{{ prisme_fetcher_root }}/incoming"
+    - "{{ prisme_fetcher_root }}/outgoing"
+  become: true
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Create local executable directory
+  ansible.builtin.file:
+    path: "{{ prisme_fetcher_bin | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Install local-fixture acquisition worker
+  ansible.builtin.template:
+    src: prisme-fetcher.py.j2
+    dest: "{{ prisme_fetcher_bin }}"
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  notify: Prisme fetcher | Restart
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Install hardened service
+  ansible.builtin.template:
+    src: prisme-fetcher.service.j2
+    dest: "/etc/systemd/system/{{ prisme_fetcher_service }}"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify:
+    - Prisme fetcher | Reload systemd
+    - Prisme fetcher | Restart
+  tags: [prisme-fetcher]
+
+- name: Prisme fetcher | Enable local fixture worker
+  ansible.builtin.systemd_service:
+    name: "{{ prisme_fetcher_service }}"
+    enabled: true
+    state: started
+  become: true
+  when: not (common_molecule_mode | default(false) | bool)
+  tags: [prisme-fetcher]

@@ -1,0 +1,24 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Prisme local-fixture acquisition worker
+After=local-fs.target
+
+[Service]
+Type=simple
+User={{ prisme_fetcher_user }}
+Group={{ prisme_fetcher_group }}
+ExecStart={{ prisme_fetcher_bin }}
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ prisme_fetcher_root }}
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

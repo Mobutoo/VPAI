@@ -138,11 +138,19 @@
     - not (common_molecule_mode | default(false) | bool)
   tags: [prisme]
 
-- name: Refuse occupied Prisme backend IPs
+- name: Refuse Prisme backend IPs occupied by foreign containers
   ansible.builtin.assert:
     that:
-      - prisme_db_proxy_backend_ip not in prisme_backend_network_state.stdout
-      - prisme_service_backend_ip not in prisme_backend_network_state.stdout
+      # Prisme's own containers legitimately hold these addresses on redeploys;
+      # only a non-prisme holder is a real collision.
+      - >-
+        (prisme_backend_network_state.stdout | from_json).values()
+        | selectattr('IPv4Address', 'defined')
+        | selectattr('IPv4Address', 'search',
+                     '^(' ~ (prisme_db_proxy_backend_ip | regex_escape)
+                     ~ '|' ~ (prisme_service_backend_ip | regex_escape) ~ ')/')
+        | rejectattr('Name', 'match', '^prisme-')
+        | list | length == 0
     fail_msg: "Prisme fixed backend IP collision: G0 IP decision required"
     quiet: true
   when:

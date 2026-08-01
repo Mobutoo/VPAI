@@ -6,6 +6,9 @@
     common_molecule_mode: true
     prisme_fetcher_enabled: true
     vault_prisme_fetcher_token: molecule-fetcher-token-32-characters
+    # Pas de reseau en molecule : allowlist volontairement vide -> tout job
+    # http/ytdlp doit etre rejete (verifie par verify.yml).
+    prisme_fetcher_allowed_domains: []
   pre_tasks:
     - name: Create service group
       ansible.builtin.group:

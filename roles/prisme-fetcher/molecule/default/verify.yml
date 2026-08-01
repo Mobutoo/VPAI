@@ -1,13 +1,80 @@
 ---
 - name: Verify Prisme fetcher
   hosts: all
+  become: true
   tasks:
     - name: Inspect installed fetcher
       ansible.builtin.stat:
         path: /usr/local/libexec/prisme-fetcher
       register: fetcher
+
     - name: Verify executable and state directory
       ansible.builtin.assert:
         that:
           - fetcher.stat.executable
           - fetcher.stat.pw_name == 'root'
+
+    - name: Read rendered unit
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/prisme-fetcher.service
+      register: unit_raw
+
+    - name: Verify unit opens AF_INET/AF_INET6 and wires the environment file
+      ansible.builtin.assert:
+        that:
+          - "'RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6' in (unit_raw.content | b64decode)"
+          - "'EnvironmentFile=/etc/prisme-fetcher/env' in (unit_raw.content | b64decode)"
+
+    - name: Inspect environment file permissions
+      ansible.builtin.stat:
+        path: /etc/prisme-fetcher/env
+      register: env_file
+
+    - name: Verify environment file is 0600 root:root
+      ansible.builtin.assert:
+        that:
+          - env_file.stat.exists
+          - env_file.stat.mode == '0600'
+          - env_file.stat.pw_name == 'root'
+          - env_file.stat.gr_name == 'root'
+
+    - name: Verify worker template compiles (python3 -m py_compile)
+      ansible.builtin.command:
+        cmd: python3 -m py_compile /usr/local/libexec/prisme-fetcher
+      changed_when: false
+
+    - name: Verify transfer script compiles under bash -n
+      ansible.builtin.command:
+        cmd: bash -n /usr/local/libexec/prisme-fetcher-transfer
+      changed_when: false
+
+    - name: Drop a fixture http job outside the (empty) allowlist
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-rejected.json
+        content: |
+          {"url": "https://example.invalid/some/asset.pdf", "adapter": "http", "note": "molecule verify"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Run one worker pass in oneshot mode (no daemon, no network in molecule)
+      ansible.builtin.command:
+        cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      become: true
+      become_user: prisme-fetcher
+      changed_when: false
+
+    - name: Find the staged manifest for the rejected job
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/work
+        patterns: "manifest.json"
+        recurse: true
+      register: rejected_manifests
+
+    - name: Verify a prisme.source-bundle.v2 manifest was written BEFORE any download and marks the job rejected
+      ansible.builtin.assert:
+        that:
+          - rejected_manifests.matched >= 1
+          - "'\"schema\": \"prisme.source-bundle.v2\"' in lookup('ansible.builtin.file', rejected_manifests.files[0].path)"
+          - "'\"state\": \"rejected\"' in lookup('ansible.builtin.file', rejected_manifests.files[0].path)"
+          - "'\"reason\": \"domain_not_allowlisted\"' in lookup('ansible.builtin.file', rejected_manifests.files[0].path)"

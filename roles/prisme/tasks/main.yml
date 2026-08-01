@@ -178,6 +178,9 @@
   ansible.builtin.stat:
     path: "{{ prisme_sparse_model_config }}"
   register: prisme_sparse_model_state
+  # The model tree is owned by the sparse service UID (2102, mode 0750): the SSH
+  # user cannot traverse it, so the existence probe must run privileged.
+  become: true
   when:
     - prisme_enabled | bool
     - not (common_molecule_mode | default(false) | bool)

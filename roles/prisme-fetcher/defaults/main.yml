@@ -5,7 +5,11 @@ prisme_fetcher_group: prisme-fetcher
 prisme_fetcher_root: /var/lib/prisme-fetcher
 prisme_fetcher_bin: /usr/local/libexec/prisme-fetcher
 prisme_fetcher_service: prisme-fetcher.service
-prisme_fetcher_min_free_bytes: 1073741824
+# A4 : au moins 3x la taille max d'un media (yt-dlp remux ffmpeg = copie
+# temporaire du fichier deja telecharge en plus de l'original pendant la
+# fusion audio+video -> jusqu'a x2-x3 le pic disque reel). Aligne sur
+# prisme_fetcher_ytdlp_max_filesize (1G) ci-dessous : 3 * 1G.
+prisme_fetcher_min_free_bytes: 3221225472
 prisme_fetcher_poll_seconds: 2
 prisme_fetcher_env_file: /etc/prisme-fetcher/env
 

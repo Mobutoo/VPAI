@@ -14,6 +14,7 @@ Group={{ prisme_fetcher_group }}
 # repertoire inaccessible sans ce HOME explicite.
 Environment=HOME={{ prisme_fetcher_root }}
 ExecStart={{ prisme_fetcher_bin }}-transfer
+TimeoutStartSec=600
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

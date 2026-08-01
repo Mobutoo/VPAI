@@ -19,10 +19,16 @@ if [ ! -s "${KNOWN_HOSTS}" ]; then
   exit 0
 fi
 
-rsync -a --partial --remove-source-files \
-  -e "ssh -i ${SSH_KEY} -p ${SSH_PORT} -o UserKnownHostsFile=${KNOWN_HOSTS} -o StrictHostKeyChecking=yes -o BatchMode=yes" \
+# --exclude='.*' : les repertoires ".<sha>.part" sont des bundles en cours de
+# construction (rename atomique du repertoire complet une fois le manifeste
+# ecrit, cf B1) — jamais synchronises avant leur publication sous leur nom
+# final. --timeout borne un transfert bloque (lien tailnet degrade) ;
+# ConnectTimeout/ServerAliveInterval bornent l'etablissement/le maintien SSH.
+rsync -a --partial --timeout=120 --remove-source-files --exclude='.*' \
+  -e "ssh -i ${SSH_KEY} -p ${SSH_PORT} -o UserKnownHostsFile=${KNOWN_HOSTS} -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15" \
   "${OUTGOING}/" "${TARGET}"
 
 # Nettoyage des repertoires de bundle vides laisses par --remove-source-files
-# (rsync ne supprime jamais de repertoires). Jamais OUTGOING lui-meme.
-find "${OUTGOING}" -mindepth 1 -type d -empty -delete
+# (rsync ne supprime jamais de repertoires). Jamais OUTGOING lui-meme, jamais
+# les repertoires caches (bundles ".part" en cours de construction ailleurs).
+find "${OUTGOING}" -mindepth 1 -type d -not -name '.*' -empty -delete

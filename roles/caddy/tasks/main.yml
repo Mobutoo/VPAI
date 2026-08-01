@@ -76,6 +76,11 @@
     group: "{{ prod_user }}"
     mode: "0640"
   become: true
+  no_log: true
+  # REX 2026-07-24 (cf roles/backup-config, commit 21d9c01) : ce template embarque
+  # tous les basic_auth (dufs, n8n, ...) en clair. Sans no_log, diff_always
+  # (ansible.cfg) + --diff (Makefile deploy-role) affichent le contenu AVANT/APRÈS
+  # en clair — même classe de fuite que l'incident backup-config.
   notify: Restart caddy stack
   when: not (caddy_skip_caddyfile | default(false) | bool)
 

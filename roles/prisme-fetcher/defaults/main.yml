@@ -357,6 +357,15 @@ prisme_instagram_heartbeat_interval_seconds: 45
 prisme_instagram_control_plane_failure_threshold: 5
 # Parcimonie de l'evenement une fois le seuil atteint (1 evenement au plus
 # par cette fenetre, meme si le control-plane reste injoignable longtemps).
+# LOW (revue 2026-08-03, CANARY-4b) : cette parcimonie n'est prouvee QU'au
+# banc offline (aucun test unitaire pytest dedie a
+# _record_control_plane_failure, module Jinja2 sans suite propre) -- le banc
+# molecule (verify.yml) ne couvre que le FRANCHISSEMENT du seuil (une seule
+# passe, seuil degrade a 1), jamais la fenetre de re-alerte elle-meme (il
+# faudrait enchainer plusieurs echecs consecutifs dans la meme fenetre, ce
+# qui alourdirait ce scenario pour une garantie non triviale a verifier en
+# integration -- horloge monotonic, timing best-effort). Residuel a couvrir
+# au molecule CI de CANARY-5.
 prisme_instagram_control_plane_alert_interval_seconds: 300
 # Throttle des VERIFICATIONS d'autorisation, par PASSE DE SCAN (pas par job,
 # pas un cache de verdict) : le worker scanne jobs/ toutes les

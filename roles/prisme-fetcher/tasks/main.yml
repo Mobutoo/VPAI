@@ -235,6 +235,86 @@
   when: prisme_instagram_enabled | bool
   tags: [prisme-fetcher, prisme_fetcher, phase3]
 
+- name: Prisme fetcher | Validate fetcher<->control-plane contract prerequisites (fail-loud, CANARY-1b)
+  ansible.builtin.assert:
+    that:
+      - prisme_instagram_api_base | length > 0
+      - prisme_instagram_tenant_id | length > 0
+      - prisme_instagram_api_allow_cidr is match('^[0-9.]+/3[0-2]$')
+      - prisme_instagram_authorization_poll_seconds | int > 0
+      - prisme_instagram_heartbeat_interval_seconds | int > 0
+      - prisme_instagram_heartbeat_interval_seconds | int <= 60
+    quiet: true
+    fail_msg: >-
+      prisme_instagram_enabled=true mais le contrat fetcher<->prisme n'est pas
+      cable : prisme_instagram_api_base/prisme_instagram_tenant_id vides,
+      prisme_instagram_api_allow_cidr n'est pas un /32 explicite (perce dans
+      IPAddressDeny de l'unite systemd -- sans lui le worker ne peut jamais
+      joindre le control-plane sur le tailnet), ou
+      prisme_instagram_heartbeat_interval_seconds depasse la cadence
+      contractuelle <=60s (gate 5 : fenetre de fraicheur serveur 90s).
+  when: prisme_instagram_enabled | bool
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+# R7 (jamais d'IP directe) : verifie hors mode molecule, ou
+# prisme_instagram_api_base pointe volontairement une adresse loopback
+# (stub HTTP de test, cf converge.yml) plutot qu'un nom d'hote tailnet reel.
+- name: Prisme fetcher | Assert control-plane base URL uses HTTPS with a real hostname (R7 — never a raw IP), production only
+  ansible.builtin.assert:
+    that:
+      - prisme_instagram_api_base is match('^https://[a-zA-Z0-9.-]+$')
+    quiet: true
+    fail_msg: >-
+      prisme_instagram_api_base doit etre une URL https:// avec un nom
+      d'hote (R7, jamais d'IP directe codee en dur dans un appel applicatif) —
+      l'exception systemd IPAddressAllow (CIDR numerique, obligatoire pour
+      systemd lui-meme) est un mecanisme distinct, deja couvert par
+      prisme_instagram_api_allow_cidr ci-dessus.
+  when:
+    - prisme_instagram_enabled | bool
+    - not (common_molecule_mode | default(false) | bool)
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+# Garde-fou "deux endroits a synchroniser" (systemd IPAddressAllow ne resout
+# pas les noms d'hote) : verifie, best-effort, que l'IP REELLEMENT resolue
+# pour prisme_instagram_api_base tombe dans le CIDR /32 configure — jamais
+# bloquant en molecule (aucune resolution DNS reelle attendue pour un hote de
+# test), fail-loud sinon si le controller peut resoudre le nom.
+- name: Prisme fetcher | Resolve control-plane hostname for the IPAddressAllow sync guard
+  vars:
+    _instagram_api_host: "{{ prisme_instagram_api_base | urlsplit('hostname') }}"
+  ansible.builtin.command:
+    cmd: "getent ahostsv4 {{ _instagram_api_host }}"
+  register: prisme_instagram_api_resolved
+  changed_when: false
+  failed_when: false
+  when:
+    - prisme_instagram_enabled | bool
+    - not (common_molecule_mode | default(false) | bool)
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+- name: Prisme fetcher | Assert the resolved control-plane IP falls inside the configured IPAddressAllow /32
+  vars:
+    _resolved_ip: "{{ (prisme_instagram_api_resolved.stdout_lines[0] | default('')).split(' ')[0] }}"
+    _allow_ip: "{{ prisme_instagram_api_allow_cidr.split('/')[0] }}"
+  ansible.builtin.assert:
+    that:
+      - _resolved_ip == _allow_ip
+    quiet: true
+    fail_msg: >-
+      L'IP resolue pour prisme_instagram_api_base ({{ _resolved_ip }}) ne
+      correspond pas a prisme_instagram_api_allow_cidr
+      ({{ prisme_instagram_api_allow_cidr }}) — le trou IPAddressAllow de
+      l'unite systemd (A5) ne couvrirait pas la VRAIE destination du worker
+      et le contrat fetcher (authorization/heartbeat) echouerait en silence
+      (ECONNREFUSED/timeout classe comme fail-closed standard, jamais
+      distingue de ce mismatch de configuration).
+  when:
+    - prisme_instagram_enabled | bool
+    - not (common_molecule_mode | default(false) | bool)
+    - prisme_instagram_api_resolved.rc | default(1) == 0
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
 - name: Prisme fetcher | Compute Instagram cookies Netscape-format booleans (contains secret material — no_log)
   vars:
     _cookies_trimmed: "{{ prisme_instagram_cookies_content | trim }}"

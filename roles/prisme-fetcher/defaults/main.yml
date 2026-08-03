@@ -299,3 +299,42 @@ prisme_transfer_ssh_port: 22
 prisme_transfer_ssh_key: "{{ prisme_fetcher_root }}/.ssh/id_ed25519"
 prisme_transfer_known_hosts_file: "{{ prisme_fetcher_root }}/.ssh/known_hosts"
 prisme_transfer_interval_seconds: 300
+
+# --- Contrat fetcher <-> control-plane Prisme (CANARY-1b, cf.
+# saas/prisme/docs/2026-08-03-plan-canary-instagram.md, section "Contrat
+# fetcher" -- deux routes authentifiees PRISME_FETCHER_TOKEN, hors session
+# operateur : GET .../connectors/instagram/authorization et POST
+# .../connectors/instagram/heartbeat). Vide par defaut : assert fail-loud
+# (tasks/main.yml) des que prisme_instagram_enabled.
+prisme_instagram_api_base: ""
+prisme_instagram_tenant_id: ""
+prisme_instagram_api_timeout_seconds: 10
+# Contrat : <=60s. 45s laisse une marge (jitter reseau, GC purge, boucle
+# d'attente d'un job long) sans jamais approcher la fenetre de fraicheur
+# serveur 90s (1,5x la cadence attendue -- gate 5).
+prisme_instagram_heartbeat_interval_seconds: 45
+# Throttle des VERIFICATIONS d'autorisation, par PASSE DE SCAN (pas par job,
+# pas un cache de verdict) : le worker scanne jobs/ toutes les
+# prisme_fetcher_poll_seconds (2s par defaut) -- sans throttle, N jobs
+# Instagram en attente saturent en quelques secondes le bucket fetcher
+# partage cote prisme (120 req/60s/tenant, cf dispatcher.ts
+# INSTAGRAM_FETCHER_RATE_LIMIT, PARTAGE avec le heartbeat). Une verification
+# reste FRAICHE (jamais un verdict positif reutilise) avant CHAQUE tentative
+# reelle d'acquisition : ce throttle ne fait que borner la cadence des passes
+# de scan qui echouent a atteindre l'acquisition faute de fenetre ecoulee.
+prisme_instagram_authorization_poll_seconds: 20
+# CIDR (typiquement /32) perce dans IPAddressDeny=...100.64.0.0/10... de
+# l'unite systemd (A5, garde SSRF -- prisme-fetcher.service.j2) pour que CE
+# SEUL hote tailnet (le control-plane prisme) reste joignable malgre le
+# deny generique du reste du tailnet. systemd ne resout PAS les noms d'hote
+# dans IPAddressAllow=/IPAddressDeny= (IP uniquement) : cette valeur DOIT
+# donc etre tenue a jour manuellement en synchronisation avec l'IP tailnet
+# reelle derriere prisme_instagram_api_base (aujourd'hui
+# prisme.ewutelo.cloud -> Sese-AI, 100.64.0.14 -- verifie `dig +short
+# prisme.ewutelo.cloud`). Verifie (doc officielle locale, `man
+# systemd.resource-control`, section IPAddressAllow=/IPAddressDeny= : "prefixe
+# le plus specifique gagne", coherent avec le design deja en prod de cette
+# unite qui combine IPAddressAllow=any avec des IPAddressDeny= plus
+# specifiques) : un IPAddressAllow=/32 gagne toujours face a
+# IPAddressDeny=.../10 englobant, quel que soit l'ordre des directives.
+prisme_instagram_api_allow_cidr: "100.64.0.14/32"

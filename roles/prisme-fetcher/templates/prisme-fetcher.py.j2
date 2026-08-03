@@ -11,6 +11,7 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -117,6 +118,23 @@ INSTAGRAM_MAX_JOB_SECONDS = {{ prisme_instagram_max_job_seconds }}
 # retention -> croissance non bornee sur la duree de vie du canary. Purge par
 # age dans la boucle principale (main()).
 INSTAGRAM_ARTIFACT_RETENTION_SECONDS = {{ prisme_instagram_artifact_retention_days }} * 86400
+# --- Contrat fetcher <-> control-plane Prisme (CANARY-1b, cf.
+# saas/prisme/docs/2026-08-03-plan-canary-instagram.md, section "Contrat
+# fetcher"). Le jeton lui-meme n'est JAMAIS rendu ici (ce fichier est 0755
+# root:root, lisible par tout utilisateur local) -- lu depuis
+# os.environ["PRISME_FETCHER_TOKEN"] a l'usage (EnvironmentFile= systemd,
+# 0600 root:root, cf prisme-fetcher.env.j2).
+INSTAGRAM_API_BASE = {{ prisme_instagram_api_base | to_json }}
+INSTAGRAM_TENANT_ID = {{ prisme_instagram_tenant_id | to_json }}
+INSTAGRAM_API_TIMEOUT_SECONDS = {{ prisme_instagram_api_timeout_seconds }}
+# Contrat : <=60s (fenetre de fraicheur serveur 90s, gate 5).
+INSTAGRAM_HEARTBEAT_INTERVAL_SECONDS = {{ prisme_instagram_heartbeat_interval_seconds }}
+# Throttle des VERIFICATIONS d'autorisation par PASSE DE SCAN (defaults/main.yml
+# pour la justification complete) -- jamais un cache de verdict positif
+# reutilise : une verification reste FRAICHE avant CHAQUE tentative reelle
+# d'acquisition (instagram_authorization_gate ci-dessous).
+INSTAGRAM_AUTHORIZATION_POLL_SECONDS = {{ prisme_instagram_authorization_poll_seconds }}
+INSTAGRAM_ADAPTER_VERSION = "gallery-dl/{{ prisme_instagram_gallery_dl_version }}"
 # Segments d'URL Instagram qui ne sont JAMAIS un handle de profil (post/reel/
 # story/etc.) : si le premier segment de chemin en fait partie, aucun handle
 # n'est derivable de l'URL et seul le champ "handle" du job fait foi.
@@ -135,6 +153,114 @@ _UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._-]")
 
 class InstagramBlocked(RuntimeError):
     """Instagram a repondu challenge/2FA/rate-limit/auth — terminal, AUCUN retry."""
+
+
+class InstagramAuthorizationCheckFailed(RuntimeError):
+    """Echec reseau/HTTP/reponse invalide en interrogeant l'endpoint
+    d'autorisation du control-plane — FAIL CLOSED (jamais traite comme
+    autorise), retriable via la MEME discipline backoff que tout autre echec
+    transitoire (handle_failure), CONTRAIREMENT a un vrai verdict
+    authorized:false (etat reel du connecteur cote prisme) qui laisse le job
+    en attente SANS consommer de tentative (contrat fetcher)."""
+
+
+def _instagram_fetcher_token() -> str:
+    # Jamais rendu dans ce template (0755 root:root, lisible par tout
+    # utilisateur local) -- lu depuis l'environnement systemd
+    # (EnvironmentFile=, 0600 root:root) a l'usage.
+    return os.environ.get("PRISME_FETCHER_TOKEN", "")
+
+
+def check_instagram_authorization(tenant_id: str) -> tuple[bool, str]:
+    # GET /api/v1/connectors/instagram/authorization?tenantId=... . Toute
+    # reponse non-2xx (401/404/429/5xx, via HTTPError) ou toute erreur reseau/
+    # parsing est traitee de la MEME facon fail-closed ici -- le contrat
+    # fetcher distingue "authorized:false REEL" (verdict 200 valide) d'une
+    # simple impossibilite de verifier, jamais confondus.
+    token = _instagram_fetcher_token()
+    if not token:
+        raise InstagramAuthorizationCheckFailed("fetcher_token_missing")
+    url = (
+        f"{INSTAGRAM_API_BASE}/api/v1/connectors/instagram/authorization"
+        f"?tenantId={urllib.parse.quote(tenant_id, safe='')}"
+    )
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    try:
+        with _OPENER.open(request, timeout=INSTAGRAM_API_TIMEOUT_SECONDS) as response:
+            raw = response.read()
+    except Exception as error:  # noqa: BLE001 -- toute erreur (HTTPError non-2xx, URLError/timeout, DNS) est fail-closed ici, jamais silencieusement traitee comme autorisee.
+        raise InstagramAuthorizationCheckFailed(f"authorization_check_failed:{error}") from error
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise InstagramAuthorizationCheckFailed("authorization_check_invalid_response") from error
+    if not isinstance(payload, dict) or "authorized" not in payload:
+        raise InstagramAuthorizationCheckFailed("authorization_check_invalid_response")
+    return bool(payload["authorized"]), str(payload.get("state", ""))
+
+
+_INSTAGRAM_AUTH_STATE = {"checked_at": 0.0}
+
+
+def instagram_authorization_gate(now_monotonic: float) -> tuple[bool, str] | None:
+    """None => fenetre de throttle des VERIFICATIONS pas encore ecoulee : le
+    job reste pending, AUCUNE tentative consommee, AUCUN appel reseau emis
+    (protege le bucket 120 req/60s/tenant partage avec le heartbeat, cf
+    dispatcher.ts). Sinon : verification FRAICHE (jamais un verdict positif
+    mis en cache/reutilise) juste avant l'acquisition. Peut lever
+    InstagramAuthorizationCheckFailed (fail-closed, cf ci-dessus)."""
+    if now_monotonic - _INSTAGRAM_AUTH_STATE["checked_at"] < INSTAGRAM_AUTHORIZATION_POLL_SECONDS:
+        return None
+    authorized, state = check_instagram_authorization(INSTAGRAM_TENANT_ID)
+    _INSTAGRAM_AUTH_STATE["checked_at"] = now_monotonic
+    return authorized, state
+
+
+def send_instagram_heartbeat(status: str) -> None:
+    # POST /api/v1/connectors/instagram/heartbeat -- BEST-EFFORT, design
+    # explicite : le heartbeat ne doit JAMAIS interrompre/faire echouer le
+    # worker. Toute erreur est journalisee (JSON) puis avalee.
+    token = _instagram_fetcher_token()
+    if not token or not INSTAGRAM_API_BASE or not INSTAGRAM_TENANT_ID:
+        return
+    body = json.dumps({
+        "tenantId": INSTAGRAM_TENANT_ID,
+        "status": status,
+        "adapterVersion": INSTAGRAM_ADAPTER_VERSION,
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        f"{INSTAGRAM_API_BASE}/api/v1/connectors/instagram/heartbeat",
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with _OPENER.open(request, timeout=INSTAGRAM_API_TIMEOUT_SECONDS):
+            pass
+    except Exception as error:  # noqa: BLE001 -- best-effort par design, ne doit jamais tuer le worker.
+        print(json.dumps({
+            "event": "instagram_heartbeat_failed",
+            "status": status,
+            "error": str(error),
+        }))
+
+
+def instagram_heartbeat_loop() -> None:
+    # Thread daemon : boucle de sommeil en petits increments (1s) pour rester
+    # reactif a STOP (SIGTERM/SIGINT) sans attendre la fin d'un sommeil de
+    # INSTAGRAM_HEARTBEAT_INTERVAL_SECONDS.
+    while not STOP:
+        send_instagram_heartbeat("ready")
+        slept = 0.0
+        while slept < INSTAGRAM_HEARTBEAT_INTERVAL_SECONDS and not STOP:
+            time.sleep(1)
+            slept += 1
+    # Arret propre : signale 'down' au control-plane (best-effort, cf
+    # send_instagram_heartbeat -- n'empeche jamais l'arret du process).
+    send_instagram_heartbeat("down")
 
 
 def parse_size(value: str) -> int:
@@ -1482,6 +1608,40 @@ def scan_jobs(db: sqlite3.Connection) -> None:
                 continue
             if handle and rate_limited(db, f"{domain}#{handle}", now, INSTAGRAM_RATE_LIMIT_SECONDS):
                 continue
+            # Contrat fetcher (CANARY-1b) : verification d'autorisation FRAICHE
+            # AVANT CHAQUE tentative d'acquisition -- seulement si l'adapter
+            # est reellement active (sinon process_instagram_job rejette deja
+            # proprement avec instagram_adapter_disabled, sans jamais appeler
+            # le control-plane).
+            if INSTAGRAM_ENABLED:
+                try:
+                    gate = instagram_authorization_gate(time.monotonic())
+                except InstagramAuthorizationCheckFailed as error:
+                    print(json.dumps({
+                        "event": "acquisition_error",
+                        "code": "InstagramAuthorizationCheckFailed",
+                        "job_id": job_id,
+                    }))
+                    handle_failure(db, job_id, now, error)
+                    continue
+                if gate is None:
+                    # Fenetre de throttle des verifications pas encore
+                    # ecoulee : job laisse pending, aucune tentative
+                    # consommee, aucun appel reseau emis.
+                    continue
+                authorized, auth_state = gate
+                if not authorized:
+                    # Verdict REEL authorized:false (ou tenant non
+                    # provisionne) : re-poll a la prochaine fenetre, job
+                    # laisse pending, AUCUNE tentative consommee (contrat
+                    # fetcher — distinct d'un echec de verification, qui lui
+                    # passe par handle_failure ci-dessus).
+                    print(json.dumps({
+                        "event": "instagram_authorization_denied",
+                        "job_id": job_id,
+                        "state": auth_state,
+                    }))
+                    continue
             try:
                 process_instagram_job(db, job_id, job, domain, now)
             except Exception as error:
@@ -1548,6 +1708,18 @@ def main() -> None:
     # cout I/O inutile pour une purge dont la granularite est le JOUR
     # (INSTAGRAM_ARTIFACT_RETENTION_SECONDS). Cadence a au plus 1x/heure.
     last_purge_at = 0
+    # CANARY-1b : heartbeat cote thread daemon quand l'adapter Instagram est
+    # actif -- en mode --once (bancs molecule/offline), pas de thread (le
+    # process se termine avant le 1er intervalle) : un heartbeat synchrone
+    # unique rend le contrat testable sans dependre d'un thread arrive a
+    # echeance pendant la duree de vie tres courte du process.
+    heartbeat_thread = None
+    if INSTAGRAM_ENABLED:
+        if once:
+            send_instagram_heartbeat("ready")
+        else:
+            heartbeat_thread = threading.Thread(target=instagram_heartbeat_loop, daemon=True)
+            heartbeat_thread.start()
     while not STOP:
         touch_heartbeat(db)
         now = int(time.time())
@@ -1563,6 +1735,8 @@ def main() -> None:
         if once:
             break
         time.sleep(POLL_SECONDS)
+    if heartbeat_thread is not None:
+        heartbeat_thread.join(timeout=INSTAGRAM_API_TIMEOUT_SECONDS + 5)
     db.close()
 
 

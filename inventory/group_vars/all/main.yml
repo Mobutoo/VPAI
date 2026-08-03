@@ -30,6 +30,14 @@ prisme_fetcher_enabled: true
 # Netscape du compte autorisé ne sont pas au vault (gate opérateur CANARY-0).
 prisme_instagram_adapter_ready: true
 prisme_instagram_p5_deployed: true
+# Drain waza→banga : clé enrôlée (LXC 260, uid 2101) + pare-feu PVE (sources
+# LAN+tailnet, banga f4f1799) + ip_forward=1 persisté sur le PVE (le fix
+# mesh-enroll du 2026-07-24 n'avait pas survécu au reboot) — chaîne validée
+# 2026-08-04. La cible est le CT lxc-prisme, PAS l'hôte PVE (défaut
+# historique 100.64.0.32 obsolète). ⚠️ IP DHCP : réservation Freebox à poser
+# (suivi CANARY-5).
+prisme_transfer_enabled: true
+prisme_transfer_target: "prisme-transfer@192.168.1.107:/data/knowledge/incoming/"
 lxc_chat_subdomain: "chat"          # → chat.<domain> (Open WebUI lxc-chat sur Banga, 2e saut via Caddy Sese)
 # IP LAN de lxc-chat sur Banga (route Headscale 192.168.1.0/24 déjà approuvée) — vide tant que
 # la réservation DHCP Freebox n'est pas posée côté banga (session /factor factor-lxc-chat-finalize,

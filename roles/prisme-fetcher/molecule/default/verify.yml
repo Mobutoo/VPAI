@@ -528,8 +528,13 @@
                       self.end_headers()
                       return
                   self._log({"method": "GET", "path": self.path, "mode": mode})
+                  # LOW (revue GO cycle 2) : mode "heartbeat_404" isole le
+                  # scenario 404 au SEUL POST /heartbeat (cf do_POST) --
+                  # l'authorization GET reste "true"/active pour ne pas
+                  # conflater les deux contrats testes independamment.
+                  authorized = mode in ("true", "heartbeat_404")
                   body = json.dumps(
-                      {"authorized": mode == "true", "state": "active" if mode == "true" else "revoked"}
+                      {"authorized": authorized, "state": "active" if authorized else "revoked"}
                   ).encode()
                   self.send_response(200)
                   self.send_header("Content-Type", "application/json")
@@ -545,6 +550,17 @@
                   if not self._check_auth():
                       self._log({"method": "POST", "path": self.path, "authorized_header": False})
                       self.send_response(401)
+                      self.end_headers()
+                      return
+                  # LOW (revue GO cycle 2) : mode "heartbeat_404" simule un
+                  # connecteur non provisionne cote heartbeat (meme doctrine
+                  # C1 que l'authorization GET) -- prouve que le worker route
+                  # ce 404 vers instagram_heartbeat_not_provisioned, jamais
+                  # instagram_heartbeat_failed generique.
+                  mode = MODE_FILE.read_text().strip() if MODE_FILE.exists() else "true"
+                  if mode == "heartbeat_404":
+                      self._log({"method": "POST", "path": self.path, "mode": mode})
+                      self.send_response(404)
                       self.end_headers()
                       return
                   length = int(self.headers.get("Content-Length", "0"))
@@ -987,6 +1003,12 @@
         content: "false"
         mode: "0644"
 
+    - name: Count manifests before the authz-denied scenario (M-B — baseline, mirrors the badtoken pattern)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/manifests
+        patterns: "*.json"
+      register: manifests_before_authz_denied
+
     - name: Drop an Instagram job while the control-plane reports authorized:false
       ansible.builtin.copy:
         dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-authz-denied.json
@@ -1016,17 +1038,16 @@
         that:
           - authz_denied_job_leftover.stat.exists
 
-    - name: Find any manifest for the authz-denied job (must be NONE — the job was never handed to process_instagram_job)
+    - name: Count manifests after the authz-denied scenario (M-B — must be unchanged, no acquisition attempted)
       ansible.builtin.find:
         paths: /var/lib/prisme-fetcher/manifests
         patterns: "*.json"
-        contains: "authorized:false"
-      register: authz_denied_manifest_leak
+      register: manifests_after_authz_denied
 
-    - name: Assert the authz-denied scenario never reached process_instagram_job (no manifest leak)
+    - name: Assert the authz-denied scenario never reached process_instagram_job (no manifest leak — M-B baseline/after, not a vacuous contains match)
       ansible.builtin.assert:
         that:
-          - authz_denied_manifest_leak.matched == 0
+          - manifests_after_authz_denied.matched == manifests_before_authz_denied.matched
 
     # --- C1 (revue 2026-08-03, cycle 4) : 404 not_provisioned ---------------
 
@@ -1035,6 +1056,12 @@
         dest: /tmp/prisme-verify-authz-mode
         content: "404"
         mode: "0644"
+
+    - name: Count manifests before the not-provisioned scenario (M-B — baseline, mirrors the badtoken pattern)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/manifests
+        patterns: "*.json"
+      register: manifests_before_not_provisioned
 
     - name: Drop an Instagram job while the control-plane reports 404 (not provisioned, C1)
       ansible.builtin.copy:
@@ -1089,17 +1116,48 @@
           consommer de tentative ni atteindre un etat terminal) :
           {{ authz_not_provisioned_state.stdout }}
 
-    - name: Find any manifest for the not-provisioned job (must be NONE — never handed to process_instagram_job)
+    - name: Count manifests after the not-provisioned scenario (M-B — must be unchanged, no acquisition attempted)
       ansible.builtin.find:
         paths: /var/lib/prisme-fetcher/manifests
         patterns: "*.json"
-        contains: "not_provisioned"
-      register: authz_not_provisioned_manifest_leak
+      register: manifests_after_not_provisioned
 
-    - name: Assert the not-provisioned scenario never reached process_instagram_job (no manifest leak)
+    - name: Assert the not-provisioned scenario never reached process_instagram_job (no manifest leak — M-B baseline/after, not a vacuous contains match)
       ansible.builtin.assert:
         that:
-          - authz_not_provisioned_manifest_leak.matched == 0
+          - manifests_after_not_provisioned.matched == manifests_before_not_provisioned.matched
+
+    # M-A (revue GO cycle 2) : le job authorized:false (denied) est toujours
+    # pending et re-poll a CHAQUE passe (jamais GC, jamais terminal) ; le tri
+    # alphabetique des fichiers de jobs place "authz-denied" AVANT
+    # "authz-not-provisioned" dans le meme --once, donc c'est LUI qui execute
+    # reellement la verification reseau du control-plane a cette passe. On
+    # verifie ici son etat DB (pas seulement sa presence fichier, deja faite
+    # plus haut) pour prouver que ce re-poll ne consomme toujours aucune
+    # tentative apres la passe 404.
+    - name: Read the DB state for the authorized:false (denied) job after the 404 pass (M-A)
+      ansible.builtin.command:
+        cmd: >-
+          python3 -c "
+          import sqlite3
+          conn = sqlite3.connect('/var/lib/prisme-fetcher/state.sqlite3')
+          rows = conn.execute(
+              \"select state, attempts from jobs where note like '%authorized:false%'\"
+          ).fetchall()
+          print(rows)
+          "
+      register: authz_denied_state
+      changed_when: false
+
+    - name: Assert the denied job is still pending with zero attempts after the 404 pass (M-A — re-poll never burns budget)
+      ansible.builtin.assert:
+        that:
+          - "\"('pending', 0)\" in authz_denied_state.stdout"
+        fail_msg: >-
+          Attendu state=pending, attempts=0 (M-A -- le job authorized:false
+          est re-polle a chaque passe --once, y compris la passe 404
+          not_provisioned, et ne doit jamais consommer de tentative) :
+          {{ authz_denied_state.stdout }}
 
     # Remet le stub en mode "authorized" avant le scenario suivant (401
     # invalid-token ci-dessous a besoin d'un stub qui repondrait 200 si
@@ -1212,6 +1270,23 @@
     # (converge.yml) -- une seule verification echouee dans cette passe doit
     # donc deja franchir le seuil et emettre l'evenement d'observabilite,
     # jamais un etat terminal/consommation d'attempts.
+    #
+    # Couverture (LOW, revue GO cycle 2) : seul le FRANCHISSEMENT du seuil
+    # (consecutive_failures >= threshold) est prouve ici, avec un seuil
+    # degrade a 1 pour rester leger en molecule -- une seule passe suffit,
+    # pas besoin d'enchainer plusieurs echecs. Le sentinelle None (L1
+    # ci-dessus, prisme-fetcher.py.j2) EST couvert par ce meme scenario : la
+    # toute premiere alerte de ce banc traverse necessairement
+    # last_alert_at is None. En revanche la PARCIMONIE (fenetre
+    # INSTAGRAM_CONTROL_PLANE_ALERT_INTERVAL_SECONDS -- au plus 1 evenement
+    # par intervalle, pas de re-alerte a chaque echec ulterieur) n'est
+    # prouvee NULLE PART aujourd'hui (ni ici, ni au banc offline -- aucun
+    # test unitaire Python n'existe pour _record_control_plane_failure, ce
+    # module n'etant qu'un template Jinja2 sans suite pytest dediee).
+    # Enchainer plusieurs echecs consecutifs dans la meme fenetre alourdirait
+    # ce scenario molecule pour une garantie non triviale a verifier en
+    # integration (horloge monotonic, timing best-effort) ; residuel a
+    # honorer avant CANARY-5 si ce chemin devient critique en prod.
     - name: Assert the control-plane-unreachable event was emitted (H2 — observable, never destructive)
       ansible.builtin.assert:
         that:
@@ -1286,3 +1361,45 @@
           Attendu au moins un POST heartbeat status=ready avec adapterVersion
           non vide dans le journal du stub (M2) — {{ _authz_lines | length }}
           requetes journalisees au total.
+
+    # --- LOW (revue GO cycle 2) : heartbeat 404 not_provisioned -------------
+    # Le heartbeat suit la meme doctrine C1 que l'authorization GET (cf plus
+    # haut) : un 404 du control-plane est un etat SERVEUR attendu (connecteur
+    # pas encore provisionne), jamais une panne generique. Preuve que le
+    # worker distingue bien instagram_heartbeat_not_provisioned de
+    # instagram_heartbeat_failed sur ce chemin precis.
+
+    - name: Flip the fetcher control-plane stub to heartbeat_404 (LOW — heartbeat not_provisioned)
+      ansible.builtin.copy:
+        dest: /tmp/prisme-verify-authz-mode
+        content: "heartbeat_404"
+        mode: "0644"
+
+    - name: Run a worker pass while the control-plane heartbeat route reports 404 (LOW — instagram_heartbeat_not_provisioned)
+      ansible.builtin.command:
+        cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      environment:
+        CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
+        PRISME_FETCHER_TOKEN: molecule-fetcher-token-32-characters
+      become: true
+      become_user: prisme-fetcher
+      changed_when: false
+      register: heartbeat_404_pass
+
+    - name: Assert the worker emitted instagram_heartbeat_not_provisioned (LOW — never instagram_heartbeat_failed on a 404)
+      ansible.builtin.assert:
+        that:
+          - "'\"event\": \"instagram_heartbeat_not_provisioned\"' in heartbeat_404_pass.stdout"
+          - "'\"http_status\": 404' in heartbeat_404_pass.stdout"
+          - "'\"error\":' in heartbeat_404_pass.stdout"
+        fail_msg: >-
+          Attendu l'evenement instagram_heartbeat_not_provisioned avec
+          http_status=404 et une cle "error" non vide (HTTPError.reason,
+          cf send_instagram_heartbeat) dans le stdout du worker : {{
+          heartbeat_404_pass.stdout }}
+
+    - name: Restore the fetcher control-plane stub to authorized mode (cleanup after LOW heartbeat_404)
+      ansible.builtin.copy:
+        dest: /tmp/prisme-verify-authz-mode
+        content: "true"
+        mode: "0644"

@@ -36,6 +36,13 @@ prisme_sparse_revision: "e499a1f8d6bec960aab5533a0941bf914e70faf9"
 prisme_sparse_model_config: >-
   {{ prisme_model_dir }}/models--Qdrant--bm25/snapshots/{{ prisme_sparse_revision }}/config.json
 
+# CANARY-1b/CANARY-2 (gate 5 du bouton d'activation Instagram) : fail-closed
+# par defaut — jamais true tant que le deploiement reel (P5 roles/prisme-fetcher
+# + controle de disponibilite) n'est pas confirme. Cf
+# saas/prisme/docs/2026-08-03-plan-canary-instagram.md, "5 conditions".
+prisme_instagram_adapter_ready: false
+prisme_instagram_p5_deployed: false
+
 prisme_frontend_network: "javisi_frontend"
 prisme_backend_network: "javisi_backend"
 prisme_egress_network: "javisi_egress"

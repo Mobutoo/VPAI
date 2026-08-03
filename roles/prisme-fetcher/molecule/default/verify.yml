@@ -1260,6 +1260,59 @@
         that:
           - manifests_after_badtoken.matched == manifests_before_badtoken.matched
 
+    # --- LOW (revue GO cycle 2) : heartbeat 404 not_provisioned -------------
+    # Le heartbeat suit la meme doctrine C1 que l'authorization GET (cf plus
+    # haut) : un 404 du control-plane est un etat SERVEUR attendu (connecteur
+    # pas encore provisionne), jamais une panne generique. Preuve que le
+    # worker distingue bien instagram_heartbeat_not_provisioned de
+    # instagram_heartbeat_failed sur ce chemin precis.
+    #
+    # CRITICAL (revue 2026-08-03) : ce bloc DOIT s'executer AVANT l'arret du
+    # stub control-plane ci-dessous (scenario unreachable) -- le heartbeat_404
+    # exige un stub VIVANT (repondant 404 sur /heartbeat), jamais un stub
+    # DOWN. Ce bloc etait auparavant place APRES l'arret du stub : sa seule
+    # passe --once tapait alors dans le vide (connexion refusee), donc
+    # confirmait en realite le chemin instagram_control_plane_unreachable et
+    # non instagram_heartbeat_not_provisioned -- le scenario n'a jamais teste
+    # ce qu'il pretendait tester. Ne PAS redemarrer le stub transitoire pour
+    # "corriger" l'ordre inverse (systemd-run sur un nom d'unite deja consomme
+    # est fragile) : ce bloc reste ordonne ICI, avant l'arret, point final.
+
+    - name: Flip the fetcher control-plane stub to heartbeat_404 (LOW — heartbeat not_provisioned)
+      ansible.builtin.copy:
+        dest: /tmp/prisme-verify-authz-mode
+        content: "heartbeat_404"
+        mode: "0644"
+
+    - name: Run a worker pass while the control-plane heartbeat route reports 404 (LOW — instagram_heartbeat_not_provisioned)
+      ansible.builtin.command:
+        cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      environment:
+        CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
+        PRISME_FETCHER_TOKEN: molecule-fetcher-token-32-characters
+      become: true
+      become_user: prisme-fetcher
+      changed_when: false
+      register: heartbeat_404_pass
+
+    - name: Assert the worker emitted instagram_heartbeat_not_provisioned (LOW — never instagram_heartbeat_failed on a 404)
+      ansible.builtin.assert:
+        that:
+          - "'\"event\": \"instagram_heartbeat_not_provisioned\"' in heartbeat_404_pass.stdout"
+          - "'\"http_status\": 404' in heartbeat_404_pass.stdout"
+          - "'\"error\": \"HTTP Error 404: Not Found\"' in heartbeat_404_pass.stdout"
+        fail_msg: >-
+          Attendu l'evenement instagram_heartbeat_not_provisioned avec
+          http_status=404 et error="HTTP Error 404: Not Found" (str() de
+          urllib.error.HTTPError, cf send_instagram_heartbeat) dans le stdout
+          du worker : {{ heartbeat_404_pass.stdout }}
+
+    - name: Restore the fetcher control-plane stub to authorized mode (cleanup after LOW heartbeat_404)
+      ansible.builtin.copy:
+        dest: /tmp/prisme-verify-authz-mode
+        content: "true"
+        mode: "0644"
+
     - name: Stop the fetcher control-plane stub (simulates control-plane unreachable)
       ansible.builtin.systemd_service:
         name: prisme-verify-authz.service
@@ -1382,44 +1435,3 @@
           non vide dans le journal du stub (M2) — {{ _authz_lines | length }}
           requetes journalisees au total.
 
-    # --- LOW (revue GO cycle 2) : heartbeat 404 not_provisioned -------------
-    # Le heartbeat suit la meme doctrine C1 que l'authorization GET (cf plus
-    # haut) : un 404 du control-plane est un etat SERVEUR attendu (connecteur
-    # pas encore provisionne), jamais une panne generique. Preuve que le
-    # worker distingue bien instagram_heartbeat_not_provisioned de
-    # instagram_heartbeat_failed sur ce chemin precis.
-
-    - name: Flip the fetcher control-plane stub to heartbeat_404 (LOW — heartbeat not_provisioned)
-      ansible.builtin.copy:
-        dest: /tmp/prisme-verify-authz-mode
-        content: "heartbeat_404"
-        mode: "0644"
-
-    - name: Run a worker pass while the control-plane heartbeat route reports 404 (LOW — instagram_heartbeat_not_provisioned)
-      ansible.builtin.command:
-        cmd: python3 /usr/local/libexec/prisme-fetcher --once
-      environment:
-        CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
-        PRISME_FETCHER_TOKEN: molecule-fetcher-token-32-characters
-      become: true
-      become_user: prisme-fetcher
-      changed_when: false
-      register: heartbeat_404_pass
-
-    - name: Assert the worker emitted instagram_heartbeat_not_provisioned (LOW — never instagram_heartbeat_failed on a 404)
-      ansible.builtin.assert:
-        that:
-          - "'\"event\": \"instagram_heartbeat_not_provisioned\"' in heartbeat_404_pass.stdout"
-          - "'\"http_status\": 404' in heartbeat_404_pass.stdout"
-          - "'\"error\":' in heartbeat_404_pass.stdout"
-        fail_msg: >-
-          Attendu l'evenement instagram_heartbeat_not_provisioned avec
-          http_status=404 et une cle "error" non vide (HTTPError.reason,
-          cf send_instagram_heartbeat) dans le stdout du worker : {{
-          heartbeat_404_pass.stdout }}
-
-    - name: Restore the fetcher control-plane stub to authorized mode (cleanup after LOW heartbeat_404)
-      ansible.builtin.copy:
-        dest: /tmp/prisme-verify-authz-mode
-        content: "true"
-        mode: "0644"

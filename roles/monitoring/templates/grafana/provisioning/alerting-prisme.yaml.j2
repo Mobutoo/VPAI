@@ -87,7 +87,7 @@ groups:
   {
     'uid': 'prisme-instagram-blocked',
     'title': 'Prisme Instagram connector blocked',
-    'expr': 'increase(instagram_errors_total{reason="blocked"}[15m])',
+    'expr': '(sum(increase(instagram_errors_total{reason="blocked"}[15m])) or vector(0))',
     'threshold': 0,
     'severity': 'warning',
     'for': '5m'
@@ -95,7 +95,7 @@ groups:
   {
     'uid': 'prisme-instagram-auth-degraded',
     'title': 'Prisme Instagram connector auth degraded while active',
-    'expr': '(instagram_connector_state{state="active"} == 1) and on(job, instance) (increase(instagram_errors_total{reason="auth"}[15m]) > 0)',
+    'expr': '((max(instagram_connector_state{state="active"}) or vector(0)) * (sum(increase(instagram_errors_total{reason="auth"}[15m])) or vector(0)))',
     'threshold': 0,
     'severity': 'critical',
     'for': '5m'

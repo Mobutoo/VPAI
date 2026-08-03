@@ -164,6 +164,17 @@ def dir_size(path: Path) -> int:
     # media pendant qu'on mesure). Fonction PARTAGEE entre fetch_ytdlp et
     # fetch_instagram : ce fix beneficie aux deux adapters, jamais un
     # elargissement de comportement propre a l'un ou l'autre.
+    #
+    # L2 (revue 2026-08-03, cycle 4) : un `except OSError: pass` sur le
+    # rglob() lui-meme (ex. workdir supprime/rmtree concurrent, permissions)
+    # rendait auparavant un TOTAL PARTIEL silencieux -> le plafond de taille
+    # disque (INSTAGRAM_MAX_BUNDLE_BYTES/hard_cap yt-dlp) devenait
+    # contournable des qu'une erreur d'iteration survenait AVANT d'avoir
+    # parcouru l'ensemble des fichiers deja telecharges. Fail-CLOSED : sur
+    # OSError d'iteration, renvoyer une valeur >= tout plafond raisonnable
+    # (jamais un total partiel qui ferait passer le controle de taille) et
+    # journaliser l'evenement explicitement (jamais un silence total).
+    FAIL_CLOSED_SIZE = 2**62
     total = 0
     try:
         for entry in path.rglob("*"):
@@ -172,8 +183,13 @@ def dir_size(path: Path) -> int:
                     total += entry.stat().st_size
             except OSError:
                 continue
-    except OSError:
-        pass
+    except OSError as error:
+        print(json.dumps({
+            "event": "dir_size_iteration_failed",
+            "path": str(path),
+            "error": str(error),
+        }))
+        return FAIL_CLOSED_SIZE
     return total
 
 

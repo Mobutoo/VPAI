@@ -828,6 +828,47 @@ def merge_instagram_archive(job_archive: Path, persistent_archive: Path) -> None
         src.close()
 
 
+def instagram_archive_row_count(archive_path: Path) -> int:
+    # R1 (revue 2026-08-03, cycle 3) : `st_size > 0` etait un FAUX signal —
+    # une base SQLite fraichement creee (CREATE TABLE sans aucune ligne, cf
+    # merge_instagram_archive) occupe deja st_size == 8192 (une page SQLite),
+    # NON ZERO, avant meme la premiere ligne inseree. Compte reellement les
+    # LIGNES de chaque table (meme pattern generique que merge_instagram_archive
+    # ci-dessus : lit sqlite_master, jamais un nom de table code en dur).
+    # Sources (2026-08-03, R8) : doc officielle gallery-dl —
+    # https://gdl-org.github.io/docs/configuration.html#extractor-archive
+    # ("File to store IDs... an SQLite3 database" ; "archive-table ... Default:
+    # \"archive\"", format string donc potentiellement autre que "archive").
+    # Aucun marqueur stdout/-v documente pour un skip archive dans cette meme
+    # doc, et gallery-dl n'est pas installe sur waza (aucun binaire local pour
+    # confronter un marqueur reel, cf commande de sonde dans le commit) —
+    # fallback retenu : ce compte de lignes sert de PREUVE D'AUDIT
+    # (manifest["archive_rows_seeded"]), jamais de discriminant a lui seul
+    # (le discriminant reel est per-job, cf process_instagram_job/R1).
+    if not archive_path.exists():
+        return 0
+    try:
+        conn = sqlite3.connect(archive_path)
+        try:
+            tables = [
+                row[0]
+                for row in conn.execute(
+                    "select name from sqlite_master where type='table' "
+                    "and name not like 'sqlite\\_%' escape '\\'"
+                )
+            ]
+            total = 0
+            for table in tables:
+                total += conn.execute(
+                    f'select count(*) from "{table}"'  # noqa: S608 (table name from sqlite_master, not external input)
+                ).fetchone()[0]
+            return total
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return 0
+
+
 def write_manifest_record(job_id: str, manifest: dict) -> Path:
     # M7 : copie de traçabilite par job_id, ecrite pour TOUT etat terminal —
     # independante du bundle outgoing/ (qui peut etre partage entre jobs par
@@ -953,17 +994,20 @@ def process_instagram_job(db: sqlite3.Connection, job_id: str, job: dict, domain
     # persistante partagee (dedup cross-job connue au moment ou ce job
     # demarre) mais jamais ecrite directement dedans — cf fetch_instagram.
     job_archive = workdir / "gallery-dl-archive.sqlite3"
-    # H-B (revue 2026-08-03, cycle 2) : "l'archive persistante a-t-elle deja
-    # ete alimentee par une livraison anterieure (ce job OU un autre) avant
-    # que CE job ne demarre ?" est le seul signal fiable pour distinguer un
-    # job B en dedup cross-job (contenu deja livre par un job A anterieur —
-    # files_info==[] EST alors un succes idempotent) d'un job qui n'a jamais
-    # rien acquis (files_info==[] EST alors un veritable echec). Capture
-    # AVANT l'appel fetch_instagram (qui peut lui-meme enrichir job_archive).
-    archive_seeded_nonempty = False
+    # R1 (revue 2026-08-03, cycle 3) : l'ancien signal
+    # (archive_seeded_nonempty = st_size > 0) etait GLOBAL — vrai des la 1re
+    # livraison de la vie du canary, pour N'IMPORTE QUEL job, sans le moindre
+    # rapport avec l'URL/handle de CE job precis (une autre porte vers la
+    # perte silencieuse H5 : un job qui n'a REELLEMENT rien acquis devenait
+    # `done`+skipped, jamais `failed`, jamais revu). archive_rows_seeded
+    # (compte REEL de lignes, cf instagram_archive_row_count) reste calcule
+    # ci-dessous comme preuve d'audit dans le manifeste, mais n'est PLUS le
+    # discriminant — cf la decision "prior_delivery" plus bas (scopee a
+    # l'URL de CE job via la table jobs, jamais l'archive globale).
+    archive_rows_seeded = 0
     if INSTAGRAM_ARCHIVE_FILE.exists():
-        archive_seeded_nonempty = INSTAGRAM_ARCHIVE_FILE.stat().st_size > 0
         shutil.copyfile(INSTAGRAM_ARCHIVE_FILE, job_archive)
+        archive_rows_seeded = instagram_archive_row_count(job_archive)
     try:
         files_info = fetch_instagram(db, job["url"], dl, job_range, job_archive, range_upper)
         mark_domain_fetch(db, domain)
@@ -1020,29 +1064,43 @@ def process_instagram_job(db: sqlite3.Connection, job_id: str, job: dict, domain
         shutil.rmtree(workdir, ignore_errors=True)
     else:
         if not files_info:
-            # H-B (revue 2026-08-03, cycle 2) : files_info==[] signifie
+            # H-B/R1 (revue 2026-08-03, cycles 2+3) : files_info==[] signifie
             # normalement "post deja acquis" (idempotence --download-archive).
-            # L'ancienne heuristique (regarder jobs.output_path DE CE MEME
-            # job_id) etait aveugle a la dedup CROSS-JOB : un job B dont le
-            # job_id differe de A (job_id = sha256 du fichier jobs/*.json,
-            # jamais partage) n'a JAMAIS de ligne "jobs" avec output_path pour
-            # lui-meme -> l'ancien code retombait a tort sur `failed`
-            # (terminal, GC), et re-deposer le meme payload re-GC
-            # immediatement (meme job_id = deja terminal en base). Le signal
-            # fiable est "l'archive persistante etait-elle DEJA alimentee
-            # (par CE job OU un autre) avant que CE job ne demarre" —
-            # capture par archive_seeded_nonempty ci-dessus.
-            if archive_seeded_nonempty:
+            # Le seul discriminant fiable et SCOPE A CE JOB (R1 — jamais une
+            # taille de fichier ni une presence d'archive GLOBALE) est : un
+            # AUTRE job_id, portant EXACTEMENT LA MEME url, a-t-il deja
+            # atteint l'etat terminal "done" AVANT ce job ? La table jobs est
+            # la source de verite retenue plutot que outgoing/ (rsync
+            # --remove-source-files draine outgoing/ apres transfert vers
+            # banga, cf prisme-transfer.sh.j2 — une preuve fondee sur
+            # l'existence physique du bundle serait fausse des le premier
+            # transfert reussi) ou que l'archive gallery-dl elle-meme (aucun
+            # marqueur stdout documente pour confirmer un skip PAR URL — cf
+            # instagram_archive_row_count/R8 ci-dessus ; archive_rows_seeded
+            # reste journalise comme preuve d'audit, jamais comme
+            # discriminant).
+            prior_delivery = db.execute(
+                "select 1 from jobs where url=? and job_id!=? and state='done' limit 1",
+                (job["url"], job_id),
+            ).fetchone()
+            manifest["archive_rows_seeded"] = archive_rows_seeded
+            if prior_delivery is not None:
+                # L5 : contrat H-B FIGE — un `done` par dedup ne porte JAMAIS
+                # files/delivered_count/output_path (aucun media n'a ete
+                # acquis PAR CE job ; cf commentaire schema plus haut dans le
+                # fichier). skipped_already_acquired + partial +
+                # partial_reason="archive_overlap" sont les SEULS marqueurs de
+                # ce contrat, avec archive_rows_seeded en preuve d'audit
+                # annexe.
                 manifest["skipped_already_acquired"] = True
                 manifest["partial"] = True
                 manifest["partial_reason"] = "archive_overlap"
                 _finalize_instagram_job(db, job_id, manifest, workdir, state="done")
                 return
-            # Archive seedee VIDE (ou absente) ET rien produit : aucune
-            # livraison anterieure n'explique ce resultat vide -> echec
-            # REEL, terminal (jamais handle_failure — meme doctrine H7
-            # anti-retry-agressif : un resultat deterministe ne doit pas
-            # re-frapper Instagram en boucle).
+            # Aucune livraison anterieure de CETTE url n'explique ce resultat
+            # vide -> echec REEL, terminal (jamais handle_failure — meme
+            # doctrine H7 anti-retry-agressif : un resultat deterministe ne
+            # doit pas re-frapper Instagram en boucle).
             _finalize_instagram_job(
                 db, job_id, manifest, workdir,
                 state="failed", error="instagram_empty_result_no_prior_delivery",

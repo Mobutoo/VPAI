@@ -256,6 +256,31 @@ prisme_instagram_blocked_markers:
 # pour la meme url (prior_delivery) — cette ligne-la reste, par design,
 # jamais purgeable.
 
+# L5 (revue 2026-08-03, cycle 4) : procedure operateur — unite en
+# "failed"/start-limit-hit permanent. L'unite systemd
+# ({{ prisme_fetcher_service }}) porte StartLimitIntervalSec=60 +
+# StartLimitBurst=5 (cf prisme-fetcher.service.j2, L3 cycle 3) : au-dela de 5
+# echecs en 60s, systemd cesse TOUT redemarrage (Restart=on-failure devient
+# inoperant) et l'unite reste "failed" — MORT PERMANENT sans intervention
+# manuelle, AUCUN detecteur automatique aujourd'hui (le heartbeat SQLite
+# n'a pas de consommateur/alerting cote waza ; l'alerting existant, cf
+# roles/waza-deadman, cible la disponibilite globale de waza, pas cette
+# unite specifiquement). Recherche effectuee (2026-08-03, L5) : aucune unite
+# de notification generique n'existe sur waza a laquelle brancher un
+# OnFailure= — volontairement PAS de nouvelle unite creee ici (hors
+# perimetre de ce role ; a instruire cote CANARY-5/waza-deadman si le besoin
+# se confirme). Procedure operateur, une fois la cause racine du crash-loop
+# corrigee (cookies invalides, lock mal possede, disque plein, etc.) :
+#   1. `systemctl status {{ prisme_fetcher_service }}` -> confirmer
+#      "start-limit-hit" (pas juste "failed" simple).
+#   2. `systemctl reset-failed {{ prisme_fetcher_service }}` -> reinitialise
+#      le compteur StartLimitBurst (n'efface aucun etat applicatif —
+#      state.sqlite3/jobs/manifests intacts).
+#   3. `systemctl start {{ prisme_fetcher_service }}`.
+# Sans l'etape 2, `systemctl start` echoue immediatement (le compteur reste
+# au plafond jusqu'a expiration naturelle de StartLimitIntervalSec ou reset
+# explicite).
+
 # M-F (revue 2026-08-03, cycle 2) : retention (en jours) des manifestes de
 # traçabilite (manifests/<job_id>.json, TOUS adapters) et des snapshots
 # rejects/<job_id>/manifest.json (etats non-succes uniquement, cf M-B).

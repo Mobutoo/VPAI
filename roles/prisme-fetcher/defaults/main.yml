@@ -112,7 +112,14 @@ prisme_instagram_credential_name: instagram-cookies
 # ~/.local/{bin,share/pipx}, serait invisible au runtime).
 prisme_instagram_gallery_dl_pipx_home: /opt/pipx
 prisme_instagram_gallery_dl_pipx_bin_dir: /usr/local/bin
-prisme_instagram_gallery_dl_bin: "{{ prisme_instagram_gallery_dl_pipx_bin_dir }}/gallery-dl"
+# H1 (revue 2026-08-03) : chemin REEL invariant sonde/installe par tasks/main.yml
+# (jamais surcharge par molecule -> l'idempotence de la sonde pipx --version
+# reste correcte a chaque converge). prisme_instagram_gallery_dl_bin ci-dessous
+# ne pilote QUE l'invocation du worker au runtime et PEUT etre redirige vers un
+# stub deterministe en molecule (verify.yml) sans jamais affecter la sonde
+# d'idempotence pipx.
+prisme_instagram_gallery_dl_pipx_bin: "{{ prisme_instagram_gallery_dl_pipx_bin_dir }}/gallery-dl"
+prisme_instagram_gallery_dl_bin: "{{ prisme_instagram_gallery_dl_pipx_bin }}"
 
 # Plage --range gallery-dl par defaut : DOIT rester "N-M" (borne explicite,
 # jamais une plage ouverte). Un job peut fournir sa propre plage (meme motif
@@ -130,11 +137,27 @@ prisme_instagram_max_bundle_bytes: 524288000
 
 prisme_instagram_http_timeout_seconds: 30
 
+# H7 (revue 2026-08-03) : la deadline d'un job Instagram DOIT etre derivee de
+# la borne haute REELLE de --range (jamais une constante fixe : un multiple
+# fixe de INSTAGRAM_HTTP_TIMEOUT_SECONDS ne couvre pas le sommeil natif
+# gallery-dl --sleep-request applique entre CHAQUE media de la plage, ce qui
+# tuait tout job multi-media avant terme -> handle_failure -> retry agressif,
+# exactement ce que ce marqueur de conception interdit). Formule dans le
+# worker : range_upper * (RATE_LIMIT + HTTP_TIMEOUT) * marge. Marge = facteur
+# de securite au-dela du temps theorique minimal (latence reseau, jitter,
+# retries internes gallery-dl) ; 2x documente comme volontairement large.
+prisme_instagram_deadline_margin: 2
+
 # Marqueurs (sous-chaines, insensibles a la casse) recherches dans stderr
 # gallery-dl pour distinguer un blocage terminal (challenge/2FA/rate-limit/
 # auth -> state=blocked, AUCUN retry) d'un echec transitoire ordinaire
 # (-> retry standard avec backoff, comme http/ytdlp). Configurable pour
 # absorber une evolution des messages gallery-dl sans toucher au code.
+# M5 (revue 2026-08-03) : les marqueurs PUREMENT numeriques ("401"/"403"/"429")
+# sont ancres sur une frontiere de mot (\b) par le worker (classify_instagram_failure)
+# pour ne jamais matcher une sous-chaine d'un shortcode/identifiant hostile
+# (ex. "C403xyz") — seuls les marqueurs textuels ci-dessous restent en
+# sous-chaine simple (deja assez longs pour ne pas produire de faux positif).
 prisme_instagram_blocked_markers:
   challenge_required: "blocked:challenge_required"
   checkpoint_required: "blocked:challenge_required"
@@ -146,6 +169,25 @@ prisme_instagram_blocked_markers:
   "401": "blocked:auth"
   "403": "blocked:auth"
   forbidden: "blocked:auth"
+
+# L4 (revue 2026-08-03) : procedure de reprise operateur pour un job
+# state=blocked (challenge/2FA/rate-limit/auth). blocked est TERMINAL par
+# design (jamais de retry automatique — cf scan_jobs) et le fichier
+# jobs/<sha>.json est garbage-collecte des que l'etat terminal est atteint.
+# Pour reprendre l'acquisition d'un post/compte bloque UNE FOIS le blocage
+# reel leve cote Instagram (nouvelle session cookies re-deployee via
+# prisme_instagram_cookies_content, rate-limit expire, etc.) :
+#   1. Ne PAS re-deposer le meme fichier jobs/*.json a l'identique : job_id =
+#      sha256(bytes du fichier) -> memes octets = meme job_id = deja
+#      terminal en base, jamais rejoue (le fichier serait immediatement
+#      re-GC sans nouvelle tentative).
+#   2. Soumettre un nouveau job avec un payload distinct (ex. champ "note"
+#      incremente/horodate) pour obtenir un nouveau job_id.
+#   3. Recours manuel (exceptionnel, arrete le service AVANT toute ecriture
+#      SQL directe pour eviter la concurrence avec le lock singleton M1) :
+#      DELETE FROM jobs WHERE job_id='<sha256>'; sur
+#      {{ prisme_fetcher_root }}/state.sqlite3, puis redeposer le fichier
+#      jobs/*.json original.
 
 # --- Transfert vers banga (etape separee, banga OFFLINE aujourd'hui) ---
 # Desactive par defaut : a activer seulement une fois la cle publique

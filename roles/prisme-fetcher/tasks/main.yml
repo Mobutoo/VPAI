@@ -49,6 +49,28 @@
   become: true
   tags: [prisme-fetcher, prisme_fetcher, phase3]
 
+- name: Prisme fetcher | Ensure the singleton worker lock file is owned by the service account (L3 — crash-loop guard)
+  # L3 (revue 2026-08-03, cycle 3, M-E cycle 2) : le lock singleton M1
+  # (ROOT/.worker.lock) est ouvert en mode "a+" par le worker au demarrage —
+  # s'il finissait par etre cree/possede par un compte autre que
+  # {{ prisme_fetcher_user }} (ex. inspection manuelle en root avant que ce
+  # role n'ait tourne), le worker (qui s'execute TOUJOURS comme
+  # {{ prisme_fetcher_user }}, cf User= dans l'unite) recevrait un
+  # PermissionError a l'ouverture -> crash-loop bruyant (borne desormais par
+  # StartLimitIntervalSec/Burst ci-dessus, mais autant ne jamais l'atteindre).
+  # `state: touch` + preserve les timestamps -> idempotent (0 changed au 2e
+  # run) si le fichier existe deja avec la bonne propriete.
+  ansible.builtin.file:
+    path: "{{ prisme_fetcher_root }}/.worker.lock"
+    state: touch
+    access_time: preserve
+    modification_time: preserve
+    owner: "{{ prisme_fetcher_user }}"
+    group: "{{ prisme_fetcher_group }}"
+    mode: "0640"
+  become: true
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
 - name: Prisme fetcher | Create local executable directory
   ansible.builtin.file:
     path: "{{ prisme_fetcher_bin | dirname }}"

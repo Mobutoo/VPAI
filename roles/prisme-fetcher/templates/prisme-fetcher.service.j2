@@ -3,6 +3,16 @@
 Description=Prisme acquisition worker (local fixture + HTTP/yt-dlp adapters)
 After=network-online.target local-fs.target
 Wants=network-online.target
+# L3 (revue 2026-08-03, cycle 3) : sans plafond, un crash-loop (ex. lock
+# singleton M1 ouvrable/possede par le mauvais compte, cf tache "Ensure the
+# singleton worker lock file is owned by the service account" plus bas)
+# redemarre indefiniment (Restart=on-failure + RestartSec=5, SANS limite) —
+# bruit systemd illimite, jamais un arret net. StartLimitBurst echecs en
+# StartLimitIntervalSec secondes -> unite en "failed" (start-limit-hit),
+# jamais une boucle silencieuse infinie. StartLimit* est un parametre
+# [Unit] (pas [Service]) par construction systemd.
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple

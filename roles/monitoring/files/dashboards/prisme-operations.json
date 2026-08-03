@@ -67,6 +67,7 @@
       "id": 7,
       "type": "timeseries",
       "title": "Instagram items acquired",
+      "description": "increase() sur un compteur qui, au moment du câblage CANARY-4, comptabilise TOUT item vu (pas seulement les livraisons completed) — un job partiellement acheve (ex. carrousel tronque) ou un retry peut produire des sauts qui ne correspondent pas 1:1 a des livraisons reelles. Le compteur restreint a completed arrive cote prisme (chantier separe, CANARY-5) ; ce panneau reste correct pour un increase() classique (jamais negatif sur un compteur monotone), la reserve porte uniquement sur la SEMANTIQUE des valeurs affichees d'ici la.",
       "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16},
       "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
       "targets": [

@@ -24,11 +24,13 @@ fi
 # ecrit, cf B1) — jamais synchronises avant leur publication sous leur nom
 # final. --timeout borne un transfert bloque (lien tailnet degrade) ;
 # ConnectTimeout/ServerAliveInterval bornent l'etablissement/le maintien SSH.
-# --omit-dir-times : la racine incoming/ appartient a prisme-store (le compte
-# de transfert n'a que le droit de groupe) — sans ce flag, rsync sort en code
-# 23 (« failed to set times on incoming/. ») alors que les fichiers sont bien
-# livres. Constate au premier drain reel CANARY-5 (2026-08-04).
-rsync -a --omit-dir-times --partial --timeout=120 --remove-source-files --exclude='.*' \
+# -rlt (PAS -a) : la racine incoming/ appartient a prisme-store, le compte de
+# transfert n'a que le droit de groupe — -a (= -rlptgoD) echoue en code 23 sur
+# le chmod/utimes de la racine alors que les fichiers sont bien livres.
+# On garde recursion+liens+times fichiers ; perms/owner cote banga = umask +
+# setgid du dataset (le janitor/la promotion re-verifient de toute facon).
+# Constate au premier drain reel CANARY-5 (2026-08-04).
+rsync -rlt --omit-dir-times --partial --timeout=120 --remove-source-files --exclude='.*' \
   -e "ssh -i ${SSH_KEY} -p ${SSH_PORT} -o UserKnownHostsFile=${KNOWN_HOSTS} -o StrictHostKeyChecking=yes -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15" \
   "${OUTGOING}/" "${TARGET}"
 

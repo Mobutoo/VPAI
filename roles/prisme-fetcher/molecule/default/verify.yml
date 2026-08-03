@@ -158,24 +158,36 @@
         that:
           - leftover_workdirs.matched == 0
 
+    # C1 (revue 2026-08-03) : lookup('ansible.builtin.file', ...) lit le
+    # filesystem du CONTROLLER (waza), pas celui de la cible molecule (driver
+    # docker, cf molecule.yml) — ces assertions lisaient des chemins
+    # inexistants cote controller et n'ont jamais vraiment verifie le contenu
+    # cible. Fix : ansible.builtin.slurp (execute sur la cible) en boucle,
+    # contenu agrege puis assertion `is search(...)`.
+    - name: Slurp both rejected manifests from the TARGET host (C1 fix)
+      ansible.builtin.slurp:
+        src: "{{ item.path }}"
+      loop: "{{ rejected_manifests.files }}"
+      register: rejected_manifests_slurped
+
     - name: Verify BOTH rejected jobs (domain-not-allowlisted + redirect-left-allowlist) archived a v2 manifest
+      vars:
+        _rejected_joined: "{{ rejected_manifests_slurped.results | map(attribute='content') | map('b64decode') | join('\n') }}"
       ansible.builtin.assert:
         that:
           - rejected_manifests.matched == 2
-          - "'\"schema\": \"prisme.source-bundle.v2\"' in lookup('ansible.builtin.file', rejected_manifests.files[0].path)"
-          - "'\"schema\": \"prisme.source-bundle.v2\"' in lookup('ansible.builtin.file', rejected_manifests.files[1].path)"
-          - "'\"state\": \"rejected\"' in lookup('ansible.builtin.file', rejected_manifests.files[0].path)"
-          - "'\"state\": \"rejected\"' in lookup('ansible.builtin.file', rejected_manifests.files[1].path)"
+          - >-
+            _rejected_joined is search('"schema": "prisme.source-bundle.v2"')
+          - >-
+            _rejected_joined is search('"state": "rejected"')
 
     - name: Verify one rejection reason is domain_not_allowlisted and the other redirect_left_allowlist
+      vars:
+        _rejected_joined: "{{ rejected_manifests_slurped.results | map(attribute='content') | map('b64decode') | join('\n') }}"
       ansible.builtin.assert:
         that:
-          - >-
-            (lookup('ansible.builtin.file', rejected_manifests.files[0].path) + lookup('ansible.builtin.file', rejected_manifests.files[1].path))
-            is search('domain_not_allowlisted')
-          - >-
-            (lookup('ansible.builtin.file', rejected_manifests.files[0].path) + lookup('ansible.builtin.file', rejected_manifests.files[1].path))
-            is search('redirect_left_allowlist')
+          - _rejected_joined is search('domain_not_allowlisted')
+          - _rejected_joined is search('redirect_left_allowlist')
 
     - name: Find the delivered bundle for the accepted job (A9 success — A1 regression guard)
       ansible.builtin.find:
@@ -245,10 +257,46 @@
       changed_when: false
       register: gallery_dl_version
 
-    - name: Assert gallery-dl pinned version matches prisme_instagram_gallery_dl_version
+    - name: Assert gallery-dl pinned version matches prisme_instagram_gallery_dl_version (exact token, L2)
+      vars:
+        _installed_version: "{{ (gallery_dl_version.stdout | trim).split(' ') | last }}"
       ansible.builtin.assert:
         that:
-          - "'1.30.2' in gallery_dl_version.stdout"
+          - _installed_version == '1.30.2'
+
+    # M4 (revue 2026-08-03) : le stub gallery-dl deploye plus bas ne valide
+    # AUCUN argv reel (il ignore ses arguments hors -D/url). Cette tache
+    # verifie donc le VRAI binaire pipx pinne installe par le role — chaque
+    # option CLI utilisee par fetch_instagram() (prisme-fetcher.py.j2) doit
+    # rester documentee par --help. NOTE explicite : ceci ne couvre PAS les
+    # scenarios challenge/carrousel ci-dessous (ces derniers invoquent le
+    # stub fixture, jamais ce binaire reel — aucun trafic Instagram reel en
+    # molecule, cf commentaire du stub).
+    - name: Verify the pinned gallery-dl binary still documents every CLI option the worker invokes (M4 — argv drift guard)
+      ansible.builtin.command:
+        cmd: /usr/local/bin/gallery-dl --help
+      environment:
+        PIPX_HOME: /opt/pipx
+        PIPX_BIN_DIR: /usr/local/bin
+      changed_when: false
+      register: gallery_dl_help
+
+    - name: Assert each gallery-dl CLI option used by fetch_instagram() is documented by --help
+      ansible.builtin.assert:
+        that:
+          - "'--config-ignore' in gallery_dl_help.stdout"
+          - "'-C ' in gallery_dl_help.stdout or '--cookies' in gallery_dl_help.stdout"
+          - "'--range' in gallery_dl_help.stdout"
+          - "'--download-archive' in gallery_dl_help.stdout"
+          - "'--sleep-request' in gallery_dl_help.stdout"
+          - "'--http-timeout' in gallery_dl_help.stdout"
+          - "'--write-metadata' in gallery_dl_help.stdout"
+          - "'-D ' in gallery_dl_help.stdout or '--destination' in gallery_dl_help.stdout"
+        fail_msg: >-
+          Le binaire gallery-dl pipx pinne (1.30.2) ne documente plus une
+          option argv utilisee par le worker (drift CLI, M4). Rappel : ce
+          check ne couvre PAS le stub fixture invoque par les scenarios
+          challenge/carrousel ci-dessous.
 
     - name: Verify unit wires LoadCredential for Instagram cookies (MED — never InaccessiblePaths for this secret)
       ansible.builtin.assert:
@@ -291,6 +339,21 @@
                       '"description": "molecule fixture", '
                       '"username": "operator_test", "shortcode": "carouseltest"}' % idx
                   )
+              sys.exit(0)
+
+          # H4 (revue 2026-08-03) fixture : le sidecar declare un username
+          # DIFFERENT du handle autorise/declare dans le job — simule un
+          # shortcode /p/ appartenant a un tiers (aucun handle derivable de
+          # l'URL elle-meme, cf instagram_handle_from_url). Le worker doit
+          # rejeter APRES acquisition (H4), rien livre.
+          if "impostor-post" in url:
+              media = dest / "impostor.jpg"
+              media.write_bytes(b"fixture-media-impostor")
+              (dest / "impostor.jpg.json").write_text(
+                  '{"id": "impostor", "date": "2026-08-03", '
+                  '"description": "molecule fixture", '
+                  '"username": "someone_else", "shortcode": "impostorpost"}'
+              )
               sys.exit(0)
 
           sys.exit(0)
@@ -340,6 +403,24 @@
         group: prisme-fetcher
         mode: "0640"
 
+    - name: Drop an Instagram job whose sidecar metadata reveals a THIRD PARTY username (H4 post-acquisition enforcement)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-impostor.json
+        content: |
+          {"url": "https://www.instagram.com/p/impostor-post/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: sidecar username mismatch (H4)"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Drop an Instagram job targeting stories/<other-handle>/ (H4 — 2nd URL segment must be checked)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-stories-other.json
+        content: |
+          {"url": "https://www.instagram.com/stories/someone_else/123456789/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: stories 2nd segment mismatch (H4)"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
     - name: Run a second worker pass to process the Instagram adapter fixtures
       ansible.builtin.command:
         cmd: python3 /usr/local/libexec/prisme-fetcher --once
@@ -354,30 +435,35 @@
         recurse: true
       register: instagram_manifests
 
-    - name: Assert all 4 non-carousel Instagram scenarios archived a manifest with the expected reason
+    # C1 (revue 2026-08-03) : map('lookup', 'ansible.builtin.file') n'existe
+    # pas comme filtre Jinja (lookup est une fonction globale, pas un filtre
+    # — et l'ordre des arguments serait de toute facon inverse). Cette tache
+    # partait en erreur de templating : les 5 assertions ci-dessous n'ont
+    # JAMAIS tourne vertes. Fix : ansible.builtin.slurp (execute sur la
+    # cible, jamais le controller) en boucle, contenu agrege puis
+    # assertion `is search(...)`.
+    - name: Slurp all archived Instagram-adapter manifests from the TARGET host (C1 fix)
+      ansible.builtin.slurp:
+        src: "{{ item.path }}"
+      loop: "{{ instagram_manifests.files }}"
+      register: instagram_manifests_slurped
+
+    - name: Assert all 6 non-carousel Instagram scenarios archived a manifest with the expected reason
+      vars:
+        _instagram_joined: "{{ instagram_manifests_slurped.results | map(attribute='content') | map('b64decode') | join('\n') }}"
       ansible.builtin.assert:
         that:
-          - instagram_manifests.matched >= 4
+          - instagram_manifests.matched >= 6
+          - _instagram_joined is search('handle_not_allowlisted')
+          - _instagram_joined is search('handle_mismatch')
+          - _instagram_joined is search('invalid_range')
           - >-
-            (instagram_manifests.files | map(attribute='path')
-             | map('lookup', 'ansible.builtin.file') | join('\n'))
-            is search('handle_not_allowlisted')
-          - >-
-            (instagram_manifests.files | map(attribute='path')
-             | map('lookup', 'ansible.builtin.file') | join('\n'))
-            is search('handle_mismatch')
-          - >-
-            (instagram_manifests.files | map(attribute='path')
-             | map('lookup', 'ansible.builtin.file') | join('\n'))
-            is search('invalid_range')
-          - >-
-            (instagram_manifests.files | map(attribute='path')
-             | map('lookup', 'ansible.builtin.file') | join('\n'))
-            is search('"state": "blocked"')
-          - >-
-            (instagram_manifests.files | map(attribute='path')
-             | map('lookup', 'ansible.builtin.file') | join('\n'))
-            is search('blocked:challenge_required')
+            _instagram_joined is search('"state": "blocked"')
+          - _instagram_joined is search('blocked:challenge_required')
+          # H4 (revue 2026-08-03) : le tiers /p/impostor-post/ est rejete
+          # APRES acquisition (sidecar username != handle autorise), rien
+          # livre.
+          - _instagram_joined is search('username_not_allowlisted')
 
     - name: Find the delivered Instagram carousel bundle (multi-media — B1 atomic publish)
       ansible.builtin.find:
@@ -405,6 +491,19 @@
           - _carousel_manifest.state == "done"
           - _carousel_manifest.files | length == 3
           - _carousel_manifest.files | selectattr('metadata.username', 'equalto', 'operator_test') | list | length == 3
+          # M8 (revue 2026-08-03) : verifie APRES l'enforcement H4 (tous les
+          # usernames sidecar == handle autorise) -> allowlist_scope passe de
+          # "input_url_only" a "verified_username".
+          - _carousel_manifest.allowlist_scope == "verified_username"
+          # H6 (revue 2026-08-03) : range_default molecule = "1-5" (converge.yml),
+          # 3 medias livres < borne haute 5 -> partial=true. C'est un
+          # HEURISTIQUE CONSERVATEUR documente (delivered < range_upper), PAS
+          # une preuve de perte : un compte reel ayant moins de posts que la
+          # borne haute demandee produira toujours partial=true. Ne JAMAIS
+          # lire "bundle complet" depuis ce champ (CANARY-5 gate wording).
+          - _carousel_manifest.partial == true
+          - _carousel_manifest.range_upper == 5
+          - _carousel_manifest.delivered_count == 3
 
     - name: Find any leftover metadata sidecar in the delivered carousel bundle (must be zero — enriched into manifest, never shipped raw)
       ansible.builtin.find:

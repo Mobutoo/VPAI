@@ -76,6 +76,24 @@ groups:
     'threshold': 0,
     'severity': 'warning',
     'for': '5m'
+  },
+  {
+    'uid': 'prisme-instagram-blocked',
+    'title': 'Prisme Instagram connector blocked',
+    'expr': 'increase(instagram_errors_total{reason="blocked"}[15m])',
+    'threshold': 0,
+    'severity': 'warning',
+    'for': '5m',
+    'noData': 'OK'
+  },
+  {
+    'uid': 'prisme-instagram-auth-degraded',
+    'title': 'Prisme Instagram connector auth degraded while active',
+    'expr': 'instagram_connector_state{state="active"} == 1 and increase(instagram_errors_total{reason="auth"}[15m]) > 0',
+    'threshold': 0,
+    'severity': 'critical',
+    'for': '5m',
+    'noData': 'OK'
   }
 ] %}
       - uid: "{{ alert.uid }}"

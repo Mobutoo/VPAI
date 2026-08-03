@@ -62,6 +62,36 @@
         {"refId": "B", "expr": "karakeep_retry_total"},
         {"refId": "C", "expr": "karakeep_dead_letter_total"}
       ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Instagram items acquired",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "targets": [
+        {"refId": "A", "expr": "increase(instagram_items_acquired_total[15m])"}
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Instagram errors by reason",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "targets": [
+        {"refId": "A", "expr": "increase(instagram_errors_total[15m])", "legendFormat": "{{reason}}"}
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Instagram connector state",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "targets": [
+        {"refId": "A", "expr": "instagram_connector_state == 1", "legendFormat": "{{state}}"}
+      ]
     }
   ]
 }

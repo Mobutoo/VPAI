@@ -20,6 +20,16 @@ n8n_subdomain: "mayi"
 litellm_subdomain: "llm"
 qdrant_subdomain: "qd"
 prisme_subdomain: "prisme"
+# === CANARY Instagram (2026-08-04) ===
+# Worker d'acquisition P5 sur waza (playbooks/hosts/workstation.yml, tags [never, prisme-fetcher]).
+prisme_fetcher_enabled: true
+# Gates 2 et 4 de l'activation Instagram (roles/prisme, PRISME_INSTAGRAM_*) :
+# adapter implémenté+revu (CANARY-1, 4 cycles) et P5 déployé (2026-08-04).
+# Le gate 5 (availability) reste serveur : heartbeat réel du fetcher, ≤90 s.
+# prisme_instagram_enabled reste false (défaut rôle) tant que les cookies
+# Netscape du compte autorisé ne sont pas au vault (gate opérateur CANARY-0).
+prisme_instagram_adapter_ready: true
+prisme_instagram_p5_deployed: true
 lxc_chat_subdomain: "chat"          # → chat.<domain> (Open WebUI lxc-chat sur Banga, 2e saut via Caddy Sese)
 # IP LAN de lxc-chat sur Banga (route Headscale 192.168.1.0/24 déjà approuvée) — vide tant que
 # la réservation DHCP Freebox n'est pas posée côté banga (session /factor factor-lxc-chat-finalize,

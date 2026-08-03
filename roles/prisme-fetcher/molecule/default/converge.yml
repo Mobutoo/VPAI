@@ -50,10 +50,10 @@
     prisme_instagram_tenant_id: "molecule-tenant"
     # Valeur par defaut du role conservee (pas besoin de la reduire) : chaque
     # `--once` demarre un process FRAIS (_INSTAGRAM_AUTH_STATE reinitialise a
-    # checked_at=0.0), et time.monotonic() (horloge depuis le boot, jamais
-    # depuis le lancement du process) est toujours tres largement superieur a
-    # ce seuil des la 1re verification -> une verification fraiche est donc
-    # TOUJOURS effectuee au tout premier passage de chaque invocation --once.
+    # checked_at=None, pas 0.0 -- cf prisme-fetcher.py.j2 L226 et le garde-fou
+    # explicite `if checked_at is not None` L276, meme sentinelle que L1 revue
+    # GO cycle 2), donc la 1re verification de chaque invocation --once est
+    # TOUJOURS effectuee sans avoir besoin de comparer a time.monotonic().
     prisme_instagram_authorization_poll_seconds: 20
     prisme_instagram_heartbeat_interval_seconds: 45
     # H2 (revue 2026-08-03, cycle 4) : seuil ABAISSE a 1 pour ce banc molecule

@@ -9,11 +9,44 @@ groups:
     rules:
 {#- Câblage anticipé (CANARY-4), pour les 2 règles Instagram ci-dessous
    (prisme-instagram-blocked, prisme-instagram-auth-degraded) : producteur
-   absent tant que le retour fetcher→prisme (CANARY-5) n'existe pas ;
-   instagram_errors_total est à 0 permanent d'ici là. Ces 2 règles suivent la
-   doctrine "série contractuellement toujours présente → Alerting sur trou"
-   (cf commentaire plus bas) : pas de noData: OK tant qu'aucun état
-   transitoire légitime n'est documenté explicitement ici. -#}
+   absent tant que le retour fetcher→prisme (CANARY-5, plan complet dans le
+   repo prisme, PAS VPAI : ~/work/saas/prisme/docs/2026-08-03-plan-canary-instagram.md)
+   n'existe pas.
+
+   CYCLE 2 (revue precedente, corrige ci-dessous) : le commentaire affirmait
+   a tort qu'"instagram_errors_total est a 0 permanent" en attendant
+   CANARY-5. C'est FAUX : tant que l'image prisme epinglee (versions.yml:45,
+   digest 01b67898, PRE-Instagram) est deployee, ces series METRIQUES SONT
+   ABSENTES (aucun point, pas une valeur 0). "absent" et "a 0" ne sont PAS
+   equivalents pour Grafana/PromQL : une regle brute sur une serie absente
+   part en NoData, pas en 0. D'ou le patron ci-dessous.
+
+   ORDRE DE DEPLOIEMENT OBLIGATOIRE (CANARY-5, a respecter dans cet ordre) :
+     1. rebuild + pin de l'image prisme portant les metriques Instagram
+        (instagram_connector_state, instagram_errors_total) dans
+        inventory/group_vars/all/versions.yml
+     2. deploy prisme (le producteur des metriques doit tourner AVANT le
+        monitoring, sinon les 2 regles ci-dessous evaluent sur du vide)
+     3. deploy monitoring (ce role) -- cf meme sequence documentee en tete de
+        roles/prisme-fetcher/defaults/main.yml (section CANARY, gate humain)
+
+   PATRON RETENU (dissout le NoData ET le matching cross-serie) : chaque
+   expression finale enveloppe CHAQUE membre de la formule dans
+   `(... ) or vector(0)`, de sorte que la serie resultante existe TOUJOURS
+   (0 = sain ou absent-donc-neutre, >0 = probleme reel). Consequence assumee
+   (limite documentee, pas un bug) : si les metriques Instagram sont
+   TOTALEMENT absentes (image pre-Instagram, avant l'etape 1 ci-dessus), les
+   deux expressions valent 0 en permanence -- AUCUNE fausse alerte, mais
+   AUCUNE detection d'un scrape reellement casse sur ce point de collecte
+   precis non plus. Cette limite est couverte par une autre regle du meme
+   fichier : prisme-stalled (absent(up{job="prisme"}) ...) detecte la panne
+   de scrape au niveau service, pas metrique par metrique -- c'est le filet
+   de secours pour ce cas, pas ces 2 regles Instagram elles-memes.
+
+   noDataState reste "Alerting" (defaut du template, cf plus bas) : desormais
+   SIGNIFIANT une fois les `or vector(0)` en place, puisque la seule facon
+   d'obtenir un NoData ici est une panne totale du pipeline d'evaluation
+   Grafana/VictoriaMetrics (pas un etat Instagram normal). -#}
 {% for alert in [
   {
     'uid': 'prisme-stalled',

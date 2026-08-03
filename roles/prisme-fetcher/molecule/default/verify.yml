@@ -1277,6 +1277,20 @@
     # ce qu'il pretendait tester. Ne PAS redemarrer le stub transitoire pour
     # "corriger" l'ordre inverse (systemd-run sur un nom d'unite deja consomme
     # est fragile) : ce bloc reste ordonne ICI, avant l'arret, point final.
+    #
+    # LOW (revue GO cycle 3) : effet de bord ASSUME de cette meme passe --once
+    # -- dans le mode stub "heartbeat_404", la route authorization repond
+    # authorized:true (seule /heartbeat est flippee en 404 ici), donc cette
+    # passe consomme aussi le PREMIER job Instagram encore pending au moment
+    # ou elle s'execute : par tri alphabetique des jobs du fixture, c'est le
+    # job "badtoken" (deja teste ci-dessus en pending/attempts=0 via un run
+    # authz_badtoken_state distinct AVANT ce bloc) qui est repris ici, tente
+    # une acquisition avec un resultat vide, et termine en etat terminal.
+    # Aucun assert POSTERIEUR a ce bloc ne relit l'etat de ce job precis --
+    # l'effet de bord est donc invisible dans les assertions du scenario mais
+    # bien reel sur le systeme de fichiers (manifest cree/etat change). A
+    # documenter si un futur assert venait a reutiliser ce meme job apres ce
+    # point du scenario.
 
     - name: Flip the fetcher control-plane stub to heartbeat_404 (LOW — heartbeat not_provisioned)
       ansible.builtin.copy:

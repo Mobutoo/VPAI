@@ -1072,12 +1072,19 @@ def process_instagram_job(db: sqlite3.Connection, job_id: str, job: dict, domain
                 if info["metadata"].get("username")
                 and info["metadata"]["username"].lower() != handle
             ]
-            if absent:
-                manifest["username_check"] = {"expected": handle, "observed": observed_usernames}
-                raise InstagramUsernameUnavailable("username_absent")
+            # R3 (revue 2026-08-03, cycle 3) : `mismatched` DOIT etre teste
+            # AVANT `absent` — un carrousel mixte (un media confirme
+            # appartenir a un tiers + un media sans username sidecar) etait
+            # auparavant classe `absent` (retriable, 5 re-telechargements du
+            # contenu tiers avant epuisement de MAX_ATTEMPTS) au lieu de
+            # `mismatched` (terminal, aucun retry). Un impostor CONFIRME prime
+            # toujours sur une simple absence non concluante.
             if mismatched:
                 manifest["username_check"] = {"expected": handle, "observed": observed_usernames}
                 raise InstagramUsernameRejected("username_not_allowlisted")
+            if absent:
+                manifest["username_check"] = {"expected": handle, "observed": observed_usernames}
+                raise InstagramUsernameUnavailable("username_absent")
     except InstagramBlocked as error:
         # Arret propre : state=blocked est TERMINAL (cf scan_jobs), jamais
         # repasse par handle_failure/backoff — pas de retry automatique.

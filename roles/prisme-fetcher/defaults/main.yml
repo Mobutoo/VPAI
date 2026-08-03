@@ -135,6 +135,17 @@ prisme_instagram_range_default: "1-20"
 # avant tout appel gallery-dl (state=rejected, reason=range_upper_too_large).
 prisme_instagram_range_max_upper: 20
 
+# L1 (revue 2026-08-03, cycle 3) : plafond dur INDEPENDANT de la formule H7
+# (range_upper * (rate+http_timeout) * marge) — deriver cette constante de la
+# MEME formule appliquee a prisme_instagram_range_max_upper rendait le min()
+# de defense en profondeur dans fetch_instagram() un no-op algebrique
+# permanent (aucun cas ne pouvait jamais depasser cette "borne"). Valeur
+# choisie : large par rapport a la deadline H7 nominale au plafond actuel
+# (range_max_upper=20 * (rate 45 + http_timeout 30) * marge 2 = 3000s) tout
+# en bornant reellement un scenario ou range_max_upper serait releve sans
+# ajuster ce plafond en parallele.
+prisme_instagram_max_job_seconds: 7200
+
 # Fichier d'archive gallery-dl (--download-archive) : persistant sous
 # prisme_fetcher_root (jamais dans work/<job_id>, purge a chaque job) pour que
 # re-executer un job deja acquis ne re-telecharge rien.

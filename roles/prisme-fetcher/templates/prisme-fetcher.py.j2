@@ -41,6 +41,9 @@ STOP = False
 
 MIN_FREE_BYTES = {{ prisme_fetcher_min_free_bytes }}
 POLL_SECONDS = {{ prisme_fetcher_poll_seconds }}
+# L2 (revue 2026-08-03, cycle 2) : cadence de purge_old_artifacts() dans
+# main() — cf commentaire dans main() ci-dessous.
+PURGE_INTERVAL_SECONDS = 3600
 
 # --- Adapters reseau generiques (HTTP + yt-dlp). ---
 ALLOWED_DOMAINS = {{ prisme_fetcher_allowed_domains | to_json }}
@@ -84,9 +87,17 @@ INSTAGRAM_BLOCKED_MARKERS = {{ prisme_instagram_blocked_markers | to_json }}
 # derive de cette borne, applique en defense en profondeur dans
 # fetch_instagram meme si range_upper etait deja valide.
 INSTAGRAM_RANGE_MAX_UPPER = {{ prisme_instagram_range_max_upper }}
-INSTAGRAM_MAX_JOB_SECONDS = INSTAGRAM_RANGE_MAX_UPPER * (
-    INSTAGRAM_RATE_LIMIT_SECONDS + INSTAGRAM_HTTP_TIMEOUT_SECONDS
-) * INSTAGRAM_DEADLINE_MARGIN
+# L1 (revue 2026-08-03, cycle 3) : cette constante etait auparavant DERIVEE
+# de la MEME formule que la deadline nominale qu'elle est censee borner en
+# defense en profondeur (range_upper * (rate+http_timeout) * marge) — ce qui
+# rendait `min(deadline, INSTAGRAM_MAX_JOB_SECONDS)` dans fetch_instagram()
+# un no-op ALGEBRIQUE PERMANENT (la deadline nominale ne peut jamais depasser
+# une borne qui utilise exactement la meme formule au pire cas, range_upper
+# <= INSTAGRAM_RANGE_MAX_UPPER etant deja garanti en amont). Variable
+# EXPLICITE et INDEPENDANTE (cf defaults/main.yml), pour que ce plafond
+# reste une vraie defense en profondeur meme si INSTAGRAM_RANGE_MAX_UPPER
+# est releve sans ajustement correspondant.
+INSTAGRAM_MAX_JOB_SECONDS = {{ prisme_instagram_max_job_seconds }}
 # M-F (revue 2026-08-03, cycle 2) : manifests/ et rejects/ n'avaient aucune
 # retention -> croissance non bornee sur la duree de vie du canary. Purge par
 # age dans la boucle principale (main()).
@@ -1439,9 +1450,18 @@ def main() -> None:
     acquire_singleton_lock()
     db = connect()
     once = "--once" in sys.argv or os.environ.get("PRISME_FETCHER_ONESHOT") == "1"
+    # L2 (revue 2026-08-03, cycle 2) : purge_old_artifacts() tournait a CHAQUE
+    # tour de boucle principale (POLL_SECONDS=2 par defaut) — un iterdir()+
+    # stat() complet de manifests/+rejects/ toutes les 2 secondes en continu,
+    # cout I/O inutile pour une purge dont la granularite est le JOUR
+    # (INSTAGRAM_ARTIFACT_RETENTION_SECONDS). Cadence a au plus 1x/heure.
+    last_purge_at = 0
     while not STOP:
         touch_heartbeat(db)
-        purge_old_artifacts(int(time.time()))
+        now = int(time.time())
+        if now - last_purge_at >= PURGE_INTERVAL_SECONDS:
+            purge_old_artifacts(now)
+            last_purge_at = now
         for source in sorted(INCOMING.glob("*.ready")):
             try:
                 process_fixture(db, source)

@@ -76,9 +76,23 @@ prisme_fetcher_max_attempts: 5
 prisme_fetcher_retry_backoff_seconds: 60
 
 # --- Adapter Instagram (CANARY, gate humain — cf.
-# saas/prisme/docs/2026-08-03-plan-canary-instagram.md) ---
+# saas/prisme/docs/2026-08-03-plan-canary-instagram.md, plan complet dans le
+# repo prisme, PAS VPAI : ~/work/saas/prisme/docs/2026-08-03-plan-canary-instagram.md) ---
 # Desactive par defaut. L'activation reelle passe par l'endpoint gated de
 # Prisme (5 conditions verifiees serveur), jamais par ce seul flag.
+#
+# ORDRE DE DEPLOIEMENT OBLIGATOIRE (CANARY-5, meme sequence documentee cote
+# monitoring dans roles/monitoring/templates/grafana/provisioning/
+# alerting-prisme.yaml.j2) :
+#   1. rebuild + pin de l'image prisme portant les metriques Instagram
+#      (instagram_connector_state, instagram_errors_total) dans
+#      inventory/group_vars/all/versions.yml
+#   2. deploy prisme (le producteur des metriques doit tourner avant le
+#      monitoring)
+#   3. deploy monitoring (roles/monitoring) -- avant l'etape 1, les 2 regles
+#      d'alerting Instagram evaluent sur des series ABSENTES (pas "a 0" --
+#      cf commentaire du template alerting-prisme.yaml.j2 pour la distinction
+#      et la limite assumee sur la detection de scrape casse).
 prisme_instagram_enabled: false
 # gallery-dl : pipx pinne EXACT (decision CANARY-0). Le paquet apt noble
 # (1.26.9, 2024-04) est trop vieux pour les extracteurs Instagram, et

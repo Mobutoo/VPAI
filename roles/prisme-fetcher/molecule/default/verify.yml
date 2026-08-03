@@ -337,7 +337,7 @@
         that:
           - "'LoadCredential=instagram-cookies:/etc/prisme-fetcher/instagram-cookies.txt' in (unit_raw.content | b64decode)"
 
-    - name: Deploy a deterministic gallery-dl stub (challenge/carousel fixtures — zero real Instagram traffic)
+    - name: Deploy a deterministic gallery-dl stub (challenge/carousel/dedup fixtures — zero real Instagram traffic)
       ansible.builtin.copy:
         dest: /usr/local/libexec/prisme-fetcher-gallery-dl-stub
         owner: root
@@ -346,19 +346,34 @@
         content: |
           #!/usr/bin/env python3
           # Molecule fixture ONLY : simule gallery-dl pour les scenarios
-          # deterministes (challenge Instagram + carrousel multi-media) sans
-          # jamais emettre de trafic reseau reel vers Instagram (design :
-          # aucun contournement de challenge/CAPTCHA n'est simule ici, on
-          # simule au contraire l'ARRET propre du worker sur un tel signal).
+          # deterministes (challenge Instagram + carrousel multi-media +
+          # dedup --download-archive) sans jamais emettre de trafic reseau
+          # reel vers Instagram (design : aucun contournement de
+          # challenge/CAPTCHA n'est simule ici, on simule au contraire
+          # l'ARRET propre du worker sur un tel signal).
+          #
+          # R5 (revue 2026-08-03, cycle 3) : le stub precedent ignorait
+          # totalement --download-archive (aucune table sqlite, aucune
+          # semantique de skip) — les branches H-B/R1 (dedup cross-job)
+          # n'etaient donc JAMAIS exercees en molecule, cause racine
+          # documentee de R1 (le bug st_size>0 global n'a jamais ete detecte
+          # par le banc molecule). Semantique reprise du banc du reviewer
+          # (table sqlite "archive", cle "entry" — cf aussi
+          # instagram_archive_row_count/R8 cote worker pour la source
+          # officielle gallery-dl sur le format de ce fichier).
+          import sqlite3
           import sys
           from pathlib import Path
 
           args = sys.argv[1:]
           url = args[-1]
           dest = Path(".")
+          archive_path = None
           for i, a in enumerate(args):
               if a == "-D" and i + 1 < len(args):
                   dest = Path(args[i + 1])
+              if a == "--download-archive" and i + 1 < len(args):
+                  archive_path = Path(args[i + 1])
 
           if "blocked-challenge" in url:
               sys.stderr.write("Instagram responded: checkpoint_required - challenge_required\n")
@@ -388,6 +403,57 @@
                   '"description": "molecule fixture", '
                   '"username": "someone_else", "shortcode": "impostorpost"}'
               )
+              sys.exit(0)
+
+          # R5/M-G (revue 2026-08-03, cycle 3) fixture : sidecar SANS aucune
+          # cle username (ni racine, ni owner.username/owner_username) — le
+          # worker doit classer ce cas InstagramUsernameUnavailable
+          # (retriable, jamais terminal), a distinguer de impostor-post
+          # ci-dessus (mismatch confirme, terminal, cf R3).
+          if "nouser-post" in url:
+              media = dest / "nouser.jpg"
+              media.write_bytes(b"fixture-media-nouser")
+              (dest / "nouser.jpg.json").write_text(
+                  '{"id": "nouser", "date": "2026-08-03", '
+                  '"description": "molecule fixture", "shortcode": "nouserpost"}'
+              )
+              sys.exit(0)
+
+          # R5/R1 fixture : rien produit, AUCUNE entree d'archive prealable
+          # pour cette url -> le worker doit rejeter avec
+          # instagram_empty_result_no_prior_delivery (state=failed), jamais
+          # done (cf discriminant per-job R1).
+          if "empty-result" in url:
+              sys.exit(0)
+
+          # R5/R1 fixture : semantique --download-archive REELLE (table
+          # sqlite "archive", cle "entry" text primary key) pour exercer le
+          # dedup cross-job H-B. Job A (1re execution sur cette url) livre 1
+          # media et l'enregistre dans SA copie d'archive scopee au job
+          # (fusionnee vers l'archive persistante APRES livraison reussie,
+          # cf merge_instagram_archive). Job B (MEME url, job_id distinct,
+          # execute dans une passe worker ULTERIEURE) retrouve l'entree deja
+          # presente dans sa propre copie seedee depuis l'archive
+          # persistante -> produit 0 fichier -> le worker doit alors
+          # confronter jobs (meme url, etat "done" anterieur, R1) pour poser
+          # done+archive_overlap, jamais un signal global.
+          if "dedup-post" in url and archive_path is not None:
+              conn = sqlite3.connect(archive_path)
+              conn.execute("create table if not exists archive (entry text primary key)")
+              conn.commit()
+              entry = "instagram_dedup-post_1"
+              already = conn.execute("select 1 from archive where entry=?", (entry,)).fetchone()
+              if already is None:
+                  media = dest / "dedup_1.jpg"
+                  media.write_bytes(b"fixture-media-dedup")
+                  (dest / "dedup_1.jpg.json").write_text(
+                      '{"id": "dedup_1", "date": "2026-08-03", '
+                      '"description": "molecule fixture", '
+                      '"username": "operator_test", "shortcode": "deduppost"}'
+                  )
+                  conn.execute("insert into archive(entry) values (?)", (entry,))
+                  conn.commit()
+              conn.close()
               sys.exit(0)
 
           sys.exit(0)
@@ -464,6 +530,39 @@
         group: prisme-fetcher
         mode: "0640"
 
+    # R5 (revue 2026-08-03, cycle 3) : job A du scenario dedup cross-job
+    # (H-B/R1) — 1re livraison sur cette url, amorce l'archive persistante.
+    # Traite dans CETTE meme passe (pass 2, avec tous les autres scenarios
+    # ci-dessus). Le job B (meme url, job_id distinct) est depose et traite
+    # PLUS BAS, dans une passe ULTERIEURE, pour que l'archive persistante
+    # soit deja alimentee au moment ou il s'execute.
+    - name: Drop Instagram job A for cross-job archive dedup (R5/R1 — first delivery, primes the persistent archive)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-dedup-a.json
+        content: |
+          {"url": "https://www.instagram.com/p/dedup-post/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: dedup job A (primes archive, R5/R1)"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Drop an Instagram job whose sidecar carries NO username at all (R5/M-G — retriable, never terminal)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-nouser.json
+        content: |
+          {"url": "https://www.instagram.com/p/nouser-post/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: sidecar has no username field (R5/M-G)"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Drop an Instagram job that yields a genuinely empty result with NO prior delivery (R5/R1 — must fail, never done)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-empty-result.json
+        content: |
+          {"url": "https://www.instagram.com/p/empty-result/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: empty result, no archive overlap (R5/R1)"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
     - name: Run a second worker pass to process the Instagram adapter fixtures
       ansible.builtin.command:
         cmd: python3 /usr/local/libexec/prisme-fetcher --once
@@ -493,12 +592,17 @@
       loop: "{{ instagram_manifests.files }}"
       register: instagram_manifests_slurped
 
-    - name: Assert all 6 non-carousel Instagram scenarios archived a manifest with the expected reason
+    - name: Assert all 8 non-carousel/non-dedup Instagram scenarios archived a manifest with the expected reason
       vars:
         _instagram_joined: "{{ instagram_manifests_slurped.results | map(attribute='content') | map('b64decode') | join('\n') }}"
       ansible.builtin.assert:
         that:
-          - instagram_manifests.matched >= 7
+          # 7 depuis cycle 1/2 (handle/mismatch/invalid_range/blocked/
+          # username_not_allowlisted/range_upper_too_large) + 2 nouvelles
+          # (R5/cycle 3 : username_absent + instagram_empty_result_no_prior_delivery).
+          # dedup-a (job A du scenario R1) est un SUCCES (done) et n'est
+          # JAMAIS snapshotte sous rejects/ (M-B) — n'entre pas dans ce compte.
+          - instagram_manifests.matched >= 9
           - _instagram_joined is search('handle_not_allowlisted')
           - _instagram_joined is search('handle_mismatch')
           - _instagram_joined is search('invalid_range')
@@ -512,6 +616,14 @@
           # H-C (revue 2026-08-03, cycle 2) : range "1-99999" rejete AVANT
           # tout appel gallery-dl (jamais une deadline demesuree).
           - _instagram_joined is search('range_upper_too_large')
+          # R5/M-G (revue 2026-08-03, cycle 3) : sidecar sans username ->
+          # retriable (InstagramUsernameUnavailable), jamais terminal
+          # directement — distinct de username_not_allowlisted ci-dessus (R3).
+          - _instagram_joined is search('username_absent')
+          # R5/R1 (revue 2026-08-03, cycle 3) : resultat vide SANS livraison
+          # anterieure sur cette url -> echec REEL, jamais un faux `done`
+          # global (cause racine R1).
+          - _instagram_joined is search('instagram_empty_result_no_prior_delivery')
 
     - name: Find the delivered Instagram carousel bundle (multi-media — B1 atomic publish)
       ansible.builtin.find:
@@ -583,6 +695,79 @@
         that:
           - instagram_leftover_workdirs.matched == 0
 
+    - name: Find the delivered Instagram dedup bundle (job A only, from the pass above)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/outgoing
+        patterns: "dedup_1.jpg"
+        recurse: true
+      register: dedup_bundle_media
+
+    - name: Assert job A delivered the dedup bundle exactly once (baseline before job B)
+      ansible.builtin.assert:
+        that:
+          - dedup_bundle_media.matched == 1
+
+    # R5/R1 (revue 2026-08-03, cycle 3) : job B est depose et traite dans une
+    # passe SEPAREE, APRES que job A ait deja atteint l'etat "done" — c'est
+    # precisement la condition que le discriminant R1 (jobs, meme url, etat
+    # "done" anterieur) doit reconnaitre. MEME url que job A, job_id distinct
+    # (contenu du fichier different, cf note) pour ne pas etre GC'd comme un
+    # doublon avant traitement.
+    - name: Drop Instagram job B for cross-job archive dedup (R5/R1 — same url, distinct job_id, archive already primed by job A)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-dedup-b.json
+        content: |
+          {"url": "https://www.instagram.com/p/dedup-post/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: dedup job B (archive already primed by job A, R5/R1)"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Run an intermediate worker pass to process Instagram dedup job B (R5/R1)
+      ansible.builtin.command:
+        cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      environment:
+        CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
+      become: true
+      become_user: prisme-fetcher
+      changed_when: false
+
+    - name: Find the delivered Instagram dedup bundle again (job B must NOT duplicate job A's delivery)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/outgoing
+        patterns: "dedup_1.jpg"
+        recurse: true
+      register: dedup_bundle_media_after_b
+
+    - name: Assert job B did not deliver a second copy (dedup correctness)
+      ansible.builtin.assert:
+        that:
+          - dedup_bundle_media_after_b.matched == 1
+
+    - name: Find ALL per-job manifests (manifests/ — M7 traceability, includes successes, unlike rejects/)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/manifests
+        patterns: "*.json"
+      register: instagram_all_manifests
+
+    - name: Slurp all per-job manifests from the TARGET host (R5/R1)
+      ansible.builtin.slurp:
+        src: "{{ item.path }}"
+      loop: "{{ instagram_all_manifests.files }}"
+      register: instagram_all_manifests_slurped
+
+    - name: Assert Instagram dedup job B was marked done+archive_overlap (R1 — job-scoped proof via jobs, never a global signal)
+      vars:
+        _all_manifests_joined: "{{ instagram_all_manifests_slurped.results | map(attribute='content') | map('b64decode') | join('\n') }}"
+      ansible.builtin.assert:
+        that:
+          # L5 : contrat H-B fige — le manifeste de job B porte
+          # skipped_already_acquired/partial/partial_reason, JAMAIS
+          # files/delivered_count (aucun media n'a ete acquis par CE job).
+          - >-
+            _all_manifests_joined is search('"skipped_already_acquired": true')
+          - >-
+            _all_manifests_joined is search('"partial_reason": "archive_overlap"')
+
     - name: Run a THIRD worker pass — the blocked job must NOT retry (terminal state, GC'd)
       ansible.builtin.command:
         cmd: python3 /usr/local/libexec/prisme-fetcher --once
@@ -592,13 +777,31 @@
       become_user: prisme-fetcher
       changed_when: false
 
-    - name: Verify the blocked/rejected/carousel job files were garbage-collected (terminal states, never re-processed)
+    # R5/M-G (revue 2026-08-03, cycle 3) : "nouser" reste volontairement
+    # EXCLU — son etat est retry_wait (1 tentative < MAX_ATTEMPTS), pas un
+    # etat terminal (done/rejected/failed/blocked) : scan_jobs() ne GC que les
+    # etats terminaux (cf commentaire GC dans le worker), retry_wait est donc
+    # cense survivre jusqu'a l'epuisement des tentatives ou une reprise
+    # operateur legitime. L'inclure ici casserait la distinction
+    # retriable/terminal que ce meme scenario est cense demontrer.
+    - name: Verify the blocked/rejected/carousel/dedup job files were garbage-collected (terminal states, never re-processed)
       ansible.builtin.find:
         paths: /var/lib/prisme-fetcher/jobs
         patterns: "molecule-instagram-*.json"
+        excludes: "molecule-instagram-nouser.json"
       register: instagram_jobs_leftover
 
-    - name: Assert zero Instagram job files remain (no retry loop on terminal states, incl. blocked)
+    - name: Assert zero terminal-state Instagram job files remain (no retry loop on terminal states, incl. blocked)
       ansible.builtin.assert:
         that:
           - instagram_jobs_leftover.matched == 0
+
+    - name: Verify the retriable nouser job file still exists (R5/M-G — retry_wait is not GC'd, unlike a terminal state)
+      ansible.builtin.stat:
+        path: /var/lib/prisme-fetcher/jobs/molecule-instagram-nouser.json
+      register: nouser_job_leftover
+
+    - name: Assert the nouser job stayed in DB-tracked retry_wait (never silently dropped, never terminal)
+      ansible.builtin.assert:
+        that:
+          - nouser_job_leftover.stat.exists

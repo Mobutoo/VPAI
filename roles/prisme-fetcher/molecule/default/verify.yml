@@ -1081,6 +1081,26 @@
       become: true
       become_user: prisme-fetcher
       changed_when: false
+      register: not_provisioned_pass
+
+    # MED (revue 2026-08-03) : les asserts precedents ne verifiaient que la
+    # PRESENCE fichier/DB, jamais l'evenement JSON reellement emis par le
+    # worker sur cette passe -- reste vacus (aurait pu passer vert meme si le
+    # worker n'avait jamais reellement classe le verdict). Cf commentaire M-A
+    # plus bas (:1130) : le tri alphabetique place authz-denied AVANT
+    # authz-not-provisioned, donc c'est le job DENIED (deja pending depuis la
+    # passe precedente) qui execute reellement la verification reseau ici et
+    # recoit le 404 -- c'est SON evenement instagram_authorization_denied
+    # qu'on retrouve dans le stdout de CETTE passe.
+    - name: Assert this pass really observed the 404 verdict (instagram_authorization_denied, state=not_provisioned)
+      ansible.builtin.assert:
+        that:
+          - "'\"state\": \"not_provisioned\"' in not_provisioned_pass.stdout"
+        fail_msg: >-
+          Attendu un evenement instagram_authorization_denied avec
+          state=not_provisioned dans le stdout de cette passe (C1) : le job
+          DENIED, traite en premier par tri alphabetique, doit avoir recu le
+          verdict 404 reel du control-plane : {{ not_provisioned_pass.stdout }}
 
     - name: Verify the not-provisioned job file was NOT garbage-collected (C1 — pending, never terminal)
       ansible.builtin.stat:

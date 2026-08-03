@@ -189,11 +189,19 @@
     # valeur hors format "N-M", ex. "abc" ou sans tiret, produirait un
     # IndexError qui casserait la TACHE elle-meme au lieu du fail-loud
     # `fail_msg` ci-dessous ; l'autre condition du `that` verifie deja le
-    # format complet, mais les vars sont evaluees AVANT le `that`). Un
-    # regex_search qui ne matche pas rend None -> default('0') -> 0, ce qui
-    # fait echouer la comparaison (donc l'assert) sans jamais lever
-    # d'exception de templating.
-    _range_default_upper: "{{ (prisme_instagram_range_default | regex_search('-([0-9]+)$', '\\1')) | default('0', true) | int }}"
+    # format complet, mais les vars sont evaluees AVANT le `that`).
+    # ATTENTION (verifie localement, ansible-core) : regex_search(pattern,
+    # groupe) AVEC un seul groupe de capture retourne une LISTE (['20']),
+    # PAS une chaine — `| int` sur une liste retombe silencieusement a 0 SANS
+    # jamais lever d'erreur (l'assert passerait alors TOUJOURS, quelle que
+    # soit la vraie valeur : bug constate puis corrige avant commit, jamais
+    # deploye). Fix : regex_search SANS groupe (retourne la chaine complete
+    # du match, "-20") puis slice `[1:]` pour retirer le "-" — jamais de
+    # groupe de capture ici. Un regex_search qui ne matche pas rend None ->
+    # default('-0', true) -> "-0"[1:] -> "0" -> 0, ce qui fait echouer la
+    # comparaison (donc l'assert) sans jamais lever d'exception de
+    # templating.
+    _range_default_upper: "{{ ((prisme_instagram_range_default | regex_search('-([0-9]+)$')) | default('-0', true))[1:] | int }}"
   ansible.builtin.assert:
     that:
       - prisme_instagram_cookies_content | default('') | length > 0

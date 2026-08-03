@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -23,8 +24,19 @@ OUTGOING = ROOT / "outgoing"
 JOBS = ROOT / "jobs"
 WORK = ROOT / "work"
 REJECTS = ROOT / "rejects"
+# M7 (revue 2026-08-03) : un manifeste par job_id, ecrit pour TOUT etat
+# terminal — traçabilite independante de la deduplication par digest de
+# bundle (deux jobs distincts peuvent produire le meme digest de contenu ;
+# jobs.manifest_path pointe ICI, jamais vers un bundle qui pourrait
+# appartenir a un autre job_id).
+MANIFESTS = ROOT / "manifests"
 CACHE = ROOT / ".cache"
 DATABASE = ROOT / "state.sqlite3"
+# M1 (revue 2026-08-03) : verrou singleton REEL (le commentaire de l'unite
+# systemd affirmait "un seul writer SQLite" sans jamais l'appliquer). Un seul
+# process worker a la fois sur cette instance de ROOT.
+LOCK_FILE = ROOT / ".worker.lock"
+_LOCK_HANDLE = None
 STOP = False
 
 MIN_FREE_BYTES = {{ prisme_fetcher_min_free_bytes }}
@@ -58,6 +70,9 @@ INSTAGRAM_ARCHIVE_FILE = Path({{ prisme_instagram_archive_file | to_json }})
 INSTAGRAM_CREDENTIAL_NAME = {{ prisme_instagram_credential_name | to_json }}
 INSTAGRAM_HTTP_TIMEOUT_SECONDS = {{ prisme_instagram_http_timeout_seconds }}
 INSTAGRAM_MAX_BUNDLE_BYTES = {{ prisme_instagram_max_bundle_bytes }}
+# H7 : deadline = range_upper * (RATE_LIMIT + HTTP_TIMEOUT) * marge (cf
+# defaults/main.yml pour la justification complete de la formule/marge).
+INSTAGRAM_DEADLINE_MARGIN = {{ prisme_instagram_deadline_margin }}
 INSTAGRAM_BLOCKED_MARKERS = {{ prisme_instagram_blocked_markers | to_json }}
 # Segments d'URL Instagram qui ne sont JAMAIS un handle de profil (post/reel/
 # story/etc.) : si le premier segment de chemin en fait partie, aucun handle
@@ -124,10 +139,32 @@ def stop(_signum: int, _frame: object) -> None:
     STOP = True
 
 
+def acquire_singleton_lock() -> None:
+    # M1 : fcntl.flock exclusif non bloquant sur ROOT/.worker.lock — un seul
+    # writer SQLite reel a la fois pour cette instance de ROOT (le
+    # commentaire de l'unite systemd affirmait cette garantie sans jamais
+    # l'appliquer ; verify.yml lance lui-meme un --once qui doit pouvoir
+    # coexister sequentiellement avec le service, jamais en concurrence).
+    global _LOCK_HANDLE
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(LOCK_FILE, "a+")  # noqa: SIM115 (garde le fd ouvert pour la duree du process)
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        print(json.dumps({"event": "worker_already_running", "lock_file": str(LOCK_FILE)}))
+        sys.exit(1)
+    _LOCK_HANDLE = handle
+
+
 def connect() -> sqlite3.Connection:
     db = sqlite3.connect(DATABASE)
     db.row_factory = sqlite3.Row
     db.execute("pragma journal_mode=wal")
+    # M1 : busy_timeout complementaire au flock applicatif ci-dessus (defense
+    # en profondeur si un outil externe ouvre la base directement, ex.
+    # inspection manuelle service arrete).
+    db.execute("pragma busy_timeout=5000")
     db.execute("""create table if not exists items (
         source_path text primary key,
         sha256 text not null,
@@ -311,7 +348,16 @@ def instagram_handle_from_url(url: str) -> str | None:
     path = urllib.parse.urlsplit(url).path.strip("/")
     if not path:
         return None
-    first = path.split("/")[0].lower()
+    segments = path.split("/")
+    first = segments[0].lower()
+    if first == "stories":
+        # H4 (revue 2026-08-03) : stories/<handle>/<story_id>/ (et
+        # stories/highlights/<id>/, fail-closed par design — "highlights" est
+        # un segment qui ne correspond a aucun handle autorise) porte le
+        # handle/victime en 2e segment, jamais en 1er. Sans ce cas special,
+        # le mismatch stories/<victime>/... n'etait jamais compare (piege
+        # exploitable — le job "handle" auto-declare aurait seul fait foi).
+        return segments[1].lower() if len(segments) > 1 and segments[1] else None
     if first in _INSTAGRAM_NON_PROFILE_SEGMENTS:
         return None
     return first
@@ -346,10 +392,27 @@ def instagram_cookies_path() -> Path:
     return path
 
 
+_INSTAGRAM_NUMERIC_MARKER_RE_CACHE: dict[str, re.Pattern[str]] = {}
+
+
 def classify_instagram_failure(stderr_tail: str) -> str | None:
+    # M5 (revue 2026-08-03) : un marqueur PUREMENT numerique ("401"/"403"/
+    # "429") matchait auparavant en simple sous-chaine — un shortcode hostile
+    # type "C403xyz" declenchait a tort un blocage terminal sur un echec
+    # transitoire. Ancre sur une frontiere de mot (\b) pour ces marqueurs
+    # UNIQUEMENT ; les marqueurs textuels restent en sous-chaine (deja assez
+    # longs pour ne jamais produire de faux positif).
     lowered = stderr_tail.lower()
     for marker, reason in INSTAGRAM_BLOCKED_MARKERS.items():
-        if marker.lower() in lowered:
+        marker_lower = marker.lower()
+        if marker_lower.isdigit():
+            pattern = _INSTAGRAM_NUMERIC_MARKER_RE_CACHE.get(marker_lower)
+            if pattern is None:
+                pattern = re.compile(r"\b" + re.escape(marker_lower) + r"\b")
+                _INSTAGRAM_NUMERIC_MARKER_RE_CACHE[marker_lower] = pattern
+            if pattern.search(lowered):
+                return reason
+        elif marker_lower in lowered:
             return reason
     return None
 
@@ -505,7 +568,9 @@ def fetch_ytdlp(url: str, workdir: Path) -> tuple[str, str]:
     return digest, filename
 
 
-def fetch_instagram(url: str, workdir: Path, job_range: str) -> list[dict]:
+def fetch_instagram(
+    url: str, workdir: Path, job_range: str, archive_path: Path, range_upper: int
+) -> list[dict]:
     cookies_path = instagram_cookies_path()
     env = dict(os.environ)
     env["HOME"] = str(ROOT)
@@ -519,7 +584,16 @@ def fetch_instagram(url: str, workdir: Path, job_range: str) -> list[dict]:
         "--config-ignore",
         "-C", str(cookies_path),
         "--range", job_range,
-        "--download-archive", str(INSTAGRAM_ARCHIVE_FILE),
+        # H5/H6 (revue 2026-08-03) : archive SCOPEE PAR JOB (workdir), jamais
+        # directement l'archive persistante partagee. process_instagram_job
+        # seed cette copie depuis l'archive persistante (dedup cross-job,
+        # H6) avant l'appel ; la fusion vers l'archive persistante ne se
+        # produit qu'APRES livraison reussie (merge_instagram_archive), donc
+        # un crash entre acquisition et livraison ne pollue jamais l'archive
+        # partagee (H5 — sans ca, un retry apres crash voyait
+        # files_info==[] et le job etait a tort marque done/skip, perte
+        # definitive et silencieuse).
+        "--download-archive", str(archive_path),
         # Sleep natif gallery-dl (en plus du rate-limit par compte+domaine
         # applique cote worker AVANT meme de lancer ce process — cf
         # process_instagram_job/scan_jobs) : jamais de contournement du
@@ -534,7 +608,14 @@ def fetch_instagram(url: str, workdir: Path, job_range: str) -> list[dict]:
     existing = {p.name for p in workdir.iterdir()}
     stdout_path = workdir / ".gallery-dl.stdout"
     stderr_path = workdir / ".gallery-dl.stderr"
-    deadline = time.monotonic() + INSTAGRAM_HTTP_TIMEOUT_SECONDS * 20
+    # H7 (revue 2026-08-03) : deadline derivee de la borne haute REELLE de
+    # --range (jamais une constante fixe — --sleep-request s'applique ENTRE
+    # CHAQUE media de la plage ; range_upper * (rate_limit+http_timeout) *
+    # marge couvre le sommeil natif gallery-dl cumule + les requetes elles-
+    # memes, avec une marge de securite documentee dans defaults/main.yml).
+    deadline = time.monotonic() + range_upper * (
+        INSTAGRAM_RATE_LIMIT_SECONDS + INSTAGRAM_HTTP_TIMEOUT_SECONDS
+    ) * INSTAGRAM_DEADLINE_MARGIN
     killed_reason = None
     with stdout_path.open("wb") as out, stderr_path.open("wb") as err:
         proc = subprocess.Popen(command, cwd=workdir, env=env, stdout=out, stderr=err)  # noqa: S603
@@ -583,26 +664,25 @@ def fetch_instagram(url: str, workdir: Path, job_range: str) -> list[dict]:
     media_files = [p for p in produced if p.suffix.lower() != ".json"]
     files_info: list[dict] = []
     seen_filenames: set[str] = set()
+    # M6 (revue 2026-08-03) : noms ORIGINAUX pas encore traites — un media
+    # dont le nom assaini collisionnerait avec le nom original d'un media
+    # PAS ENCORE parcouru serait ecrase par media.replace() avant meme
+    # d'etre lu/hashe (perte silencieuse d'un media du carrousel). Initialise
+    # avec tous les noms restants ; chaque media traite retire son propre nom.
+    pending_names = {p.name for p in media_files}
     for media in media_files:
-        digest = hashlib.sha256(media.read_bytes()).hexdigest()
-        filename = sanitize_filename(media.name, digest)
-        if filename in seen_filenames:
-            # Collision post-assainissement entre deux medias distincts du
-            # meme carrousel : desambiguise plutot que d'ecraser silencieusement.
-            filename = f"{digest[:16]}_{filename}"
-        seen_filenames.add(filename)
-        target = media if filename == media.name else workdir / filename
-        if target != media:
-            media.replace(target)
-        # --write-metadata cree <fichier_media_complet>.json (suffixe ajoute,
-        # jamais un remplacement d'extension) : bundle enrichi puis supprime,
-        # jamais livre tel quel (evite de dupliquer/leaker des champs bruts
-        # gallery-dl non selectionnes).
-        sidecar = target.with_name(target.name + ".json")
+        pending_names.discard(media.name)
+        # L1 (revue 2026-08-03) : le sidecar --write-metadata est resolu
+        # depuis le nom ORIGINAL du media, AVANT tout renommage
+        # d'assainissement. Le resoudre APRES (comme avant ce fix) cherchait
+        # <nom_assaini>.json qui n'existe jamais quand le nom a change —
+        # metadata perdue -> neutralisait entierement l'enforcement H4
+        # (username absent == rejet, mais pour la mauvaise raison).
+        original_sidecar = media.with_name(media.name + ".json")
         metadata: dict = {}
-        if sidecar.exists():
+        if original_sidecar.exists():
             try:
-                raw_meta = json.loads(sidecar.read_text())
+                raw_meta = json.loads(original_sidecar.read_text())
                 metadata = {
                     key: raw_meta[key]
                     for key in ("id", "date", "description", "username", "shortcode")
@@ -610,9 +690,78 @@ def fetch_instagram(url: str, workdir: Path, job_range: str) -> list[dict]:
                 }
             except (OSError, json.JSONDecodeError):
                 metadata = {}
-            sidecar.unlink(missing_ok=True)
+            # --write-metadata cree <fichier_media_complet>.json (suffixe
+            # ajoute, jamais un remplacement d'extension) : bundle enrichi
+            # puis supprime, jamais livre tel quel (evite de dupliquer/leaker
+            # des champs bruts gallery-dl non selectionnes).
+            original_sidecar.unlink(missing_ok=True)
+        digest = hashlib.sha256(media.read_bytes()).hexdigest()
+        filename = sanitize_filename(media.name, digest)
+        collides = (
+            filename in seen_filenames
+            or filename in pending_names
+            or (filename != media.name and (workdir / filename).exists())
+        )
+        if collides:
+            # Collision post-assainissement entre deux medias distincts du
+            # meme carrousel (ou avec un media pas encore traite) :
+            # desambiguise plutot que d'ecraser silencieusement.
+            filename = f"{digest[:16]}_{filename}"
+        seen_filenames.add(filename)
+        target = media if filename == media.name else workdir / filename
+        if target != media:
+            media.replace(target)
         files_info.append({"filename": filename, "sha256": digest, "metadata": metadata})
     return files_info
+
+
+def merge_instagram_archive(job_archive: Path, persistent_archive: Path) -> None:
+    # H5/H6 : fusionne les entrees acquises par CE job (archive scopee,
+    # workdir) vers l'archive persistante partagee — appele UNIQUEMENT apres
+    # une livraison reussie (deliver_instagram_bundle). Generique sur le
+    # schema (tables lues depuis sqlite_master de la source, jamais un nom de
+    # table code en dur -> resilient a une evolution du schema gallery-dl).
+    if not job_archive.exists():
+        return
+    persistent_archive.parent.mkdir(parents=True, exist_ok=True)
+    src = sqlite3.connect(job_archive)
+    try:
+        tables = [
+            row[0]
+            for row in src.execute("select name from sqlite_master where type='table'")
+        ]
+        dst = sqlite3.connect(persistent_archive)
+        try:
+            dst.execute("pragma busy_timeout=5000")
+            for table in tables:
+                schema_row = src.execute(
+                    "select sql from sqlite_master where type='table' and name=?", (table,)
+                ).fetchone()
+                if schema_row and schema_row[0]:
+                    dst.execute(schema_row[0].replace("CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1))
+                rows = src.execute(f"select * from {table}").fetchall()  # noqa: S608 (table name from sqlite_master, not external input)
+                if rows:
+                    placeholders = ",".join("?" * len(rows[0]))
+                    dst.executemany(
+                        f"insert or ignore into {table} values ({placeholders})", rows  # noqa: S608
+                    )
+            dst.commit()
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+
+def write_manifest_record(job_id: str, manifest: dict) -> Path:
+    # M7 : copie de traçabilite par job_id, ecrite pour TOUT etat terminal —
+    # independante du bundle outgoing/ (qui peut etre partage entre jobs par
+    # dedup de digest) et independante de rejects/ (best-effort, cf
+    # archive_manifest_snapshot). jobs.manifest_path pointe TOUJOURS ici.
+    part = MANIFESTS / f".{job_id}.json.part"
+    part.write_text(json.dumps(manifest, sort_keys=True) + "\n")
+    final = MANIFESTS / f"{job_id}.json"
+    part.replace(final)
+    return final
 
 
 def deliver_instagram_bundle(files_info: list[dict], workdir: Path, manifest: dict) -> Path:
@@ -637,6 +786,29 @@ def deliver_instagram_bundle(files_info: list[dict], workdir: Path, manifest: di
     return bundle_final
 
 
+class InstagramUsernameRejected(RuntimeError):
+    """H4 : au moins un media acquis a un username sidecar != handle autorise
+    (ou absent). Rejet APRES acquisition, rien livre — jamais un simple echec
+    retriable (le contournement est definitif pour ce job, pas transitoire)."""
+
+
+def _finalize_instagram_job(
+    db: sqlite3.Connection, job_id: str, manifest: dict, workdir: Path, *, state: str, error: str | None = None
+) -> None:
+    # M7 : ecrit systematiquement le manifeste de traçabilite par job_id
+    # (manifests/<job_id>.json) pour TOUT etat terminal, et c'est CE chemin
+    # que jobs.manifest_path reference desormais (jamais le bundle
+    # outgoing/<digest>/manifest.json, qui peut etre partage entre plusieurs
+    # job_id par dedup de digest de contenu).
+    manifest["state"] = state
+    if error is not None:
+        manifest["reason"] = error
+    record_path = write_manifest_record(job_id, manifest)
+    archive_manifest_snapshot(job_id, record_path)
+    update_job(db, job_id, state=state, error=error, manifest_path=str(record_path))
+    shutil.rmtree(workdir, ignore_errors=True)
+
+
 def process_instagram_job(db: sqlite3.Connection, job_id: str, job: dict, domain: str, now: int) -> None:
     if shutil.disk_usage(ROOT).free < MIN_FREE_BYTES:
         raise RuntimeError("disk_low")
@@ -657,78 +829,123 @@ def process_instagram_job(db: sqlite3.Connection, job_id: str, job: dict, domain
         "range": job_range,
         "requested_at": datetime.now(timezone.utc).isoformat(),
         "allowlist_match": allowed,
+        # M8 : "input_url_only" par defaut (seule l'URL/handle DECLARE a ete
+        # verifie) -> promu "verified_username" plus bas UNIQUEMENT apres
+        # l'enforcement post-acquisition H4 (tous les usernames sidecar
+        # confirmes == handle autorise).
+        "allowlist_scope": "input_url_only",
     }
     # Manifeste ecrit AVANT tout telechargement (exigence design).
-    manifest_path = write_manifest(workdir, manifest)
+    write_manifest(workdir, manifest)
     if not allowed:
-        manifest["state"] = "rejected"
-        manifest["reason"] = reject_reason
-        write_manifest(workdir, manifest)
-        archive_manifest_snapshot(job_id, manifest_path)
-        update_job(
-            db, job_id, state="rejected", error=reject_reason,
-            manifest_path=str(manifest_path),
-        )
-        shutil.rmtree(workdir, ignore_errors=True)
+        _finalize_instagram_job(db, job_id, manifest, workdir, state="rejected", error=reject_reason)
         return
     if not _INSTAGRAM_RANGE_RE.fullmatch(job_range):
-        manifest["state"] = "rejected"
-        manifest["reason"] = "invalid_range"
-        write_manifest(workdir, manifest)
-        archive_manifest_snapshot(job_id, manifest_path)
-        update_job(
-            db, job_id, state="rejected", error="invalid_range",
-            manifest_path=str(manifest_path),
-        )
-        shutil.rmtree(workdir, ignore_errors=True)
+        _finalize_instagram_job(db, job_id, manifest, workdir, state="rejected", error="invalid_range")
         return
+    range_upper = int(job_range.split("-")[1])
+    manifest["range_upper"] = range_upper
     handle = (job.get("handle") or "").lower()
+    # H5/H6 : archive SCOPEE PAR JOB (workdir), seedee depuis l'archive
+    # persistante partagee (dedup cross-job connue au moment ou ce job
+    # demarre) mais jamais ecrite directement dedans — cf fetch_instagram.
+    job_archive = workdir / "gallery-dl-archive.sqlite3"
+    if INSTAGRAM_ARCHIVE_FILE.exists():
+        shutil.copyfile(INSTAGRAM_ARCHIVE_FILE, job_archive)
     try:
-        files_info = fetch_instagram(job["url"], dl, job_range)
+        files_info = fetch_instagram(job["url"], dl, job_range, job_archive, range_upper)
         mark_domain_fetch(db, domain, now)
         mark_domain_fetch(db, f"{domain}#{handle}", now)
+        if files_info:
+            observed_usernames = sorted(
+                {(info["metadata"].get("username") or "<absent>") for info in files_info}
+            )
+            mismatched = [
+                info for info in files_info
+                if (info["metadata"].get("username") or "").lower() != handle
+            ]
+            if mismatched:
+                manifest["username_check"] = {"expected": handle, "observed": observed_usernames}
+                raise InstagramUsernameRejected("username_not_allowlisted")
     except InstagramBlocked as error:
         # Arret propre : state=blocked est TERMINAL (cf scan_jobs), jamais
         # repasse par handle_failure/backoff — pas de retry automatique.
         mark_domain_fetch(db, domain, now)
         mark_domain_fetch(db, f"{domain}#{handle}", now)
-        manifest["state"] = "blocked"
-        manifest["reason"] = str(error)
-        write_manifest(workdir, manifest)
-        archive_manifest_snapshot(job_id, manifest_path)
-        update_job(
-            db, job_id, state="blocked", error=str(error),
-            manifest_path=str(manifest_path),
-        )
-        shutil.rmtree(workdir, ignore_errors=True)
+        _finalize_instagram_job(db, job_id, manifest, workdir, state="blocked", error=str(error))
+    except InstagramUsernameRejected as error:
+        # H4 : rejet TERMINAL (pas de retry — un tiers non-autorise ne
+        # devient jamais autorise en re-tentant). Rien n'est livre : dl/
+        # est purge avec le reste du workdir ci-dessous.
+        mark_domain_fetch(db, domain, now)
+        mark_domain_fetch(db, f"{domain}#{handle}", now)
+        _finalize_instagram_job(db, job_id, manifest, workdir, state="rejected", error=str(error))
     except Exception as error:  # noqa: BLE001
         mark_domain_fetch(db, domain, now)
         mark_domain_fetch(db, f"{domain}#{handle}", now)
         manifest["state"] = "failed_attempt"
         manifest["reason"] = str(error)
         write_manifest(workdir, manifest)
-        archive_manifest_snapshot(job_id, manifest_path)
+        record_path = write_manifest_record(job_id, manifest)
+        archive_manifest_snapshot(job_id, record_path)
         handle_failure(db, job_id, now, error)
+        update_job(db, job_id, manifest_path=str(record_path))
         shutil.rmtree(workdir, ignore_errors=True)
     else:
         if not files_info:
-            # Idempotence acquisition (--download-archive) : post deja acquis
-            # lors d'une tentative precedente -> succes, PAS de re-telechargement,
-            # PAS d'ambiguous_output/retry.
-            manifest["state"] = "done"
-            manifest["skipped_already_acquired"] = True
-            write_manifest(workdir, manifest)
-            archive_manifest_snapshot(job_id, manifest_path)
-            update_job(db, job_id, state="done", manifest_path=str(manifest_path))
-            shutil.rmtree(workdir, ignore_errors=True)
+            # H5 (revue 2026-08-03) : files_info==[] signifie normalement
+            # "post deja acquis" (idempotence --download-archive). Mais avec
+            # l'archive SCOPEE PAR JOB (fraiche a chaque tentative, seedee
+            # UNIQUEMENT depuis l'archive persistante DEJA MERGEE par une
+            # livraison reussie anterieure), un resultat vide a ce point ne
+            # peut legitimement survenir QUE si CE job_id a deja livre un
+            # bundle par le passe (verification defensive ci-dessous) — SAUF
+            # si le compte n'a reellement aucun contenu dans la plage.
+            # Traiter silencieusement comme "done" ici recreerait exactement
+            # le bug H5 (crash entre acquisition et livraison -> perte
+            # definitive) : deliberement TERMINAL sans retry (jamais
+            # handle_failure) pour ne pas re-frapper Instagram en boucle sur
+            # un resultat deterministe (cf H7, meme doctrine anti-retry-
+            # agressif) — c'est une variance assumee sur "sinon erreur"
+            # (retriable) prescrit par la revue : "erreur" oui, mais
+            # terminale, pas re-armee.
+            prior = db.execute(
+                "select output_path from jobs where job_id=?", (job_id,)
+            ).fetchone()
+            if prior and prior["output_path"] and Path(prior["output_path"]).exists():
+                manifest["skipped_already_acquired"] = True
+                _finalize_instagram_job(db, job_id, manifest, workdir, state="done")
+                return
+            _finalize_instagram_job(
+                db, job_id, manifest, workdir,
+                state="failed", error="instagram_empty_result_no_prior_delivery",
+            )
             return
-        manifest["state"] = "done"
+        # H4 : tous les usernames sidecar ont ete confirmes == handle
+        # autorise (aucun mismatch, cf try ci-dessus) -> promotion du scope.
+        manifest["allowlist_scope"] = "verified_username"
         manifest["files"] = files_info
+        manifest["delivered_count"] = len(files_info)
+        # H6 (revue 2026-08-03) : heuristique CONSERVATRICE — delivered <
+        # range_upper NE PROUVE PAS une perte (un compte avec moins de posts
+        # que la borne haute demandee produira toujours partial=true), mais
+        # protege contre le vrai risque H6 : un job B dont la plage recoupe
+        # des posts deja acquis/livres par un job A ne recoit que le delta
+        # et ne doit JAMAIS etre presente comme un bundle complet sans ce
+        # signal. Jamais utilise pour bloquer la livraison.
+        manifest["partial"] = len(files_info) < range_upper
         bundle = deliver_instagram_bundle(files_info, dl, manifest)
+        # H5/H6 : fusion vers l'archive persistante SEULEMENT apres livraison
+        # reussie — un crash avant ce point laisse l'archive partagee
+        # intacte (prochaine tentative repart d'un etat coherent, jamais
+        # d'un faux "deja acquis").
+        merge_instagram_archive(job_archive, INSTAGRAM_ARCHIVE_FILE)
+        record_path = write_manifest_record(job_id, manifest)
+        archive_manifest_snapshot(job_id, record_path)
         shutil.rmtree(workdir, ignore_errors=True)
         update_job(
             db, job_id, state="done", output_path=str(bundle),
-            manifest_path=str(bundle / "manifest.json"),
+            manifest_path=str(record_path),
         )
 
 
@@ -929,6 +1146,7 @@ def scan_jobs(db: sqlite3.Connection) -> None:
 
 
 def main() -> None:
+    acquire_singleton_lock()
     db = connect()
     once = "--once" in sys.argv or os.environ.get("PRISME_FETCHER_ONESHOT") == "1"
     while not STOP:

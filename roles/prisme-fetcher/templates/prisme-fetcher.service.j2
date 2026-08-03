@@ -18,14 +18,19 @@ Environment=XDG_CACHE_HOME={{ prisme_fetcher_root }}/.cache
 # CANARY Instagram : cookies de session transmis via LoadCredential — copie
 # privee dans $CREDENTIALS_DIRECTORY (mode 0400, visible seulement de cette
 # unite), jamais en argv, jamais logguee. MEME unite que le fetcher generique
-# (pas d'unite dediee) : state.sqlite3 n'a aujourd'hui qu'un seul writer (pas
-# de busy_timeout/BEGIN IMMEDIATE, GC des jobs/*.json dans scan_jobs) — une
-# unite Instagram separee introduirait un second writer concurrent sur la
-# meme base (risque de corruption/double traitement pire que le gain
-# d'isolement). Le fichier source reste 0400 root:root sur disque et deja
-# illisible par {{ prisme_fetcher_user }} : InaccessiblePaths ne peut pas a la
-# fois le cacher ET l'exposer au meme process de cette meme unite -
-# LoadCredential est le seul mecanisme qui repond au MED revue Codex.
+# (pas d'unite dediee) : state.sqlite3 n'a qu'un seul writer REELLEMENT
+# ENFORCE (M1, revue 2026-08-03) — fcntl.flock exclusif non bloquant sur
+# ROOT/.worker.lock au demarrage du process (busy_timeout=5000 en defense en
+# profondeur cote sqlite3) — un second process qui tenterait de demarrer
+# echoue immediatement (worker_already_running) au lieu d'ecrire en
+# concurrence. Une unite Instagram separee introduirait un second writer
+# concurrent sur la meme base (risque de corruption/double traitement pire
+# que le gain d'isolement) : le lock applicatif est la garantie reelle, pas
+# la simple convention "une seule unite". Le fichier source reste 0400
+# root:root sur disque et deja illisible par {{ prisme_fetcher_user }} :
+# InaccessiblePaths ne peut pas a la fois le cacher ET l'exposer au meme
+# process de cette meme unite - LoadCredential est le seul mecanisme qui
+# repond au MED revue Codex.
 LoadCredential={{ prisme_instagram_credential_name }}:{{ prisme_instagram_cookies_file }}
 {% endif %}
 ExecStart={{ prisme_fetcher_bin }}

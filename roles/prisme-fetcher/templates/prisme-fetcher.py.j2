@@ -132,10 +132,22 @@ def sanitize_filename(name: str, fallback: str) -> str:
 
 
 def dir_size(path: Path) -> int:
+    # R2 (revue 2026-08-03, cycle 3) : rglob()/stat() peuvent lever OSError si
+    # une entree disparait entre l'iteration et le stat() (race benigne —
+    # fichier supprime/deplace concurremment, ex. gallery-dl qui finalise un
+    # media pendant qu'on mesure). Fonction PARTAGEE entre fetch_ytdlp et
+    # fetch_instagram : ce fix beneficie aux deux adapters, jamais un
+    # elargissement de comportement propre a l'un ou l'autre.
     total = 0
-    for entry in path.rglob("*"):
-        if entry.is_file():
-            total += entry.stat().st_size
+    try:
+        for entry in path.rglob("*"):
+            try:
+                if entry.is_file():
+                    total += entry.stat().st_size
+            except OSError:
+                continue
+    except OSError:
+        pass
     return total
 
 
@@ -672,33 +684,65 @@ def fetch_instagram(
     killed_reason = None
     with stdout_path.open("wb") as out, stderr_path.open("wb") as err:
         proc = subprocess.Popen(command, cwd=workdir, env=env, stdout=out, stderr=err)  # noqa: S603
-        while True:
-            try:
-                proc.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                pass
-            else:
-                break
-            # H-C : un job Instagram peut legitimement occuper le worker
-            # singleton (M1) pendant plusieurs minutes — sans ce heartbeat
-            # dans la boucle d'attente elle-meme, un watchdog externe lirait
-            # une heartbeat perimee pendant toute la duree du job et pourrait
-            # a tort le declarer mort.
-            touch_heartbeat(db)
-            if STOP:
-                killed_reason = "worker_stopping"
-            elif dir_size(workdir) > INSTAGRAM_MAX_BUNDLE_BYTES:
-                killed_reason = "instagram_size_cap_exceeded"
-            elif time.monotonic() > deadline:
-                killed_reason = "instagram_timeout"
-            if killed_reason:
+        # R2 (revue 2026-08-03, cycle 3) : try/finally sur TOUTE la boucle —
+        # avant ce fix, une exception NON prevue levee dans la boucle (dont le
+        # heartbeat lui-meme, cf touch_heartbeat ci-dessous, OperationalError
+        # sqlite3 atteignable en pratique) sortait du bloc `with Popen` SANS
+        # jamais appeler terminate()/kill() : gallery-dl continuait de tourner
+        # ORPHELIN, hors deadline/plafond taille/cgroup, pendant que le
+        # process appelant repartait en erreur et purgeait potentiellement
+        # workdir (rmtree) sous les file descriptors du process encore
+        # ouverts. Idempotent (proc.poll() is None) : si le process est deja
+        # termine (sortie normale de boucle ou deja tue par le bloc
+        # killed_reason ci-dessous), ce bloc est un no-op.
+        try:
+            while True:
+                try:
+                    proc.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    pass
+                else:
+                    break
+                # H-C : un job Instagram peut legitimement occuper le worker
+                # singleton (M1) pendant plusieurs minutes — sans ce heartbeat
+                # dans la boucle d'attente elle-meme, un watchdog externe
+                # lirait une heartbeat perimee pendant toute la duree du job
+                # et pourrait a tort le declarer mort.
+                try:
+                    touch_heartbeat(db)
+                except sqlite3.Error as error:
+                    # R2 : une ecriture heartbeat manquee ne doit JAMAIS faire
+                    # sortir cette boucle (le try/finally ci-dessous couvrirait
+                    # le kill, mais mieux vaut ne pas interrompre un job en
+                    # cours pour un seul heartbeat rate) — logge et continue,
+                    # jamais un silence total (BLE001 volontaire, sqlite3.Error
+                    # couvre OperationalError/lock etc.).
+                    print(json.dumps({
+                        "event": "heartbeat_write_failed",
+                        "error": str(error),
+                    }))
+                if STOP:
+                    killed_reason = "worker_stopping"
+                elif dir_size(workdir) > INSTAGRAM_MAX_BUNDLE_BYTES:
+                    killed_reason = "instagram_size_cap_exceeded"
+                elif time.monotonic() > deadline:
+                    killed_reason = "instagram_timeout"
+                if killed_reason:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=10)
+                    break
+        finally:
+            if proc.poll() is None:
                 proc.terminate()
                 try:
                     proc.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     proc.kill()
                     proc.wait(timeout=10)
-                break
     if killed_reason:
         raise RuntimeError(killed_reason)
     if proc.returncode != 0:

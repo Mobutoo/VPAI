@@ -592,7 +592,7 @@
       loop: "{{ instagram_manifests.files }}"
       register: instagram_manifests_slurped
 
-    - name: Assert all 8 non-carousel/non-dedup Instagram scenarios archived a manifest with the expected reason
+    - name: Assert all 9 non-carousel/non-dedup Instagram scenarios archived a manifest with the expected reason
       vars:
         _instagram_joined: "{{ instagram_manifests_slurped.results | map(attribute='content') | map('b64decode') | join('\n') }}"
       ansible.builtin.assert:

@@ -56,7 +56,7 @@ STOP = False
 
 MIN_FREE_BYTES = {{ prisme_fetcher_min_free_bytes }}
 POLL_SECONDS = {{ prisme_fetcher_poll_seconds }}
-# L2 (revue 2026-08-03, cycle 2) : cadence de purge_old_artifacts() dans
+# L2 (revue 2026-08-03, cycle 3) : cadence de purge_old_artifacts() dans
 # main() — cf commentaire dans main() ci-dessous.
 PURGE_INTERVAL_SECONDS = 3600
 
@@ -1166,8 +1166,16 @@ def process_instagram_job(db: sqlite3.Connection, job_id: str, job: dict, domain
             # instagram_archive_row_count/R8 ci-dessus ; archive_rows_seeded
             # reste journalise comme preuve d'audit, jamais comme
             # discriminant).
+            # `output_path is not null` rend explicite ce que le predicat vise
+            # deja en pratique (les deux SEULS chemins qui posent state="done"
+            # sont process_instagram_job/process_job en cas de succes REEL —
+            # qui posent TOUJOURS output_path — et cette meme branche H-B en
+            # cas de dedup, qui n'en pose JAMAIS, cf L5) : une chaine de dedup
+            # racine forcement dans une VRAIE livraison, jamais dans un
+            # dedup-sur-dedup sans preuve physique. Clause defensive, pas un
+            # changement de comportement.
             prior_delivery = db.execute(
-                "select 1 from jobs where url=? and job_id!=? and state='done' limit 1",
+                "select 1 from jobs where url=? and job_id!=? and state='done' and output_path is not null limit 1",
                 (job["url"], job_id),
             ).fetchone()
             manifest["archive_rows_seeded"] = archive_rows_seeded
@@ -1480,7 +1488,7 @@ def main() -> None:
     acquire_singleton_lock()
     db = connect()
     once = "--once" in sys.argv or os.environ.get("PRISME_FETCHER_ONESHOT") == "1"
-    # L2 (revue 2026-08-03, cycle 2) : purge_old_artifacts() tournait a CHAQUE
+    # L2 (revue 2026-08-03, cycle 3) : purge_old_artifacts() tournait a CHAQUE
     # tour de boucle principale (POLL_SECONDS=2 par defaut) — un iterdir()+
     # stat() complet de manifests/+rejects/ toutes les 2 secondes en continu,
     # cout I/O inutile pour une purge dont la granularite est le JOUR

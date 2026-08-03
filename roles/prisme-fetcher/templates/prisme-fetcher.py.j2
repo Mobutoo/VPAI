@@ -30,9 +30,7 @@ STOP = False
 MIN_FREE_BYTES = {{ prisme_fetcher_min_free_bytes }}
 POLL_SECONDS = {{ prisme_fetcher_poll_seconds }}
 
-# --- Adapters reseau generiques (HTTP + yt-dlp). Instagram (ou tout adapter
-# specifique plateforme) est HORS PERIMETRE par arbitrage explicite : gate
-# humain separe, non tranche ici. AUCUN contournement d'allowlist/CAPTCHA.
+# --- Adapters reseau generiques (HTTP + yt-dlp). ---
 ALLOWED_DOMAINS = {{ prisme_fetcher_allowed_domains | to_json }}
 HTTP_USER_AGENT = {{ prisme_fetcher_http_user_agent | to_json }}
 HTTP_TIMEOUT_SECONDS = {{ prisme_fetcher_http_timeout_seconds }}
@@ -45,11 +43,40 @@ RATE_LIMIT_SECONDS = {{ prisme_fetcher_rate_limit_seconds }}
 MAX_ATTEMPTS = {{ prisme_fetcher_max_attempts }}
 RETRY_BACKOFF_SECONDS = {{ prisme_fetcher_retry_backoff_seconds }}
 
+# --- Adapter Instagram (CANARY, gate humain reel = endpoint applicatif Prisme,
+# hors perimetre de ce role). Allowlist DEDIEE : le domaine instagram.com
+# n'est jamais ajoute a ALLOWED_DOMAINS generique (cf assert tasks/main.yml) —
+# un job "instagram" est verifie par domaine ET par handle, un job
+# "http"/"ytdlp" ne peut jamais atteindre instagram.com via cette voie.
+INSTAGRAM_ENABLED = {{ prisme_instagram_enabled | bool }}
+INSTAGRAM_ALLOWED_HANDLES = {{ prisme_instagram_allowed_handles | to_json }}
+INSTAGRAM_DOMAINS = {"instagram.com", "www.instagram.com"}
+INSTAGRAM_RATE_LIMIT_SECONDS = {{ prisme_instagram_rate_limit_seconds }}
+INSTAGRAM_RANGE_DEFAULT = {{ prisme_instagram_range_default | to_json }}
+INSTAGRAM_GALLERY_DL_BIN = {{ prisme_instagram_gallery_dl_bin | to_json }}
+INSTAGRAM_ARCHIVE_FILE = Path({{ prisme_instagram_archive_file | to_json }})
+INSTAGRAM_CREDENTIAL_NAME = {{ prisme_instagram_credential_name | to_json }}
+INSTAGRAM_HTTP_TIMEOUT_SECONDS = {{ prisme_instagram_http_timeout_seconds }}
+INSTAGRAM_MAX_BUNDLE_BYTES = {{ prisme_instagram_max_bundle_bytes }}
+INSTAGRAM_BLOCKED_MARKERS = {{ prisme_instagram_blocked_markers | to_json }}
+# Segments d'URL Instagram qui ne sont JAMAIS un handle de profil (post/reel/
+# story/etc.) : si le premier segment de chemin en fait partie, aucun handle
+# n'est derivable de l'URL et seul le champ "handle" du job fait foi.
+_INSTAGRAM_NON_PROFILE_SEGMENTS = {
+    "p", "reel", "reels", "tv", "stories", "explore", "accounts", "direct",
+}
+_INSTAGRAM_HANDLE_RE = re.compile(r"^[A-Za-z0-9_.]{1,30}$")
+_INSTAGRAM_RANGE_RE = re.compile(r"^\d+-\d+$")
+
 REDIRECT_CODES = (301, 302, 303, 307, 308)
 
 _SIZE_UNITS = {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4}
 _SIZE_RE = re.compile(r"(\d+(?:\.\d+)?)([KMGT]?)B?", re.IGNORECASE)
 _UNSAFE_FILENAME_CHARS = re.compile(r"[^A-Za-z0-9._-]")
+
+
+class InstagramBlocked(RuntimeError):
+    """Instagram a repondu challenge/2FA/rate-limit/auth — terminal, AUCUN retry."""
 
 
 def parse_size(value: str) -> int:
@@ -222,11 +249,11 @@ def update_job(db: sqlite3.Connection, job_id: str, **fields: object) -> None:
     db.commit()
 
 
-def rate_limited(db: sqlite3.Connection, domain: str, now: int) -> bool:
+def rate_limited(db: sqlite3.Connection, domain: str, now: int, limit_seconds: int = RATE_LIMIT_SECONDS) -> bool:
     row = db.execute(
         "select last_fetch_at from domain_state where domain=?", (domain,)
     ).fetchone()
-    return bool(row) and (now - row["last_fetch_at"]) < RATE_LIMIT_SECONDS
+    return bool(row) and (now - row["last_fetch_at"]) < limit_seconds
 
 
 def mark_domain_fetch(db: sqlite3.Connection, domain: str, now: int) -> None:
@@ -256,14 +283,75 @@ def load_job(path: Path) -> dict | None:
         return None
     url = payload.get("url")
     adapter = payload.get("adapter")
-    if not isinstance(url, str) or adapter not in ("http", "ytdlp"):
+    if not isinstance(url, str) or adapter not in ("http", "ytdlp", "instagram"):
         return None
-    # A8 : le scheme est verifie ici pour les DEUX adapters (http et ytdlp).
-    # yt-dlp accepte des schemes non-http (fichiers locaux via extracteur
-    # generique, IE) que ce worker ne doit jamais soumettre sans revalidation.
+    # A8 : le scheme est verifie ici pour TOUS les adapters (http, ytdlp,
+    # instagram). yt-dlp accepte des schemes non-http (fichiers locaux via
+    # extracteur generique, IE) que ce worker ne doit jamais soumettre sans
+    # revalidation.
     if urllib.parse.urlsplit(url).scheme not in ("http", "https"):
         return None
-    return {"url": url, "adapter": adapter, "note": payload.get("note")}
+    job = {"url": url, "adapter": adapter, "note": payload.get("note")}
+    if adapter == "instagram":
+        handle = payload.get("handle")
+        if not isinstance(handle, str) or not handle:
+            return None
+        job["handle"] = handle
+        job_range = payload.get("range")
+        if job_range is not None and not isinstance(job_range, str):
+            return None
+        job["range"] = job_range
+    return job
+
+
+def instagram_handle_from_url(url: str) -> str | None:
+    # /p/<shortcode>/, /reel/<shortcode>/, etc. ne portent AUCUN handle : seul
+    # le champ "handle" du job fait foi dans ce cas (piege — un handle derive
+    # a tort de ces segments serait un contournement d'allowlist).
+    path = urllib.parse.urlsplit(url).path.strip("/")
+    if not path:
+        return None
+    first = path.split("/")[0].lower()
+    if first in _INSTAGRAM_NON_PROFILE_SEGMENTS:
+        return None
+    return first
+
+
+def instagram_job_allowed(job: dict, domain: str) -> tuple[bool, str]:
+    if not INSTAGRAM_ENABLED:
+        return False, "instagram_adapter_disabled"
+    if domain not in INSTAGRAM_DOMAINS:
+        return False, "domain_not_allowlisted"
+    handle = job.get("handle") or ""
+    if not _INSTAGRAM_HANDLE_RE.fullmatch(handle):
+        return False, "handle_missing_or_invalid"
+    if handle.lower() not in {h.lower() for h in INSTAGRAM_ALLOWED_HANDLES}:
+        return False, "handle_not_allowlisted"
+    url_handle = instagram_handle_from_url(job["url"])
+    if url_handle is not None and url_handle != handle.lower():
+        return False, "handle_mismatch"
+    return True, ""
+
+
+def instagram_cookies_path() -> Path:
+    # LoadCredential (unite systemd) copie le secret dans un repertoire prive
+    # expose via $CREDENTIALS_DIRECTORY — jamais l'InaccessiblePaths generique
+    # de l'unite, jamais argv, jamais journalise.
+    directory = os.environ.get("CREDENTIALS_DIRECTORY")
+    if not directory:
+        raise RuntimeError("instagram_cookies_unavailable")
+    path = Path(directory) / INSTAGRAM_CREDENTIAL_NAME
+    if not path.is_file():
+        raise RuntimeError("instagram_cookies_unavailable")
+    return path
+
+
+def classify_instagram_failure(stderr_tail: str) -> str | None:
+    lowered = stderr_tail.lower()
+    for marker, reason in INSTAGRAM_BLOCKED_MARKERS.items():
+        if marker.lower() in lowered:
+            return reason
+    return None
 
 
 def fetch_http(url: str, workdir: Path) -> tuple[str, str, str]:
@@ -417,6 +505,233 @@ def fetch_ytdlp(url: str, workdir: Path) -> tuple[str, str]:
     return digest, filename
 
 
+def fetch_instagram(url: str, workdir: Path, job_range: str) -> list[dict]:
+    cookies_path = instagram_cookies_path()
+    env = dict(os.environ)
+    env["HOME"] = str(ROOT)
+    env["XDG_CACHE_HOME"] = str(CACHE)
+    # A11 (meme doctrine que yt-dlp) : jamais de config utilisateur/systeme
+    # implicite pour un binaire qui tourne avec des privileges reseau sortants
+    # ET des cookies de session sensibles.
+    env["XDG_CONFIG_HOME"] = str(CACHE)
+    command = [
+        INSTAGRAM_GALLERY_DL_BIN,
+        "--config-ignore",
+        "-C", str(cookies_path),
+        "--range", job_range,
+        "--download-archive", str(INSTAGRAM_ARCHIVE_FILE),
+        # Sleep natif gallery-dl (en plus du rate-limit par compte+domaine
+        # applique cote worker AVANT meme de lancer ce process — cf
+        # process_instagram_job/scan_jobs) : jamais de contournement du
+        # rythme conservateur, meme au sein d'un seul job multi-media.
+        "--sleep-request", str(INSTAGRAM_RATE_LIMIT_SECONDS),
+        "--http-timeout", str(INSTAGRAM_HTTP_TIMEOUT_SECONDS),
+        "--write-metadata",
+        "-D", str(workdir),
+        "--",
+        url,
+    ]
+    existing = {p.name for p in workdir.iterdir()}
+    stdout_path = workdir / ".gallery-dl.stdout"
+    stderr_path = workdir / ".gallery-dl.stderr"
+    deadline = time.monotonic() + INSTAGRAM_HTTP_TIMEOUT_SECONDS * 20
+    killed_reason = None
+    with stdout_path.open("wb") as out, stderr_path.open("wb") as err:
+        proc = subprocess.Popen(command, cwd=workdir, env=env, stdout=out, stderr=err)  # noqa: S603
+        while True:
+            try:
+                proc.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                pass
+            else:
+                break
+            if STOP:
+                killed_reason = "worker_stopping"
+            elif dir_size(workdir) > INSTAGRAM_MAX_BUNDLE_BYTES:
+                killed_reason = "instagram_size_cap_exceeded"
+            elif time.monotonic() > deadline:
+                killed_reason = "instagram_timeout"
+            if killed_reason:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=10)
+                break
+    if killed_reason:
+        raise RuntimeError(killed_reason)
+    if proc.returncode != 0:
+        stderr_tail = stderr_path.read_bytes()[-500:].decode("utf-8", "replace")
+        blocked_reason = classify_instagram_failure(stderr_tail)
+        if blocked_reason:
+            # Arret propre sur challenge/2FA/rate-limit/auth : AUCUN retry
+            # automatique, jamais de contournement CAPTCHA/challenge (design).
+            raise InstagramBlocked(blocked_reason)
+        raise RuntimeError(f"instagram_failed:{proc.returncode}")
+    # Delta AVANT/APRES (meme discipline A1 que fetch_ytdlp). --download-archive
+    # peut legitimement ne produire AUCUN fichier (post deja acquis) : ce n'est
+    # PAS une erreur, l'appelant traite une liste vide comme un succes
+    # idempotent (skip_already_acquired), jamais un ambiguous_output/retry.
+    produced = sorted(
+        p for p in workdir.iterdir()
+        if p.is_file()
+        and p.name not in existing
+        and not p.name.startswith(".")
+        and not p.name.endswith(".part")
+    )
+    media_files = [p for p in produced if p.suffix.lower() != ".json"]
+    files_info: list[dict] = []
+    seen_filenames: set[str] = set()
+    for media in media_files:
+        digest = hashlib.sha256(media.read_bytes()).hexdigest()
+        filename = sanitize_filename(media.name, digest)
+        if filename in seen_filenames:
+            # Collision post-assainissement entre deux medias distincts du
+            # meme carrousel : desambiguise plutot que d'ecraser silencieusement.
+            filename = f"{digest[:16]}_{filename}"
+        seen_filenames.add(filename)
+        target = media if filename == media.name else workdir / filename
+        if target != media:
+            media.replace(target)
+        # --write-metadata cree <fichier_media_complet>.json (suffixe ajoute,
+        # jamais un remplacement d'extension) : bundle enrichi puis supprime,
+        # jamais livre tel quel (evite de dupliquer/leaker des champs bruts
+        # gallery-dl non selectionnes).
+        sidecar = target.with_name(target.name + ".json")
+        metadata: dict = {}
+        if sidecar.exists():
+            try:
+                raw_meta = json.loads(sidecar.read_text())
+                metadata = {
+                    key: raw_meta[key]
+                    for key in ("id", "date", "description", "username", "shortcode")
+                    if key in raw_meta
+                }
+            except (OSError, json.JSONDecodeError):
+                metadata = {}
+            sidecar.unlink(missing_ok=True)
+        files_info.append({"filename": filename, "sha256": digest, "metadata": metadata})
+    return files_info
+
+
+def deliver_instagram_bundle(files_info: list[dict], workdir: Path, manifest: dict) -> Path:
+    # Identite de bundle multi-fichiers : sha256 de la concatenation triee des
+    # sha256 par fichier (carrousel = plusieurs medias -> une seule livraison
+    # atomique). Meme discipline B1 que deliver_bundle : construit sous un
+    # repertoire cache puis publie par un seul rename() de repertoire.
+    bundle_digest = hashlib.sha256(
+        "".join(sorted(info["sha256"] for info in files_info)).encode("utf-8")
+    ).hexdigest()
+    bundle_final = OUTGOING / bundle_digest
+    if bundle_final.exists():
+        return bundle_final
+    bundle_part = OUTGOING / f".{bundle_digest}.part"
+    shutil.rmtree(bundle_part, ignore_errors=True)
+    bundle_part.mkdir(mode=0o750, exist_ok=True)
+    for info in files_info:
+        source = workdir / info["filename"]
+        source.replace(bundle_part / info["filename"])
+    (bundle_part / "manifest.json").write_text(json.dumps(manifest, sort_keys=True) + "\n")
+    bundle_part.replace(bundle_final)
+    return bundle_final
+
+
+def process_instagram_job(db: sqlite3.Connection, job_id: str, job: dict, domain: str, now: int) -> None:
+    if shutil.disk_usage(ROOT).free < MIN_FREE_BYTES:
+        raise RuntimeError("disk_low")
+    workdir = WORK / job_id
+    # A3 : purge d'une tentative precedente avortee AVANT de relancer l'adapter.
+    shutil.rmtree(workdir, ignore_errors=True)
+    workdir.mkdir(parents=True, exist_ok=True)
+    dl = workdir / "dl"
+    dl.mkdir(parents=True, exist_ok=True)
+    job_range = job.get("range") or INSTAGRAM_RANGE_DEFAULT
+    allowed, reject_reason = instagram_job_allowed(job, domain)
+    manifest = {
+        "schema": "prisme.source-bundle.v2",
+        "job_id": job_id,
+        "url": job["url"],
+        "adapter": "instagram",
+        "handle": job.get("handle"),
+        "range": job_range,
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+        "allowlist_match": allowed,
+    }
+    # Manifeste ecrit AVANT tout telechargement (exigence design).
+    manifest_path = write_manifest(workdir, manifest)
+    if not allowed:
+        manifest["state"] = "rejected"
+        manifest["reason"] = reject_reason
+        write_manifest(workdir, manifest)
+        archive_manifest_snapshot(job_id, manifest_path)
+        update_job(
+            db, job_id, state="rejected", error=reject_reason,
+            manifest_path=str(manifest_path),
+        )
+        shutil.rmtree(workdir, ignore_errors=True)
+        return
+    if not _INSTAGRAM_RANGE_RE.fullmatch(job_range):
+        manifest["state"] = "rejected"
+        manifest["reason"] = "invalid_range"
+        write_manifest(workdir, manifest)
+        archive_manifest_snapshot(job_id, manifest_path)
+        update_job(
+            db, job_id, state="rejected", error="invalid_range",
+            manifest_path=str(manifest_path),
+        )
+        shutil.rmtree(workdir, ignore_errors=True)
+        return
+    handle = (job.get("handle") or "").lower()
+    try:
+        files_info = fetch_instagram(job["url"], dl, job_range)
+        mark_domain_fetch(db, domain, now)
+        mark_domain_fetch(db, f"{domain}#{handle}", now)
+    except InstagramBlocked as error:
+        # Arret propre : state=blocked est TERMINAL (cf scan_jobs), jamais
+        # repasse par handle_failure/backoff — pas de retry automatique.
+        mark_domain_fetch(db, domain, now)
+        mark_domain_fetch(db, f"{domain}#{handle}", now)
+        manifest["state"] = "blocked"
+        manifest["reason"] = str(error)
+        write_manifest(workdir, manifest)
+        archive_manifest_snapshot(job_id, manifest_path)
+        update_job(
+            db, job_id, state="blocked", error=str(error),
+            manifest_path=str(manifest_path),
+        )
+        shutil.rmtree(workdir, ignore_errors=True)
+    except Exception as error:  # noqa: BLE001
+        mark_domain_fetch(db, domain, now)
+        mark_domain_fetch(db, f"{domain}#{handle}", now)
+        manifest["state"] = "failed_attempt"
+        manifest["reason"] = str(error)
+        write_manifest(workdir, manifest)
+        archive_manifest_snapshot(job_id, manifest_path)
+        handle_failure(db, job_id, now, error)
+        shutil.rmtree(workdir, ignore_errors=True)
+    else:
+        if not files_info:
+            # Idempotence acquisition (--download-archive) : post deja acquis
+            # lors d'une tentative precedente -> succes, PAS de re-telechargement,
+            # PAS d'ambiguous_output/retry.
+            manifest["state"] = "done"
+            manifest["skipped_already_acquired"] = True
+            write_manifest(workdir, manifest)
+            archive_manifest_snapshot(job_id, manifest_path)
+            update_job(db, job_id, state="done", manifest_path=str(manifest_path))
+            shutil.rmtree(workdir, ignore_errors=True)
+            return
+        manifest["state"] = "done"
+        manifest["files"] = files_info
+        bundle = deliver_instagram_bundle(files_info, dl, manifest)
+        shutil.rmtree(workdir, ignore_errors=True)
+        update_job(
+            db, job_id, state="done", output_path=str(bundle),
+            manifest_path=str(bundle / "manifest.json"),
+        )
+
+
 def handle_failure(db: sqlite3.Connection, job_id: str, now: int, error: Exception) -> None:
     row = db.execute("select attempts from jobs where job_id=?", (job_id,)).fetchone()
     attempts = (row["attempts"] if row else 0) + 1
@@ -556,10 +871,14 @@ def scan_jobs(db: sqlite3.Connection) -> None:
         row = db.execute(
             "select state, next_attempt_at, domain from jobs where job_id=?", (job_id,)
         ).fetchone()
-        if row is not None and row["state"] in ("done", "rejected", "failed"):
+        if row is not None and row["state"] in ("done", "rejected", "failed", "blocked"):
             # A3 : GC du fichier job une fois l'etat terminal atteint (le
             # manifeste/bundle correspondant vit deja dans outgoing/ ou
             # rejects/ — le fichier jobs/*.json n'a plus de raison d'exister).
+            # "blocked" (Instagram : challenge/2FA/rate-limit/auth) est
+            # TERMINAL au meme titre : sans ce GC le job serait relu a chaque
+            # passe et re-frapperait Instagram toutes les POLL_SECONDS —
+            # exactement le retry agressif interdit par design.
             path.unlink(missing_ok=True)
             continue
         if row is not None and row["state"] == "retry_wait" and now < row["next_attempt_at"]:
@@ -584,6 +903,22 @@ def scan_jobs(db: sqlite3.Connection) -> None:
                 (job_id, job["url"], job["adapter"], job["note"], "pending", domain, now, now),
             )
             db.commit()
+        if job["adapter"] == "instagram":
+            handle = (job.get("handle") or "").lower()
+            # Rate-limit PAR COMPTE ET PAR DOMAINE (MED revue Codex) : deux
+            # cles distinctes dans domain_state ("instagram.com" et
+            # "instagram.com#<handle>"), le seuil le plus contraignant gagne
+            # (les deux doivent etre respectes).
+            if domain and rate_limited(db, domain, now, INSTAGRAM_RATE_LIMIT_SECONDS):
+                continue
+            if handle and rate_limited(db, f"{domain}#{handle}", now, INSTAGRAM_RATE_LIMIT_SECONDS):
+                continue
+            try:
+                process_instagram_job(db, job_id, job, domain, now)
+            except Exception as error:
+                print(json.dumps({"event": "acquisition_error", "code": type(error).__name__, "job_id": job_id}))
+                handle_failure(db, job_id, now, error)
+            continue
         if domain and rate_limited(db, domain, now):
             continue
         try:

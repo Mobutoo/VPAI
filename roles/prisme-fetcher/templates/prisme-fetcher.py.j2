@@ -29,6 +29,21 @@ REJECTS = ROOT / "rejects"
 # bundle (deux jobs distincts peuvent produire le meme digest de contenu ;
 # jobs.manifest_path pointe ICI, jamais vers un bundle qui pourrait
 # appartenir a un autre job_id).
+#
+# L5 (revue 2026-08-03, cycle 3) : contrat "prisme.source-bundle.v2" FIGE
+# pour l'adapter Instagram — DEUX dialectes distincts partagent
+# state="done", a ne JAMAIS confondre cote consommateur (CANARY-5) :
+#   1. Succes NORMAL (au moins un media acquis PAR CE job) : porte
+#      files/delivered_count/output_path, comme http/ytdlp.
+#   2. Succes par DEDUP cross-job (H-B/R1, cf process_instagram_job) : ce
+#      job n'a RIEN acquis lui-meme (files_info==[]) mais une AUTRE livraison
+#      anterieure de la MEME url existe deja (jobs, meme url, autre job_id,
+#      state="done" AVANT ce job) — porte
+#      skipped_already_acquired=true/partial=true/partial_reason=
+#      "archive_overlap"/archive_rows_seeded (preuve d'audit), et NE PORTE
+#      JAMAIS files/delivered_count/output_path (aucun media n'a ete acquis
+#      PAR ce job precis — le bundle reference par la livraison anterieure
+#      n'est jamais republie sous ce job_id).
 MANIFESTS = ROOT / "manifests"
 CACHE = ROOT / ".cache"
 DATABASE = ROOT / "state.sqlite3"
@@ -1426,6 +1441,21 @@ def purge_old_artifacts(now: int) -> None:
     # canary de longue duree accumule indefiniment ces traces. Purge par age
     # (mtime du fichier/repertoire), best-effort (une erreur de purge ne doit
     # jamais interrompre le worker).
+    #
+    # L4 (revue 2026-08-03, cycle 3) : cette purge s'applique aux TROIS
+    # adapters (http/ytdlp/instagram — write_manifest_record et
+    # archive_manifest_snapshot sont appeles indistinctement par
+    # process_job() ET process_instagram_job(), cf le prefixe "instagram_"
+    # de INSTAGRAM_ARTIFACT_RETENTION_SECONDS/prisme_instagram_artifact_retention_days
+    # est un nom HERITE de l'implementation initiale, PAS un perimetre —
+    # conserve tel quel pour ne pas casser une variable deja documentee au
+    # demandeur, mais son effet couvre bien manifests/+rejects/ de TOUT
+    # adapter). Consequence documentee, jamais corrigee automatiquement :
+    # une fois un manifests/<job_id>.json purge par age, jobs.manifest_path
+    # (colonne persistante en base, jamais purgee elle-meme) pointe vers un
+    # fichier qui n'existe plus — un lecteur de jobs.manifest_path DOIT
+    # tolerer ce cas (fichier absent = manifeste expire par retention, pas
+    # une corruption).
     cutoff = now - INSTAGRAM_ARTIFACT_RETENTION_SECONDS
     for base in (MANIFESTS, REJECTS):
         if not base.exists():

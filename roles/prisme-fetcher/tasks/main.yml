@@ -125,13 +125,23 @@
     # matcherait "instagram.com" par suffixe — les deux rouvriraient
     # instagram.com aux adapters http/ytdlp generiques (sans handle, sans
     # cookies, sans rate-limit IG).
+    # M-D (revue 2026-08-03, cycle 2) : l'assert cycle 1 ne testait que les
+    # variantes exactes instagram.com/www.instagram.com — un motif exact
+    # "m.instagram.com" (ou tout autre sous-domaine explicite) passait sans
+    # etre catch. Fix : suffixe GENERIQUE — tout motif (point initial retire
+    # pour la comparaison) egal a "instagram.com" ou se terminant par
+    # ".instagram.com" est rejete, quel que soit le sous-domaine explicite
+    # vise ; les motifs a point initial conservent en plus la verification
+    # H3 (suffixe large type ".com" qui matcherait instagram.com par
+    # endswith() cote worker).
     _instagram_domain_allowlist_hit: >-
       {%- set ns = namespace(hit=false) -%}
       {%- for _raw in prisme_fetcher_allowed_domains -%}
         {%- set _p = _raw | trim | lower -%}
-        {%- if _p in ['instagram.com', 'www.instagram.com', '.instagram.com', '.www.instagram.com'] -%}
+        {%- set _bare = _p[1:] if _p.startswith('.') else _p -%}
+        {%- if _bare == 'instagram.com' or _bare.endswith('.instagram.com') -%}
           {%- set ns.hit = true -%}
-        {%- elif _p.startswith('.') and ('instagram.com'.endswith(_p) or 'www.instagram.com'.endswith(_p)) -%}
+        {%- elif _p.startswith('.') and 'instagram.com'.endswith(_p) -%}
           {%- set ns.hit = true -%}
         {%- endif -%}
       {%- endfor -%}
@@ -142,10 +152,11 @@
     quiet: true
     fail_msg: >-
       prisme_fetcher_allowed_domains (adapters http/ytdlp generiques) contient
-      un motif qui resout vers instagram.com ou www.instagram.com (egalite
-      exacte, point initial, ou suffixe large type ".com" — espaces/casse
-      normalises avant comparaison) — cela contournerait la verification
-      handle+cookies dediee de l'adapter Instagram.
+      un motif dont la forme resolue est instagram.com OU un de ses
+      sous-domaines (egalite exacte, point initial, suffixe ".instagram.com",
+      ou suffixe large type ".com" — espaces/casse normalises avant
+      comparaison) — cela contournerait la verification handle+cookies dediee
+      de l'adapter Instagram.
   when: prisme_instagram_enabled | bool
   tags: [prisme-fetcher, prisme_fetcher, phase3]
 

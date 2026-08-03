@@ -134,6 +134,16 @@ INSTAGRAM_HEARTBEAT_INTERVAL_SECONDS = {{ prisme_instagram_heartbeat_interval_se
 # reutilise : une verification reste FRAICHE avant CHAQUE tentative reelle
 # d'acquisition (instagram_authorization_gate ci-dessous).
 INSTAGRAM_AUTHORIZATION_POLL_SECONDS = {{ prisme_instagram_authorization_poll_seconds }}
+# H2 (revue 2026-08-03) : nombre d'echecs CONSECUTIFS de verification
+# (InstagramAuthorizationCheckFailed, jamais authorized:false/not_provisioned
+# reels) avant d'emettre l'evenement JSON instagram_control_plane_unreachable
+# (cf _record_control_plane_failure). Volontairement PAS un etat terminal --
+# observable uniquement.
+INSTAGRAM_CONTROL_PLANE_FAILURE_THRESHOLD = {{ prisme_instagram_control_plane_failure_threshold }}
+# Parcimonie de l'alerte une fois le seuil atteint (ne pas noyer les logs si
+# le control-plane reste injoignable longtemps -- chaque passe de scan qui
+# retente une verification fraiche rappelle _record_control_plane_failure).
+INSTAGRAM_CONTROL_PLANE_ALERT_INTERVAL_SECONDS = {{ prisme_instagram_control_plane_alert_interval_seconds }}
 INSTAGRAM_ADAPTER_VERSION = "gallery-dl/{{ prisme_instagram_gallery_dl_version }}"
 # Segments d'URL Instagram qui ne sont JAMAIS un handle de profil (post/reel/
 # story/etc.) : si le premier segment de chemin en fait partie, aucun handle
@@ -156,12 +166,15 @@ class InstagramBlocked(RuntimeError):
 
 
 class InstagramAuthorizationCheckFailed(RuntimeError):
-    """Echec reseau/HTTP/reponse invalide en interrogeant l'endpoint
-    d'autorisation du control-plane — FAIL CLOSED (jamais traite comme
-    autorise), retriable via la MEME discipline backoff que tout autre echec
-    transitoire (handle_failure), CONTRAIREMENT a un vrai verdict
-    authorized:false (etat reel du connecteur cote prisme) qui laisse le job
-    en attente SANS consommer de tentative (contrat fetcher)."""
+    """Panne REELLE (reseau/HTTP non-404/reponse invalide) en interrogeant
+    l'endpoint d'autorisation du control-plane — FAIL CLOSED (jamais traite
+    comme autorise). H2 (revue 2026-08-03) : NE PASSE PLUS par handle_failure
+    (cf commentaire mensonger corrige — un budget de tentatives PAR JOB ne
+    doit jamais etre consomme par la panne d'une dependance PARTAGEE) ; le
+    job reste pending, AUCUNE tentative consommee, exactement comme un vrai
+    verdict authorized:false. Seul un compteur GLOBAL d'echecs consecutifs
+    (cf _record_control_plane_failure ci-dessous) observe la repetition, via
+    un evenement JSON emis avec parcimonie, JAMAIS un etat terminal."""
 
 
 def _instagram_fetcher_token() -> str:
@@ -172,11 +185,18 @@ def _instagram_fetcher_token() -> str:
 
 
 def check_instagram_authorization(tenant_id: str) -> tuple[bool, str]:
-    # GET /api/v1/connectors/instagram/authorization?tenantId=... . Toute
-    # reponse non-2xx (401/404/429/5xx, via HTTPError) ou toute erreur reseau/
-    # parsing est traitee de la MEME facon fail-closed ici -- le contrat
-    # fetcher distingue "authorized:false REEL" (verdict 200 valide) d'une
-    # simple impossibilite de verifier, jamais confondus.
+    # GET /api/v1/connectors/instagram/authorization?tenantId=... .
+    # C1 (revue 2026-08-03) : un 404 (dispatcher.ts) signifie "connecteur pas
+    # encore provisionne cote prisme" -- un VERDICT REEL, jamais une panne.
+    # Precondition d'ordonnancement documentee (defaults/main.yml) : la ligne
+    # external_connectors DOIT exister cote control-plane AVANT ce
+    # deploiement, sinon CE 404 est l'etat par defaut permanent tant que le
+    # provisioning n'a pas eu lieu. Traite EXACTEMENT comme authorized:false
+    # (pending, 0 tentative consommee) -- PAS comme
+    # InstagramAuthorizationCheckFailed (qui, elle, alimente uniquement le
+    # compteur d'echecs global H2, jamais un etat terminal/handle_failure).
+    # Toute AUTRE reponse non-2xx (401/429/5xx) ou toute erreur reseau/
+    # parsing reste fail-closed via InstagramAuthorizationCheckFailed.
     token = _instagram_fetcher_token()
     if not token:
         raise InstagramAuthorizationCheckFailed("fetcher_token_missing")
@@ -188,7 +208,11 @@ def check_instagram_authorization(tenant_id: str) -> tuple[bool, str]:
     try:
         with _OPENER.open(request, timeout=INSTAGRAM_API_TIMEOUT_SECONDS) as response:
             raw = response.read()
-    except Exception as error:  # noqa: BLE001 -- toute erreur (HTTPError non-2xx, URLError/timeout, DNS) est fail-closed ici, jamais silencieusement traitee comme autorisee.
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            return False, "not_provisioned"
+        raise InstagramAuthorizationCheckFailed(f"authorization_check_failed:{error}") from error
+    except Exception as error:  # noqa: BLE001 -- URLError/timeout/DNS/etc., toujours fail-closed (jamais silencieusement traite comme autorise).
         raise InstagramAuthorizationCheckFailed(f"authorization_check_failed:{error}") from error
     try:
         payload = json.loads(raw)
@@ -199,7 +223,35 @@ def check_instagram_authorization(tenant_id: str) -> tuple[bool, str]:
     return bool(payload["authorized"]), str(payload.get("state", ""))
 
 
-_INSTAGRAM_AUTH_STATE = {"checked_at": 0.0}
+_INSTAGRAM_AUTH_STATE = {"checked_at": None}
+# H2 (revue 2026-08-03) : compteur GLOBAL (jamais par job) d'echecs
+# consecutifs de VERIFICATION (InstagramAuthorizationCheckFailed uniquement
+# -- authorized:false/not_provisioned REELS ne comptent jamais ici, cf
+# _record_control_plane_failure/instagram_authorization_gate). Remis a zero
+# des qu'une verification reussit (verdict recu, quel qu'il soit).
+_INSTAGRAM_CONTROL_PLANE_STATE = {"consecutive_failures": 0, "last_alert_at": 0.0}
+
+
+def _record_control_plane_failure(error: Exception) -> None:
+    # H2 : jamais destructeur (aucun etat de job touche ici). Au-dela du
+    # seuil configure, un evenement JSON observable est emis -- avec
+    # parcimonie (au plus 1 par INSTAGRAM_CONTROL_PLANE_ALERT_INTERVAL_SECONDS)
+    # pour ne pas noyer les logs si le control-plane reste injoignable
+    # longtemps (chaque passe de scan qui tente une verification fraiche
+    # rappelle cette fonction).
+    state = _INSTAGRAM_CONTROL_PLANE_STATE
+    state["consecutive_failures"] += 1
+    now_monotonic = time.monotonic()
+    if (
+        state["consecutive_failures"] >= INSTAGRAM_CONTROL_PLANE_FAILURE_THRESHOLD
+        and now_monotonic - state["last_alert_at"] >= INSTAGRAM_CONTROL_PLANE_ALERT_INTERVAL_SECONDS
+    ):
+        state["last_alert_at"] = now_monotonic
+        print(json.dumps({
+            "event": "instagram_control_plane_unreachable",
+            "consecutive_failures": state["consecutive_failures"],
+            "error": str(error),
+        }))
 
 
 def instagram_authorization_gate(now_monotonic: float) -> tuple[bool, str] | None:
@@ -208,11 +260,28 @@ def instagram_authorization_gate(now_monotonic: float) -> tuple[bool, str] | Non
     (protege le bucket 120 req/60s/tenant partage avec le heartbeat, cf
     dispatcher.ts). Sinon : verification FRAICHE (jamais un verdict positif
     mis en cache/reutilise) juste avant l'acquisition. Peut lever
-    InstagramAuthorizationCheckFailed (fail-closed, cf ci-dessus)."""
-    if now_monotonic - _INSTAGRAM_AUTH_STATE["checked_at"] < INSTAGRAM_AUTHORIZATION_POLL_SECONDS:
+    InstagramAuthorizationCheckFailed (fail-closed, cf ci-dessus) -- a
+    l'appelant (scan_jobs) de router cette exception vers
+    _record_control_plane_failure, JAMAIS vers handle_failure (H2)."""
+    # L1 (revue 2026-08-03) : sentinelle None, jamais 0.0 -- time.monotonic()
+    # n'a pas de point de reference absolu documente (horloge depuis le boot
+    # sur CPython/Linux en pratique, mais non garanti par la stdlib) ; 0.0
+    # supposait implicitement "tres loin dans le passe", ce qu'une sentinelle
+    # explicite ne laisse jamais a l'interpretation.
+    checked_at = _INSTAGRAM_AUTH_STATE["checked_at"]
+    if checked_at is not None and now_monotonic - checked_at < INSTAGRAM_AUTHORIZATION_POLL_SECONDS:
         return None
-    authorized, state = check_instagram_authorization(INSTAGRAM_TENANT_ID)
+    # H1 (revue 2026-08-03) : arme AVANT l'appel reseau (jamais apres) -- sur
+    # exception, une NOUVELLE fenetre de throttle demarre immediatement,
+    # empechant que chaque job de la meme passe de scan retente son propre
+    # appel reseau sur le meme echec (N jobs = N requetes qui saturaient le
+    # bucket partage heartbeat/authorization -> 429 -> auto-amplification).
     _INSTAGRAM_AUTH_STATE["checked_at"] = now_monotonic
+    authorized, state = check_instagram_authorization(INSTAGRAM_TENANT_ID)
+    # Verdict REEL recu (authorized:true/false/not_provisioned) : la panne
+    # de control-plane, si elle existait, est resolue -- remise a zero du
+    # compteur H2.
+    _INSTAGRAM_CONTROL_PLANE_STATE["consecutive_failures"] = 0
     return authorized, state
 
 
@@ -220,6 +289,19 @@ def send_instagram_heartbeat(status: str) -> None:
     # POST /api/v1/connectors/instagram/heartbeat -- BEST-EFFORT, design
     # explicite : le heartbeat ne doit JAMAIS interrompre/faire echouer le
     # worker. Toute erreur est journalisee (JSON) puis avalee.
+    #
+    # M3 (revue 2026-08-03, choix documente -- variante "documentation" plutot
+    # qu'un compteur d'echecs d'acquisition dedie) : ce heartbeat mesure
+    # UNIQUEMENT la vivacite du PROCESS (thread daemon actif, capable
+    # d'emettre une requete) -- status="ready" est envoye INCONDITIONNELLEMENT
+    # des lors que le thread tourne, jamais derive de l'etat reel de
+    # l'adapter (cookies Instagram expires/revoques = "ready" quand meme,
+    # gallery-dl echouerait au prochain job sans que ce heartbeat le
+    # reflete). "degraded"/"down" ne sont jamais emis par ce chemin -- seul
+    # l'arret propre du thread (instagram_heartbeat_loop) poste "down". Gate 5
+    # (fenetre de fraicheur serveur 90s) valide donc la disponibilite du
+    # PROCESS, pas la sante fonctionnelle de l'adapter -- cf meme doctrine
+    # dans defaults/main.yml (prisme_instagram_heartbeat_interval_seconds).
     token = _instagram_fetcher_token()
     if not token or not INSTAGRAM_API_BASE or not INSTAGRAM_TENANT_ID:
         return
@@ -240,12 +322,32 @@ def send_instagram_heartbeat(status: str) -> None:
     try:
         with _OPENER.open(request, timeout=INSTAGRAM_API_TIMEOUT_SECONDS):
             pass
+    except urllib.error.HTTPError as error:
+        # C1 (revue 2026-08-03) : meme doctrine que check_instagram_authorization
+        # -- un 404 (connecteur pas encore provisionne) est un etat SERVEUR
+        # attendu avant activation complete, jamais une panne. Log doux dans
+        # les deux cas (best-effort, ne doit jamais interrompre le worker),
+        # evenement distinct pour ne pas confondre les deux cas au
+        # diagnostic. L3 : le print() lui-meme est protege -- un BrokenPipe
+        # (stdout ferme, ex. journald qui recycle) ne doit jamais tuer
+        # silencieusement ce thread daemon.
+        try:
+            print(json.dumps({
+                "event": "instagram_heartbeat_not_provisioned" if error.code == 404 else "instagram_heartbeat_failed",
+                "status": status,
+                "http_status": error.code,
+            }))
+        except OSError:
+            pass
     except Exception as error:  # noqa: BLE001 -- best-effort par design, ne doit jamais tuer le worker.
-        print(json.dumps({
-            "event": "instagram_heartbeat_failed",
-            "status": status,
-            "error": str(error),
-        }))
+        try:
+            print(json.dumps({
+                "event": "instagram_heartbeat_failed",
+                "status": status,
+                "error": str(error),
+            }))
+        except OSError:
+            pass
 
 
 def instagram_heartbeat_loop() -> None:
@@ -1617,12 +1719,17 @@ def scan_jobs(db: sqlite3.Connection) -> None:
                 try:
                     gate = instagram_authorization_gate(time.monotonic())
                 except InstagramAuthorizationCheckFailed as error:
-                    print(json.dumps({
-                        "event": "acquisition_error",
-                        "code": "InstagramAuthorizationCheckFailed",
-                        "job_id": job_id,
-                    }))
-                    handle_failure(db, job_id, now, error)
+                    # H2 (revue 2026-08-03) : NE PASSE PLUS par handle_failure
+                    # -- une panne d'une dependance PARTAGEE (control-plane
+                    # prisme) ne doit jamais consommer le budget de tentatives
+                    # PAR JOB (sans quoi une maintenance prisme d'1h ferait
+                    # passer TOUTE la file Instagram a l'etat failed +
+                    # fichiers effaces). Job laisse pending, AUCUNE tentative
+                    # consommee -- meme discipline non-consommante que
+                    # authorized:false/not_provisioned ci-dessous. Seul le
+                    # compteur GLOBAL d'echecs consecutifs observe la
+                    # repetition (evenement JSON avec parcimonie).
+                    _record_control_plane_failure(error)
                     continue
                 if gate is None:
                     # Fenetre de throttle des verifications pas encore
@@ -1631,11 +1738,12 @@ def scan_jobs(db: sqlite3.Connection) -> None:
                     continue
                 authorized, auth_state = gate
                 if not authorized:
-                    # Verdict REEL authorized:false (ou tenant non
-                    # provisionne) : re-poll a la prochaine fenetre, job
-                    # laisse pending, AUCUNE tentative consommee (contrat
-                    # fetcher — distinct d'un echec de verification, qui lui
-                    # passe par handle_failure ci-dessus).
+                    # Verdict REEL authorized:false OU not_provisioned/404
+                    # (C1 -- cf check_instagram_authorization) : re-poll a la
+                    # prochaine fenetre, job laisse pending, AUCUNE tentative
+                    # consommee (contrat fetcher — distinct d'un echec de
+                    # VERIFICATION, qui lui alimente _record_control_plane_failure
+                    # ci-dessus, jamais handle_failure non plus).
                     print(json.dumps({
                         "event": "instagram_authorization_denied",
                         "job_id": job_id,

@@ -1220,8 +1220,16 @@ def process_instagram_job(db: sqlite3.Connection, job_id: str, job: dict, domain
             # racine forcement dans une VRAIE livraison, jamais dans un
             # dedup-sur-dedup sans preuve physique. Clause defensive, pas un
             # changement de comportement.
+            # L1 (revue 2026-08-03, cycle 4) : le predicat precedent ne
+            # filtrait pas sur l'adapter — une ligne jobs 'http'/'ytdlp' avec
+            # la MEME url (colonne 'url' partagee entre TOUS les adapters, cf
+            # schema table jobs plus haut) et state='done' suffisait a elle
+            # seule a faire passer ce job Instagram en "prior_delivery" alors
+            # qu'AUCUNE acquisition Instagram n'a jamais eu lieu pour cette
+            # url (mismatch adapter -> faux skipped_already_acquired).
             prior_delivery = db.execute(
-                "select 1 from jobs where url=? and job_id!=? and state='done' and output_path is not null limit 1",
+                "select 1 from jobs where url=? and job_id!=? and adapter='instagram'"
+                " and state='done' and output_path is not null limit 1",
                 (job["url"], job_id),
             ).fetchone()
             manifest["archive_rows_seeded"] = archive_rows_seeded

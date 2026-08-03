@@ -92,6 +92,14 @@ prisme_instagram_gallery_dl_version: "1.30.2"
 prisme_instagram_allowed_handles: []
 # Delai minimal entre deux requetes Instagram (par compte ET par domaine),
 # conservateur par design — jamais de contournement de rate-limit.
+#
+# M5 (revue 2026-08-03, cycle 4) : DEBIT reel du canary — throttle GLOBAL des
+# VERIFICATIONS d'autorisation par PASSE DE SCAN (prisme_instagram_authorization_poll_seconds
+# ci-dessous, 20s par defaut) COMBINE a ce rate-limit par compte (45s) :
+# au mieux, UN SEUL job Instagram progresse par fenetre de throttle
+# effective (~20-45s selon lequel domine), jamais plusieurs jobs en
+# parallele. Un canary avec plusieurs jobs pending draine donc sa file
+# lentement (un job par fenetre), jamais en rafale.
 prisme_instagram_rate_limit_seconds: 45
 # Cookies de session du compte AUTORISE, format Netscape cookies.txt
 # OBLIGATOIRE (gallery-dl --cookies ne lit pas de JSON — MED revue Codex).
@@ -306,13 +314,50 @@ prisme_transfer_interval_seconds: 300
 # operateur : GET .../connectors/instagram/authorization et POST
 # .../connectors/instagram/heartbeat). Vide par defaut : assert fail-loud
 # (tasks/main.yml) des que prisme_instagram_enabled.
+#
+# C1 (revue 2026-08-03, cycle 4) : PRECONDITION D'ORDONNANCEMENT — la ligne
+# du connecteur Instagram (table external_connectors cote control-plane
+# prisme, tenant = prisme_instagram_tenant_id) DOIT exister AVANT ce
+# deploiement fetcher avec prisme_instagram_enabled=true. Sans elle, GET
+# .../authorization repond 404 (dispatcher.ts) en PERMANENCE — le worker
+# (check_instagram_authorization/prisme-fetcher.py.j2) traite desormais ce
+# 404 comme un verdict REEL "not_provisioned" (jamais une panne) : le job
+# reste pending indefiniment (aucune tentative consommee, aucun etat
+# terminal), exactement comme un vrai authorized:false, JUSQU'A ce que le
+# provisioning cote prisme ait lieu. C'est le comportement VOULU (fail-safe,
+# jamais destructeur) mais un canary reste bloque sans jamais progresser tant
+# que cette ligne n'existe pas cote control-plane — verifier son existence
+# fait partie du GATE humain reel (5 conditions), hors perimetre de ce role.
 prisme_instagram_api_base: ""
 prisme_instagram_tenant_id: ""
 prisme_instagram_api_timeout_seconds: 10
 # Contrat : <=60s. 45s laisse une marge (jitter reseau, GC purge, boucle
 # d'attente d'un job long) sans jamais approcher la fenetre de fraicheur
 # serveur 90s (1,5x la cadence attendue -- gate 5).
+#
+# M3 (revue 2026-08-03, cycle 4, choix documente) : ce heartbeat mesure
+# UNIQUEMENT la vivacite du PROCESS (thread daemon actif) -- status="ready"
+# est envoye INCONDITIONNELLEMENT tant que le thread tourne, jamais derive
+# de l'etat fonctionnel de l'adapter (cookies Instagram expires/revoques =
+# "ready" quand meme cote gate 5, gallery-dl echouerait seulement au job
+# suivant). "degraded" n'est jamais emis par ce canary -- variante
+# "documentation" retenue plutot qu'un compteur d'echecs d'acquisition
+# dedie (jugee disproportionnee au perimetre CANARY-1b). A instruire si le
+# besoin se confirme (CANARY-5 : deriver "degraded" d'un compteur d'echecs
+# d'acquisition recents cote worker).
 prisme_instagram_heartbeat_interval_seconds: 45
+# H2 (revue 2026-08-03, cycle 4) : nombre d'echecs CONSECUTIFS de
+# VERIFICATION (InstagramAuthorizationCheckFailed -- reseau/HTTP non-404/
+# reponse invalide, JAMAIS un vrai verdict authorized:false/not_provisioned)
+# avant qu'un evenement JSON instagram_control_plane_unreachable soit
+# journalise. Une panne du control-plane ne consomme JAMAIS le budget de
+# tentatives d'un job (contrairement a l'ancien routage vers handle_failure,
+# corrige) -- ce seuil ne pilote qu'un signal d'OBSERVABILITE, jamais un
+# etat terminal.
+prisme_instagram_control_plane_failure_threshold: 5
+# Parcimonie de l'evenement une fois le seuil atteint (1 evenement au plus
+# par cette fenetre, meme si le control-plane reste injoignable longtemps).
+prisme_instagram_control_plane_alert_interval_seconds: 300
 # Throttle des VERIFICATIONS d'autorisation, par PASSE DE SCAN (pas par job,
 # pas un cache de verdict) : le worker scanne jobs/ toutes les
 # prisme_fetcher_poll_seconds (2s par defaut) -- sans throttle, N jobs
@@ -323,6 +368,18 @@ prisme_instagram_heartbeat_interval_seconds: 45
 # reelle d'acquisition : ce throttle ne fait que borner la cadence des passes
 # de scan qui echouent a atteindre l'acquisition faute de fenetre ecoulee.
 prisme_instagram_authorization_poll_seconds: 20
+# M5 (revue 2026-08-03, cycle 4, decision explicite) : un job Instagram
+# pending SANS livraison possible (connecteur revoque, authorized:false ou
+# not_provisioned/404 permanent, cf C1) reste dans jobs/ ET dans la table
+# jobs INDEFINIMENT -- AUCUN TTL/plafond ne le purge automatiquement
+# aujourd'hui. Decision au canary : accepte (volume de jobs canary faible,
+# operateur humain unique, revocation = evenement rare et deja visible via
+# instagram_authorization_denied/instagram_control_plane_unreachable dans
+# les logs). A REVOIR avant un passage bulk/multi-tenant (CANARY-5+) : soit
+# un TTL applicatif (purge_old_artifacts ne couvre que manifests/+rejects/,
+# jamais jobs/ pending), soit une metrique de profondeur de file
+# (nombre de jobs adapter=instagram, state=pending, exposee en heartbeat ou
+# en log periodique) pour detecter une accumulation silencieuse.
 # CIDR (typiquement /32) perce dans IPAddressDeny=...100.64.0.0/10... de
 # l'unite systemd (A5, garde SSRF -- prisme-fetcher.service.j2) pour que CE
 # SEUL hote tailnet (le control-plane prisme) reste joignable malgre le
@@ -337,4 +394,21 @@ prisme_instagram_authorization_poll_seconds: 20
 # unite qui combine IPAddressAllow=any avec des IPAddressDeny= plus
 # specifiques) : un IPAddressAllow=/32 gagne toujours face a
 # IPAddressDeny=.../10 englobant, quel que soit l'ordre des directives.
+#
+# M1 (revue 2026-08-03, cycle 4) : PAS une granularite de PORT — systemd
+# IPAddressAllow=/IPAddressDeny= filtrent uniquement par ADRESSE IP. Ce /32
+# rend donc TOUT l'hote Sese joignable par ce worker (tous les vhosts Caddy
+# co-heberges -- llm./mayi./… -- ainsi que sshd:804), pas seulement
+# l'endpoint applicatif prisme (authorization/heartbeat). Consequence
+# ADDITIONNELLE non triviale : les adapters generiques (yt-dlp/gallery-dl,
+# allowlist_scope="input_url_only") ne re-verifient JAMAIS les hotes
+# resolus en interne par ces binaires (CDN media arbitraires) -- avant
+# CANARY-1b, le SEUL filet contre une redirection/resolution vers le
+# tailnet etait ce meme filtre noyau IPAddressDeny (100.64.0.0/10 entier
+# bloque). Depuis ce /32, une sous-requete yt-dlp/gallery-dl POURRAIT en
+# theorie atteindre Sese-AI (mais toujours PAS le reste du tailnet) si un
+# CDN resolvait vers cette IP precise -- risque ACCEPTE au canary (surface
+# tres etroite, un seul hote precis, jamais tout le tailnet), a reduire
+# (unite dediee au trafic control-plane, hors perimetre CANARY-1b) si le
+# perimetre s'elargit au-dela d'un canary.
 prisme_instagram_api_allow_cidr: "100.64.0.14/32"

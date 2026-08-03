@@ -42,18 +42,28 @@ Environment=XDG_CACHE_HOME={{ prisme_fetcher_root }}/.cache
 # process de cette meme unite - LoadCredential est le seul mecanisme qui
 # repond au MED revue Codex.
 LoadCredential={{ prisme_instagram_credential_name }}:{{ prisme_instagram_cookies_file }}
-# CANARY-1b : trou etroit dans IPAddressDeny (A5, SSRF) pour que le worker
-# puisse joindre le control-plane prisme (GET .../authorization, POST
-# .../heartbeat) — sans lui, le contrat fetcher<->prisme est INJOIGNABLE des
-# que le control-plane vit sur le tailnet (100.64.0.0/10, denye par defaut
-# ci-dessous). IPAddressAllow ne resout PAS les noms d'hote (IP uniquement) :
-# prisme_instagram_api_allow_cidr DOIT rester synchronise avec l'IP reelle
-# derriere prisme_instagram_api_base (assert dedie, tasks/main.yml). Verifie
-# (man systemd.resource-control, IPAddressAllow=/IPAddressDeny=) : un
-# IPAddressAllow=/32 gagne toujours face a un IPAddressDeny= plus large
-# englobant la meme adresse, quel que soit l'ordre des directives — coherent
-# avec le design deja en prod de cette unite (IPAddressAllow=any + des
-# IPAddressDeny= plus specifiques ci-dessous).
+# CANARY-1b : PAS un trou "etroit" (M1, revue 2026-08-03, cycle 4 — le
+# commentaire precedent laissait entendre une granularite qui n'existe pas).
+# IPAddressAllow=/IPAddressDeny= filtrent par ADRESSE IP uniquement (systemd
+# ne connait pas les ports) : ce /32 rend TOUT l'hote Sese joignable depuis
+# ce worker — pas seulement l'endpoint applicatif prisme
+# (GET/POST .../connectors/instagram/...), mais aussi tous les autres vhosts
+# Caddy co-heberges (llm./mayi./…) et sshd:804. Risque ACTE au canary (cf
+# defaults/main.yml, section A5) : les sous-requetes yt-dlp/gallery-dl
+# (allowlist_scope=input_url_only, aucune re-verification applicative des
+# hotes resolus en interne) n'avaient auparavant QUE ce filtre noyau comme
+# defense vers le tailnet — il est desormais partiellement ouvert vers Sese
+# pour cette unite. Sans ce trou, le contrat fetcher<->prisme est
+# INJOIGNABLE des que le control-plane vit sur le tailnet (100.64.0.0/10,
+# denye par defaut ci-dessous). IPAddressAllow ne resout PAS les noms d'hote
+# (IP uniquement) : prisme_instagram_api_allow_cidr DOIT rester synchronise
+# avec l'IP reelle derriere prisme_instagram_api_base (assert dedie,
+# tasks/main.yml). Verifie (man systemd.resource-control,
+# IPAddressAllow=/IPAddressDeny=) : un IPAddressAllow=/32 gagne toujours
+# face a un IPAddressDeny= plus large englobant la meme adresse, quel que
+# soit l'ordre des directives — coherent avec le design deja en prod de
+# cette unite (IPAddressAllow=any + des IPAddressDeny= plus specifiques
+# ci-dessous).
 IPAddressAllow={{ prisme_instagram_api_allow_cidr }}
 {% endif %}
 ExecStart={{ prisme_fetcher_bin }}

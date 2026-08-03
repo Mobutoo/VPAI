@@ -161,16 +161,31 @@
   tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Validate Instagram adapter prerequisites (fail-loud)
+  vars:
+    # R4 (revue 2026-08-03, cycle 3) : extraction fail-safe de la borne haute
+    # de prisme_instagram_range_default — jamais un split()[1] direct (une
+    # valeur hors format "N-M", ex. "abc" ou sans tiret, produirait un
+    # IndexError qui casserait la TACHE elle-meme au lieu du fail-loud
+    # `fail_msg` ci-dessous ; l'autre condition du `that` verifie deja le
+    # format complet, mais les vars sont evaluees AVANT le `that`). Un
+    # regex_search qui ne matche pas rend None -> default('0') -> 0, ce qui
+    # fait echouer la comparaison (donc l'assert) sans jamais lever
+    # d'exception de templating.
+    _range_default_upper: "{{ (prisme_instagram_range_default | regex_search('-([0-9]+)$', '\\1')) | default('0', true) | int }}"
   ansible.builtin.assert:
     that:
       - prisme_instagram_cookies_content | default('') | length > 0
       - prisme_instagram_allowed_handles | length > 0
       - prisme_instagram_range_default is match('^[0-9]+-[0-9]+$')
+      - _range_default_upper <= (prisme_instagram_range_max_upper | int)
     quiet: true
     fail_msg: >-
       prisme_instagram_enabled=true mais un prerequis manque : cookies vides,
-      allowlist de handles vide, ou prisme_instagram_range_default hors
-      format "N-M".
+      allowlist de handles vide, prisme_instagram_range_default hors format
+      "N-M", ou (REX-62/R4) la borne haute de
+      prisme_instagram_range_default depasse prisme_instagram_range_max_upper
+      (le defaut serait alors rejete par le worker lui-meme, range_upper_too_large,
+      des le premier job sans range explicite).
   when: prisme_instagram_enabled | bool
   tags: [prisme-fetcher, prisme_fetcher, phase3]
 

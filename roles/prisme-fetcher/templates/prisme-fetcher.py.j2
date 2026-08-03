@@ -1023,6 +1023,16 @@ def process_instagram_job(db: sqlite3.Connection, job_id: str, job: dict, domain
         return
     range_lower = int(job_range.split("-")[0])
     range_upper = int(job_range.split("-")[1])
+    # R4 (revue 2026-08-03, cycle 3) : le regex "^\d+-\d+$" seul acceptait un
+    # span NEGATIF ("5-3") — span = upper-lower+1 devenait alors <= 0,
+    # `partial = len(files_info) < span` restait FAUX en permanence (jamais
+    # signale, silencieux) au lieu d'un rejet explicite AVANT tout appel
+    # gallery-dl.
+    if range_lower > range_upper:
+        manifest["range_lower"] = range_lower
+        manifest["range_upper"] = range_upper
+        _finalize_instagram_job(db, job_id, manifest, workdir, state="rejected", error="invalid_range")
+        return
     # H-C (revue 2026-08-03, cycle 2) : plafond dur AVANT tout appel
     # gallery-dl — sans cette borne, une deadline arbitraire (1-99999 ~= 1,5e7
     # s) gele le pipeline mono-thread + verrouille en singleton (M1), y

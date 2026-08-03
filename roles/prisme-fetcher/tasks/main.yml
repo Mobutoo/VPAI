@@ -57,7 +57,10 @@
   # role n'ait tourne), le worker (qui s'execute TOUJOURS comme
   # {{ prisme_fetcher_user }}, cf User= dans l'unite) recevrait un
   # PermissionError a l'ouverture -> crash-loop bruyant (borne desormais par
-  # StartLimitIntervalSec/Burst ci-dessus, mais autant ne jamais l'atteindre).
+  # StartLimitIntervalSec/Burst de l'unite systemd, cf prisme-fetcher.service.j2
+  # — nit revue 2026-08-03 cycle 4 : "ci-dessus" etait errone, ce plafond vit
+  # dans le template de l'unite, pas plus haut dans ce fichier de taches —
+  # mais autant ne jamais atteindre ce plafond).
   # `state: touch` + preserve les timestamps -> idempotent (0 changed au 2e
   # run) si le fichier existe deja avec la bonne propriete.
   ansible.builtin.file:

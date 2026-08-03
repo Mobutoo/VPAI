@@ -220,3 +220,134 @@
   become: true
   when: not (common_molecule_mode | default(false) | bool)
   tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+# --- Adapter Instagram (CANARY) --------------------------------------------
+# Gate humain reel = l'endpoint prisme applicatif (5 conditions, hors perimetre
+# de ce role). Ici : fail-loud si active sans prerequis, jamais de secret loggue.
+
+- name: Prisme fetcher | Validate Instagram adapter prerequisites (fail-loud)
+  ansible.builtin.assert:
+    that:
+      - prisme_instagram_cookies_content | default('') | length > 0
+      - prisme_instagram_allowed_handles | length > 0
+      - "'instagram.com' not in (prisme_fetcher_allowed_domains | map('lower') | list)"
+      - "'www.instagram.com' not in (prisme_fetcher_allowed_domains | map('lower') | list)"
+      - prisme_instagram_range_default is match('^[0-9]+-[0-9]+$')
+    quiet: true
+    fail_msg: >-
+      prisme_instagram_enabled=true mais un prerequis manque : cookies vides,
+      allowlist de handles vide, "instagram.com"/"www.instagram.com" present
+      dans prisme_fetcher_allowed_domains (contournerait la verification de
+      handle+cookies de l'adapter Instagram via l'adapter http/ytdlp generique),
+      ou prisme_instagram_range_default hors format "N-M".
+  when: prisme_instagram_enabled | bool
+  no_log: true
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+- name: Prisme fetcher | Validate Instagram cookies look like Netscape cookies.txt (not JSON)
+  vars:
+    _cookies_trimmed: "{{ prisme_instagram_cookies_content | trim }}"
+    _cookies_first_char: "{{ _cookies_trimmed[0] | default('') }}"
+    _cookies_data_lines: >-
+      {{ _cookies_trimmed.splitlines()
+         | reject('match', '^\s*#')
+         | reject('match', '^\s*$')
+         | list }}
+    _cookies_netscape_lines: >-
+      {{ _cookies_data_lines
+         | select('match', '^([^\t]+\t){6}[^\t]*$')
+         | list }}
+  ansible.builtin.assert:
+    that:
+      - _cookies_first_char not in ['{', '[']
+      - _cookies_data_lines | length > 0
+      - (_cookies_netscape_lines | length) == (_cookies_data_lines | length)
+    quiet: true
+    fail_msg: >-
+      prisme_instagram_cookies_content ne ressemble pas a un cookies.txt
+      Netscape (7 champs tabules par ligne hors commentaires/lignes vides) —
+      gallery-dl --cookies n'accepte pas de JSON. Reexporter au format
+      Netscape (ex. extension navigateur "Get cookies.txt").
+  when: prisme_instagram_enabled | bool
+  no_log: true
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+- name: Prisme fetcher | Create Instagram cookies directory
+  ansible.builtin.file:
+    path: "{{ prisme_instagram_cookies_file | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: prisme_instagram_enabled | bool
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+- name: Prisme fetcher | Deploy Instagram session cookies (Netscape format, 0400 root:root)
+  ansible.builtin.copy:
+    content: "{{ prisme_instagram_cookies_content }}"
+    dest: "{{ prisme_instagram_cookies_file }}"
+    owner: root
+    group: root
+    mode: "0400"
+  become: true
+  no_log: true
+  when: prisme_instagram_enabled | bool
+  notify: Prisme fetcher | Restart
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+- name: Prisme fetcher | Remove Instagram cookies file when adapter disabled (revocation hygiene)
+  ansible.builtin.file:
+    path: "{{ prisme_instagram_cookies_file }}"
+    state: absent
+  become: true
+  when: not (prisme_instagram_enabled | bool)
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+- name: Prisme fetcher | Install pipx (Instagram adapter dependency manager)
+  ansible.builtin.apt:
+    name: pipx
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  when: prisme_instagram_enabled | bool
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+- name: Prisme fetcher | Create dedicated pipx home for gallery-dl (outside ProtectHome=true blast radius)
+  ansible.builtin.file:
+    path: "{{ prisme_instagram_gallery_dl_pipx_home }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  become: true
+  when: prisme_instagram_enabled | bool
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+- name: Prisme fetcher | Probe currently installed gallery-dl version (idempotence)
+  ansible.builtin.command:
+    cmd: "{{ prisme_instagram_gallery_dl_bin }} --version"
+  environment:
+    PIPX_HOME: "{{ prisme_instagram_gallery_dl_pipx_home }}"
+    PIPX_BIN_DIR: "{{ prisme_instagram_gallery_dl_pipx_bin_dir }}"
+  become: true
+  register: prisme_instagram_gallery_dl_installed
+  changed_when: false
+  failed_when: false
+  when: prisme_instagram_enabled | bool
+  tags: [prisme-fetcher, prisme_fetcher, phase3]
+
+- name: Prisme fetcher | Install gallery-dl via pipx (pinned exact version)
+  ansible.builtin.command:
+    cmd: "pipx install --force gallery-dl=={{ prisme_instagram_gallery_dl_version }}"
+  environment:
+    PIPX_HOME: "{{ prisme_instagram_gallery_dl_pipx_home }}"
+    PIPX_BIN_DIR: "{{ prisme_instagram_gallery_dl_pipx_bin_dir }}"
+  become: true
+  when: >-
+    prisme_instagram_enabled | bool
+    and (prisme_instagram_gallery_dl_installed.rc | default(1) != 0
+         or prisme_instagram_gallery_dl_version not in (prisme_instagram_gallery_dl_installed.stdout | default('')))
+  changed_when: true
+  tags: [prisme-fetcher, prisme_fetcher, phase3]

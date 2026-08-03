@@ -164,6 +164,13 @@
         cmd: python3 /usr/local/libexec/prisme-fetcher --once
       environment:
         CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
+        # CANARY-1b : le worker consomme desormais PRISME_FETCHER_TOKEN
+        # au runtime (os.environ) pour authentifier authorization/heartbeat
+        # aupres du stub control-plane -- ce fichier invoque le binaire hors
+        # systemd (EnvironmentFile= n'est jamais source ici), donc le jeton
+        # doit etre passe explicitement, meme valeur que
+        # vault_prisme_fetcher_token (converge.yml).
+        PRISME_FETCHER_TOKEN: molecule-fetcher-token-32-characters
       become: true
       become_user: prisme-fetcher
       changed_when: false
@@ -458,6 +465,94 @@
 
           sys.exit(0)
 
+    # --- Contrat fetcher <-> control-plane Prisme (CANARY-1b) --------------
+    # Demarre AVANT toute passe qui touche l'adapter Instagram (ci-dessous) :
+    # depuis ce chantier, CHAQUE job Instagram passe par la garde
+    # d'autorisation avant process_instagram_job -- sans ce stub up (mode
+    # "true" par defaut), TOUS les scenarios pre-existants (handle/mismatch/
+    # blocked/carousel/etc.) echoueraient desormais sur
+    # InstagramAuthorizationCheckFailed au lieu d'exercer leur propre logique
+    # de rejet. Le mode est relu depuis un fichier mutable (pas fige a l'env
+    # du process) pour que les scenarios authorized:false/unreachable
+    # ci-dessous (fin de fichier) puissent faire basculer le verdict SANS
+    # redemarrer ce serveur transitoire.
+    - name: Write the fetcher control-plane mode file (default authorized)
+      ansible.builtin.copy:
+        dest: /tmp/prisme-verify-authz-mode
+        content: "true"
+        mode: "0644"
+
+    - name: Write a minimal fetcher control-plane stub (authorization + heartbeat routes, CANARY-1b)
+      ansible.builtin.copy:
+        dest: /tmp/prisme-verify-http/authz_server.py
+        mode: "0644"
+        content: |
+          import http.server
+          import json
+          from pathlib import Path
+
+          TOKEN = "molecule-fetcher-token-32-characters"
+          MODE_FILE = Path("/tmp/prisme-verify-authz-mode")
+
+
+          class Handler(http.server.BaseHTTPRequestHandler):
+              def _check_auth(self):
+                  return self.headers.get("Authorization") == f"Bearer {TOKEN}"
+
+              def do_GET(self):
+                  if not self.path.startswith("/api/v1/connectors/instagram/authorization"):
+                      self.send_response(404)
+                      self.end_headers()
+                      return
+                  if not self._check_auth():
+                      self.send_response(401)
+                      self.end_headers()
+                      return
+                  mode = MODE_FILE.read_text().strip() if MODE_FILE.exists() else "true"
+                  body = json.dumps(
+                      {"authorized": mode == "true", "state": "active" if mode == "true" else "revoked"}
+                  ).encode()
+                  self.send_response(200)
+                  self.send_header("Content-Type", "application/json")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+
+              def do_POST(self):
+                  if self.path != "/api/v1/connectors/instagram/heartbeat":
+                      self.send_response(404)
+                      self.end_headers()
+                      return
+                  if not self._check_auth():
+                      self.send_response(401)
+                      self.end_headers()
+                      return
+                  length = int(self.headers.get("Content-Length", "0"))
+                  self.rfile.read(length)
+                  body = json.dumps({"accepted": True}).encode()
+                  self.send_response(202)
+                  self.send_header("Content-Type", "application/json")
+                  self.send_header("Content-Length", str(len(body)))
+                  self.end_headers()
+                  self.wfile.write(body)
+
+              def log_message(self, *args):
+                  pass
+
+
+          http.server.HTTPServer(("127.0.0.1", 8090), Handler).serve_forever()
+
+    - name: Start the fetcher control-plane stub as a transient systemd unit
+      ansible.builtin.command:
+        cmd: systemd-run --unit=prisme-verify-authz --collect python3 /tmp/prisme-verify-http/authz_server.py
+      changed_when: true
+
+    - name: Wait for the fetcher control-plane stub to accept connections
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 8090
+        timeout: 5
+
     - name: Drop an Instagram job whose handle is NOT allowlisted (rejected before any gallery-dl call)
       ansible.builtin.copy:
         dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-rejected-handle.json
@@ -568,6 +663,13 @@
         cmd: python3 /usr/local/libexec/prisme-fetcher --once
       environment:
         CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
+        # CANARY-1b : le worker consomme desormais PRISME_FETCHER_TOKEN
+        # au runtime (os.environ) pour authentifier authorization/heartbeat
+        # aupres du stub control-plane -- ce fichier invoque le binaire hors
+        # systemd (EnvironmentFile= n'est jamais source ici), donc le jeton
+        # doit etre passe explicitement, meme valeur que
+        # vault_prisme_fetcher_token (converge.yml).
+        PRISME_FETCHER_TOKEN: molecule-fetcher-token-32-characters
       become: true
       become_user: prisme-fetcher
       changed_when: false
@@ -727,6 +829,13 @@
         cmd: python3 /usr/local/libexec/prisme-fetcher --once
       environment:
         CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
+        # CANARY-1b : le worker consomme desormais PRISME_FETCHER_TOKEN
+        # au runtime (os.environ) pour authentifier authorization/heartbeat
+        # aupres du stub control-plane -- ce fichier invoque le binaire hors
+        # systemd (EnvironmentFile= n'est jamais source ici), donc le jeton
+        # doit etre passe explicitement, meme valeur que
+        # vault_prisme_fetcher_token (converge.yml).
+        PRISME_FETCHER_TOKEN: molecule-fetcher-token-32-characters
       become: true
       become_user: prisme-fetcher
       changed_when: false
@@ -794,6 +903,13 @@
         cmd: python3 /usr/local/libexec/prisme-fetcher --once
       environment:
         CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
+        # CANARY-1b : le worker consomme desormais PRISME_FETCHER_TOKEN
+        # au runtime (os.environ) pour authentifier authorization/heartbeat
+        # aupres du stub control-plane -- ce fichier invoque le binaire hors
+        # systemd (EnvironmentFile= n'est jamais source ici), donc le jeton
+        # doit etre passe explicitement, meme valeur que
+        # vault_prisme_fetcher_token (converge.yml).
+        PRISME_FETCHER_TOKEN: molecule-fetcher-token-32-characters
       become: true
       become_user: prisme-fetcher
       changed_when: false
@@ -826,3 +942,100 @@
       ansible.builtin.assert:
         that:
           - nouser_job_leftover.stat.exists
+
+    # --- Contrat fetcher <-> control-plane Prisme (CANARY-1b, 3 scenarios) -
+
+    - name: Flip the fetcher control-plane stub to authorized:false (revoked)
+      ansible.builtin.copy:
+        dest: /tmp/prisme-verify-authz-mode
+        content: "false"
+        mode: "0644"
+
+    - name: Drop an Instagram job while the control-plane reports authorized:false
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-authz-denied.json
+        content: |
+          {"url": "https://www.instagram.com/operator_test/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: authorized:false (CANARY-1b)"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Run a worker pass while the control-plane denies authorization (CANARY-1b)
+      ansible.builtin.command:
+        cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      environment:
+        CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
+        PRISME_FETCHER_TOKEN: molecule-fetcher-token-32-characters
+      become: true
+      become_user: prisme-fetcher
+      changed_when: false
+
+    - name: Verify the authz-denied job file was NOT garbage-collected (re-poll contract — never terminal, never GC'd)
+      ansible.builtin.stat:
+        path: /var/lib/prisme-fetcher/jobs/molecule-instagram-authz-denied.json
+      register: authz_denied_job_leftover
+
+    - name: Assert the authz-denied job stayed pending (no attempt consumed, no manifest — distinct from a real acquisition failure)
+      ansible.builtin.assert:
+        that:
+          - authz_denied_job_leftover.stat.exists
+
+    - name: Find any manifest for the authz-denied job (must be NONE — the job was never handed to process_instagram_job)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/manifests
+        patterns: "*.json"
+        contains: "authorized:false"
+      register: authz_denied_manifest_leak
+
+    - name: Assert the authz-denied scenario never reached process_instagram_job (no manifest leak)
+      ansible.builtin.assert:
+        that:
+          - authz_denied_manifest_leak.matched == 0
+
+    - name: Stop the fetcher control-plane stub (simulates control-plane unreachable)
+      ansible.builtin.systemd_service:
+        name: prisme-verify-authz.service
+        state: stopped
+      failed_when: false
+
+    - name: Drop an Instagram job while the control-plane is unreachable (fail-closed, CANARY-1b)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-authz-unreachable.json
+        content: |
+          {"url": "https://www.instagram.com/operator_test/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: control-plane unreachable (CANARY-1b)"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Run a worker pass while the control-plane is unreachable (CANARY-1b)
+      ansible.builtin.command:
+        cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      environment:
+        CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
+        PRISME_FETCHER_TOKEN: molecule-fetcher-token-32-characters
+      become: true
+      become_user: prisme-fetcher
+      changed_when: false
+
+    - name: Read the retry_wait state for the unreachable-control-plane job (fail-closed, standard backoff — never a silent skip)
+      ansible.builtin.command:
+        cmd: >-
+          python3 -c "
+          import sqlite3
+          conn = sqlite3.connect('/var/lib/prisme-fetcher/state.sqlite3')
+          rows = conn.execute(
+              \"select state, error from jobs where note like '%unreachable%'\"
+          ).fetchall()
+          print(rows)
+          "
+      register: authz_unreachable_state
+      changed_when: false
+
+    - name: Assert the unreachable-control-plane job is fail-closed and retriable (never authorized, never a terminal state)
+      ansible.builtin.assert:
+        that:
+          - "'retry_wait' in authz_unreachable_state.stdout"
+          - "'authorization_check_failed' in authz_unreachable_state.stdout"
+        fail_msg: >-
+          Attendu state=retry_wait + error contenant authorization_check_failed
+          (fail-closed, jamais authorized) : {{ authz_unreachable_state.stdout }}

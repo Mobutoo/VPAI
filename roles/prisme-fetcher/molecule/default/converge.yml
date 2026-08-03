@@ -37,6 +37,25 @@
     # zero appel reseau vers Instagram. Le pin pipx reel (prisme_instagram_gallery_dl_version)
     # est teste independamment via le binaire installe a prisme_instagram_gallery_dl_pipx_bin_dir.
     prisme_instagram_gallery_dl_bin: /usr/local/libexec/prisme-fetcher-gallery-dl-stub
+    # --- Contrat fetcher <-> control-plane Prisme (CANARY-1b) : verify.yml
+    # deploie un stub HTTP loopback (127.0.0.1:8090) qui simule les deux
+    # routes systeme (authorization/heartbeat). L'unite systemd (IPAddressAllow/
+    # Deny) n'est PAS en jeu ici : verify.yml invoque le worker en --once
+    # directement (command), hors systemd -- cf commentaire C1-bis plus bas
+    # dans ce meme fichier pour la meme limite deja documentee sur
+    # CREDENTIALS_DIRECTORY. Un run molecule vert ne prouve donc PAS la
+    # joignabilite tailnet reelle (IPAddressAllow) : verifie separement au
+    # deploiement (assert getent, tasks/main.yml) + a la mise en prod.
+    prisme_instagram_api_base: "http://127.0.0.1:8090"
+    prisme_instagram_tenant_id: "molecule-tenant"
+    # Valeur par defaut du role conservee (pas besoin de la reduire) : chaque
+    # `--once` demarre un process FRAIS (_INSTAGRAM_AUTH_STATE reinitialise a
+    # checked_at=0.0), et time.monotonic() (horloge depuis le boot, jamais
+    # depuis le lancement du process) est toujours tres largement superieur a
+    # ce seuil des la 1re verification -> une verification fraiche est donc
+    # TOUJOURS effectuee au tout premier passage de chaque invocation --once.
+    prisme_instagram_authorization_poll_seconds: 20
+    prisme_instagram_heartbeat_interval_seconds: 45
   pre_tasks:
     - name: Create service group
       ansible.builtin.group:

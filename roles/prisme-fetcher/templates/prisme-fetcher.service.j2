@@ -14,6 +14,20 @@ EnvironmentFile={{ prisme_fetcher_env_file }}
 # inaccessible/inexistant du compte de service (create_home: false).
 Environment=HOME={{ prisme_fetcher_root }}
 Environment=XDG_CACHE_HOME={{ prisme_fetcher_root }}/.cache
+{% if prisme_instagram_enabled %}
+# CANARY Instagram : cookies de session transmis via LoadCredential — copie
+# privee dans $CREDENTIALS_DIRECTORY (mode 0400, visible seulement de cette
+# unite), jamais en argv, jamais logguee. MEME unite que le fetcher generique
+# (pas d'unite dediee) : state.sqlite3 n'a aujourd'hui qu'un seul writer (pas
+# de busy_timeout/BEGIN IMMEDIATE, GC des jobs/*.json dans scan_jobs) — une
+# unite Instagram separee introduirait un second writer concurrent sur la
+# meme base (risque de corruption/double traitement pire que le gain
+# d'isolement). Le fichier source reste 0400 root:root sur disque et deja
+# illisible par {{ prisme_fetcher_user }} : InaccessiblePaths ne peut pas a la
+# fois le cacher ET l'exposer au meme process de cette meme unite -
+# LoadCredential est le seul mecanisme qui repond au MED revue Codex.
+LoadCredential={{ prisme_instagram_credential_name }}:{{ prisme_instagram_cookies_file }}
+{% endif %}
 ExecStart={{ prisme_fetcher_bin }}
 Restart=on-failure
 RestartSec=5

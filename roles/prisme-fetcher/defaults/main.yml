@@ -380,7 +380,11 @@ prisme_instagram_authorization_poll_seconds: 20
 # jamais jobs/ pending), soit une metrique de profondeur de file
 # (nombre de jobs adapter=instagram, state=pending, exposee en heartbeat ou
 # en log periodique) pour detecter une accumulation silencieuse.
-# CIDR (typiquement /32) perce dans IPAddressDeny=...100.64.0.0/10... de
+# CIDR /32 EXPLICITE UNIQUEMENT (LOW, revue GO cycle 2 -- "typiquement /32"
+# suggerait a tort qu'une plage plus large serait toleree ; l'assert
+# _ipv4_slash32 dans tasks/main.yml REJETTE tout prefixe != /32, le
+# perimetre est volontairement retreci a une IP unique, jamais un vrai
+# CIDR). Perce dans IPAddressDeny=...100.64.0.0/10... de
 # l'unite systemd (A5, garde SSRF -- prisme-fetcher.service.j2) pour que CE
 # SEUL hote tailnet (le control-plane prisme) reste joignable malgre le
 # deny generique du reste du tailnet. systemd ne resout PAS les noms d'hote

@@ -229,7 +229,7 @@ _INSTAGRAM_AUTH_STATE = {"checked_at": None}
 # -- authorized:false/not_provisioned REELS ne comptent jamais ici, cf
 # _record_control_plane_failure/instagram_authorization_gate). Remis a zero
 # des qu'une verification reussit (verdict recu, quel qu'il soit).
-_INSTAGRAM_CONTROL_PLANE_STATE = {"consecutive_failures": 0, "last_alert_at": 0.0}
+_INSTAGRAM_CONTROL_PLANE_STATE = {"consecutive_failures": 0, "last_alert_at": None}
 
 
 def _record_control_plane_failure(error: Exception) -> None:
@@ -239,12 +239,16 @@ def _record_control_plane_failure(error: Exception) -> None:
     # pour ne pas noyer les logs si le control-plane reste injoignable
     # longtemps (chaque passe de scan qui tente une verification fraiche
     # rappelle cette fonction).
+    # L1 (revue GO cycle 2) : meme sentinelle None que _INSTAGRAM_AUTH_STATE
+    # ci-dessus -- time.monotonic() n'a pas de point de reference absolu
+    # documente ; 0.0 supposait implicitement "tres loin dans le passe".
     state = _INSTAGRAM_CONTROL_PLANE_STATE
     state["consecutive_failures"] += 1
     now_monotonic = time.monotonic()
-    if (
-        state["consecutive_failures"] >= INSTAGRAM_CONTROL_PLANE_FAILURE_THRESHOLD
-        and now_monotonic - state["last_alert_at"] >= INSTAGRAM_CONTROL_PLANE_ALERT_INTERVAL_SECONDS
+    last_alert_at = state["last_alert_at"]
+    if state["consecutive_failures"] >= INSTAGRAM_CONTROL_PLANE_FAILURE_THRESHOLD and (
+        last_alert_at is None
+        or now_monotonic - last_alert_at >= INSTAGRAM_CONTROL_PLANE_ALERT_INTERVAL_SECONDS
     ):
         state["last_alert_at"] = now_monotonic
         print(json.dumps({
@@ -336,6 +340,7 @@ def send_instagram_heartbeat(status: str) -> None:
                 "event": "instagram_heartbeat_not_provisioned" if error.code == 404 else "instagram_heartbeat_failed",
                 "status": status,
                 "http_status": error.code,
+                "error": str(error),
             }))
         except OSError:
             pass

@@ -14,8 +14,11 @@ prisme_fetcher_poll_seconds: 2
 prisme_fetcher_env_file: /etc/prisme-fetcher/env
 
 # --- Adapters reseau (HTTP generique + yt-dlp generique) ---
-# Instagram (ou tout adapter specifique plateforme) est HORS PERIMETRE : gate
-# humain separe, non tranche ici. Seuls http/ytdlp generiques sont livres.
+# L'adapter Instagram (CANARY) est defini plus bas, avec sa PROPRE allowlist
+# (domaine + handle) : il n'utilise JAMAIS prisme_fetcher_allowed_domains
+# ci-dessous (cf assert tasks/main.yml qui interdit "instagram.com"/
+# "www.instagram.com" ici, precisement pour empecher l'adapter http/ytdlp
+# generique de contourner la verification handle+cookies de l'adapter dedie).
 #
 # Choix stdlib-only (urllib) plutot que python3-requests : le role n'installe
 # aujourd'hui AUCUNE dependance Python sur waza, et le controle manuel des
@@ -71,6 +74,78 @@ prisme_fetcher_ytdlp_max_filesize: "1G"
 prisme_fetcher_rate_limit_seconds: 30
 prisme_fetcher_max_attempts: 5
 prisme_fetcher_retry_backoff_seconds: 60
+
+# --- Adapter Instagram (CANARY, gate humain — cf.
+# saas/prisme/docs/2026-08-03-plan-canary-instagram.md) ---
+# Desactive par defaut. L'activation reelle passe par l'endpoint gated de
+# Prisme (5 conditions verifiees serveur), jamais par ce seul flag.
+prisme_instagram_enabled: false
+# gallery-dl : pipx pinne EXACT (decision CANARY-0). Le paquet apt noble
+# (1.26.9, 2024-04) est trop vieux pour les extracteurs Instagram, et
+# l'activation de noble-backports reste hors perimetre du role (meme doctrine
+# que yt-dlp ci-dessus). pipx (paquet apt noble 1.4.3) isole le venv et
+# garantit la version epinglee — MED revue Codex 2026-08-03 honore.
+prisme_instagram_gallery_dl_version: "1.30.2"
+# Liste blanche de handles Instagram autorises (comptes de l'operateur ou
+# autorisation explicite). VIDE par defaut = tout refus. Un job dont le
+# handle n'est pas ici passe en state=rejected.
+prisme_instagram_allowed_handles: []
+# Delai minimal entre deux requetes Instagram (par compte ET par domaine),
+# conservateur par design — jamais de contournement de rate-limit.
+prisme_instagram_rate_limit_seconds: 45
+# Cookies de session du compte AUTORISE, format Netscape cookies.txt
+# OBLIGATOIRE (gallery-dl --cookies ne lit pas de JSON — MED revue Codex).
+# Contenu depuis le vault ; default('') pour ne pas casser un deploy ordinaire
+# (REX-62 : l'assert fail-loud ne s'applique que sous prisme_instagram_enabled).
+# no_log partout ou cette variable est manipulee.
+prisme_instagram_cookies_content: "{{ vault_prisme_instagram_cookies | default('') }}"
+prisme_instagram_cookies_file: /etc/prisme-fetcher/instagram-cookies.txt
+# Nom du secret transmis via systemd LoadCredential (MED revue Codex : le
+# fichier reste 0400 root:root sur disque, InaccessiblePaths ne peut pas a la
+# fois le cacher ET l'exposer au meme process -> LoadCredential est le seul
+# chemin d'acces runtime, copie privee dans $CREDENTIALS_DIRECTORY, jamais en
+# argv, jamais logge).
+prisme_instagram_credential_name: instagram-cookies
+
+# gallery-dl installe via pipx dans un home dedie HORS /root (masque par
+# ProtectHome=true dans l'unite systemd -> le pipx par defaut de root,
+# ~/.local/{bin,share/pipx}, serait invisible au runtime).
+prisme_instagram_gallery_dl_pipx_home: /opt/pipx
+prisme_instagram_gallery_dl_pipx_bin_dir: /usr/local/bin
+prisme_instagram_gallery_dl_bin: "{{ prisme_instagram_gallery_dl_pipx_bin_dir }}/gallery-dl"
+
+# Plage --range gallery-dl par defaut : DOIT rester "N-M" (borne explicite,
+# jamais une plage ouverte). Un job peut fournir sa propre plage (meme motif
+# valide) ; sinon ce defaut prudent s'applique.
+prisme_instagram_range_default: "1-20"
+
+# Fichier d'archive gallery-dl (--download-archive) : persistant sous
+# prisme_fetcher_root (jamais dans work/<job_id>, purge a chaque job) pour que
+# re-executer un job deja acquis ne re-telecharge rien.
+prisme_instagram_archive_file: "{{ prisme_fetcher_root }}/instagram-archive.sqlite3"
+
+# Plafond disque dur (A4/A2, meme doctrine que yt-dlp) pour un bundle
+# post/carrousel Instagram : tue gallery-dl si depasse pendant l'acquisition.
+prisme_instagram_max_bundle_bytes: 524288000
+
+prisme_instagram_http_timeout_seconds: 30
+
+# Marqueurs (sous-chaines, insensibles a la casse) recherches dans stderr
+# gallery-dl pour distinguer un blocage terminal (challenge/2FA/rate-limit/
+# auth -> state=blocked, AUCUN retry) d'un echec transitoire ordinaire
+# (-> retry standard avec backoff, comme http/ytdlp). Configurable pour
+# absorber une evolution des messages gallery-dl sans toucher au code.
+prisme_instagram_blocked_markers:
+  challenge_required: "blocked:challenge_required"
+  checkpoint_required: "blocked:challenge_required"
+  checkpoint_challenge: "blocked:challenge_required"
+  login_required: "blocked:login_required"
+  please log in: "blocked:login_required"
+  rate limit: "blocked:rate_limited"
+  "429": "blocked:rate_limited"
+  "401": "blocked:auth"
+  "403": "blocked:auth"
+  forbidden: "blocked:auth"
 
 # --- Transfert vers banga (etape separee, banga OFFLINE aujourd'hui) ---
 # Desactive par defaut : a activer seulement une fois la cle publique

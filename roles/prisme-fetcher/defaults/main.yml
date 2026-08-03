@@ -126,6 +126,15 @@ prisme_instagram_gallery_dl_bin: "{{ prisme_instagram_gallery_dl_pipx_bin }}"
 # valide) ; sinon ce defaut prudent s'applique.
 prisme_instagram_range_default: "1-20"
 
+# H-C (revue 2026-08-03, cycle 2) : borne haute MAXIMALE tolerable pour la
+# plage --range d'un job. Sans ce plafond, un job "range": "1-99999" produit
+# une deadline theorique de plusieurs mois (H7 : range_upper * (rate_limit +
+# http_timeout) * marge) — le worker etant mono-thread et verrouille en
+# singleton (M1), TOUT le pipeline (heartbeat compris) serait gele pour la
+# duree du job. Un job dont la borne haute depasse cette valeur est rejete
+# avant tout appel gallery-dl (state=rejected, reason=range_upper_too_large).
+prisme_instagram_range_max_upper: 20
+
 # Fichier d'archive gallery-dl (--download-archive) : persistant sous
 # prisme_fetcher_root (jamais dans work/<job_id>, purge a chaque job) pour que
 # re-executer un job deja acquis ne re-telecharge rien.
@@ -188,6 +197,20 @@ prisme_instagram_blocked_markers:
 #      DELETE FROM jobs WHERE job_id='<sha256>'; sur
 #      {{ prisme_fetcher_root }}/state.sqlite3, puis redeposer le fichier
 #      jobs/*.json original.
+#
+# H-B (revue 2026-08-03, cycle 2) : la MEME procedure de reprise s'applique a
+# l'etat state=failed avec reason=instagram_empty_result_no_prior_delivery
+# QUAND l'operateur sait que le contenu existe reellement (ex. l'archive de
+# dedup a ete purgee/reinitialisee entre-temps, ou le job visait par erreur
+# une plage deja entierement livree ailleurs) : soumettre un nouveau job avec
+# un payload distinct (etape 2 ci-dessus), jamais redeposer l'original a
+# l'identique (meme job_id = deja terminal, re-GC immediat).
+
+# M-F (revue 2026-08-03, cycle 2) : retention (en jours) des manifestes de
+# traçabilite (manifests/<job_id>.json, TOUS adapters) et des snapshots
+# rejects/<job_id>/manifest.json (etats non-succes uniquement, cf M-B).
+# Purge par age dans la boucle principale du worker (purge_old_artifacts).
+prisme_instagram_artifact_retention_days: 90
 
 # --- Transfert vers banga (etape separee, banga OFFLINE aujourd'hui) ---
 # Desactive par defaut : a activer seulement une fois la cle publique

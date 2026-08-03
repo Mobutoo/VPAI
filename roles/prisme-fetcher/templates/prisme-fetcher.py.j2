@@ -904,9 +904,23 @@ def merge_instagram_archive(job_archive: Path, persistent_archive: Path) -> None
     persistent_archive.parent.mkdir(parents=True, exist_ok=True)
     src = sqlite3.connect(job_archive)
     try:
+        # L6 (revue 2026-08-03, cycle 4) : meme filtre que
+        # instagram_archive_row_count ci-dessous — sans lui, une table
+        # interne sqlite_* (ex. sqlite_sequence, cree automatiquement par un
+        # AUTOINCREMENT eventuel du schema gallery-dl) serait tentee en
+        # CREATE TABLE IF NOT EXISTS + INSERT vers l'archive persistante,
+        # alors que ces tables sont geree par SQLite lui-meme (jamais un nom
+        # de table utilisateur). R8 : cf https://sqlite.org/lang_expr.html#like
+        # — "sqlite\_%" ESCAPE '\' matche tout nom commencant par le prefixe
+        # LITTERAL "sqlite_" (le caractere d'echappement neutralise le "_"
+        # comme joker LIKE a un seul caractere ; sans ESCAPE, "sqlite_%"
+        # matcherait aussi a tort tout nom "sqliteX%").
         tables = [
             row[0]
-            for row in src.execute("select name from sqlite_master where type='table'")
+            for row in src.execute(
+                "select name from sqlite_master where type='table' "
+                "and name not like 'sqlite\\_%' escape '\\'"
+            )
         ]
         dst = sqlite3.connect(persistent_archive)
         try:

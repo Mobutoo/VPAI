@@ -16,6 +16,27 @@
     # sinon le 2e/3e job serait silencieusement laisse "pending" par le rate
     # limiter au lieu d'etre traite dans le meme --once.
     prisme_fetcher_rate_limit_seconds: 0
+    # --- Adapter Instagram (CANARY) : converge avec l'adapter actif pour
+    # valider en molecule la partie deterministe (allowlist domaine+handle,
+    # cookies Netscape, pipx pin, LoadCredential, env 0400) SANS jamais
+    # atteindre le vrai Instagram. verify.yml pointe l'adapter vers un stub
+    # fixture (challenge/carrousel simules) pour les scenarios qui invoquent
+    # gallery-dl — le pipx install du role reste REEL (teste le pin exact).
+    prisme_instagram_enabled: true
+    prisme_instagram_allowed_handles: ["operator_test"]
+    prisme_instagram_cookies_content: |
+      # Netscape HTTP Cookie File
+      .instagram.com	TRUE	/	TRUE	0	sessionid	molecule-fixture-session-value
+    prisme_instagram_range_default: "1-5"
+    # Rate-limit desactive en molecule pour la meme raison que
+    # prisme_fetcher_rate_limit_seconds ci-dessus (plusieurs jobs Instagram
+    # de test dans le meme --once).
+    prisme_instagram_rate_limit_seconds: 0
+    # Le worker appelle CE chemin (stub deploye par verify.yml) plutot que le
+    # vrai binaire pipx : determinisme total (challenge/carrousel simules),
+    # zero appel reseau vers Instagram. Le pin pipx reel (prisme_instagram_gallery_dl_version)
+    # est teste independamment via le binaire installe a prisme_instagram_gallery_dl_pipx_bin_dir.
+    prisme_instagram_gallery_dl_bin: /usr/local/libexec/prisme-fetcher-gallery-dl-stub
   pre_tasks:
     - name: Create service group
       ansible.builtin.group:

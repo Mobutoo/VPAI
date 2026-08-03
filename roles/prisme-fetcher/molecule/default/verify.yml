@@ -220,3 +220,229 @@
       ansible.builtin.assert:
         that:
           - leftover_part_bundles.matched == 0
+
+    # --- Adapter Instagram (CANARY) ----------------------------------------
+
+    - name: Verify Instagram cookies deployed 0400 root:root (Netscape content)
+      ansible.builtin.stat:
+        path: /etc/prisme-fetcher/instagram-cookies.txt
+      register: instagram_cookies_stat
+
+    - name: Assert Instagram cookies file permissions
+      ansible.builtin.assert:
+        that:
+          - instagram_cookies_stat.stat.exists
+          - instagram_cookies_stat.stat.mode == '0400'
+          - instagram_cookies_stat.stat.pw_name == 'root'
+          - instagram_cookies_stat.stat.gr_name == 'root'
+
+    - name: Verify gallery-dl installed via pipx at the pinned version (1.30.2)
+      ansible.builtin.command:
+        cmd: /usr/local/bin/gallery-dl --version
+      environment:
+        PIPX_HOME: /opt/pipx
+        PIPX_BIN_DIR: /usr/local/bin
+      changed_when: false
+      register: gallery_dl_version
+
+    - name: Assert gallery-dl pinned version matches prisme_instagram_gallery_dl_version
+      ansible.builtin.assert:
+        that:
+          - "'1.30.2' in gallery_dl_version.stdout"
+
+    - name: Verify unit wires LoadCredential for Instagram cookies (MED — never InaccessiblePaths for this secret)
+      ansible.builtin.assert:
+        that:
+          - "'LoadCredential=instagram-cookies:/etc/prisme-fetcher/instagram-cookies.txt' in (unit_raw.content | b64decode)"
+
+    - name: Deploy a deterministic gallery-dl stub (challenge/carousel fixtures — zero real Instagram traffic)
+      ansible.builtin.copy:
+        dest: /usr/local/libexec/prisme-fetcher-gallery-dl-stub
+        owner: root
+        group: root
+        mode: "0755"
+        content: |
+          #!/usr/bin/env python3
+          # Molecule fixture ONLY : simule gallery-dl pour les scenarios
+          # deterministes (challenge Instagram + carrousel multi-media) sans
+          # jamais emettre de trafic reseau reel vers Instagram (design :
+          # aucun contournement de challenge/CAPTCHA n'est simule ici, on
+          # simule au contraire l'ARRET propre du worker sur un tel signal).
+          import sys
+          from pathlib import Path
+
+          args = sys.argv[1:]
+          url = args[-1]
+          dest = Path(".")
+          for i, a in enumerate(args):
+              if a == "-D" and i + 1 < len(args):
+                  dest = Path(args[i + 1])
+
+          if "blocked-challenge" in url:
+              sys.stderr.write("Instagram responded: checkpoint_required - challenge_required\n")
+              sys.exit(1)
+
+          if "carousel" in url:
+              for idx in range(1, 4):
+                  media = dest / f"carousel_{idx}.jpg"
+                  media.write_bytes(f"fixture-media-{idx}".encode())
+                  (dest / f"carousel_{idx}.jpg.json").write_text(
+                      '{"id": "carousel_%d", "date": "2026-08-03", '
+                      '"description": "molecule fixture", '
+                      '"username": "operator_test", "shortcode": "carouseltest"}' % idx
+                  )
+              sys.exit(0)
+
+          sys.exit(0)
+
+    - name: Drop an Instagram job whose handle is NOT allowlisted (rejected before any gallery-dl call)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-rejected-handle.json
+        content: |
+          {"url": "https://www.instagram.com/not_allowed/", "adapter": "instagram", "handle": "not_allowed", "note": "molecule verify: handle not allowlisted"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Drop an Instagram job whose URL profile handle mismatches the declared job handle (allowlist contournement guard)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-rejected-mismatch.json
+        content: |
+          {"url": "https://www.instagram.com/someone_else/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: handle mismatch"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Drop an Instagram job with an invalid (unbounded) --range value
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-rejected-range.json
+        content: |
+          {"url": "https://www.instagram.com/p/rangebad/", "adapter": "instagram", "handle": "operator_test", "range": "abc", "note": "molecule verify: invalid range"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Drop an Instagram job simulating a challenge/login-required response (blocked, no retry)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-blocked.json
+        content: |
+          {"url": "https://www.instagram.com/p/blocked-challenge/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: simulated challenge"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Drop an Instagram job simulating a multi-media carousel post
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-carousel.json
+        content: |
+          {"url": "https://www.instagram.com/p/carousel-test/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: simulated carousel"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Run a second worker pass to process the Instagram adapter fixtures
+      ansible.builtin.command:
+        cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      become: true
+      become_user: prisme-fetcher
+      changed_when: false
+
+    - name: Find archived manifests for Instagram-adapter jobs (rejected + blocked)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/rejects
+        patterns: "manifest.json"
+        recurse: true
+      register: instagram_manifests
+
+    - name: Assert all 4 non-carousel Instagram scenarios archived a manifest with the expected reason
+      ansible.builtin.assert:
+        that:
+          - instagram_manifests.matched >= 4
+          - >-
+            (instagram_manifests.files | map(attribute='path')
+             | map('lookup', 'ansible.builtin.file') | join('\n'))
+            is search('handle_not_allowlisted')
+          - >-
+            (instagram_manifests.files | map(attribute='path')
+             | map('lookup', 'ansible.builtin.file') | join('\n'))
+            is search('handle_mismatch')
+          - >-
+            (instagram_manifests.files | map(attribute='path')
+             | map('lookup', 'ansible.builtin.file') | join('\n'))
+            is search('invalid_range')
+          - >-
+            (instagram_manifests.files | map(attribute='path')
+             | map('lookup', 'ansible.builtin.file') | join('\n'))
+            is search('"state": "blocked"')
+          - >-
+            (instagram_manifests.files | map(attribute='path')
+             | map('lookup', 'ansible.builtin.file') | join('\n'))
+            is search('blocked:challenge_required')
+
+    - name: Find the delivered Instagram carousel bundle (multi-media — B1 atomic publish)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/outgoing
+        patterns: "carousel_*.jpg"
+        recurse: true
+      register: carousel_media
+
+    - name: Assert the full carousel (3 media) was delivered as ONE bundle, sidecars excluded
+      ansible.builtin.assert:
+        that:
+          - carousel_media.matched == 3
+          - (carousel_media.files | map(attribute='path') | map('dirname') | unique | length) == 1
+
+    - name: Read the carousel bundle manifest
+      ansible.builtin.slurp:
+        src: "{{ (carousel_media.files[0].path | dirname) }}/manifest.json"
+      register: carousel_manifest_raw
+
+    - name: Assert the manifest lists all 3 files with metadata, and no raw *.json sidecar leaked into the bundle
+      vars:
+        _carousel_manifest: "{{ carousel_manifest_raw.content | b64decode | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - _carousel_manifest.state == "done"
+          - _carousel_manifest.files | length == 3
+          - _carousel_manifest.files | selectattr('metadata.username', 'equalto', 'operator_test') | list | length == 3
+
+    - name: Find any leftover metadata sidecar in the delivered carousel bundle (must be zero — enriched into manifest, never shipped raw)
+      ansible.builtin.find:
+        paths: "{{ (carousel_media.files[0].path | dirname) }}"
+        patterns: "*.jpg.json"
+      register: carousel_sidecars
+
+    - name: Assert no raw sidecar survives delivery
+      ansible.builtin.assert:
+        that:
+          - carousel_sidecars.matched == 0
+
+    - name: Verify no residual work/ directory survives the Instagram adapter pass either (A3)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/work
+        file_type: directory
+        recurse: false
+      register: instagram_leftover_workdirs
+
+    - name: Assert no workdir leak survives the Instagram adapter pass
+      ansible.builtin.assert:
+        that:
+          - instagram_leftover_workdirs.matched == 0
+
+    - name: Run a THIRD worker pass — the blocked job must NOT retry (terminal state, GC'd)
+      ansible.builtin.command:
+        cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      become: true
+      become_user: prisme-fetcher
+      changed_when: false
+
+    - name: Verify the blocked/rejected/carousel job files were garbage-collected (terminal states, never re-processed)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/jobs
+        patterns: "molecule-instagram-*.json"
+      register: instagram_jobs_leftover
+
+    - name: Assert zero Instagram job files remain (no retry loop on terminal states, incl. blocked)
+      ansible.builtin.assert:
+        that:
+          - instagram_jobs_leftover.matched == 0

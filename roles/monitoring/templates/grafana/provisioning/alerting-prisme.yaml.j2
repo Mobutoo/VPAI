@@ -7,6 +7,13 @@ groups:
     folder: "Prisme"
     interval: 1m
     rules:
+{#- Câblage anticipé (CANARY-4), pour les 2 règles Instagram ci-dessous
+   (prisme-instagram-blocked, prisme-instagram-auth-degraded) : producteur
+   absent tant que le retour fetcher→prisme (CANARY-5) n'existe pas ;
+   instagram_errors_total est à 0 permanent d'ici là. Ces 2 règles suivent la
+   doctrine "série contractuellement toujours présente → Alerting sur trou"
+   (cf commentaire plus bas) : pas de noData: OK tant qu'aucun état
+   transitoire légitime n'est documenté explicitement ici. -#}
 {% for alert in [
   {
     'uid': 'prisme-stalled',
@@ -83,17 +90,15 @@ groups:
     'expr': 'increase(instagram_errors_total{reason="blocked"}[15m])',
     'threshold': 0,
     'severity': 'warning',
-    'for': '5m',
-    'noData': 'OK'
+    'for': '5m'
   },
   {
     'uid': 'prisme-instagram-auth-degraded',
     'title': 'Prisme Instagram connector auth degraded while active',
-    'expr': 'instagram_connector_state{state="active"} == 1 and increase(instagram_errors_total{reason="auth"}[15m]) > 0',
+    'expr': '(instagram_connector_state{state="active"} == 1) and on(job, instance) (increase(instagram_errors_total{reason="auth"}[15m]) > 0)',
     'threshold': 0,
     'severity': 'critical',
-    'for': '5m',
-    'noData': 'OK'
+    'for': '5m'
   }
 ] %}
       - uid: "{{ alert.uid }}"

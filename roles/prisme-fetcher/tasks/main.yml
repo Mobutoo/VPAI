@@ -202,20 +202,33 @@
     # comparaison (donc l'assert) sans jamais lever d'exception de
     # templating.
     _range_default_upper: "{{ ((prisme_instagram_range_default | regex_search('-([0-9]+)$')) | default('-0', true))[1:] | int }}"
+    # M2 (revue 2026-08-03, cycle 4) : meme piege/meme patron corrige que
+    # _range_default_upper ci-dessus — regex_search AVEC un groupe de capture
+    # retourne une LISTE (ex. ['20']), jamais une chaine, et `| int` sur une
+    # liste retombe silencieusement a 0 SANS lever d'erreur de templating
+    # (l'assert passerait alors TOUJOURS quelle que soit la vraie borne
+    # basse). Fix : regex_search SANS groupe (retourne la chaine complete du
+    # match, "10-") puis slice `[:-1]` pour retirer le "-" final — jamais de
+    # groupe de capture. Un regex_search qui ne matche pas rend None ->
+    # default('0-', true) -> "0-"[:-1] -> "0" -> 0.
+    _range_default_lower: "{{ ((prisme_instagram_range_default | regex_search('^[0-9]+-')) | default('0-', true))[:-1] | int }}"
   ansible.builtin.assert:
     that:
       - prisme_instagram_cookies_content | default('') | length > 0
       - prisme_instagram_allowed_handles | length > 0
       - prisme_instagram_range_default is match('^[0-9]+-[0-9]+$')
       - _range_default_upper <= (prisme_instagram_range_max_upper | int)
+      - _range_default_lower <= _range_default_upper
     quiet: true
     fail_msg: >-
       prisme_instagram_enabled=true mais un prerequis manque : cookies vides,
       allowlist de handles vide, prisme_instagram_range_default hors format
-      "N-M", ou (REX-62/R4) la borne haute de
-      prisme_instagram_range_default depasse prisme_instagram_range_max_upper
-      (le defaut serait alors rejete par le worker lui-meme, range_upper_too_large,
-      des le premier job sans range explicite).
+      "N-M", (REX-62/R4) la borne haute de prisme_instagram_range_default
+      depasse prisme_instagram_range_max_upper (le defaut serait alors
+      rejete par le worker lui-meme, range_upper_too_large, des le premier
+      job sans range explicite), ou (M2) la borne basse depasse la borne
+      haute (le worker rejetterait alors TOUS les jobs sans range explicite,
+      reason=invalid_range).
   when: prisme_instagram_enabled | bool
   tags: [prisme-fetcher, prisme_fetcher, phase3]
 

@@ -208,6 +208,39 @@ prisme_instagram_blocked_markers:
 #      DELETE FROM jobs WHERE job_id='<sha256>'; sur
 #      {{ prisme_fetcher_root }}/state.sqlite3, puis redeposer le fichier
 #      jobs/*.json original.
+#      ATTENTION (M1, revue 2026-08-03, cycle 4) : les lignes jobs avec
+#      state='done' sont LOAD-BEARING pour la dedup cross-job (cf R1/
+#      prior_delivery dans process_instagram_job, template
+#      prisme-fetcher.py.j2) — NE JAMAIS DELETE une ligne state='done', meme
+#      via ce recours manuel : un autre job_id portant la MEME url s'appuie
+#      dessus pour distinguer "deja livre par un autre job" d'un veritable
+#      echec. Ce recours ne s'applique qu'a des lignes state='blocked' (ou
+#      'failed', cf H-B ci-dessous), jamais 'done'.
+#   4. M1 (revue 2026-08-03, cycle 4) : la reprise d'un job blocked/failed NE
+#      SUFFIT PAS a elle seule si le meme media a deja ete acquis par
+#      gallery-dl AVANT le blocage (archive scopee PAR MEDIA, pas par URL —
+#      cf fetch_instagram/--download-archive) : l'archive PERSISTANTE
+#      partagee {{ prisme_instagram_archive_file }} contiendrait alors deja
+#      l'entree du media, et le nouveau job (nouveau job_id, etape 2) le
+#      verrait a nouveau comme "deja acquis" (files_info==[]) au lieu de le
+#      re-televerser. Pour forcer une VRAIE re-acquisition reseau du meme
+#      contenu :
+#        a. Arreter le service : `systemctl stop {{ prisme_fetcher_service }}`
+#           (jamais d'ecriture SQL concurrente avec le worker, meme doctrine
+#           que l'etape 3).
+#        b. Inspecter le schema reel de l'archive AVANT toute suppression —
+#           le nom de la table est configurable (gallery-dl "archive-table",
+#           defaut "archive") et le nom/format de la colonne cle
+#           ("archive-format") ne sont PAS documentes de facon stable par la
+#           doc officielle (cf R8/instagram_archive_row_count ci-dessus) :
+#           `sqlite3 {{ prisme_instagram_archive_file }} ".schema"` puis
+#           `DELETE FROM archive WHERE entry LIKE '%<shortcode_ou_handle>%';`
+#           (adapter le nom de table/colonne au schema REELLEMENT observe, a
+#           confronter au binaire pipx installe avant CANARY-5 — meme
+#           reserve que M-G).
+#        c. Redemarrer le service : `systemctl start {{ prisme_fetcher_service }}`.
+#        d. Puis suivre les etapes 1-2 ci-dessus (nouveau payload, nouveau
+#           job_id).
 #
 # H-B (revue 2026-08-03, cycle 2) : la MEME procedure de reprise s'applique a
 # l'etat state=failed avec reason=instagram_empty_result_no_prior_delivery
@@ -215,7 +248,13 @@ prisme_instagram_blocked_markers:
 # dedup a ete purgee/reinitialisee entre-temps, ou le job visait par erreur
 # une plage deja entierement livree ailleurs) : soumettre un nouveau job avec
 # un payload distinct (etape 2 ci-dessus), jamais redeposer l'original a
-# l'identique (meme job_id = deja terminal, re-GC immediat).
+# l'identique (meme job_id = deja terminal, re-GC immediat). Meme mise en
+# garde M1 qu'a l'etape 4 ci-dessus : la ligne jobs correspondante peut etre
+# 'failed' (jamais 'done') et peut donc etre DELETE si necessaire, mais
+# purger UNIQUEMENT l'archive gallery-dl (etape 4.b) ne suffit pas non plus
+# a elle seule si une AUTRE ligne jobs, distincte, porte deja state='done'
+# pour la meme url (prior_delivery) — cette ligne-la reste, par design,
+# jamais purgeable.
 
 # M-F (revue 2026-08-03, cycle 2) : retention (en jours) des manifestes de
 # traçabilite (manifests/<job_id>.json, TOUS adapters) et des snapshots

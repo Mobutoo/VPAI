@@ -56,6 +56,19 @@
     # TOUJOURS effectuee au tout premier passage de chaque invocation --once.
     prisme_instagram_authorization_poll_seconds: 20
     prisme_instagram_heartbeat_interval_seconds: 45
+    # H2 (revue 2026-08-03, cycle 4) : seuil ABAISSE a 1 pour ce banc molecule
+    # UNIQUEMENT -- chaque `--once` demarre un process FRAIS (compteur
+    # _INSTAGRAM_CONTROL_PLANE_STATE remis a zero a chaque invocation), donc
+    # accumuler plusieurs echecs CONSECUTIFS dans le meme process demanderait
+    # plusieurs jobs Instagram DISTINCTS dans la MEME passe de scan -- ce que
+    # le throttle par-passe (INSTAGRAM_AUTHORIZATION_POLL_SECONDS) empeche
+    # deliberement (design : une seule verification reseau par passe, cf
+    # commentaire au-dessus). Seuil=1 permet de prouver que l'evenement
+    # instagram_control_plane_unreachable est bien emis des le seuil atteint,
+    # sans changer la LOGIQUE testee (le routage H2 lui-meme est identique
+    # quel que soit le seuil). Valeur par defaut du role (5) inchangee en
+    # prod.
+    prisme_instagram_control_plane_failure_threshold: 1
   pre_tasks:
     - name: Create service group
       ansible.builtin.group:

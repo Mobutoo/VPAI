@@ -493,11 +493,20 @@
 
           TOKEN = "molecule-fetcher-token-32-characters"
           MODE_FILE = Path("/tmp/prisme-verify-authz-mode")
+          # M2 (revue 2026-08-03, cycle 4) : journalise CHAQUE requete recue
+          # (jsonl, une ligne par requete) -- le stub precedent etait muet,
+          # aucune assertion ne pouvait prouver que le worker appelle
+          # reellement authorization/heartbeat avec le bon contrat.
+          LOG_FILE = Path("/tmp/prisme-verify-http/authz_requests.jsonl")
 
 
           class Handler(http.server.BaseHTTPRequestHandler):
               def _check_auth(self):
                   return self.headers.get("Authorization") == f"Bearer {TOKEN}"
+
+              def _log(self, record):
+                  with LOG_FILE.open("a") as handle:
+                      handle.write(json.dumps(record) + "\n")
 
               def do_GET(self):
                   if not self.path.startswith("/api/v1/connectors/instagram/authorization"):
@@ -505,10 +514,20 @@
                       self.end_headers()
                       return
                   if not self._check_auth():
+                      self._log({"method": "GET", "path": self.path, "authorized_header": False})
                       self.send_response(401)
                       self.end_headers()
                       return
                   mode = MODE_FILE.read_text().strip() if MODE_FILE.exists() else "true"
+                  # C1 (revue 2026-08-03, cycle 4) : mode "404" simule un
+                  # connecteur pas encore provisionne cote prisme
+                  # (dispatcher.ts) -- verdict REEL, jamais une panne.
+                  if mode == "404":
+                      self._log({"method": "GET", "path": self.path, "mode": mode})
+                      self.send_response(404)
+                      self.end_headers()
+                      return
+                  self._log({"method": "GET", "path": self.path, "mode": mode})
                   body = json.dumps(
                       {"authorized": mode == "true", "state": "active" if mode == "true" else "revoked"}
                   ).encode()
@@ -524,11 +543,28 @@
                       self.end_headers()
                       return
                   if not self._check_auth():
+                      self._log({"method": "POST", "path": self.path, "authorized_header": False})
                       self.send_response(401)
                       self.end_headers()
                       return
                   length = int(self.headers.get("Content-Length", "0"))
-                  self.rfile.read(length)
+                  raw = self.rfile.read(length)
+                  try:
+                      payload = json.loads(raw)
+                  except json.JSONDecodeError:
+                      payload = {}
+                  self._log({"method": "POST", "path": self.path, "payload": payload})
+                  # M2 (revue 2026-08-03, cycle 4) : validation alignee sur
+                  # dispatcher.ts -- status doit etre ready|degraded|down,
+                  # adapterVersion non vide, sinon 422 (jamais un 202
+                  # permissif qui masquerait une regression de payload cote
+                  # worker).
+                  status = payload.get("status")
+                  adapter_version = payload.get("adapterVersion")
+                  if status not in ("ready", "degraded", "down") or not adapter_version:
+                      self.send_response(422)
+                      self.end_headers()
+                      return
                   body = json.dumps({"accepted": True}).encode()
                   self.send_response(202)
                   self.send_header("Content-Type", "application/json")
@@ -992,6 +1028,160 @@
         that:
           - authz_denied_manifest_leak.matched == 0
 
+    # --- C1 (revue 2026-08-03, cycle 4) : 404 not_provisioned ---------------
+
+    - name: Flip the fetcher control-plane stub to 404 (connector not provisioned, C1)
+      ansible.builtin.copy:
+        dest: /tmp/prisme-verify-authz-mode
+        content: "404"
+        mode: "0644"
+
+    - name: Drop an Instagram job while the control-plane reports 404 (not provisioned, C1)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-authz-not-provisioned.json
+        content: |
+          {"url": "https://www.instagram.com/operator_test/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: 404 not_provisioned (C1, CANARY-1b)"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Run a worker pass while the control-plane reports 404 (C1 — must behave exactly like authorized:false)
+      ansible.builtin.command:
+        cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      environment:
+        CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
+        PRISME_FETCHER_TOKEN: molecule-fetcher-token-32-characters
+      become: true
+      become_user: prisme-fetcher
+      changed_when: false
+
+    - name: Verify the not-provisioned job file was NOT garbage-collected (C1 — pending, never terminal)
+      ansible.builtin.stat:
+        path: /var/lib/prisme-fetcher/jobs/molecule-instagram-authz-not-provisioned.json
+      register: authz_not_provisioned_job_leftover
+
+    - name: Assert the not-provisioned job stayed pending (no attempt consumed, no manifest)
+      ansible.builtin.assert:
+        that:
+          - authz_not_provisioned_job_leftover.stat.exists
+
+    - name: Read the DB state for the not-provisioned job (C1/H2 — pending, zero attempts, never a terminal state)
+      ansible.builtin.command:
+        cmd: >-
+          python3 -c "
+          import sqlite3
+          conn = sqlite3.connect('/var/lib/prisme-fetcher/state.sqlite3')
+          rows = conn.execute(
+              \"select state, attempts from jobs where note like '%not_provisioned%'\"
+          ).fetchall()
+          print(rows)
+          "
+      register: authz_not_provisioned_state
+      changed_when: false
+
+    - name: Assert the not-provisioned job is pending with zero attempts (C1 — a 404 is a real verdict, never a failure)
+      ansible.builtin.assert:
+        that:
+          - "\"('pending', 0)\" in authz_not_provisioned_state.stdout"
+        fail_msg: >-
+          Attendu state=pending, attempts=0 (C1 -- un 404 (not_provisioned)
+          doit se comporter EXACTEMENT comme authorized:false, jamais
+          consommer de tentative ni atteindre un etat terminal) :
+          {{ authz_not_provisioned_state.stdout }}
+
+    - name: Find any manifest for the not-provisioned job (must be NONE — never handed to process_instagram_job)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/manifests
+        patterns: "*.json"
+        contains: "not_provisioned"
+      register: authz_not_provisioned_manifest_leak
+
+    - name: Assert the not-provisioned scenario never reached process_instagram_job (no manifest leak)
+      ansible.builtin.assert:
+        that:
+          - authz_not_provisioned_manifest_leak.matched == 0
+
+    # Remet le stub en mode "authorized" avant le scenario suivant (401
+    # invalid-token ci-dessous a besoin d'un stub qui repondrait 200 si
+    # l'auth passait, pour prouver que c'est bien le token, pas le mode, qui
+    # fait echouer la verification).
+    - name: Restore the fetcher control-plane stub to authorized mode
+      ansible.builtin.copy:
+        dest: /tmp/prisme-verify-authz-mode
+        content: "true"
+        mode: "0644"
+
+    # --- M2 (revue 2026-08-03, cycle 4) : token invalide -> 401 fail-closed -
+
+    - name: Count manifests before the invalid-token scenario (M2 — baseline)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/manifests
+        patterns: "*.json"
+      register: manifests_before_badtoken
+
+    - name: Drop an Instagram job for the invalid-token scenario (M2 — 401 must fail closed, no acquisition)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-authz-badtoken.json
+        content: |
+          {"url": "https://www.instagram.com/operator_test/", "adapter": "instagram", "handle": "operator_test", "note": "molecule verify: invalid fetcher badtoken (M2, CANARY-1b)"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
+    - name: Run a worker pass with an INVALID control-plane token (M2 — 401 fail-closed, no acquisition)
+      ansible.builtin.command:
+        cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      environment:
+        CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
+        PRISME_FETCHER_TOKEN: wrong-token-does-not-match-stub-32c
+      become: true
+      become_user: prisme-fetcher
+      changed_when: false
+
+    - name: Verify the invalid-token job was NOT garbage-collected (fail-closed, never a terminal state)
+      ansible.builtin.stat:
+        path: /var/lib/prisme-fetcher/jobs/molecule-instagram-authz-badtoken.json
+      register: authz_badtoken_job_leftover
+
+    - name: Assert the invalid-token job stayed pending, never acquired
+      ansible.builtin.assert:
+        that:
+          - authz_badtoken_job_leftover.stat.exists
+
+    - name: Read the DB state for the invalid-token job (H2 — pending, zero attempts, never handle_failure)
+      ansible.builtin.command:
+        cmd: >-
+          python3 -c "
+          import sqlite3
+          conn = sqlite3.connect('/var/lib/prisme-fetcher/state.sqlite3')
+          rows = conn.execute(
+              \"select state, attempts from jobs where note like '%badtoken%'\"
+          ).fetchall()
+          print(rows)
+          "
+      register: authz_badtoken_state
+      changed_when: false
+
+    - name: Assert the invalid-token job is pending with zero attempts consumed (H2 — a control-plane auth failure never burns job budget)
+      ansible.builtin.assert:
+        that:
+          - "\"('pending', 0)\" in authz_badtoken_state.stdout"
+        fail_msg: >-
+          Attendu state=pending, attempts=0 (H2 -- une panne de verification
+          du control-plane -- ici 401 -- ne doit jamais consommer le budget
+          de tentatives d'un job) : {{ authz_badtoken_state.stdout }}
+
+    - name: Count manifests after the invalid-token scenario (M2 — must be unchanged, no acquisition attempted)
+      ansible.builtin.find:
+        paths: /var/lib/prisme-fetcher/manifests
+        patterns: "*.json"
+      register: manifests_after_badtoken
+
+    - name: Assert no new manifest was created for the invalid-token job (fail-closed, no acquisition)
+      ansible.builtin.assert:
+        that:
+          - manifests_after_badtoken.matched == manifests_before_badtoken.matched
+
     - name: Stop the fetcher control-plane stub (simulates control-plane unreachable)
       ansible.builtin.systemd_service:
         name: prisme-verify-authz.service
@@ -1007,7 +1197,7 @@
         group: prisme-fetcher
         mode: "0640"
 
-    - name: Run a worker pass while the control-plane is unreachable (CANARY-1b)
+    - name: Run a worker pass while the control-plane is unreachable (H2, CANARY-1b — must NOT consume a job attempt)
       ansible.builtin.command:
         cmd: python3 /usr/local/libexec/prisme-fetcher --once
       environment:
@@ -1016,26 +1206,83 @@
       become: true
       become_user: prisme-fetcher
       changed_when: false
+      register: authz_unreachable_run
 
-    - name: Read the retry_wait state for the unreachable-control-plane job (fail-closed, standard backoff — never a silent skip)
+    # H2 (revue 2026-08-03, cycle 4) : le seuil molecule est abaisse a 1
+    # (converge.yml) -- une seule verification echouee dans cette passe doit
+    # donc deja franchir le seuil et emettre l'evenement d'observabilite,
+    # jamais un etat terminal/consommation d'attempts.
+    - name: Assert the control-plane-unreachable event was emitted (H2 — observable, never destructive)
+      ansible.builtin.assert:
+        that:
+          - "'instagram_control_plane_unreachable' in authz_unreachable_run.stdout"
+        fail_msg: >-
+          Attendu l'evenement JSON instagram_control_plane_unreachable dans
+          stdout (H2 -- seuil molecule=1, cf converge.yml) :
+          {{ authz_unreachable_run.stdout }}
+
+    - name: Read the DB state for the unreachable-control-plane job (H2 — pending, zero attempts, never handle_failure)
       ansible.builtin.command:
         cmd: >-
           python3 -c "
           import sqlite3
           conn = sqlite3.connect('/var/lib/prisme-fetcher/state.sqlite3')
           rows = conn.execute(
-              \"select state, error from jobs where note like '%unreachable%'\"
+              \"select state, attempts, error from jobs where note like '%unreachable%'\"
           ).fetchall()
           print(rows)
           "
       register: authz_unreachable_state
       changed_when: false
 
-    - name: Assert the unreachable-control-plane job is fail-closed and retriable (never authorized, never a terminal state)
+    - name: Assert the unreachable-control-plane job stayed pending with zero attempts (H2 — a control-plane outage never burns job budget, never terminal)
       ansible.builtin.assert:
         that:
-          - "'retry_wait' in authz_unreachable_state.stdout"
-          - "'authorization_check_failed' in authz_unreachable_state.stdout"
+          - "\"('pending', 0, None)\" in authz_unreachable_state.stdout"
         fail_msg: >-
-          Attendu state=retry_wait + error contenant authorization_check_failed
-          (fail-closed, jamais authorized) : {{ authz_unreachable_state.stdout }}
+          Attendu state=pending, attempts=0, error=None (H2 -- une panne du
+          control-plane ne doit JAMAIS passer par handle_failure : le job
+          reste pending, observable uniquement via l'evenement
+          instagram_control_plane_unreachable ci-dessus, jamais un
+          retry_wait/failed) : {{ authz_unreachable_state.stdout }}
+
+    # --- M2 (revue 2026-08-03, cycle 4) : heartbeat asserte via le journal --
+    # jsonl du stub (chaque --once en mode INSTAGRAM_ENABLED envoie un
+    # heartbeat "ready" synchrone au demarrage, cf main()/CANARY-1b) --
+    # jusqu'ici, le stub etait muet et aucune assertion ne prouvait le
+    # contrat heartbeat cote worker.
+
+    - name: Slurp the fetcher control-plane stub request log (M2 — heartbeat contract asserted)
+      ansible.builtin.slurp:
+        src: /tmp/prisme-verify-http/authz_requests.jsonl
+      register: authz_requests_raw
+
+    - name: Assert at least one heartbeat POST was recorded with status=ready and a non-empty adapterVersion (M2)
+      vars:
+        _authz_lines: >-
+          {{ (authz_requests_raw.content | b64decode).splitlines()
+             | reject('equalto', '') | map('from_json') | list }}
+        # Filtre d'abord sur la presence de "payload" (absente pour les
+        # requetes rejetees en 401, cf stub) avant tout acces en profondeur —
+        # un chainage direct 'payload.status' sur une entree sans cle
+        # "payload" romprait le templating Jinja (AttributeError), jamais un
+        # simple "false" silencieux.
+        _heartbeat_posts_with_payload: >-
+          {{ _authz_lines
+             | selectattr('method', 'equalto', 'POST')
+             | selectattr('payload', 'defined')
+             | list }}
+        _heartbeat_ready_events: >-
+          {{ _heartbeat_posts_with_payload
+             | selectattr('payload.status', 'defined')
+             | selectattr('payload.status', 'equalto', 'ready')
+             | selectattr('payload.adapterVersion', 'defined')
+             | rejectattr('payload.adapterVersion', 'equalto', '')
+             | list }}
+      ansible.builtin.assert:
+        that:
+          - _heartbeat_ready_events | length >= 1
+        fail_msg: >-
+          Attendu au moins un POST heartbeat status=ready avec adapterVersion
+          non vide dans le journal du stub (M2) — {{ _authz_lines | length }}
+          requetes journalisees au total.

@@ -14,6 +14,11 @@
     vault_prisme_metrics_token: molecule-metrics-secret-32-characters
     vault_prisme_embedding_token: molecule-embedding-secret-32-characters
     vault_prisme_registry_pull_token: molecule-registry-token-40-characters-long
+    # M4 (revue 2026-08-03, CANARY-1b) : tasks/main.yml asserte
+    # vault_prisme_fetcher_token (>=32) inconditionnellement (PRISME_FETCHER_TOKEN,
+    # prisme.env.j2 + prisme_litellm_key derive) -- absent depuis fd47112,
+    # molecule prisme rouge des l'introduction du contrat fetcher<->prisme.
+    vault_prisme_fetcher_token: molecule-fetcher-secret-32-characters-long
     prisme_image_digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     prisme_knowledge_embedding_image: "embedding@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
     prisme_db_proxy_image: "haproxy@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"

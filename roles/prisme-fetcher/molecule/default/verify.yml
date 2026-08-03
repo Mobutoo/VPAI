@@ -132,9 +132,38 @@
         group: prisme-fetcher
         mode: "0640"
 
+    # C1-bis (revue 2026-08-03, cycle 2) : $CREDENTIALS_DIRECTORY n'existe QUE
+    # sous systemd (LoadCredential=) — un `ansible.builtin.command` direct
+    # (comme les 3 taches --once ci-dessous) ne le peuple jamais, donc
+    # instagram_cookies_path() levait systematiquement
+    # instagram_cookies_unavailable pour TOUT job Instagram, quel que soit le
+    # scenario (blocked/carousel/impostor n'ont jamais pu passer). Fixture :
+    # meme layout que LoadCredential (fichier prive, nom == credential_name),
+    # deposee UNE FOIS ici et reutilisee par les 3 taches --once via
+    # `environment:`. Le fichier source (/etc/prisme-fetcher/instagram-cookies.txt)
+    # est deja deploye par le role au converge (prisme_instagram_enabled: true).
+    - name: Create CREDENTIALS_DIRECTORY fixture for --once oneshot runs (C1-bis)
+      ansible.builtin.file:
+        path: /tmp/prisme-verify-creds
+        state: directory
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0700"
+
+    - name: Deploy the Instagram cookies credential into the fixture CREDENTIALS_DIRECTORY (mirrors systemd LoadCredential's runtime layout)
+      ansible.builtin.copy:
+        src: /etc/prisme-fetcher/instagram-cookies.txt
+        dest: /tmp/prisme-verify-creds/instagram-cookies
+        remote_src: true
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0400"
+
     - name: Run one worker pass in oneshot mode
       ansible.builtin.command:
         cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      environment:
+        CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
       become: true
       become_user: prisme-fetcher
       changed_when: false
@@ -282,6 +311,11 @@
       register: gallery_dl_help
 
     - name: Assert each gallery-dl CLI option used by fetch_instagram() is documented by --help
+      # L-A (revue 2026-08-03, cycle 2) : "-D" est le raccourci de
+      # "--directory" (pas "--destination", qui n'existe pas dans gallery-dl)
+      # — le garde-fou M4 etait donc inoperant sur cette option precise (le
+      # membre gauche "-D " suffisait a satisfaire le OR, masquant l'erreur
+      # du membre droit).
       ansible.builtin.assert:
         that:
           - "'--config-ignore' in gallery_dl_help.stdout"
@@ -291,7 +325,7 @@
           - "'--sleep-request' in gallery_dl_help.stdout"
           - "'--http-timeout' in gallery_dl_help.stdout"
           - "'--write-metadata' in gallery_dl_help.stdout"
-          - "'-D ' in gallery_dl_help.stdout or '--destination' in gallery_dl_help.stdout"
+          - "'-D ' in gallery_dl_help.stdout or '--directory' in gallery_dl_help.stdout"
         fail_msg: >-
           Le binaire gallery-dl pipx pinne (1.30.2) ne documente plus une
           option argv utilisee par le worker (drift CLI, M4). Rappel : ce
@@ -385,6 +419,15 @@
         group: prisme-fetcher
         mode: "0640"
 
+    - name: Drop an Instagram job whose --range upper bound exceeds prisme_instagram_range_max_upper (H-C)
+      ansible.builtin.copy:
+        dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-rejected-range-too-large.json
+        content: |
+          {"url": "https://www.instagram.com/p/rangetoolarge/", "adapter": "instagram", "handle": "operator_test", "range": "1-99999", "note": "molecule verify: range upper exceeds hard cap (H-C)"}
+        owner: prisme-fetcher
+        group: prisme-fetcher
+        mode: "0640"
+
     - name: Drop an Instagram job simulating a challenge/login-required response (blocked, no retry)
       ansible.builtin.copy:
         dest: /var/lib/prisme-fetcher/jobs/molecule-instagram-blocked.json
@@ -424,6 +467,8 @@
     - name: Run a second worker pass to process the Instagram adapter fixtures
       ansible.builtin.command:
         cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      environment:
+        CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
       become: true
       become_user: prisme-fetcher
       changed_when: false
@@ -453,7 +498,7 @@
         _instagram_joined: "{{ instagram_manifests_slurped.results | map(attribute='content') | map('b64decode') | join('\n') }}"
       ansible.builtin.assert:
         that:
-          - instagram_manifests.matched >= 6
+          - instagram_manifests.matched >= 7
           - _instagram_joined is search('handle_not_allowlisted')
           - _instagram_joined is search('handle_mismatch')
           - _instagram_joined is search('invalid_range')
@@ -464,6 +509,9 @@
           # APRES acquisition (sidecar username != handle autorise), rien
           # livre.
           - _instagram_joined is search('username_not_allowlisted')
+          # H-C (revue 2026-08-03, cycle 2) : range "1-99999" rejete AVANT
+          # tout appel gallery-dl (jamais une deadline demesuree).
+          - _instagram_joined is search('range_upper_too_large')
 
     - name: Find the delivered Instagram carousel bundle (multi-media — B1 atomic publish)
       ansible.builtin.find:
@@ -504,6 +552,13 @@
           - _carousel_manifest.partial == true
           - _carousel_manifest.range_upper == 5
           - _carousel_manifest.delivered_count == 3
+          # M-A (revue 2026-08-03, cycle 2) : partial est desormais calcule
+          # sur le SPAN (upper-lower+1), pas seulement upper — range_lower est
+          # expose pour rendre ce calcul auditable depuis le manifeste, et
+          # partial_reason distingue explicitement ce cas ("compte a moins de
+          # posts que demande") du cas H-B (dedup cross-job, "archive_overlap").
+          - _carousel_manifest.range_lower == 1
+          - _carousel_manifest.partial_reason == "fewer_items_than_requested"
 
     - name: Find any leftover metadata sidecar in the delivered carousel bundle (must be zero — enriched into manifest, never shipped raw)
       ansible.builtin.find:
@@ -531,6 +586,8 @@
     - name: Run a THIRD worker pass — the blocked job must NOT retry (terminal state, GC'd)
       ansible.builtin.command:
         cmd: python3 /usr/local/libexec/prisme-fetcher --once
+      environment:
+        CREDENTIALS_DIRECTORY: /tmp/prisme-verify-creds
       become: true
       become_user: prisme-fetcher
       changed_when: false

@@ -757,16 +757,37 @@
 
     - name: Assert Instagram dedup job B was marked done+archive_overlap (R1 — job-scoped proof via jobs, never a global signal)
       vars:
-        _all_manifests_joined: "{{ instagram_all_manifests_slurped.results | map(attribute='content') | map('b64decode') | join('\n') }}"
+        # L3 (revue 2026-08-03, cycle 4) : la version cycle 3 joignait TOUS
+        # les manifestes (job A ET job B) avant de chercher les marqueurs —
+        # une simple recherche de PRESENCE dans ce texte joint ne pouvait
+        # jamais prouver le contrat L5 ("le manifeste archive_overlap ne
+        # porte JAMAIS files/delivered_count"), puisque le manifeste de job A
+        # (livraison reelle, dans le MEME texte joint) porte legitimement
+        # files/delivered_count — une assertion d'ABSENCE sur le texte joint
+        # aurait donc toujours echoue, meme si job B respectait le contrat.
+        # Fix : isoler le SEUL manifeste qui porte archive_overlap, puis
+        # asserter presence des marqueurs ET absence de files/delivered_count
+        # dans CE manifeste precis.
+        _archive_overlap_manifests: >-
+          {{ instagram_all_manifests_slurped.results
+             | map(attribute='content') | map('b64decode')
+             | select('search', '"partial_reason": "archive_overlap"') | list }}
+        _archive_overlap_manifest: "{{ _archive_overlap_manifests[0] | default('') }}"
       ansible.builtin.assert:
         that:
+          # Exactement un manifeste porte archive_overlap (job B) — ni zero
+          # (le marqueur n'a jamais ete pose), ni plusieurs (contamination
+          # d'un autre scenario du meme banc molecule).
+          - _archive_overlap_manifests | length == 1
           # L5 : contrat H-B fige — le manifeste de job B porte
           # skipped_already_acquired/partial/partial_reason, JAMAIS
           # files/delivered_count (aucun media n'a ete acquis par CE job).
           - >-
-            _all_manifests_joined is search('"skipped_already_acquired": true')
+            _archive_overlap_manifest is search('"skipped_already_acquired": true')
           - >-
-            _all_manifests_joined is search('"partial_reason": "archive_overlap"')
+            _archive_overlap_manifest is not search('"files":')
+          - >-
+            _archive_overlap_manifest is not search('"delivered_count":')
 
     - name: Run a THIRD worker pass — the blocked job must NOT retry (terminal state, GC'd)
       ansible.builtin.command:

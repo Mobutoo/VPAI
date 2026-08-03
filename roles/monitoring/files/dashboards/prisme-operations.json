@@ -1,66 +1,156 @@
 {
   "uid": "prisme-operations",
   "title": "Prisme — Operations",
-  "tags": ["prisme", "knowledge", "slo"],
+  "tags": [
+    "prisme",
+    "knowledge",
+    "slo"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",
-  "time": {"from": "now-6h", "to": "now"},
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "panels": [
     {
       "id": 1,
       "type": "stat",
       "title": "Service up",
-      "gridPos": {"h": 8, "w": 4, "x": 0, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
-      "targets": [{"refId": "A", "expr": "up{job=\"prisme\"}"}]
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"prisme\"}"
+        }
+      ]
     },
     {
       "id": 2,
       "type": "stat",
       "title": "Projection lag",
-      "gridPos": {"h": 8, "w": 4, "x": 4, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
-      "targets": [{"refId": "A", "expr": "qdrant_projection_lag_seconds"}]
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 4,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "qdrant_projection_lag_seconds"
+        }
+      ]
     },
     {
       "id": 3,
       "type": "stat",
       "title": "Budget remaining USD",
-      "gridPos": {"h": 8, "w": 4, "x": 8, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
-      "targets": [{"refId": "A", "expr": "prisme_budget_remaining_usd"}]
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 8,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "prisme_budget_remaining_usd"
+        }
+      ]
     },
     {
       "id": 4,
       "type": "timeseries",
       "title": "Queue and projection drift",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
       "targets": [
-        {"refId": "A", "expr": "prisme_queue_depth"},
-        {"refId": "B", "expr": "prisme_projection_drift_total"}
+        {
+          "refId": "A",
+          "expr": "prisme_queue_depth"
+        },
+        {
+          "refId": "B",
+          "expr": "prisme_projection_drift_total"
+        }
       ]
     },
     {
       "id": 5,
       "type": "timeseries",
       "title": "Retrieval quality",
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
-      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
-      "targets": [{"refId": "A", "expr": "prisme_retrieval_ndcg"}]
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "prisme_retrieval_ndcg"
+        }
+      ]
     },
     {
       "id": 6,
       "type": "timeseries",
       "title": "Karakeep sync state",
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
-      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
       "targets": [
-        {"refId": "A", "expr": "karakeep_connector_state"},
-        {"refId": "B", "expr": "karakeep_retry_total"},
-        {"refId": "C", "expr": "karakeep_dead_letter_total"}
+        {
+          "refId": "A",
+          "expr": "karakeep_connector_state"
+        },
+        {
+          "refId": "B",
+          "expr": "karakeep_retry_total"
+        },
+        {
+          "refId": "C",
+          "expr": "karakeep_dead_letter_total"
+        }
       ]
     },
     {
@@ -68,30 +158,65 @@
       "type": "timeseries",
       "title": "Instagram items acquired",
       "description": "increase() sur un compteur qui, au moment du câblage CANARY-4, comptabilise TOUT item vu (pas seulement les livraisons completed) — un job partiellement acheve (ex. carrousel tronque) ou un retry peut produire des sauts qui ne correspondent pas 1:1 a des livraisons reelles. Le compteur restreint a completed arrive cote prisme (chantier separe, CANARY-5) ; ce panneau reste correct pour un increase() classique (jamais negatif sur un compteur monotone), la reserve porte uniquement sur la SEMANTIQUE des valeurs affichees d'ici la.",
-      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16},
-      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
       "targets": [
-        {"refId": "A", "expr": "increase(instagram_items_acquired_total[15m])"}
+        {
+          "refId": "A",
+          "expr": "increase(instagram_items_acquired_total[15m])"
+        }
       ]
     },
     {
       "id": 8,
       "type": "timeseries",
       "title": "Instagram errors by reason",
-      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 16},
-      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
       "targets": [
-        {"refId": "A", "expr": "increase(instagram_errors_total[15m])", "legendFormat": "{{reason}}"}
+        {
+          "refId": "A",
+          "expr": "increase(instagram_errors_total[15m])",
+          "legendFormat": "{{reason}}"
+        }
       ]
     },
     {
       "id": 9,
       "type": "timeseries",
       "title": "Instagram connector state",
-      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 16},
-      "datasource": {"type": "prometheus", "uid": "VictoriaMetrics"},
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 16
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "VictoriaMetrics"
+      },
       "targets": [
-        {"refId": "A", "expr": "instagram_connector_state == 1", "legendFormat": "{{state}}"}
+        {
+          "refId": "A",
+          "expr": "instagram_connector_state == 1",
+          "legendFormat": "{{tenant}}/{{state}}"
+        }
       ]
     }
   ]

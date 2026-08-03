@@ -236,14 +236,25 @@
   tags: [prisme-fetcher, prisme_fetcher, phase3]
 
 - name: Prisme fetcher | Validate fetcher<->control-plane contract prerequisites (fail-loud, CANARY-1b)
+  vars:
+    # L2 (revue 2026-08-03, cycle 4) : le regex precedent ('^[0-9.]+/3[0-2]$')
+    # ne validait que la FORME (chiffres/points) -- "999.999.999.999/32"
+    # passait sans jamais etre rejete. ansible.utils (ipaddr) n'est pas une
+    # dependance de ce repo (cf requirements.yml) -- regex IPv4 stricte par
+    # octet (0-255) a la place, /32 explicite uniquement (meme perimetre que
+    # l'assert original).
+    _ipv4_octet: (25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])
+    _ipv4_slash32: "^{{ _ipv4_octet }}(\\.{{ _ipv4_octet }}){3}/32$"
   ansible.builtin.assert:
     that:
       - prisme_instagram_api_base | length > 0
       - prisme_instagram_tenant_id | length > 0
-      - prisme_instagram_api_allow_cidr is match('^[0-9.]+/3[0-2]$')
+      - prisme_instagram_api_allow_cidr is match(_ipv4_slash32)
       - prisme_instagram_authorization_poll_seconds | int > 0
       - prisme_instagram_heartbeat_interval_seconds | int > 0
       - prisme_instagram_heartbeat_interval_seconds | int <= 60
+      - prisme_instagram_control_plane_failure_threshold | int > 0
+      - prisme_instagram_control_plane_alert_interval_seconds | int > 0
     quiet: true
     fail_msg: >-
       prisme_instagram_enabled=true mais le contrat fetcher<->prisme n'est pas
@@ -279,7 +290,10 @@
 # pas les noms d'hote) : verifie, best-effort, que l'IP REELLEMENT resolue
 # pour prisme_instagram_api_base tombe dans le CIDR /32 configure — jamais
 # bloquant en molecule (aucune resolution DNS reelle attendue pour un hote de
-# test), fail-loud sinon si le controller peut resoudre le nom.
+# test), fail-loud sinon. L4 (revue 2026-08-03, cycle 4) : `getent` s'execute
+# sur la CIBLE geree (ansible.builtin.command, jamais le controller waza) —
+# le commentaire precedent ("si le controller peut resoudre le nom") etait
+# trompeur.
 - name: Prisme fetcher | Resolve control-plane hostname for the IPAddressAllow sync guard
   vars:
     _instagram_api_host: "{{ prisme_instagram_api_base | urlsplit('hostname') }}"

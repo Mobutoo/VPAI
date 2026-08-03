@@ -778,13 +778,29 @@ def fetch_instagram(
                         proc.wait(timeout=10)
                     break
         finally:
-            if proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait(timeout=10)
+            # L4 (revue 2026-08-03, cycle 4) : ce finally s'execute AUSSI
+            # quand une exception non prevue (dont l'OperationalError
+            # sqlite3 du heartbeat, R2) traverse la boucle — proc.wait(10)
+            # APRES kill() peut lui-meme lever subprocess.TimeoutExpired
+            # (process zombie/D-state) : sans ce try/except, cette 2e
+            # exception REMPLACERAIT silencieusement la cause d'origine qui
+            # etait en train de se propager hors du bloc `with`, masquant le
+            # vrai diagnostic dans les logs/manifest. Log JSON explicite,
+            # jamais de re-raise ici (best-effort de nettoyage, pas le
+            # chemin d'erreur principal).
+            try:
+                if proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        proc.kill()
+                        proc.wait(timeout=10)
+            except subprocess.TimeoutExpired as cleanup_error:
+                print(json.dumps({
+                    "event": "instagram_process_cleanup_timeout",
+                    "error": str(cleanup_error),
+                }))
     if killed_reason:
         raise RuntimeError(killed_reason)
     if proc.returncode != 0:

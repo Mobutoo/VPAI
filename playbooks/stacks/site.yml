@@ -78,6 +78,7 @@
       tags: [plane, phase3, apps]
     - role: openclaw
       tags: [openclaw, phase3, apps]
+      when: openclaw_enabled | default(true)
     - role: palais
       tags: [palais, phase3, apps]
     - role: firefly

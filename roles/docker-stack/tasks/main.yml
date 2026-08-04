@@ -408,6 +408,18 @@
   when: not (common_molecule_mode | default(false))
   # docker compose not available in molecule
 
+- name: Remove OpenClaw container when disabled
+  community.docker.docker_container:
+    name: "{{ project_name }}_openclaw"
+    state: absent
+  become: true
+  when:
+    - not (openclaw_enabled | default(true))
+    - not (common_molecule_mode | default(false))
+  # --remove-orphans is intentionally omitted above (REX-Integration), so dropping
+  # the service from the compose template leaves the container running. Data under
+  # openclaw_{system,state,workspace}_dir is untouched — flip the flag back to restore.
+
 - name: Verify Phase B — detect missing containers
   ansible.builtin.shell:
     executable: /bin/bash

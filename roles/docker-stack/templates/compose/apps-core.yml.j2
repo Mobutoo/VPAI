@@ -103,6 +103,7 @@
       retries: 5
       start_period: 90s
 
+{% if openclaw_enabled | default(true) %}
   openclaw:
     image: {{ openclaw_image }}
     container_name: {{ project_name }}_openclaw
@@ -178,4 +179,5 @@
       timeout: 10s
       retries: 5
       start_period: 60s
+{% endif %}
 

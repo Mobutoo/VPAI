@@ -267,6 +267,13 @@ litellm_budget_eco_models: ["qwen3-coder", "glm-5", "deepseek-v3"]
 # Non comptabilisé dans le budget global journalier
 litellm_byteplus_budget_monthly: 5.00
 
+# --- OpenClaw ---
+# Désactivé 2026-08-04 : service non utilisé, Sese sous pression mémoire
+# (swap 3,9/4,0 Gi saturé). false = service retiré du compose, conteneur
+# supprimé, rôle openclaw skippé, alertes Grafana openclaw non provisionnées.
+# Les données (system/state/workspace) sont CONSERVÉES — remettre à true suffit.
+openclaw_enabled: false
+
 # --- WhatsApp (OpenClaw Tutor channel — child tablet) ---
 whatsapp_tutor_enabled: false
 # whatsapp_tutor_phone set in vault if needed

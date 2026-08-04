@@ -120,6 +120,7 @@ groups:
         labels:
           severity: critical
 
+{% if openclaw_enabled | default(true) %}
       - uid: openclaw-crash-loop
         title: "OpenClaw container restart loop"
         condition: C
@@ -197,6 +198,7 @@ groups:
         labels:
           severity: warning
           service: openclaw
+{% endif %}
 
       - uid: container-restarts
         title: "Container restarts > 3 in 15 min"

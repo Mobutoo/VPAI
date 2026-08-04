@@ -11,6 +11,32 @@ BACKUP_DIR="{{ backup_base_dir }}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 PROJECT="{{ project_name }}"
 
+# Helper tar pour les donnees appartenant a l'uid d'un conteneur.
+# REX 2026-08-04 : /opt/{{ project_name }}/data/{trek,trek-uploads} sont
+# `debian:debian` mode 0750 et openclaw_{workspace,state}_dir suivent le meme
+# schema — le script tourne en cron sous un compte non privilegie, donc `tar`
+# echouait en Permission denied. Le `2>/dev/null` d'origine masquait l'erreur
+# derriere un WARNING generique : TREK (service PUBLIC) et OpenClaw n'ont
+# jamais ete sauvegardes. Meme famille que le REX Redis du 2026-07-23.
+# Trois garanties ici : (1) sudo -n pour lire, (2) erreur reelle REMONTEE,
+# (3) chown vers l'utilisateur du script — sans quoi backup-cleanup.sh
+# (`find -delete` non privilegie) ne pourrait plus purger et le disque
+# se remplirait en silence.
+backup_tar() {
+  local dest="$1"; shift
+  local err
+  if err=$(sudo -n tar -czf "${dest}" "$@" 2>&1); then
+    sudo -n chown "$(id -u):$(id -g)" "${dest}" 2>/dev/null || true
+    if [ -s "${dest}" ]; then
+      return 0
+    fi
+    echo "[$(date)] WARNING: ${dest##*/} produit mais VIDE"
+    return 1
+  fi
+  echo "[$(date)] WARNING: ${dest##*/} echec tar : $(printf '%s' "${err}" | head -1)"
+  return 1
+}
+
 echo "[$(date)] Starting pre-backup..."
 
 # === PostgreSQL dump ===
@@ -136,13 +162,11 @@ fi
 echo "[$(date)] Backing up OpenClaw workspace..."
 mkdir -p "${BACKUP_DIR}/openclaw"
 # Backup workspace (user content — books, prospection, output)
-tar -czf "${BACKUP_DIR}/openclaw/workspace-${TIMESTAMP}.tar.gz" \
-  -C "{{ openclaw_workspace_dir }}" . 2>/dev/null || \
-  echo "[$(date)] WARNING: OpenClaw workspace backup failed"
+backup_tar "${BACKUP_DIR}/openclaw/workspace-${TIMESTAMP}.tar.gz" \
+  -C "{{ openclaw_workspace_dir }}" . || true
 # Backup state (sessions, memory — not canvas/cron which are ephemeral)
-tar -czf "${BACKUP_DIR}/openclaw/state-${TIMESTAMP}.tar.gz" \
-  -C "{{ openclaw_state_dir }}" sessions memory 2>/dev/null || \
-  echo "[$(date)] WARNING: OpenClaw state backup failed"
+backup_tar "${BACKUP_DIR}/openclaw/state-${TIMESTAMP}.tar.gz" \
+  -C "{{ openclaw_state_dir }}" sessions memory || true
 echo "[$(date)] OpenClaw backup completed"
 {% endif %}
 
@@ -150,12 +174,10 @@ echo "[$(date)] OpenClaw backup completed"
 # trip.<domain> — public service, SQLite in {{ trek_data_dir }} + uploads in {{ trek_uploads_dir }}
 echo "[$(date)] Backing up TREK data..."
 mkdir -p "{{ backup_trek_dir }}"
-tar -czf "{{ backup_trek_dir }}/data-${TIMESTAMP}.tar.gz" \
-  -C "{{ trek_data_dir }}" . 2>/dev/null || \
-  echo "[$(date)] WARNING: TREK data backup failed"
-tar -czf "{{ backup_trek_dir }}/uploads-${TIMESTAMP}.tar.gz" \
-  -C "{{ trek_uploads_dir }}" . 2>/dev/null || \
-  echo "[$(date)] WARNING: TREK uploads backup failed"
+backup_tar "{{ backup_trek_dir }}/data-${TIMESTAMP}.tar.gz" \
+  -C "{{ trek_data_dir }}" . || true
+backup_tar "{{ backup_trek_dir }}/uploads-${TIMESTAMP}.tar.gz" \
+  -C "{{ trek_uploads_dir }}" . || true
 echo "[$(date)] TREK backup completed"
 
 # === n8n workflow export ===

@@ -3,20 +3,31 @@
 
 apiVersion: 1
 
-{% if not (openclaw_enabled | default(true)) %}
 # Retirer une règle du bloc `groups` ne la supprime PAS de la base Grafana : le
 # provisioning fichier ne fait qu'ajouter/mettre à jour. Sans ce `deleteRules`,
-# les règles openclaw survivent au déploiement, leur série disparaît avec le
-# conteneur et elles tirent DatasourceNoData en permanence.
+# une règle retirée survit au déploiement, sa série n'existe plus, et elle tire
+# DatasourceNoData en permanence.
 # Doc : https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/file-provisioning/
 # Vérifié live 2026-08-04 (règles encore présentes en base après un 1er deploy).
+#
+# Les 3 uid ci-dessous sont supprimés DÉFINITIVEMENT (plus de garde openclaw_enabled) :
+# tous dépendent de métriques PAR CONTENEUR (`container_start_time_seconds`,
+# `container_memory_usage_bytes`) que cAdvisor n'exporte plus depuis la migration
+# socket-proxy (C3, REX-77, 2026-03-10). cAdvisor n'associe les cgroups aux
+# conteneurs que via le socket Docker unix ; `DOCKER_HOST=tcp://socket-proxy` donne
+# 0 conteneur nommé — y compris en 0.60.5 (testé 2026-08-04). Décision opérateur :
+# on garde le durcissement C3 et on supprime ces règles, plutôt qu'afficher une
+# surveillance qui n'existe pas. Elles ne produisaient que des DatasourceNoData.
+# Ne les recréer QUE si cAdvisor redevient capable d'exporter par conteneur —
+# sinon on réarme du bruit, pas de la détection.
 deleteRules:
   - orgId: 1
     uid: openclaw-crash-loop
   - orgId: 1
     uid: openclaw-memory-high
+  - orgId: 1
+    uid: container-restarts
 
-{% endif %}
 groups:
   - orgId: 1
     name: "{{ project_display_name }} — Infrastructure"
@@ -134,122 +145,10 @@ groups:
         labels:
           severity: critical
 
-{% if openclaw_enabled | default(true) %}
-      - uid: openclaw-crash-loop
-        title: "OpenClaw container restart loop"
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange:
-              from: 900
-              to: 0
-            datasourceUid: VictoriaMetrics
-            model:
-              expr: "changes(container_start_time_seconds{name=\"javisi_openclaw\"}[15m])"
-              intervalMs: 30000
-              maxDataPoints: 43200
-          - refId: B
-            relativeTimeRange:
-              from: 900
-              to: 0
-            datasourceUid: __expr__
-            model:
-              type: reduce
-              expression: A
-              reducer: last
-          - refId: C
-            datasourceUid: __expr__
-            model:
-              type: threshold
-              expression: B
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [2]
-        for: 0s
-        annotations:
-          summary: "OpenClaw container has restarted more than 2 times in 15 minutes — possible crash loop"
-          dashboard_uid: "openclaw-agents"
-        labels:
-          severity: critical
-          service: openclaw
-
-      - uid: openclaw-memory-high
-        title: "OpenClaw memory > 1200MB for 5 min"
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange:
-              from: 300
-              to: 0
-            datasourceUid: VictoriaMetrics
-            model:
-              expr: "container_memory_usage_bytes{name=\"javisi_openclaw\"}"
-              intervalMs: 30000
-              maxDataPoints: 43200
-          - refId: B
-            relativeTimeRange:
-              from: 300
-              to: 0
-            datasourceUid: __expr__
-            model:
-              type: reduce
-              expression: A
-              reducer: last
-          - refId: C
-            datasourceUid: __expr__
-            model:
-              type: threshold
-              expression: B
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [1258291200]
-        for: 5m
-        annotations:
-          summary: "OpenClaw memory usage is above 1200MB for 5 minutes — approaching 1536MB container limit"
-          dashboard_uid: "openclaw-agents"
-        labels:
-          severity: warning
-          service: openclaw
-{% endif %}
-
-      - uid: container-restarts
-        title: "Container restarts > 3 in 15 min"
-        condition: C
-        data:
-          - refId: A
-            relativeTimeRange:
-              from: 900
-              to: 0
-            datasourceUid: VictoriaMetrics
-            model:
-              expr: "changes(container_start_time_seconds{name=~\".+\"}[15m])"
-              intervalMs: 30000
-              maxDataPoints: 43200
-          - refId: B
-            relativeTimeRange:
-              from: 900
-              to: 0
-            datasourceUid: __expr__
-            model:
-              type: reduce
-              expression: A
-              reducer: max
-          - refId: C
-            datasourceUid: __expr__
-            model:
-              type: threshold
-              expression: B
-              conditions:
-                - evaluator:
-                    type: gt
-                    params: [3]
-        for: 0s
-        annotations:
-          summary: "A container has restarted more than 3 times in 15 minutes"
-        labels:
-          severity: critical
+      # Les règles openclaw-crash-loop, openclaw-memory-high et container-restarts
+      # ont été retirées ici (et purgées via `deleteRules` en tête de fichier) :
+      # elles reposaient sur des métriques PAR CONTENEUR que cAdvisor n'exporte plus
+      # depuis la migration socket-proxy. Détail et décision : en-tête du fichier.
 
 {% if notification_method == 'telegram' and telegram_monitoring_bot_token | default('') | length > 0 %}
 contactPoints:

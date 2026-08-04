@@ -149,6 +149,7 @@
 # NOTE 5.27 also requires one-time DEVICE PAIRING: after Connect, approve on the host:
 #   docker exec {{ project_name }}_openclaw openclaw devices approve <request-id>
 # VPN-protected. First-time setup: open https://{{ caddy_admin_domain }}/__bootstrap__
+{% if openclaw_enabled | default(true) %}
 {{ caddy_admin_domain }} {
     import vpn_only
     import vpn_error_page
@@ -175,6 +176,7 @@ BOOTSTRAP 200
 
     import security_headers
 }
+{% endif %}
 
 # === Grafana - dedicated subdomain (tala) ===
 # REX: Grafana on its own subdomain - no need for SERVE_FROM_SUB_PATH

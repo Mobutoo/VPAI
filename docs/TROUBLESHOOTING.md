@@ -2382,3 +2382,45 @@ Sans la ligne `CLEAR`, une purge qui ramène 80 → 78 produit `tier=OK != SOFT`
 **Leçon de méthode** : le premier banc d'essai (21 cas, tous verts) laissait passer les pièges 6, 7 et 9 parce que ses stubs gardaient `BEFORE == AFTER` et ne testaient jamais un disque revenant sur un palier déjà visité. Un banc écrit par l'auteur du correctif teste les scénarios auxquels il a pensé. **La revue adversariale n'est pas optionnelle** : c'est elle qui a produit les 3 HIGH, avec bancs de preuve reproductibles.
 
 Réf : `roles/disk-guard/` (script + defaults + service + README), constaté sur sese le 2026-07-31 (80 % stable, 20 G libres).
+
+---
+
+## 62. Grafana — retirer une règle du provisioning ne la supprime PAS (alertes fantômes en `DatasourceNoData`, 2026-08-04)
+
+**Symptôme** : un service est arrêté volontairement, ses règles d'alerte sont retirées du template `alerting.yaml.j2`, le rôle `monitoring` est déployé (`changed=3 failed=0`, handler `Restart grafana stack` exécuté) — et les alertes continuent de partir, désormais **en permanence** au lieu d'être intermittentes. Le fichier provisionné sur l'hôte ne contient pourtant plus une seule occurrence du service (`grep -c openclaw …/alerting.yaml` → `0`).
+
+**Cause racine** : le provisioning fichier de Grafana **ajoute et met à jour, il ne supprime jamais**. Une règle déjà chargée en base y reste indéfiniment quand on la retire du bloc `groups` ; ni le redémarrage de Grafana ni un nouveau provisioning ne la purgent. La [doc officielle](https://grafana.com/docs/grafana/latest/alerting/set-up/provision-alerting-resources/file-provisioning/) l'énonce : « you can only change the resource properties by changing the provisioning file » — la suppression passe obligatoirement par une clé racine dédiée.
+
+**Effet pervers, contre-intuitif** : arrêter le conteneur *aggrave* le bruit au lieu de l'éteindre. Tant qu'il tournait, la règle s'évaluait normalement ; une fois arrêté, sa série disparaît de VictoriaMetrics, la règle devient orpheline et bascule en `DatasourceNoData` — qui se déclenche **à chaque évaluation, sans condition de seuil**. On croit fermer un canal de notification, on le transforme en robinet ouvert.
+
+**Fix** — clé racine `deleteRules`, conditionnée au même flag que les règles :
+
+```jinja
+{% if not (openclaw_enabled | default(true)) %}
+deleteRules:
+  - orgId: 1
+    uid: openclaw-crash-loop
+  - orgId: 1
+    uid: openclaw-memory-high
+{% endif %}
+```
+
+Les deux blocs sont mutuellement exclusifs (les uid ne figurent dans `groups` que si le flag est vrai) : aucun conflit possible, et le re-run reste idempotent (0 changed, aucun restart Grafana).
+
+**Piège n° 1 — le recap Ansible ne prouve rien.** `changed=3 failed=0` a été obtenu avec les deux règles toujours actives en base. Le `changed` porte sur l'écriture du fichier et le restart, pas sur l'état réel de Grafana. **Seule source de vérité : la table `alert_rule`.**
+
+**Piège n° 2 — `grep` sur le fichier SQLite est non concluant.** `docker exec javisi_grafana grep -c openclaw-crash-loop /var/lib/grafana/grafana.db` renvoie un compte non nul même après suppression effective : SQLite conserve les pages libérées jusqu'au `VACUUM`, et les tables d'historique/état citent les uid. Ne jamais conclure là-dessus, dans un sens comme dans l'autre.
+
+**Piège n° 3 — l'API Grafana n'est pas un recours garanti.** `curl -u admin:$GF_SECURITY_ADMIN_PASSWORD …/api/v1/provisioning/alert-rules` renvoie `401 password-auth.failed` sur Sese (mot de passe admin désynchronisé, panne connue et indépendante). Ni `sqlite3` ni `python3` ne sont présents dans l'image Grafana. Méthode qui fonctionne : `docker cp` de la base vers un poste outillé, lecture en seule lecture, **puis suppression de la copie** — elle contient les credentials de datasources.
+
+```bash
+docker cp javisi_grafana:/var/lib/grafana/grafana.db /tmp/gf.db   # sur l'hôte
+# puis, sur le poste :
+python3 -c "import sqlite3;print(sqlite3.connect('gf.db').execute('select uid,title from alert_rule').fetchall())"
+```
+
+**Piège n° 4 — vérifier le silence sur la bonne fenêtre.** `docker logs --since 20m javisi_grafana` couvre l'*avant*-correctif et fait croire que les alertes partent encore. Caler la fenêtre sur l'uptime du conteneur (`Up 13 minutes` → `--since 12m`) pour n'observer que la période post-fix.
+
+**Leçon générale** : désactiver un service, c'est fermer **toutes** ses surfaces, et les règles d'alerte en font partie au même titre que le compose, le rôle, le conteneur orphelin et le vhost Caddy. Une règle qui survit à son sujet ne devient pas silencieuse — elle devient bavarde. Même famille que §61 : plusieurs canaux à fermer, jamais un seul.
+
+Réf : `roles/monitoring/templates/grafana/provisioning/alerting.yaml.j2`, commits `992fc14` / `706143e` / `a7e8bab`, constaté sur sese le 2026-08-04 (2 déploiements nécessaires, le premier silencieusement inopérant).

@@ -46,13 +46,33 @@ groups:
    noDataState reste "Alerting" (defaut du template, cf plus bas) : desormais
    SIGNIFIANT une fois les `or vector(0)` en place, puisque la seule facon
    d'obtenir un NoData ici est une panne totale du pipeline d'evaluation
-   Grafana/VictoriaMetrics (pas un etat Instagram normal). -#}
+   Grafana/VictoriaMetrics (pas un etat Instagram normal).
+
+   CORRECTIF 2026-08-04 -- le patron ci-dessus n'avait PAS ete applique a 3
+   regles, qui se declenchaient donc PRECISEMENT QUAND TOUT ALLAIT BIEN :
+     - prisme-stalled       : `absent(up{...}) or up{...} == 0` est vide a l'etat
+                              sain (`absent()` vide si la serie existe, et `== 0`
+                              est un FILTRE qui elimine la serie quand up vaut 1).
+                              Constate en prod : up=1 et alerte critique Firing.
+                              Remplace par `(sum(up{job="prisme"}) or vector(0))`
+                              + operator `lt` seuil 1 -- verifie contre VM :
+                              job sain = 1, job absent = 0.
+     - prisme-karakeep-circuit : serie absente tant que le circuit est ferme.
+     - prisme-backup-stale     : `and X > 0` filtre tout tant qu'aucun backup n'a
+                              reussi (metrique a 0 en prod le 2026-08-04).
+   Regle generale : une expression dont un membre est un FILTRE (`== 0`, `> 0`,
+   `absent()`) ne renvoie rien a l'etat sain. Avec noDataState=Alerting, cela
+   inverse l'alerte. Toujours terminer par `or vector(0)`.
+
+   NE PAS mettre de commentaire Jinja a l'interieur de la liste de la boucle for
+   ci-dessous : le marqueur casse le bloc (cf. commit 05ab9f3). -#}
 {% for alert in [
   {
     'uid': 'prisme-stalled',
     'title': 'Prisme unavailable',
-    'expr': 'absent(up{job="prisme"}) or up{job="prisme"} == 0',
-    'threshold': 0,
+    'expr': '(sum(up{job="prisme"}) or vector(0))',
+    'threshold': 1,
+    'operator': 'lt',
     'severity': 'critical',
     'for': '3m'
   },
@@ -104,7 +124,7 @@ groups:
   {
     'uid': 'prisme-backup-stale',
     'title': 'Prisme backup stale',
-    'expr': '(time() - prisme_backup_last_success_timestamp_seconds) and prisme_backup_last_success_timestamp_seconds > 0',
+    'expr': '((time() - max(prisme_backup_last_success_timestamp_seconds)) and max(prisme_backup_last_success_timestamp_seconds) > 0) or vector(0)',
     'threshold': 93600,
     'severity': 'critical',
     'for': '5m'
@@ -112,7 +132,7 @@ groups:
   {
     'uid': 'prisme-karakeep-circuit',
     'title': 'Prisme Karakeep circuit open',
-    'expr': 'karakeep_connector_state{state="circuit_open"}',
+    'expr': '(max(karakeep_connector_state{state="circuit_open"}) or vector(0))',
     'threshold': 0,
     'severity': 'warning',
     'for': '5m'

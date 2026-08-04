@@ -25,6 +25,13 @@ PROJECT="{{ project_name }}"
 backup_tar() {
   local dest="$1"; shift
   local err
+  # Le REPERTOIRE doit appartenir a l'utilisateur du script, pas seulement les
+  # fichiers : unlink() exige w+x sur le repertoire CONTENANT, posseder le fichier
+  # ne suffit pas. Constate 2026-08-04 : backups/{trek,openclaw} etaient root:root,
+  # donc backup-cleanup.sh ne pouvait rien purger et TREK ajoutait 143 Mo/nuit
+  # sans plafond — un trou de donnees troque contre un trou de disque.
+  sudo -n mkdir -p "$(dirname "${dest}")" 2>/dev/null || true
+  sudo -n chown "$(id -u):$(id -g)" "$(dirname "${dest}")" 2>/dev/null || true
   if err=$(sudo -n tar -czf "${dest}" "$@" 2>&1); then
     sudo -n chown "$(id -u):$(id -g)" "${dest}" 2>/dev/null || true
     if [ -s "${dest}" ]; then

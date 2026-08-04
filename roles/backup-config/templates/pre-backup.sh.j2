@@ -20,7 +20,11 @@ echo "[$(date)] Dumping PostgreSQL databases..."
 {# temporal / temporal_visibility VOLONTAIREMENT exclues (decision 2026-07-02 : perte des
    runs Temporal en vol acceptee, workflows relancables ;
    cf content-factory/docs/decisions/2026-07-02-decisions-audit.md) #}
-{% set backup_pg_databases = (postgresql_databases | default([]) | map(attribute='name') | list) + ['plane_production', 'content_factory'] %}
+{# prisme + postiz : bases creees par leurs propres roles (roles/prisme, roles/postiz),
+   donc ABSENTES de postgresql_databases. Constate 2026-08-04 : toutes deux vivantes en
+   prod et sauvegardees NULLE PART depuis leur mise en service. La garde de derive en fin
+   de bloc empeche desormais qu'un nouveau service passe entre les mailles en silence. #}
+{% set backup_pg_databases = (postgresql_databases | default([]) | map(attribute='name') | list) + ['plane_production', 'content_factory', 'prisme', 'postiz'] %}
 for DB in {{ backup_pg_databases | unique | join(' ') }}; do
   # Garde par-DB : une base absente (service décommissionné) ou un dump en échec
   # ne doit PAS avorter tout le backup (set -e). WARNING visible, on continue.
@@ -38,6 +42,22 @@ for DB in {{ backup_pg_databases | unique | join(' ') }}; do
     echo "[$(date)] WARNING: pg_dump a échoué pour ${DB}"
   fi
 done
+
+# Garde de derive : la liste ci-dessus est STATIQUE, donc toute base creee par un
+# nouveau role y echappe silencieusement — c'est exactement ce qui a laisse `prisme`
+# et `postiz` sans aucune sauvegarde pendant des mois (constate 2026-08-04).
+# On ne bascule PAS en decouverte dynamique : cela reintroduirait temporal /
+# temporal_visibility, volontairement exclues (decision 2026-07-02). A la place, on
+# signale toute base vivante non couverte, pour que l'oubli soit BRUYANT.
+COVERED="{{ backup_pg_databases | unique | join('|') }}|postgres|temporal|temporal_visibility"
+UNCOVERED=$(docker exec -e PGPASSWORD="${PGPASSWORD}" "${PROJECT}_postgresql" \
+  psql -U postgres -tAc \
+  "SELECT datname FROM pg_database WHERE datistemplate = false" 2>/dev/null \
+  | grep -vxE "${COVERED}" | tr '\n' ' ' || true)
+if [ -n "${UNCOVERED// /}" ]; then
+  echo "[$(date)] WARNING: bases PostgreSQL vivantes NON sauvegardees : ${UNCOVERED}"
+  echo "[$(date)] WARNING: les ajouter a backup_pg_databases (roles/backup-config) ou les decommissionner"
+fi
 echo "[$(date)] PostgreSQL dump completed"
 
 # === Redis BGSAVE ===

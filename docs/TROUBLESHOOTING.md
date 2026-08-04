@@ -2424,3 +2424,74 @@ python3 -c "import sqlite3;print(sqlite3.connect('gf.db').execute('select uid,ti
 **Leçon générale** : désactiver un service, c'est fermer **toutes** ses surfaces, et les règles d'alerte en font partie au même titre que le compose, le rôle, le conteneur orphelin et le vhost Caddy. Une règle qui survit à son sujet ne devient pas silencieuse — elle devient bavarde. Même famille que §61 : plusieurs canaux à fermer, jamais un seul.
 
 Réf : `roles/monitoring/templates/grafana/provisioning/alerting.yaml.j2`, commits `992fc14` / `706143e` / `a7e8bab`, constaté sur sese le 2026-08-04 (2 déploiements nécessaires, le premier silencieusement inopérant).
+
+---
+
+## 63. Alertes qui se déclenchent QUAND TOUT VA BIEN — expression vide + `noDataState: Alerting` (2026-08-04)
+
+**Symptôme** : une alerte critique notifie en boucle (1×/min) alors que le service surveillé est parfaitement sain. Exemple vécu : `prisme-stalled` criait « Prisme unavailable » avec `up{job="prisme"} = 1`. Le mail porte `grafana_state_reason = NoData` et des valeurs sentinelles `B=-1, C=-1`.
+
+**Cause racine** : une expression PromQL dont un membre est un **FILTRE** ne renvoie **aucune série** à l'état sain. Grafana lit ce vide comme `NoData`, et `noDataState: Alerting` le transforme en alerte critique. **L'alerte est inversée** : elle hurle quand tout va bien, et resterait muette le jour où le pipeline tomberait vraiment.
+
+Les trois formes rencontrées, toutes vides à l'état sain :
+
+| Expression | Pourquoi elle est vide quand tout va bien |
+|---|---|
+| `absent(up{job="x"}) or up{job="x"} == 0` | `absent()` ne retourne rien si la série existe ; `== 0` est un filtre qui élimine la série quand `up` vaut 1 |
+| `karakeep_connector_state{state="circuit_open"}` | la série n'existe pas tant que le circuit est fermé |
+| `(time() - X) and X > 0` | `and X > 0` filtre tout tant que `X` vaut 0 (aucun backup réussi) |
+
+**Fix** — terminer toute expression par `or vector(0)` pour garantir une série toujours présente, et vérifier contre VictoriaMetrics **avant** d'écrire la règle : à l'état sain elle doit renvoyer une **valeur**, jamais `VIDE`.
+
+```promql
+(sum(up{job="prisme"}) or vector(0))              # + operator lt, seuil 1
+(max(karakeep_connector_state{state="circuit_open"}) or vector(0))
+((time() - max(X)) and max(X) > 0) or vector(0)
+```
+
+**Piège n° 1 — la règle documentée mais non appliquée est pire qu'absente.** Le patron `or vector(0)` était **déjà écrit en tête de `alerting-prisme.yaml.j2`** et appliqué aux règles Instagram ; trois règles l'avaient manqué. La documentation donnait l'illusion de la couverture. Quand on introduit un patron correctif, l'appliquer à *toutes* les règles du fichier, pas aux nouvelles seulement.
+
+**Piège n° 2 — ne pas déduire `NoData` d'un « ça notifie sous le seuil ».** Une valeur sous le seuil + des notifications = le plus souvent une **résolution en vol**, pas un NoData. `alert_instance` est vide en fonctionnement normal (persistance différée) : la source de vérité est la table **`annotation`** de `grafana.db` (`prev_state` → `new_state`), qui distingue `Alerting`, `Alerting (NoData)` et `Normal (MissingSeries)`. C'est elle qui a prouvé que `disk-high` était un **vrai** dépassement, correctement résolu.
+
+**Piège n° 3 — après correction, les notifications continuent quelques minutes.** Les logs montrent `Detected stale state entry ... reason=NoData` : Grafana purge les instances de l'**ancienne** expression et émet leur résolution. Ne pas conclure à l'échec avant la fin de la purge (~5 min).
+
+**Piège n° 4 — interroger VictoriaMetrics depuis l'hôte renvoie toujours vide.** VM n'expose aucun port sur l'hôte (VPN-only) : `curl 127.0.0.1:8428` ne répond pas et fait croire que la base est morte. Passer par le réseau Docker :
+
+```bash
+docker exec javisi_grafana wget -qO- --post-data='query=<promql>' \
+  --header="Content-Type: application/x-www-form-urlencoded" \
+  http://victoriametrics:8428/api/v1/query
+```
+
+**Leçon générale** : une alerte incapable d'évaluer ne devient pas silencieuse — elle devient **bavarde**. Et une alerte bavarde en permanence finit ignorée, ce qui coûte la détection réelle le jour où elle compte. Même famille que §61 (spam) et §62 (règle fantôme) : le bruit d'alerte est presque toujours un défaut de conception de la règle, pas un excès de zèle du monitoring.
+
+Réf : `roles/monitoring/templates/grafana/provisioning/alerting-prisme.yaml.j2`, commit `f6aea99`, constaté et corrigé sur sese le 2026-08-04 (3 règles, retour à `Normal` vérifié en base).
+
+---
+
+## 64. cAdvisor n'exporte AUCUNE métrique par conteneur derrière le socket-proxy (C3) — lacune ouverte depuis mars 2026
+
+**Symptôme** : `container_start_time_seconds` ne compte **qu'une seule série** (`id="/"`) pour 66 conteneurs. Aucune métrique par conteneur, donc les alertes `container-restarts` / `openclaw-crash-loop` / `openclaw-memory-high` n'ont rien à évaluer et tirent `DatasourceNoData` en permanence (cf. §63).
+
+**Cause racine** : **cAdvisor n'associe les cgroups aux conteneurs que via le socket Docker unix.** `DOCKER_HOST=tcp://socket-proxy:2375` ne suffit pas — alors même que le proxy répond correctement (`/info` voit 68 conteneurs, `/version` et `/containers/json` OK). La migration socket-proxy (§C3, REX-77, 2026-03-10) a donc cassé la collecte par conteneur **silencieusement, pendant ~5 mois**.
+
+Banc de test (2026-08-04, conteneurs jetables sur ports isolés) :
+
+| Configuration | Conteneurs nommés remontés |
+|---|---|
+| socket unix `/var/run` monté | **67** |
+| socket-proxy TCP + `--docker_only=true` | 0 |
+| socket-proxy TCP sans `--docker_only` | 0 |
+| **cAdvisor 0.60.5** + socket-proxy | **0** — monter en version ne corrige PAS |
+
+**Deux prérequis réels, corrigés au passage** (commit `9438f01`) — nécessaires mais **non suffisants** :
+- `- /:/rootfs:ro` — requis par la doc amont (`docs/running.md`), absent de notre compose
+- `cgroup: host` — l'hôte est en `cgroup2fs` et le conteneur tournait en `CgroupnsMode=private`, donc cAdvisor ne voyait que son propre cgroup. Vérifier avec `docker inspect <c> --format '{{.HostConfig.CgroupnsMode}}'`.
+
+**Décision opérateur (2026-08-04)** : on **garde C3** et on **supprime** les 3 alertes concernées (commit `49827ba`, via `deleteRules` — cf. §62), plutôt qu'afficher une surveillance qui n'existe pas. `cpu-high` / `ram-high` / `disk-high` sont conservées : elles reposent sur `node_*` (node-exporter), qui fonctionne.
+
+**Lacune assumée** : plus aucune détection de crash-loop de conteneur sur Sese. Ne recréer ces règles que si cAdvisor redevient capable d'exporter par conteneur — sinon on réarme du bruit, pas de la détection. Alternative non explorée : un exporter tiers capable de parler au daemon en TCP.
+
+**Piège annexe — `docker pull` en `denied: denied` pour l'utilisateur `mobuone`.** Des identifiants GHCR périmés dans `~/.docker/config.json` sont envoyés au lieu d'un accès anonyme, faisant échouer le pull d'images **publiques**, y compris le tag déjà en production. **Root n'est pas affecté → les déploiements Ansible fonctionnent.** Ne jamais conclure « ce tag n'existe pas » sans retester en `sudo` : l'erreur a d'abord fait croire que les versions récentes de cAdvisor n'étaient pas publiées.
+
+Réf : `roles/docker-stack/templates/compose/monitoring.yml.j2`, commits `9438f01` / `49827ba`, constaté sur sese le 2026-08-04.

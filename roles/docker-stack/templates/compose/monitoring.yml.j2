@@ -3,6 +3,14 @@
     image: {{ cadvisor_image }}
     container_name: {{ project_name }}_cadvisor
     restart: unless-stopped
+    # cgroup v2 (cgroup2fs sur Debian 13) + cgroupns "private" (defaut Docker) =
+    # cAdvisor ne voit QUE son propre cgroup : 1 seule serie `id="/"` pour 66
+    # conteneurs, donc AUCUNE metrique par conteneur et l'alerte container-restarts
+    # sans rien a evaluer (DatasourceNoData permanent). `cgroup: host` lui redonne
+    # la vue de l'arborescence complete. Constate + corrige 2026-08-04.
+    # Compromis assume : reduit l'isolation cgroup de CE conteneur (lecture seule
+    # des cgroups de l'hote) ; c'est la configuration standard de cAdvisor.
+    cgroup: host
     security_opt:
       - no-new-privileges:true
     cap_drop:
@@ -20,6 +28,14 @@
     volumes:
       # Docker socket replaced by socket-proxy (C3 security)
       # containerd, /sys, /var/lib/docker still needed for cgroup/filesystem metrics
+      # /rootfs is REQUIRED for per-container metrics (upstream docs/running.md).
+      # Without it cAdvisor only exports the root cgroup (id="/") and NOT a single
+      # per-container series: `container_start_time_seconds` had 1 series for 66
+      # containers, so the container-restarts alert had nothing to evaluate and
+      # fired DatasourceNoData forever. Constaté 2026-08-04.
+      # /var/run is deliberately NOT mounted: upstream uses it to reach the Docker
+      # socket, which C3 replaces with socket-proxy via DOCKER_HOST.
+      - /:/rootfs:ro
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
     networks:

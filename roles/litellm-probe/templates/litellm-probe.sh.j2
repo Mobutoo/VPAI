@@ -20,6 +20,20 @@ ENV_FILE="{{ litellm_probe_env_file }}"
 STATE_FILE="{{ litellm_probe_state_file }}"
 NOTIFY_ENABLED={{ 1 if litellm_probe_notify_telegram | bool else 0 }}
 
+# Répertoire privé pour les fichiers temporaires (headers de réponse curl, configs curl
+# portant des secrets) : dirname(STATE_FILE) = litellm_probe_install_dir, déjà 0750
+# root:root — jamais /tmp (chemin prévisible = risque de symlink attack en root).
+TMP_DIR="$(dirname "$STATE_FILE")"
+
+# Nettoyage best-effort de tout fichier temporaire encore présent à la sortie (couvre
+# les sorties anticipées dues à `set -e`, en plus des `rm -f` explicites déjà en place).
+TMP_HEADERS_FILE=""
+CURL_CFG_FILE=""
+cleanup_tmp_files() {
+  rm -f "$TMP_HEADERS_FILE" "$CURL_CFG_FILE" 2>/dev/null || true
+}
+trap cleanup_tmp_files EXIT
+
 # Secrets (fichier 0600). Absents = pas de probe possible.
 LITELLM_PROBE_API_KEY=""
 TG_BOT=""
@@ -49,11 +63,24 @@ notify() {
     log "creds Telegram absentes — notif impossible"
     return 1
   fi
-  if curl -fsS --max-time 15 \
-    "https://api.telegram.org/bot${TG_BOT}/sendMessage" \
+
+  # Token Telegram hors argv (visible sinon dans `ps aux`) : url dans un fichier de
+  # config curl 0600 privé (-K), jamais dans un argument de ligne de commande.
+  CURL_CFG_FILE="$(mktemp "${TMP_DIR}/litellm-probe-tgcfg.XXXXXX")"
+  chmod 0600 "$CURL_CFG_FILE"
+  printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$TG_BOT" >"$CURL_CFG_FILE"
+
+  local rc=0
+  curl -fsS --max-time 15 \
+    -K "$CURL_CFG_FILE" \
     -d chat_id="${TG_CHAT}" \
     -d parse_mode="HTML" \
-    --data-urlencode text="$msg" >/dev/null 2>&1; then
+    --data-urlencode text="$msg" >/dev/null 2>&1 || rc=1
+
+  rm -f "$CURL_CFG_FILE"
+  CURL_CFG_FILE=""
+
+  if [ "$rc" -eq 0 ]; then
     return 0
   fi
   log "notify telegram echec (non bloquant, retente au prochain poll)"
@@ -119,17 +146,35 @@ probe_model() {
       '{model: $m, messages: [{role: "user", content: $t}], max_tokens: $mt, cache: {"no-cache": true}}')
   fi
 
-  local tmp_headers="/tmp/litellm-probe-headers.$$"
+  # Fichier headers non prédictible (mktemp, répertoire privé — jamais /tmp/...$$, un PID
+  # est devinable et permet une symlink attack contre un process root).
+  local tmp_headers
+  tmp_headers="$(mktemp "${TMP_DIR}/litellm-probe-headers.XXXXXX")"
+  TMP_HEADERS_FILE="$tmp_headers"
+
+  # Clé API hors argv (visible sinon dans `ps aux`) : url + header Authorization dans un
+  # fichier de config curl 0600 privé (-K), jamais dans un argument de ligne de commande.
+  local curl_cfg
+  curl_cfg="$(mktemp "${TMP_DIR}/litellm-probe-curlcfg.XXXXXX")"
+  chmod 0600 "$curl_cfg"
+  CURL_CFG_FILE="$curl_cfg"
+  {
+    printf 'url = "%s"\n' "$url"
+    printf 'header = "Authorization: Bearer %s"\n' "$LITELLM_PROBE_API_KEY"
+    printf 'header = "Content-Type: application/json"\n'
+  } >"$curl_cfg"
+
   http_body=$(curl -sS --max-time "$TIMEOUT_SEC" -D "$tmp_headers" -o - \
     -w '\n%{http_code}' \
-    -X POST "$url" \
-    -H "Authorization: Bearer ${LITELLM_PROBE_API_KEY}" \
-    -H "Content-Type: application/json" \
+    -X POST \
+    -K "$curl_cfg" \
     -d "$body" 2>/dev/null) || http_body=""
   http_code="$(printf '%s' "$http_body" | tail -n1)"
   http_body="$(printf '%s' "$http_body" | sed '$d')"
   headers="$(cat "$tmp_headers" 2>/dev/null || true)"
-  rm -f "$tmp_headers"
+  rm -f "$tmp_headers" "$curl_cfg"
+  TMP_HEADERS_FILE=""
+  CURL_CFG_FILE=""
 
   # 429 = rate limit (attendu sur le tier :free) — bruit, pas une panne.
   if [ "$http_code" = "429" ]; then

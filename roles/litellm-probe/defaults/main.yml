@@ -73,7 +73,11 @@ litellm_probe_timeout_start_sec: "5min"
 # Fréquence : 2x/jour max (plafond de coût, cf commentaire ci-dessus — décision explicite
 # du plan, pas un défaut LiteLLM). OnCalendar plutôt que OnUnitActiveSec : horaires fixes,
 # espacement régulier même après redémarrage du timer.
-litellm_probe_on_calendar: "06:00,18:00"
+# Forme systemd valide (vérifié `systemd-analyze calendar '06,18:00:00'` -> "Normalized
+# form: *-*-* 06,18:00:00", next elapse OK) : "06:00,18:00" (ancien défaut) N'EST PAS une
+# expression OnCalendar valide (heure/minute non factorisées) et empêchait le timer de
+# se charger.
+litellm_probe_on_calendar: "06,18:00:00"
 
 # Notification Telegram — réutilise le bot monitoring existant (même pattern que
 # disk-guard : rien de nouveau à provisionner).

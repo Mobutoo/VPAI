@@ -58,11 +58,27 @@ lint: ## Lancer yamllint + ansible-lint
 	find . \( -name '*.yml' -o -name '*.yaml' \) ! -path './.git/*' ! -path './.venv/*' ! -path '*/molecule/*' ! -path '*/collections/*' ! -path '*/node_modules/*' ! -name 'secrets.yml' -print0 | xargs -0 $(YAMLLINT) -c .yamllint.yml
 	@echo "$(GREEN)>>> Running ansible-lint...$(NC)"
 	$(ANSIBLE_LINT) playbooks/stacks/site.yml playbooks/hosts/workstation.yml
+	@echo "$(GREEN)>>> Running brick manifests validation...$(NC)"
+	@$(MAKE) --no-print-directory lint-bricks
 	@echo "$(GREEN)>>> All linting passed$(NC)"
 
 .PHONY: lint-yaml
 lint-yaml: ## Lancer yamllint uniquement
 	find . \( -name '*.yml' -o -name '*.yaml' \) ! -path './.git/*' ! -path './.venv/*' ! -path '*/molecule/*' ! -path '*/collections/*' ! -path '*/node_modules/*' ! -name 'secrets.yml' -print0 | xargs -0 $(YAMLLINT) -c .yamllint.yml
+
+.PHONY: lint-bricks
+lint-bricks: ## Valider les manifestes brick.yml + dérive des fichiers générés (tous les envs committés)
+	.venv/bin/python3 scripts/brick_generate.py --validate
+	@for f in roles/backup-config/vars/bricks_backup_*.yml; do \
+		[ -e "$$f" ] || continue; \
+		env=$$(basename "$$f" .yml | sed 's/^bricks_backup_//'); \
+		echo ">>> drift check env $$env"; \
+		.venv/bin/python3 scripts/brick_generate.py --generate backup --env "$$env" --check || exit 1; \
+	done
+
+.PHONY: test-bricks
+test-bricks: ## Tests unitaires du générateur brick
+	.venv/bin/python3 -m pytest tests/brick -q
 
 .PHONY: lint-ansible
 lint-ansible: ## Lancer ansible-lint uniquement

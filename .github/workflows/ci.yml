@@ -21,6 +21,11 @@ on:
       - '.ansible-lint'
       - '.yamllint.yml'
       - '.github/workflows/ci.yml'
+      - 'roles/**/brick.yml'
+      - 'roles/backup-config/vars/bricks_backup_*.yml'
+      - 'scripts/brick_generate.py'
+      - 'scripts/brick.schema.json'
+      - 'tests/brick/**'
   pull_request:
     branches: [main]
   # Manual trigger — dispatchable from any branch once this workflow file is
@@ -115,6 +120,19 @@ jobs:
 
       - name: Qdrant registry canonicalization
         run: node scripts/ci/check-qdrant-registry.mjs
+
+      - name: Brick manifests (validate + drift guard, tous les envs)
+        run: |
+          set -euo pipefail
+          python scripts/brick_generate.py --validate
+          for f in roles/backup-config/vars/bricks_backup_*.yml; do
+            [ -e "$f" ] || continue
+            env=$(basename "$f" .yml | sed 's/^bricks_backup_//')
+            python scripts/brick_generate.py --generate backup --env "$env" --check
+          done
+
+      - name: Brick generator tests
+        run: python -m pytest tests/brick -q
 
       - name: Check no latest tags
         run: |

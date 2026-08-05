@@ -3,6 +3,10 @@
 
 target_env: "preprod"
 
+# Environnement brick.yml : sélectionne roles/backup-config/vars/bricks_backup_<env>.yml
+# (généré par scripts/brick_generate.py --generate backup --env <env>).
+brick_backup_env: "preprod"
+
 # PostgreSQL tuning (4GB RAM)
 postgresql_shared_buffers: "128MB"
 postgresql_effective_cache_size: "256MB"

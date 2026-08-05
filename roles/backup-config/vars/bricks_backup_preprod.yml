@@ -1,0 +1,6 @@
+# GÉNÉRÉ DEPUIS brick.yml — NE PAS ÉDITER À LA MAIN
+# commande : python3 scripts/brick_generate.py --generate backup --env preprod
+# environnement : preprod — consommé par roles/backup-config (include_vars) : pre-backup.sh.j2 + backup-cleanup.sh.j2
+---
+brick_backup_pg_databases: []
+brick_backup_tar_jobs: []

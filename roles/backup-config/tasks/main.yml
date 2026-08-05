@@ -9,7 +9,8 @@
   ansible.builtin.assert:
     that:
       - brick_backup_env is defined
-      - brick_backup_env is match('^[a-z0-9][a-z0-9_-]*$')
+      - brick_backup_env is string
+      - brick_backup_env is match('\A[a-z0-9][a-z0-9_-]*\Z')
     fail_msg: >-
       brick_backup_env doit être défini dans l'inventaire de l'environnement cible
       (jamais un défaut de rôle : un défaut 'sese' ferait hériter silencieusement

@@ -8,7 +8,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def valid():
-    return yaml.safe_load((FIXTURES / "umami-valid.yml").read_text())
+    return yaml.safe_load((FIXTURES / "umami-valid.yml").read_text(encoding="utf-8"))
 
 
 def errors_of(manifest, versions=None):
@@ -100,6 +100,7 @@ def test_numeric_env_key_does_not_crash_sort():
     m["runtime"]["env"]["BAD"] = None
     errors = errors_of(m)
     assert errors != []
+    assert any("runtime.env.1" in e for e in errors) and any("runtime.env.BAD" in e for e in errors)
 
 
 def test_digest_trailing_newline_fails():
@@ -108,3 +109,9 @@ def test_digest_trailing_newline_fails():
         "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
     )
     assert any("digest" in e for e in errors_of(m))
+
+
+def test_backup_database_trailing_newline_fails():
+    m = valid()
+    m["backup"]["strategy"] = [{"kind": "postgres_dump", "database": "umami\n"}]
+    assert any("database" in e for e in errors_of(m))

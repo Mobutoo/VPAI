@@ -2,6 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "optimus.brick/v1",
   "title": "Optimus brick manifest v1",
+  "$defs": {
+    "no_newline": { "not": { "pattern": "[\\r\\n]" } }
+  },
   "type": "object",
   "additionalProperties": false,
   "required": ["apiVersion", "kind", "identity", "deployment", "runtime", "backup", "monitoring", "logging"],
@@ -13,11 +16,18 @@
       "additionalProperties": false,
       "required": ["name", "version", "image", "digest", "phase", "category"],
       "properties": {
-        "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "not": { "pattern": "[\\r\\n]" } },
+        "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "allOf": [{ "$ref": "#/$defs/no_newline" }] },
         "version": { "type": "string", "minLength": 1 },
-        "image": { "type": "string", "minLength": 1, "not": { "pattern": ":(latest|stable|main)$" } },
-        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$", "not": { "pattern": "[\\r\\n]" } },
-        "phase": { "type": "string", "pattern": "^phase[0-9]+$" },
+        "image": {
+          "type": "string",
+          "minLength": 1,
+          "allOf": [
+            { "not": { "pattern": ":(latest|stable|main)$" } },
+            { "$ref": "#/$defs/no_newline" }
+          ]
+        },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$", "allOf": [{ "$ref": "#/$defs/no_newline" }] },
+        "phase": { "type": "string", "pattern": "^phase[0-9]+$", "allOf": [{ "$ref": "#/$defs/no_newline" }] },
         "category": { "enum": ["apps", "platform", "provision", "monitoring", "ops"] }
       }
     },
@@ -44,7 +54,7 @@
                 "type": "object",
                 "additionalProperties": false,
                 "required": ["vault_ref"],
-                "properties": { "vault_ref": { "type": "string", "pattern": "^vault_[a-z0-9_]+$", "not": { "pattern": "[\\r\\n]" } } }
+                "properties": { "vault_ref": { "type": "string", "pattern": "^vault_[a-z0-9_]+$", "allOf": [{ "$ref": "#/$defs/no_newline" }] } }
               }
             ]
           }
@@ -54,9 +64,9 @@
           "additionalProperties": false,
           "required": ["memory_limit", "cpu_limit"],
           "properties": {
-            "memory_limit": { "type": "string", "pattern": "^[0-9]+[mMgG]$" },
-            "memory_reservation": { "type": "string", "pattern": "^[0-9]+[mMgG]$" },
-            "cpu_limit": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$" }
+            "memory_limit": { "type": "string", "pattern": "^[0-9]+[mMgG]$", "allOf": [{ "$ref": "#/$defs/no_newline" }] },
+            "memory_reservation": { "type": "string", "pattern": "^[0-9]+[mMgG]$", "allOf": [{ "$ref": "#/$defs/no_newline" }] },
+            "cpu_limit": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$", "allOf": [{ "$ref": "#/$defs/no_newline" }] }
           }
         },
         "healthcheck": {
@@ -85,7 +95,7 @@
           "required": ["mode"],
           "properties": {
             "mode": { "enum": ["public", "vpn_only", "none"] },
-            "subdomain": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+            "subdomain": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "allOf": [{ "$ref": "#/$defs/no_newline" }] },
             "upstream_port": { "type": "integer", "minimum": 1, "maximum": 65535 },
             "dns_proof": {
               "type": "object",
@@ -117,7 +127,7 @@
                 "required": ["kind", "database"],
                 "properties": {
                   "kind": { "const": "postgres_dump" },
-                  "database": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+                  "database": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$", "allOf": [{ "$ref": "#/$defs/no_newline" }] }
                 }
               },
               {
@@ -126,13 +136,13 @@
                 "required": ["kind", "archive", "src"],
                 "properties": {
                   "kind": { "const": "volume_tar" },
-                  "archive": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "not": { "pattern": "[\\r\\n]" } },
+                  "archive": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "allOf": [{ "$ref": "#/$defs/no_newline" }] },
                   "src": {
                     "type": "string",
                     "pattern": "^(/[A-Za-z0-9._/-]+|\\{\\{ [a-z][a-z0-9_]* \\}\\})$",
                     "allOf": [
                       { "not": { "pattern": "(^|/)\\.\\.(/|$)" } },
-                      { "not": { "pattern": "[\\r\\n]" } }
+                      { "$ref": "#/$defs/no_newline" }
                     ]
                   },
                   "include": {
@@ -142,7 +152,7 @@
                       "pattern": "^[A-Za-z0-9._][A-Za-z0-9._/-]*$",
                       "allOf": [
                         { "not": { "pattern": "(^|/)\\.\\.(/|$)" } },
-                        { "not": { "pattern": "[\\r\\n]" } }
+                        { "$ref": "#/$defs/no_newline" }
                       ]
                     },
                     "minItems": 1

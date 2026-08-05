@@ -131,9 +131,9 @@ HOST="$(hostname -s)"
 NONCE="$(date +%s)-$$"
 RC=0
 
-# probe_model NAME KIND PROVIDER_LABEL
+# probe_model NAME KIND PROVIDER_LABEL FREE
 probe_model() {
-  local name="$1" kind="$2" provider="$3"
+  local name="$1" kind="$2" provider="$3" free="${4:-false}"
   local url body http_body headers http_code cost_header status_line reason
 
   if [ "$kind" = "embedding" ]; then
@@ -176,9 +176,11 @@ probe_model() {
   TMP_HEADERS_FILE=""
   CURL_CFG_FILE=""
 
-  # 429 = rate limit (attendu sur le tier :free) — bruit, pas une panne.
-  if [ "$http_code" = "429" ]; then
-    log "${name} (${provider}): 429 rate-limit — ignore (pas une panne)"
+  # 429 sur tier GRATUIT = rate-limit attendu, bruit. Sur un modèle PAYANT,
+  # 429/402 = quota ou budget épuisé = PANNE (classe incident 2026-08-04) :
+  # on laisse tomber dans le chemin d'échec standard.
+  if [ "$http_code" = "429" ] && [ "$free" = "true" ]; then
+    log "${name} (${provider}): 429 rate-limit tier free — ignore (pas une panne)"
     return 0
   fi
 
@@ -236,7 +238,7 @@ Modele <b>${name}</b> (${provider}) : retour a la normale (completion reelle OK)
 }
 
 {% for m in litellm_probe_models %}
-probe_model "{{ m.name }}" "{{ m.kind }}" "{{ m.provider_label }}"
+probe_model "{{ m.name }}" "{{ m.kind }}" "{{ m.provider_label }}" "{{ m.free | default(false) | lower }}"
 {% endfor %}
 
 write_state || RC=1

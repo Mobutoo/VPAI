@@ -192,6 +192,14 @@ def test_unknown_top_level_key_fails():
     m = valid()
     m["extra_field"] = {"foo": 1}
     assert errors_of(m) != []
+
+
+def test_dotdot_in_backup_src_fails():
+    m = valid()
+    m["backup"]["strategy"] = [
+        {"kind": "volume_tar", "archive": "evil", "src": "/opt/app/../../etc"}
+    ]
+    assert errors_of(m) != []
 ```
 
 - [ ] **Step 3: Vérifier que les tests échouent**
@@ -332,8 +340,20 @@ Expected: erreurs de collection `ModuleNotFoundError: No module named 'scripts.b
                 "properties": {
                   "kind": { "const": "volume_tar" },
                   "archive": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
-                  "src": { "type": "string", "pattern": "^(/[A-Za-z0-9._/-]+|\\{\\{ [a-z][a-z0-9_]* \\}\\})$" },
-                  "include": { "type": "array", "items": { "type": "string", "pattern": "^[A-Za-z0-9._][A-Za-z0-9._/-]*$" }, "minItems": 1 }
+                  "src": {
+                    "type": "string",
+                    "pattern": "^(/[A-Za-z0-9._/-]+|\\{\\{ [a-z][a-z0-9_]* \\}\\})$",
+                    "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+                  },
+                  "include": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9._][A-Za-z0-9._/-]*$",
+                      "not": { "pattern": "(^|/)\\.\\.(/|$)" }
+                    },
+                    "minItems": 1
+                  }
                 }
               }
             ]
@@ -434,6 +454,8 @@ def find_manifests(repo: Path = REPO) -> list[Path]:
 def load_manifest(path: Path) -> dict:
     try:
         data = yaml.safe_load(path.read_text())
+    except OSError as exc:
+        raise BrickError(f"{path}: illisible : {exc}") from exc
     except yaml.YAMLError as exc:
         raise BrickError(f"{path}: YAML invalide : {exc}") from exc
     if not isinstance(data, dict):
@@ -503,7 +525,7 @@ La racine du repo sur `sys.path` rend `scripts.brick_generate` et `tests.brick.t
 - [ ] **Step 6: Vérifier que les tests passent**
 
 Run: `cd ~/work/infra/VPAI && .venv/bin/python3 -m pytest tests/brick -q`
-Expected: `11 passed`
+Expected: `12 passed`
 
 - [ ] **Step 7: Vérifier le CLI à vide (aucun brick.yml dans le repo encore)**
 
@@ -629,7 +651,7 @@ def test_env_secret_key_as_vault_ref_passes():
 - [ ] **Step 2: Vérifier qu'ils échouent**
 
 Run: `cd ~/work/infra/VPAI && .venv/bin/python3 -m pytest tests/brick -q`
-Expected: FAIL sur les 13 nouveaux tests (les assertions n'existent pas), les 11 anciens passent
+Expected: FAIL sur les 13 nouveaux tests (les assertions n'existent pas), les 12 anciens passent
 
 - [ ] **Step 3: Implémenter les assertions dans `validate_manifest`**
 
@@ -680,7 +702,10 @@ Remplacer le commentaire stub de `validate_manifest` par :
 
     # --- Secrets : une clé env au nom sensible ne peut être qu'un vault_ref (revue
     # Codex round 2 — la règle « jamais de secret en clair » doit être mécanique).
-    SECRET_KEY_MARKERS = ("SECRET", "PASSWORD", "TOKEN", "API_KEY", "PRIVATE_KEY")
+    # Marqueurs volontairement larges (KEY attrape API_KEY/ACCESS_KEY/PRIVATE_KEY,
+    # PASS attrape PASSWORD/DB_PASS) : un faux positif se règle en passant par
+    # vault_ref ou en renommant la variable — l'inverse (fuite) ne se règle pas.
+    SECRET_KEY_MARKERS = ("SECRET", "PASS", "TOKEN", "KEY", "CREDENTIAL")
     for key, value in _dict(_dict(manifest.get("runtime")).get("env")).items():
         if any(marker in key.upper() for marker in SECRET_KEY_MARKERS) and not (
             isinstance(value, dict) and "vault_ref" in value
@@ -696,7 +721,9 @@ Remplacer le commentaire stub de `validate_manifest` par :
     identity = _dict(manifest.get("identity"))
     name = identity.get("name")
     declared_image = identity.get("image")
-    versions_image = versions.get(f"{name}_image") if name else None
+    # tirets du nom de brique → underscores : convention des noms de vars Ansible
+    # (ex. content-factory → content_factory_image)
+    versions_image = versions.get(f"{name.replace('-', '_')}_image") if name else None
     if versions_image and declared_image and versions_image != declared_image:
         errors.append(
             f"{path}: identity.image ({declared_image}) diverge de {name}_image "
@@ -734,7 +761,7 @@ et le brancher : `if args.lint: return cmd_lint(args.repo)` (après le bloc `--v
 - [ ] **Step 5: Vérifier que tout passe**
 
 Run: `cd ~/work/infra/VPAI && .venv/bin/python3 -m pytest tests/brick -q`
-Expected: `24 passed`
+Expected: `25 passed`
 
 - [ ] **Step 6: Commit**
 
@@ -973,7 +1000,7 @@ et le dispatch :
 - [ ] **Step 4: Vérifier que tout passe**
 
 Run: `cd ~/work/infra/VPAI && .venv/bin/python3 -m pytest tests/brick -q`
-Expected: `32 passed`
+Expected: `33 passed`
 
 - [ ] **Step 5: Commit**
 
@@ -1362,7 +1389,7 @@ Run:
 cd ~/work/infra/VPAI && .venv/bin/python3 -m pytest tests/brick -q
 source .venv/bin/activate && make lint
 ```
-Expected: `37 passed` ; lint OK (yamllint + ansible-lint sur site.yml/workstation.yml)
+Expected: `38 passed` ; lint OK (yamllint + ansible-lint sur site.yml/workstation.yml)
 
 - [ ] **Step 8: Commit**
 
@@ -1405,9 +1432,14 @@ pytest>=9.0,<10.0
 Après la cible `lint-yaml`, ajouter :
 ```makefile
 .PHONY: lint-bricks
-lint-bricks: ## Valider les manifestes brick.yml + dérive des fichiers générés
+lint-bricks: ## Valider les manifestes brick.yml + dérive des fichiers générés (tous les envs committés)
 	.venv/bin/python3 scripts/brick_generate.py --validate
-	.venv/bin/python3 scripts/brick_generate.py --generate backup --env sese --check
+	@for f in roles/backup-config/vars/bricks_backup_*.yml; do \
+		[ -e "$$f" ] || continue; \
+		env=$$(basename "$$f" .yml | sed 's/^bricks_backup_//'); \
+		echo ">>> drift check env $$env"; \
+		.venv/bin/python3 scripts/brick_generate.py --generate backup --env "$$env" --check || exit 1; \
+	done
 
 .PHONY: test-bricks
 test-bricks: ## Tests unitaires du générateur brick
@@ -1423,10 +1455,15 @@ Et dans la cible `lint`, insérer avant la ligne finale `@echo "$(GREEN)>>> All 
 
 Dans `.github/workflows/ci.yml`, job lint, après le step `Qdrant registry canonicalization`, ajouter :
 ```yaml
-      - name: Brick manifests (validate + drift guard)
+      - name: Brick manifests (validate + drift guard, tous les envs)
         run: |
+          set -euo pipefail
           python scripts/brick_generate.py --validate
-          python scripts/brick_generate.py --generate backup --env sese --check
+          for f in roles/backup-config/vars/bricks_backup_*.yml; do
+            [ -e "$f" ] || continue
+            env=$(basename "$f" .yml | sed 's/^bricks_backup_//')
+            python scripts/brick_generate.py --generate backup --env "$env" --check
+          done
 
       - name: Brick generator tests
         run: python -m pytest tests/brick -q
@@ -1444,7 +1481,7 @@ Dans le bloc `on: ... paths:` du même workflow (lignes ~9-22), ajouter les entr
 - [ ] **Step 4: Vérifier localement**
 
 Run: `cd ~/work/infra/VPAI && source .venv/bin/activate && make lint && make test-bricks`
-Expected: lint complet vert (yamllint + ansible-lint + brick validate + drift OK), `37 passed`
+Expected: lint complet vert (yamllint + ansible-lint + brick validate + drift OK), `38 passed`
 
 - [ ] **Step 5: Test négatif de la garde (non committé)**
 
@@ -1521,18 +1558,21 @@ viennent de CE run — revue Codex round 2) :
 ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 "
   touch /tmp/prebackup.marker
   bash ${SCRIPT} > /tmp/prebackup.out 2>&1
-  echo exit=\$?
+  RC=\$?
+  echo exit=\${RC}
   tail -30 /tmp/prebackup.out
   echo '--- archives de ce run :'
   find ${PROJ_DIR}/backups/trek -type f -newer /tmp/prebackup.marker -size +0 -exec ls -lh {} +
+  exit \${RC}
 "
+echo "ssh exit=$?"   # doit être 0 — le code du backup est propagé, pas celui de tail/find
 ```
 Expected: `exit=0`, `Backing up trek/data (brick.yml)...` + `trek/uploads`, aucun `WARNING`/`ERREUR` sur les archives trek, `Pre-backup completed successfully`, et exactement 2 archives `.tar.gz` non vides plus récentes que le marqueur.
 
 - [ ] **Step 5: Idempotence (2e run Ansible = 0 changed)**
 
-Run: `ansible-playbook playbooks/stacks/site.yml --tags backup-config -e prod_ip=100.64.0.14 | tail -5`
-Expected: `changed=0` au récap.
+Run: `set -o pipefail; ansible-playbook playbooks/stacks/site.yml --tags backup-config -e prod_ip=100.64.0.14 | tail -5; echo "play exit=$?"`
+Expected: `changed=0` au récap ET `play exit=0` (pipefail : un échec du play ne peut pas être masqué par `tail`).
 
 - [ ] **Step 6: Pousser**
 
@@ -1564,5 +1604,6 @@ Expected: push OK, la CI GitHub rejoue validate + drift + tests.
 - **Générateurs alertes/compose/Caddy/tags/images** : hors périmètre de ce plan (étapes 3-5 du séquencement), plans suivants.
 - **Cohérence types** : `brick_backup_tar_jobs = [{brick, archive, src, include}]` identique entre générateur (Task 3), fixture de rendu (Task 5) et templates (Task 5). `GENERATED_HEADER` partagé. `validate_manifest(manifest, path, versions)` stable de Task 1 à 3.
 - **Pièges repo intégrés** : `no_log` préservé, `--context local` docker, `include: ['.']` défaut, parité chemins `backup_trek_dir`, cleanup statique corrigé, yamllint sur fichiers générés, `-e prod_ip=100.64.0.14` pour deploy local.
-- **Revue Codex intégrée (2026-08-05, rapport `~/work/ops/loops/reviews/REVIEW-FILE-2026-08-05-brick-generate-p1-schema-backup-20260805-0955.md`, 5 HIGH confirmés + 8 MED + 1 LOW, tous traités)** : garde de types dans les assertions (HIGH TypeError) ; fichier de vars PAR environnement `bricks_backup_<env>.yml` + `brick_backup_env` (HIGH env) ; charset strict `src`/`include` au schéma + quoting par élément dans le template (HIGH injection) ; compteur `BRICK_TAR_FAILURES` + `exit 1` avant heartbeat → alerte dead-man Uptime Kuma (HIGH `|| true`) ; chemins prod résolus au lieu de globs `/opt/*` (HIGH glob) ; compteurs de tests recalculés 11/24/32/37, stratégie d'import unique (conftest + PEP 420), refus des doublons (brick, archive), grep `backup_trek_dir` sans filtre d'extension, commit Task 5 complet, paths CI incluant les vars générées, garde `git diff --quiet` au test négatif, contrôle `@{upstream}..HEAD` avant push.
+- **Revue Codex intégrée (2026-08-05, rapport `~/work/ops/loops/reviews/REVIEW-FILE-2026-08-05-brick-generate-p1-schema-backup-20260805-0955.md`, 5 HIGH confirmés + 8 MED + 1 LOW, tous traités)** : garde de types dans les assertions (HIGH TypeError) ; fichier de vars PAR environnement `bricks_backup_<env>.yml` + `brick_backup_env` (HIGH env) ; charset strict `src`/`include` au schéma + quoting par élément dans le template (HIGH injection) ; compteur `BRICK_TAR_FAILURES` + `exit 1` avant heartbeat → alerte dead-man Uptime Kuma (HIGH `|| true`) ; chemins prod résolus au lieu de globs `/opt/*` (HIGH glob) ; compteurs de tests recalculés 12/25/33/38, stratégie d'import unique (conftest + PEP 420), refus des doublons (brick, archive), grep `backup_trek_dir` sans filtre d'extension, commit Task 5 complet, paths CI incluant les vars générées, garde `git diff --quiet` au test négatif, contrôle `@{upstream}..HEAD` avant push.
 - **Revue Codex round 2 intégrée (rapport `...-20260805-1002.md`, 7 HIGH / 4 MED / 1 LOW)** : `--env` borné `[a-z0-9][a-z0-9_-]*` (traversée de chemin) ; `brick_backup_env` SANS défaut de rôle — assert + définition explicite dans l'inventaire prod ; `| quote` (shlex) sur `src`/`include` résolus + job hostile dans le test de rendu ; arrêt dur si zéro/plusieurs `pre-backup.sh` sous `/opt` ; capture du code retour hors pipe `tail` + marqueur temporel prouvant les archives du run ; `git remote get-url origin` comparé exactement ; push en deux temps avec inspection ; clés env sensibles (SECRET/PASSWORD/TOKEN/API_KEY/PRIVATE_KEY) exigent `vault_ref` ; références résiduelles au fichier unique corrigées. **1 HIGH rejeté avec justification** (flux PR + CI verte avant déploiement — voir encadré Task 7 Step 6) : à trancher au gate humain.
+- **Revue Codex round 3 intégrée (rapport `...-20260805-1011.md`, 2 HIGH / 5 MED / 1 LOW)** : refus des segments `..` dans `src`/`include` (schéma `not pattern` + test) ; marqueurs secrets élargis (SECRET/PASS/TOKEN/KEY/CREDENTIAL, faux positifs assumés) ; normalisation tirets→underscores pour le cross-check `versions.yml` ; garde de dérive CI bouclant sur TOUS les `bricks_backup_*.yml` committés ; code retour du run réel propagé via `exit ${RC}` en fin de commande ssh ; `pipefail` sur la vérification d'idempotence ; `OSError` convertie en `BrickError` dans `load_manifest`. Le 2e HIGH = re-remontée du finding PR/CI déjà rejeté au round 2 — **rejet maintenu** (règle d'arrêt convergence : pas de boucle sur un finding re-remonté), statut RESIDUAL_REJECTED à trancher au gate humain.

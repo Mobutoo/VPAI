@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Repo cible : `/home/mobuone/work/infra/VPAI` (les rôles, le backup et la CI y vivent). La spec source vit dans optimus et n'est PAS modifiée par ce plan.
-- Remote git : `git@github-seko:Mobutoo/vpai.git` — jamais `github.com`.
+- Remote git : `git@github-seko:Mobutoo/VPAI.git` — jamais `github.com`.
 - **Flux PR+CI (décision opérateur au gate du 2026-08-05, remplace le flux deploy-local)** : la dette de main est poussée d'abord (après inspection), puis TOUTES les tasks 1-6 committent sur la branche **`feat/brick-p1`** (créée depuis `main` à jour) — jamais sur `main` directement. Task 7 : push branche → PR → CI verte → merge → pull main → deploy prod → run réel.
 - `identity.digest` : pattern strict `^sha256:[a-f0-9]{64}$` (spec §5 #1).
 - `backup.strategy` absent = REFUS DUR ; liste vide acceptée uniquement avec `backup.disabled_reason` string non vide (spec §5 #2).
@@ -45,7 +45,7 @@
 Run :
 ```bash
 cd ~/work/infra/VPAI
-[ "$(git remote get-url origin)" = "git@github-seko:Mobutoo/vpai.git" ] || { echo "remote origin inattendu — STOP"; exit 1; }
+[ "$(git remote get-url origin)" = "git@github-seko:Mobutoo/VPAI.git" ] || { echo "remote origin inattendu — STOP"; exit 1; }
 git log --oneline @{upstream}..HEAD
 ```
 Lire la liste (dette connue : ~18 commits litellm/monitoring/backup/plans, signalés en mémoire). **Si un commit inattendu apparaît, STOP et remonter à l'opérateur.** Sinon :
@@ -1539,7 +1539,7 @@ make lint et la CI (spec brick-manifest §4/§5)."
 Run:
 ```bash
 cd ~/work/infra/VPAI
-[ "$(git remote get-url origin)" = "git@github-seko:Mobutoo/vpai.git" ] || { echo "remote origin inattendu — STOP"; exit 1; }
+[ "$(git remote get-url origin)" = "git@github-seko:Mobutoo/VPAI.git" ] || { echo "remote origin inattendu — STOP"; exit 1; }
 git push -u origin feat/brick-p1
 gh pr create --base main --head feat/brick-p1 \
   --title "feat(brick): schéma optimus.brick/v1 + générateur backup (P1)" \

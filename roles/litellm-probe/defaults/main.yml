@@ -1,0 +1,99 @@
+---
+# litellm-probe — sonde "vraie complétion" LiteLLM prod.
+#
+# Pourquoi : deux incidents ont prouvé que /health/readiness (utilisé par le healthcheck
+# Docker) ne détecte NI une clé provider révoquée NI un ID de modèle invalide côté
+# provider — seule une vraie completion via le endpoint PUBLIC (DNS + Caddy + LiteLLM +
+# provider) les révèle :
+#   - 2026-08-04 : clé OpenRouter révoquée, health endpoint restait vert (402 seulement
+#     sur les vrais appels chat/completions).
+#   - 2026-08-05 (découvert) : alias "seedream" pointait ~5 mois sur un ID OpenRouter
+#     qui n'a jamais existé (LiteLLM-OR-1) — jamais détecté faute de trafic + faute de
+#     sonde active.
+#
+# Pourquoi PAS le health check natif LiteLLM (background_health_checks) : voir REX
+# litellm_config.yaml.j2 lignes 511-518 ($10.66/semaine de health checks parasites,
+# mars 2026, interval=0 mal compris). Le natif ne pousse ses résultats nulle part
+# (pas de métrique Prometheus, pas de webhook — seulement /health et logs DEBUG) : il
+# faudrait de toute façon écrire un poller/alerteur. Le natif teste aussi le provider
+# DEPUIS le conteneur, jamais le chemin public DNS→Caddy→LiteLLM→provider. Le custom
+# probe ci-dessous couvre les deux (vraie complétion + chemin public) sans dupliquer
+# de mécanisme de santé.
+
+litellm_probe_enabled: true
+
+# Décision opérateur 2026-08-06 : PAS de sonde périodique (consommation de
+# tokens inutile). Le rôle installe le script comme outil À LA DEMANDE
+# (smoke-test post-deploy : `systemctl start litellm-probe.service` ou
+# exécution directe du script). Passer à true pour (ré)activer le timer.
+litellm_probe_timer_enabled: false
+
+litellm_probe_user: "root"
+litellm_probe_install_dir: "/opt/litellm-probe"
+litellm_probe_script: "{{ litellm_probe_install_dir }}/litellm-probe.sh"
+litellm_probe_env_file: "{{ litellm_probe_install_dir }}/litellm-probe.env"
+# Etat "dernier statut connu par modèle" — anti-spam (une seule alerte par
+# transition sain->en panne, pas une alerte à chaque poll tant que ça ne guérit pas).
+litellm_probe_state_file: "{{ litellm_probe_install_dir }}/state"
+
+litellm_probe_service_name: "litellm-probe"
+litellm_probe_timer_name: "litellm-probe"
+
+# Endpoint PUBLIC (pas l'IP docker interne) : on veut tester exactement le chemin
+# emprunté par les vrais clients (DNS tailnet -> Caddy ACL VPN -> litellm:4000 -> provider).
+litellm_probe_base_url: "https://{{ litellm_subdomain }}.{{ domain_name }}"
+litellm_probe_api_key: "{{ litellm_master_key }}"
+
+# Liste volontairement COURTE et OPT-IN (contraste avec le natif qui est opt-out et
+# checke tout le catalogue par défaut). Un représentant par provider critique payant/clé
+# partagée, choisi pour un coût quasi nul :
+#   - qwen3-coder (OpenRouter :free) : détecte une panne clé OpenRouter (402/401) au
+#     niveau clé, PAS au niveau modèle — donc représentatif de tout le catalogue
+#     OpenRouter (kimi-k2, deepseek, glm-5, seedream, vision...) sans les appeler tous.
+#     Coût : $0 (tier free).
+#   - claude-haiku (Anthropic, tier le moins cher) : détecte une panne clé/budget
+#     Anthropic. Coût : ~5 tokens de sortie, négligeable (<$0.0001/appel).
+#   - embedding (OpenAI text-embedding-3-small) : détecte une panne clé OpenAI, couvre
+#     aussi le cache sémantique Qdrant qui en dépend. Coût : quasi nul (5 tokens in).
+# Volontairement EXCLUS : qwen-cf (RunPod, coût = temps GPU pas tokens, cold ~157s),
+# banga-* (GPU self-hosted, force un swap VRAM), seedream/vision (image-gen = coût
+# réel par appel, pas un health check).
+# free: true = tier gratuit où le 429 est du bruit attendu (rate-limit :free).
+# Sur un modèle PAYANT, un 429 = quota/budget épuisé = PANNE à alerter
+# (classe de l'incident providers 2026-08-04 ; cf. REX-SESSION-2026-04-06,
+# convention 402 quota / 429 rate-limit).
+litellm_probe_models:
+  - name: "qwen3-coder"
+    kind: "chat"
+    provider_label: "openrouter"
+    free: true
+  - name: "claude-haiku"
+    kind: "chat"
+    provider_label: "anthropic"
+    free: false
+  - name: "embedding"
+    kind: "embedding"
+    provider_label: "openai"
+    free: false
+
+litellm_probe_max_tokens: 5
+litellm_probe_timeout_sec: 30
+
+# Borne de durée totale du run (Type=oneshot -> TimeoutStartSec, RuntimeMaxSec inerte,
+# même leçon que disk-guard).
+litellm_probe_timeout_start_sec: "5min"
+
+# Fréquence : 2x/jour max (plafond de coût, cf commentaire ci-dessus — décision explicite
+# du plan, pas un défaut LiteLLM). OnCalendar plutôt que OnUnitActiveSec : horaires fixes,
+# espacement régulier même après redémarrage du timer.
+# Forme systemd valide (vérifié `systemd-analyze calendar '06,18:00:00'` -> "Normalized
+# form: *-*-* 06,18:00:00", next elapse OK) : "06:00,18:00" (ancien défaut) N'EST PAS une
+# expression OnCalendar valide (heure/minute non factorisées) et empêchait le timer de
+# se charger.
+litellm_probe_on_calendar: "06,18:00:00"
+
+# Notification Telegram — réutilise le bot monitoring existant (même pattern que
+# disk-guard : rien de nouveau à provisionner).
+litellm_probe_notify_telegram: true
+litellm_probe_telegram_bot_token: "{{ telegram_monitoring_bot_token | default('') }}"
+litellm_probe_telegram_chat_id: "{{ telegram_monitoring_chat_id | default('') }}"

@@ -68,7 +68,7 @@ categories:
   ops:
     description: "Opérations ponctuelles — backup, secrets, DNS"
     phase: "adhoc"
-    roles: [backup-config, vpn-dns]
+    roles: [backup-config, vpn-dns, litellm-probe]
 
 # Exemples d'utilisation des tags Ansible:
 # --tags apps              → toutes les applications

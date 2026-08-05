@@ -1,0 +1,7 @@
+---
+# litellm-probe — handlers
+
+- name: Reload systemd litellm-probe
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true

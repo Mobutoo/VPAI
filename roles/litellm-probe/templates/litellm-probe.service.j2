@@ -1,0 +1,16 @@
+[Unit]
+Description=litellm-probe — vraie completion HTTP publique sur modeles critiques
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=oneshot
+User={{ litellm_probe_user }}
+ExecStart={{ litellm_probe_script }}
+Nice=10
+# NB : RuntimeMaxSec est INERTE sur Type=oneshot (meme lecon que disk-guard) —
+# TimeoutStartSec est le bon levier pour eviter qu'un appel HTTP bloque le lock a vie.
+TimeoutStartSec={{ litellm_probe_timeout_start_sec }}
+
+[Install]
+WantedBy=multi-user.target

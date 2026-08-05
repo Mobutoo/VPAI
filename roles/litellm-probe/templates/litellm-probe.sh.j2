@@ -1,0 +1,246 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# litellm-probe — vraie complétion HTTP publique sur un jeu court de modèles critiques,
+# pour détecter ce que /health/readiness ne voit pas : clé provider révoquée, ID de
+# modèle invalide côté provider. Voir defaults/main.yml pour le contexte complet.
+#
+# STATEFUL comme disk-guard (2026-07-31) : une seule alerte à la transition OK->KO par
+# modèle, pas une alerte à chaque poll (2x/jour) tant que la panne persiste, et une
+# alerte de retour à la normale KO->OK. 429 (rate limit, surtout sur le tier :free)
+# n'est PAS une panne — c'est du bruit attendu, jamais alerté.
+#
+# Sortie non nulle = notification perdue ou état illisible/inscriptible : l'unité
+# systemd doit échouer plutôt que mentir en vert.
+set -euo pipefail
+
+BASE_URL="{{ litellm_probe_base_url }}"
+MAX_TOKENS={{ litellm_probe_max_tokens }}
+TIMEOUT_SEC={{ litellm_probe_timeout_sec }}
+ENV_FILE="{{ litellm_probe_env_file }}"
+STATE_FILE="{{ litellm_probe_state_file }}"
+NOTIFY_ENABLED={{ 1 if litellm_probe_notify_telegram | bool else 0 }}
+
+# Répertoire privé pour les fichiers temporaires (headers de réponse curl, configs curl
+# portant des secrets) : dirname(STATE_FILE) = litellm_probe_install_dir, déjà 0750
+# root:root — jamais /tmp (chemin prévisible = risque de symlink attack en root).
+TMP_DIR="$(dirname "$STATE_FILE")"
+
+# Nettoyage best-effort de tout fichier temporaire encore présent à la sortie (couvre
+# les sorties anticipées dues à `set -e`, en plus des `rm -f` explicites déjà en place).
+TMP_HEADERS_FILE=""
+CURL_CFG_FILE=""
+cleanup_tmp_files() {
+  rm -f "$TMP_HEADERS_FILE" "$CURL_CFG_FILE" 2>/dev/null || true
+}
+trap cleanup_tmp_files EXIT
+
+# Secrets (fichier 0600). Absents = pas de probe possible.
+LITELLM_PROBE_API_KEY=""
+TG_BOT=""
+TG_CHAT=""
+# shellcheck disable=SC1090
+[ -r "$ENV_FILE" ] && . "$ENV_FILE"
+
+log() { echo "[litellm-probe] $*"; }
+
+if [ -z "$LITELLM_PROBE_API_KEY" ]; then
+  log "clé LITELLM_PROBE_API_KEY absente — abandon"
+  exit 1
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+  log "jq absent — abandon (dépendance non installée par le rôle ?)"
+  exit 1
+fi
+
+notify() {
+  local msg="$1"
+  if [ "$NOTIFY_ENABLED" != "1" ]; then
+    log "notification desactivee (litellm_probe_notify_telegram=false)"
+    return 0
+  fi
+  if [ -z "$TG_BOT" ] || [ -z "$TG_CHAT" ]; then
+    log "creds Telegram absentes — notif impossible"
+    return 1
+  fi
+
+  # Token Telegram hors argv (visible sinon dans `ps aux`) : url dans un fichier de
+  # config curl 0600 privé (-K), jamais dans un argument de ligne de commande.
+  CURL_CFG_FILE="$(mktemp "${TMP_DIR}/litellm-probe-tgcfg.XXXXXX")"
+  chmod 0600 "$CURL_CFG_FILE"
+  printf 'url = "https://api.telegram.org/bot%s/sendMessage"\n' "$TG_BOT" >"$CURL_CFG_FILE"
+
+  local rc=0
+  curl -fsS --max-time 15 \
+    -K "$CURL_CFG_FILE" \
+    -d chat_id="${TG_CHAT}" \
+    -d parse_mode="HTML" \
+    --data-urlencode text="$msg" >/dev/null 2>&1 || rc=1
+
+  rm -f "$CURL_CFG_FILE"
+  CURL_CFG_FILE=""
+
+  if [ "$rc" -eq 0 ]; then
+    return 0
+  fi
+  log "notify telegram echec (non bloquant, retente au prochain poll)"
+  return 1
+}
+
+# --- Etat persistant : un statut par modele (OK|KO), fichier 0600 root ---
+declare -A LAST_STATUS
+
+load_state() {
+  [ -r "$STATE_FILE" ] || return 0
+  local line name status
+  while IFS='=' read -r name status; do
+    [ -n "$name" ] || continue
+    case "$status" in OK | KO) LAST_STATUS["$name"]="$status" ;; esac
+  done <"$STATE_FILE"
+}
+
+write_state() {
+  local tmp="${STATE_FILE}.tmp.$$"
+  {
+    local n
+    for n in "${!LAST_STATUS[@]}"; do
+      echo "${n}=${LAST_STATUS[$n]}"
+    done
+  } >"$tmp" 2>/dev/null || {
+    rm -f "$tmp"
+    log "ECHEC ecriture etat (${tmp}) — l'anti-spam est desarme"
+    return 1
+  }
+  if chmod 0600 "$tmp" 2>/dev/null && mv -f "$tmp" "$STATE_FILE" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "$tmp"
+  log "ECHEC installation etat (${STATE_FILE}) — l'anti-spam est desarme"
+  return 1
+}
+
+exec 9>/run/litellm-probe.lock
+if ! flock -n 9; then
+  log "run deja en cours, abandon"
+  exit 0
+fi
+rm -f "${STATE_FILE}".tmp.* 2>/dev/null || true
+
+load_state
+HOST="$(hostname -s)"
+NONCE="$(date +%s)-$$"
+RC=0
+
+# probe_model NAME KIND PROVIDER_LABEL FREE
+probe_model() {
+  local name="$1" kind="$2" provider="$3" free="${4:-false}"
+  local url body http_body headers http_code cost_header status_line reason
+
+  if [ "$kind" = "embedding" ]; then
+    url="${BASE_URL}/embeddings"
+    body=$(jq -n --arg m "$name" --arg t "litellm-probe ${NONCE}" \
+      '{model: $m, input: $t, cache: {"no-cache": true}}')
+  else
+    url="${BASE_URL}/chat/completions"
+    body=$(jq -n --arg m "$name" --arg t "litellm-probe ${NONCE}" --argjson mt "$MAX_TOKENS" \
+      '{model: $m, messages: [{role: "user", content: $t}], max_tokens: $mt, cache: {"no-cache": true}}')
+  fi
+
+  # Fichier headers non prédictible (mktemp, répertoire privé — jamais /tmp/...$$, un PID
+  # est devinable et permet une symlink attack contre un process root).
+  local tmp_headers
+  tmp_headers="$(mktemp "${TMP_DIR}/litellm-probe-headers.XXXXXX")"
+  TMP_HEADERS_FILE="$tmp_headers"
+
+  # Clé API hors argv (visible sinon dans `ps aux`) : url + header Authorization dans un
+  # fichier de config curl 0600 privé (-K), jamais dans un argument de ligne de commande.
+  local curl_cfg
+  curl_cfg="$(mktemp "${TMP_DIR}/litellm-probe-curlcfg.XXXXXX")"
+  chmod 0600 "$curl_cfg"
+  CURL_CFG_FILE="$curl_cfg"
+  {
+    printf 'url = "%s"\n' "$url"
+    printf 'header = "Authorization: Bearer %s"\n' "$LITELLM_PROBE_API_KEY"
+    printf 'header = "Content-Type: application/json"\n'
+  } >"$curl_cfg"
+
+  http_body=$(curl -sS --max-time "$TIMEOUT_SEC" -D "$tmp_headers" -o - \
+    -w '\n%{http_code}' \
+    -X POST \
+    -K "$curl_cfg" \
+    -d "$body" 2>/dev/null) || http_body=""
+  http_code="$(printf '%s' "$http_body" | tail -n1)"
+  http_body="$(printf '%s' "$http_body" | sed '$d')"
+  headers="$(cat "$tmp_headers" 2>/dev/null || true)"
+  rm -f "$tmp_headers" "$curl_cfg"
+  TMP_HEADERS_FILE=""
+  CURL_CFG_FILE=""
+
+  # 429 sur tier GRATUIT = rate-limit attendu, bruit. Sur un modèle PAYANT,
+  # 429/402 = quota ou budget épuisé = PANNE (classe incident 2026-08-04) :
+  # on laisse tomber dans le chemin d'échec standard.
+  if [ "$http_code" = "429" ] && [ "$free" = "true" ]; then
+    log "${name} (${provider}): 429 rate-limit tier free — ignore (pas une panne)"
+    return 0
+  fi
+
+  status_line="OK"
+  reason=""
+  if [ "$http_code" != "200" ]; then
+    status_line="KO"
+    reason="HTTP ${http_code}"
+  else
+    if [ "$kind" = "embedding" ]; then
+      local n
+      n="$(printf '%s' "$http_body" | jq -r '.data[0].embedding | length' 2>/dev/null || echo 0)"
+      if [ -z "$n" ] || [ "$n" = "0" ] || [ "$n" = "null" ]; then
+        status_line="KO"
+        reason="embedding vide"
+      fi
+    else
+      local content
+      content="$(printf '%s' "$http_body" | jq -r '.choices[0].message.content // ""' 2>/dev/null || echo "")"
+      if [ -z "$content" ]; then
+        status_line="KO"
+        reason="contenu vide"
+      fi
+    fi
+  fi
+
+  cost_header="$(printf '%s' "$headers" | grep -i '^x-litellm-response-cost:' | tr -d '\r' || true)"
+  if [ "$status_line" = "OK" ] && [ -z "$cost_header" ]; then
+    log "${name} (${provider}): OK mais x-litellm-response-cost absent (avertissement, pas une panne)"
+  fi
+
+  local prev="${LAST_STATUS[$name]:-OK}"
+  LAST_STATUS["$name"]="$status_line"
+
+  if [ "$status_line" = "KO" ]; then
+    log "${name} (${provider}): KO — ${reason}"
+    if [ "$prev" != "KO" ]; then
+      if ! notify "🔴 <b>litellm-probe</b> @ ${HOST}
+Modele <b>${name}</b> (${provider}) : completion reelle en echec — <b>${reason}</b>
+Endpoint : ${url}"; then
+        LAST_STATUS["$name"]="$prev"
+        RC=1
+      fi
+    fi
+  else
+    log "${name} (${provider}): OK"
+    if [ "$prev" = "KO" ]; then
+      if ! notify "✅ <b>litellm-probe</b> @ ${HOST}
+Modele <b>${name}</b> (${provider}) : retour a la normale (completion reelle OK)"; then
+        LAST_STATUS["$name"]="$prev"
+        RC=1
+      fi
+    fi
+  fi
+}
+
+{% for m in litellm_probe_models %}
+probe_model "{{ m.name }}" "{{ m.kind }}" "{{ m.provider_label }}" "{{ m.free | default(false) | lower }}"
+{% endfor %}
+
+write_state || RC=1
+
+exit "$RC"

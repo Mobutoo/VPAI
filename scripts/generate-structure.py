@@ -96,6 +96,7 @@ ROLE_DESCRIPTIONS = {
     # ops
     "backup-config":  "Configuration backup Zerobyte",
     "vpn-dns":        "Mise à jour extra_records.json Headscale (split DNS)",
+    "litellm-probe":  "Sonde vraie complétion LiteLLM (chat+embedding, 2x/jour, Telegram)",
 }
 
 # Pour workstation/metube (distinct de apps/metube)

@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  role_name: litellm_probe
+  author: VPAI
+  namespace: mobutoo
+  description: >-
+    Sonde "vraie complétion" LiteLLM prod — vrais appels chat/completions et
+    embeddings via l'endpoint public sur un jeu court de modèles critiques,
+    timer systemd 2x/jour, notification Telegram stateful.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+
+dependencies: []

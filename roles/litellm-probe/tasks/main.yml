@@ -1,0 +1,85 @@
+---
+# litellm-probe — déploie la sonde de vraie complétion + units systemd + timer.
+
+- name: Ensure jq is installed (required by litellm-probe.sh)
+  ansible.builtin.package:
+    name: jq
+    state: present
+  become: true
+  when: litellm_probe_enabled | bool
+
+- name: Ensure litellm-probe install dir
+  ansible.builtin.file:
+    path: "{{ litellm_probe_install_dir }}"
+    state: directory
+    owner: "{{ litellm_probe_user }}"
+    group: "{{ litellm_probe_user }}"
+    mode: "0750"
+  become: true
+  when: litellm_probe_enabled | bool
+
+- name: Deploy litellm-probe env file (API key + Telegram secrets)
+  ansible.builtin.template:
+    src: litellm-probe.env.j2
+    dest: "{{ litellm_probe_env_file }}"
+    owner: "{{ litellm_probe_user }}"
+    group: "{{ litellm_probe_user }}"
+    mode: "0600"
+  become: true
+  no_log: true
+  when: litellm_probe_enabled | bool
+
+- name: Deploy litellm-probe script
+  ansible.builtin.template:
+    src: litellm-probe.sh.j2
+    dest: "{{ litellm_probe_script }}"
+    owner: "{{ litellm_probe_user }}"
+    group: "{{ litellm_probe_user }}"
+    mode: "0750"
+  become: true
+  when: litellm_probe_enabled | bool
+
+- name: Deploy litellm-probe systemd service
+  ansible.builtin.template:
+    src: litellm-probe.service.j2
+    dest: "/etc/systemd/system/{{ litellm_probe_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Reload systemd litellm-probe
+  when: litellm_probe_enabled | bool
+
+- name: Deploy litellm-probe systemd timer
+  ansible.builtin.template:
+    src: litellm-probe.timer.j2
+    dest: "/etc/systemd/system/{{ litellm_probe_timer_name }}.timer"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: Reload systemd litellm-probe
+  when: litellm_probe_enabled | bool
+
+- name: Flush handlers to reload systemd before enabling timer
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start litellm-probe timer
+  ansible.builtin.systemd:
+    name: "{{ litellm_probe_timer_name }}.timer"
+    state: started
+    enabled: true
+    daemon_reload: true
+  become: true
+  when: litellm_probe_enabled | bool and litellm_probe_timer_enabled | bool and not ansible_check_mode
+
+- name: Ensure litellm-probe timer is disabled when role or timer is toggled off
+  ansible.builtin.systemd:
+    name: "{{ litellm_probe_timer_name }}.timer"
+    state: stopped
+    enabled: false
+  become: true
+  failed_when: false
+  when: >-
+    (not (litellm_probe_enabled | bool) or not (litellm_probe_timer_enabled | bool))
+    and not ansible_check_mode

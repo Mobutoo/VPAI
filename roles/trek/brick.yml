@@ -1,0 +1,81 @@
+apiVersion: optimus.brick/v1
+kind: Brick
+
+# Migration opportuniste (spec brick-manifest §7) : TREK a essuyé l'incident
+# backup 2026-08-04 et son compose vit déjà dans le pattern central docker-stack
+# (roles/docker-stack/templates/compose/apps-docs-misc.yml.j2). Seul le
+# générateur BACKUP consomme ce manifeste pour l'instant ; compose/Caddy/alertes
+# restent gérés comme avant (générateurs à venir, spec §8 étapes 3-4).
+
+identity:
+  name: trek
+  version: "3.0.22"
+  image: "mauriceboe/trek:3.0.22"
+  digest: "sha256:c6cfd1ee6f32b1ac6ca580c6ed4060d7108c5fa7ba4d26a3954647574568ccce"
+  phase: phase3
+  category: apps
+
+deployment:
+  compose: generated
+  environments: ["sese"]
+
+runtime:
+  # env volontairement absent : trek.env.j2 (secrets vaultés) reste la source
+  # tant que le générateur compose n'existe pas.
+  resources:
+    memory_limit: "512M"
+    memory_reservation: "192M"
+    cpu_limit: "1.0"
+  healthcheck:
+    test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 5
+    start_period: 60s
+  networks:
+    - frontend
+    - egress
+  volumes:
+    - "/opt/{{ project_name }}/data/trek:/app/data"
+    - "/opt/{{ project_name }}/data/trek-uploads:/app/uploads"
+    - "/opt/{{ project_name }}/configs/trek/public:/app/public:ro"
+
+exposure:
+  vhost:
+    mode: public
+    subdomain: "trip"
+    upstream_port: 3000
+    dns_proof:
+      record_type: "A"
+      value: "137.74.114.167"
+      validated_at: "2026-08-05"
+      validated_by: "migration opportuniste — service déjà en prod, DNS vérifié par dig"
+
+backup:
+  # SQLite dans trek_data_dir + uploads : les deux archives que pre-backup.sh
+  # produisait en dur avant ce manifeste (mêmes chemins de destination).
+  strategy:
+    - kind: volume_tar
+      archive: data
+      src: "{{ trek_data_dir }}"
+    - kind: volume_tar
+      archive: uploads
+      src: "{{ trek_uploads_dir }}"
+  retention: inherit
+
+monitoring:
+  scrape: true
+  metrics_endpoint: null
+  alerts:
+    - kind: service_down
+    - kind: restart_loop
+    - kind: http_5xx_rate
+      threshold: "5%"
+      window: 5m
+
+logging:
+  driver: json-file
+  max_size: "10m"
+  max_file: "3"
+
+dependencies: []

@@ -481,7 +481,35 @@ mon_service_image: "ghcr.io/org/mon-service:1.2.3"   # version pinnée
 
 ---
 
-### 12. Taxonomie — Enregistrer le rôle dans `platform.yaml`
+### 12. Données à sauvegarder — Déclarer via `brick.yml`, jamais en dur
+
+**Règle :** Toute donnée à sauvegarder (base PostgreSQL, volume persistant) doit être
+déclarée dans `roles/<role>/brick.yml` (`backup.strategy`), pas ajoutée à la main dans
+`pre-backup.sh.j2` ou `backup-cleanup.sh.j2`. Faire suivre de `make lint-bricks` (échoue
+si le manifeste est orphelin ou invalide) — une liste en dur codée dans le template est le
+mode de panne constaté (TREK + OpenClaw jamais sauvegardés pendant des mois, incident
+2026-08-04).
+
+```yaml
+# ✅ Correct — roles/mon-service/brick.yml
+backup:
+  strategy:
+    - kind: postgres_dump
+      database: mon_service
+    - kind: volume_tar
+      archive: uploads
+      src: "{{ mon_service_uploads_dir }}"
+
+# ❌ Incorrect — bloc ajouté à la main dans pre-backup.sh.j2
+```
+
+```bash
+make lint-bricks   # doit passer avant tout commit touchant un brick.yml
+```
+
+---
+
+### 13. Taxonomie — Enregistrer le rôle dans `platform.yaml`
 
 **Règle :** Tout nouveau rôle doit être ajouté dans `platform.yaml` (source de vérité de la
 taxonomie) et sa description ajoutée dans `scripts/generate-structure.py`. Sans cela,

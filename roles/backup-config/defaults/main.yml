@@ -18,3 +18,10 @@ backup_heartbeat_url: "{{ vault_backup_heartbeat_url | default('') }}"
 
 # --- Retention (local pre-backup files) ---
 backup_local_retention_days: 3
+
+# Répertoires sous backup_base_dir possédés par d'autres rôles (ex. prisme :
+# roles/prisme gère sa propre rétention) — exclus de la rétention backup-config
+# (backup-cleanup.sh.j2) pour ne jamais purger un cycle de vie qui n'est pas
+# le nôtre (re-revue finale brick.yml, 2026-08-05).
+backup_cleanup_foreign_dirs:
+  - prisme

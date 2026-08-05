@@ -14,9 +14,18 @@ echo "[$(date)] Starting backup cleanup (retention: ${RETENTION_DAYS} days)..."
    (incident 2026-08-04) et couvre openclaw + briques retirees : un service
    decommissionne ou desactive laisse son repertoire orphelin sans jamais
    etre purge par une liste en dur, comme un service nouveau y echapperait
-   silencieusement a l'entree. #}
-for SUBDIR_PATH in $(find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d); do
+   silencieusement a l'entree. Glob quote "${BACKUP_DIR}"/*/ (pas de find non
+   quote dans un for : un repertoire avec espace ferait avorter tout le
+   cleanup sous set -e). Deny-list explicite : des repertoires sous
+   backup_base_dir appartiennent a d'autres roles (ex. prisme) et NE DOIVENT
+   PAS etre purges avec cette retention — leur cycle de vie ne nous
+   appartient pas (re-revue finale 2026-08-05). #}
+for SUBDIR_PATH in "${BACKUP_DIR}"/*/; do
+  [ -d "${SUBDIR_PATH}" ] || continue
   SUBDIR=$(basename "${SUBDIR_PATH}")
+  case " {{ backup_cleanup_foreign_dirs | default(['prisme']) | join(' ') }} " in
+    *" ${SUBDIR} "*) continue ;;  # repertoire possede par un AUTRE role — jamais purge ici
+  esac
   COUNT=$(find "${BACKUP_DIR}/${SUBDIR}" -type f -mtime +${RETENTION_DAYS} | wc -l)
   if [ "${COUNT}" -gt 0 ]; then
     find "${BACKUP_DIR}/${SUBDIR}" -type f -mtime +${RETENTION_DAYS} -delete

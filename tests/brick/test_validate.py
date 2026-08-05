@@ -2,7 +2,7 @@ from pathlib import Path
 
 import yaml
 
-from scripts.brick_generate import cmd_lint, load_manifest, validate_manifest
+from scripts.brick_generate import REPO, cmd_lint, load_manifest, validate_manifest
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -200,11 +200,53 @@ def test_env_secret_key_as_vault_ref_passes():
     assert errors_of(m) == []
 
 
+def test_env_secret_key_pw_as_literal_fails():
+    m = valid()
+    m["runtime"]["env"]["DB_PW"] = "x"
+    assert any("vault_ref" in e for e in errors_of(m))
+
+
 def test_non_string_name_does_not_crash():
     m = valid()
     m["identity"]["name"] = 123
     errors = errors_of(m)
     assert isinstance(errors, list)
+
+
+def test_environments_unknown_value_fails():
+    m = valid()
+    m["deployment"]["environments"] = ["seze"]
+    assert any("environments" in e for e in errors_of(m))
+
+
+def test_environments_absent_fails():
+    m = valid()
+    del m["deployment"]["environments"]
+    assert any("environments" in e for e in errors_of(m))
+
+
+def test_environments_empty_fails():
+    m = valid()
+    m["deployment"]["environments"] = []
+    assert any("environments" in e for e in errors_of(m))
+
+
+def test_image_without_tag_fails():
+    m = valid()
+    m["identity"]["image"] = "mauriceboe/trek"
+    assert any("image" in e for e in errors_of(m))
+
+
+def test_image_with_tag_passes():
+    m = valid()
+    m["identity"]["image"] = "mauriceboe/trek:3.0.22"
+    assert errors_of(m) == []
+
+
+def test_image_ghcr_with_tag_passes():
+    m = valid()
+    m["identity"]["image"] = "ghcr.io/umami-software/umami:postgresql-v2.20.0"
+    assert errors_of(m) == []
 
 
 def test_cmd_lint_deployment_as_string_does_not_crash(tmp_path):
@@ -213,4 +255,9 @@ def test_cmd_lint_deployment_as_string_does_not_crash(tmp_path):
     (role_dir / "brick.yml").write_text(
         "identity:\n  name: x\ndeployment: generated\n", encoding="utf-8"
     )
-    assert cmd_lint(tmp_path) == 0
+    # deployment n'est pas un mapping -> pas d'environments -> orphelin -> bloquant.
+    assert cmd_lint(tmp_path) == 1
+
+
+def test_cmd_lint_no_orphans_returns_zero():
+    assert cmd_lint(REPO) == 0

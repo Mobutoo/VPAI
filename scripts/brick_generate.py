@@ -119,9 +119,11 @@ def validate_manifest(manifest: dict, path: Path, versions: dict) -> list[str]:
     # Codex round 2 — la règle « jamais de secret en clair » doit être mécanique).
     # Marqueurs volontairement larges (KEY attrape API_KEY/ACCESS_KEY/PRIVATE_KEY,
     # PASS attrape PASSWORD/DB_PASS, URL/URI/DSN/CONN attrapent DATABASE_URL/
-    # SENTRY_DSN/CONNECTION_STRING — souvent porteurs de credentials embarqués) :
-    # un faux positif se règle en passant par vault_ref ou en renommant la
-    # variable — l'inverse (fuite) ne se règle pas.
+    # SENTRY_DSN/CONNECTION_STRING, PW attrape DB_PW/ADMIN_PW, SALT/AUTH/SIGN
+    # attrapent *_SALT/AUTH_TOKEN/HMAC_SIGN*, PRIVATE attrape *_PRIVATE_KEY
+    # (5 derniers ajoutés revue finale de branche 2026-08-05) — souvent porteurs
+    # de credentials embarqués) : un faux positif se règle en passant par
+    # vault_ref ou en renommant la variable — l'inverse (fuite) ne se règle pas.
     SECRET_KEY_MARKERS = (
         "SECRET",
         "PASS",
@@ -132,6 +134,11 @@ def validate_manifest(manifest: dict, path: Path, versions: dict) -> list[str]:
         "URI",
         "DSN",
         "CONN",
+        "PW",
+        "SALT",
+        "AUTH",
+        "SIGN",
+        "PRIVATE",
     )
     for key, value in _dict(_dict(manifest.get("runtime")).get("env")).items():
         if (
@@ -311,7 +318,7 @@ def cmd_lint(repo: Path) -> int:
             print(f"  - {path}")
     else:
         print("Aucun manifeste orphelin.")
-    return 0
+    return 1 if orphans else 0
 
 
 def main(argv: list[str] | None = None) -> int:

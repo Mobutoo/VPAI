@@ -3,7 +3,7 @@
   "$id": "optimus.brick/v1",
   "title": "Optimus brick manifest v1",
   "$defs": {
-    "no_newline": { "not": { "pattern": "[\\r\\n]" } }
+    "no_newline": { "not": { "allOf": [{ "type": "string" }, { "pattern": "[\\r\\n]" }] } }
   },
   "type": "object",
   "additionalProperties": false,
@@ -23,6 +23,7 @@
           "minLength": 1,
           "allOf": [
             { "not": { "pattern": ":(latest|stable|main)$" } },
+            { "pattern": ".*:[A-Za-z0-9][A-Za-z0-9._-]*$" },
             { "$ref": "#/$defs/no_newline" }
           ]
         },
@@ -34,10 +35,14 @@
     "deployment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["compose"],
+      "required": ["compose", "environments"],
       "properties": {
         "compose": { "enum": ["generated", "local"] },
-        "environments": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        "environments": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["sese", "preprod", "hetzner-hello-awa"] }
+        }
       }
     },
     "runtime": {
@@ -163,7 +168,12 @@
           }
         },
         "disabled_reason": { "type": "string", "minLength": 1 },
-        "retention": {}
+        "retention": {
+          "oneOf": [
+            { "const": "inherit" },
+            { "type": "object" }
+          ]
+        }
       }
     },
     "monitoring": {

@@ -124,7 +124,7 @@ jobs:
       - name: Brick manifests (validate + drift guard, tous les envs)
         run: |
           set -euo pipefail
-          python scripts/brick_generate.py --validate
+          python scripts/brick_generate.py --validate --lint
           for f in roles/backup-config/vars/bricks_backup_*.yml; do
             [ -e "$f" ] || continue
             env=$(basename "$f" .yml | sed 's/^bricks_backup_//')

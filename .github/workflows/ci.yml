@@ -38,10 +38,13 @@ jobs:
     name: Qdrant registry cross-repo
     runs-on: ubuntu-24.04
     steps:
-      - name: Require dedicated read token
+      # Deploy key SSH read-only sur Mobutoo/prisme (id 159361423, posée 2026-08-05) —
+      # remplace le PAT PRISME_CROSS_REPO_READ_TOKEN (jamais provisionné, job rouge) :
+      # un PAT ne se crée pas en headless, une deploy key si, et c'est moindre privilège.
+      - name: Require dedicated read key
         env:
-          CROSS_REPO_TOKEN: ${{ secrets.PRISME_CROSS_REPO_READ_TOKEN }}
-        run: test -n "$CROSS_REPO_TOKEN"
+          CROSS_REPO_KEY: ${{ secrets.PRISME_CROSS_REPO_SSH_KEY }}
+        run: test -n "$CROSS_REPO_KEY"
 
       - name: Checkout VPAI
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -50,7 +53,7 @@ jobs:
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           repository: Mobutoo/prisme
-          token: ${{ secrets.PRISME_CROSS_REPO_READ_TOKEN }}
+          ssh-key: ${{ secrets.PRISME_CROSS_REPO_SSH_KEY }}
           path: .cross/prisme
           persist-credentials: false
 

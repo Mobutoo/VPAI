@@ -1,4 +1,3 @@
-import copy
 from pathlib import Path
 
 import yaml
@@ -85,3 +84,27 @@ def test_dotdot_in_backup_src_fails():
         {"kind": "volume_tar", "archive": "evil", "src": "/opt/app/../../etc"}
     ]
     assert errors_of(m) != []
+
+
+def test_numeric_env_key_does_not_crash_sort():
+    # Un simple ajout de clé numérique (m["runtime"]["env"][1] = "x") ne
+    # produit aucune erreur schéma (la clé n'est pas contrainte, seule la
+    # valeur l'est via `additionalProperties`), donc `sorted()` ne compare
+    # jamais de chemins hétérogènes dans ce cas précis. Pour reproduire le
+    # TypeError réel (comparaison str/int dans `list(e.absolute_path)`), il
+    # faut au moins deux erreurs dont les chemins partagent un préfixe mais
+    # divergent en type au même index : clé numérique invalide + clé string
+    # invalide dans runtime.env.
+    m = valid()
+    m["runtime"]["env"][1] = None
+    m["runtime"]["env"]["BAD"] = None
+    errors = errors_of(m)
+    assert errors != []
+
+
+def test_digest_trailing_newline_fails():
+    m = valid()
+    m["identity"]["digest"] = (
+        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n"
+    )
+    assert any("digest" in e for e in errors_of(m))

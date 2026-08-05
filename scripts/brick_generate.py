@@ -37,7 +37,7 @@ class BrickError(Exception):
 def _validator() -> Draft202012Validator:
     global _schema_validator
     if _schema_validator is None:
-        _schema_validator = Draft202012Validator(json.loads(SCHEMA_PATH.read_text()))
+        _schema_validator = Draft202012Validator(json.loads(SCHEMA_PATH.read_text(encoding="utf-8")))
     return _schema_validator
 
 
@@ -47,7 +47,7 @@ def find_manifests(repo: Path = REPO) -> list[Path]:
 
 def load_manifest(path: Path) -> dict:
     try:
-        data = yaml.safe_load(path.read_text())
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except OSError as exc:
         raise BrickError(f"{path}: illisible : {exc}") from exc
     except yaml.YAMLError as exc:
@@ -61,12 +61,15 @@ def load_versions(repo: Path = REPO) -> dict:
     versions_path = repo / "inventory/group_vars/all/versions.yml"
     if not versions_path.exists():
         return {}
-    return yaml.safe_load(versions_path.read_text()) or {}
+    return yaml.safe_load(versions_path.read_text(encoding="utf-8")) or {}
 
 
 def validate_manifest(manifest: dict, path: Path, versions: dict) -> list[str]:
     errors: list[str] = []
-    for err in sorted(_validator().iter_errors(manifest), key=lambda e: list(e.absolute_path)):
+    for err in sorted(
+        _validator().iter_errors(manifest),
+        key=lambda e: ([(type(p).__name__, str(p)) for p in e.absolute_path], e.message),
+    ):
         where = ".".join(str(p) for p in err.absolute_path) or "<racine>"
         errors.append(f"{path}: [{where}] {err.message}")
     # Les assertions conditionnelles (§5 #2/#5/#6, cross-check versions.yml)
@@ -75,6 +78,9 @@ def validate_manifest(manifest: dict, path: Path, versions: dict) -> list[str]:
 
 
 def cmd_validate(repo: Path) -> int:
+    if not repo.is_dir():
+        print(f"ERREUR: {repo} n'est pas un répertoire", file=sys.stderr)
+        return 2
     manifests = find_manifests(repo)
     if not manifests:
         print("Aucun roles/*/brick.yml — rien à valider.")

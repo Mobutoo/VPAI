@@ -154,6 +154,50 @@ model_list:
         tier: "ultra-low"
         tags: ["search", "web", "agent", "tool-calling"]
 
+  # ============================================================
+  # VISION (image input) via OpenRouter — seuls modèles vision servis
+  # tant que les crédits directs Anthropic/OpenAI/Gemini sont à sec
+  # (REX 2026-08-05 : spike HelloAwa bloqué, 0 modèle vision utilisable).
+  # Pas de fallback free : aucun modèle vision :free fiable sur OpenRouter
+  # → chaîne de secours interne au trio vision (exception documentée au
+  # REX 2026-03-17 « jamais de payant en terminal »).
+  # ============================================================
+  # Gemini 2.5 Flash — vision éco, OCR robuste (0.30 $/M in)
+  - model_name: "gemini-flash-or"
+    litellm_params:
+      model: "openrouter/google/gemini-2.5-flash"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 4096
+    model_info:
+      max_output_tokens: 4096
+      metadata:
+        tier: "ultra-low"
+        tags: ["vision", "multimodal", "ocr", "quick"]
+
+  # Qwen3-VL 235B A22B — vision open-weights (proxy qualité self-host banga)
+  - model_name: "qwen3-vl"
+    litellm_params:
+      model: "openrouter/qwen/qwen3-vl-235b-a22b-instruct"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 4096
+    model_info:
+      max_output_tokens: 4096
+      metadata:
+        tier: "ultra-low"
+        tags: ["vision", "multimodal", "open-weights"]
+
+  # GPT-4o via OpenRouter — référence qualité vision (2.5 $/M in)
+  - model_name: "gpt-4o-or"
+    litellm_params:
+      model: "openrouter/openai/gpt-4o"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 4096
+    model_info:
+      max_output_tokens: 4096
+      metadata:
+        tier: "medium"
+        tags: ["vision", "multimodal", "fallback"]
+
   # Seedream 4.5 — Image generation via OpenRouter
   - model_name: "seedream"
     litellm_params:
@@ -378,6 +422,10 @@ litellm_settings:
     - deepseek-v3: ["deepseek-v3-free", "qwen3-coder"]
     - glm-5: ["deepseek-v3-free", "qwen3-coder"]
     - grok-search: ["deepseek-v3-free", "qwen3-coder"]
+    # Vision : pas de free vision fiable — secours interne au trio (voir bloc VISION)
+    - gemini-flash-or: ["qwen3-vl"]
+    - qwen3-vl: ["gemini-flash-or"]
+    - gpt-4o-or: ["gemini-flash-or", "qwen3-vl"]
     - qwen3-coder: ["deepseek-v3-free", "glm-5"]
     - deepseek-v3-free: ["qwen3-coder", "glm-5"]
     - deepseek-r1-free: ["qwen3-coder", "deepseek-v3-free"]

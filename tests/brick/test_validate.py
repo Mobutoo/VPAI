@@ -115,3 +115,86 @@ def test_backup_database_trailing_newline_fails():
     m = valid()
     m["backup"]["strategy"] = [{"kind": "postgres_dump", "database": "umami\n"}]
     assert any("database" in e for e in errors_of(m))
+
+
+def test_empty_strategy_without_reason_fails():
+    m = valid()
+    m["backup"]["strategy"] = []
+    assert any("disabled_reason" in e for e in errors_of(m))
+
+
+def test_empty_strategy_with_reason_passes():
+    m = valid()
+    m["backup"]["strategy"] = []
+    m["backup"]["disabled_reason"] = "stateless, état 100% en base déjà dumpée par la brique postgresql"
+    assert errors_of(m) == []
+
+
+def test_alerts_missing_restart_loop_fails():
+    m = valid()
+    m["monitoring"]["alerts"] = [{"kind": "service_down"}]
+    assert any("restart_loop" in e for e in errors_of(m))
+
+
+def test_alerts_missing_entirely_fails():
+    m = valid()
+    del m["monitoring"]["alerts"]
+    assert any("service_down" in e and "restart_loop" in e for e in errors_of(m))
+
+
+def test_http_5xx_without_vhost_fails():
+    m = valid()
+    del m["exposure"]
+    assert any("http_5xx_rate" in e for e in errors_of(m))
+
+
+def test_http_5xx_with_mode_none_fails():
+    m = valid()
+    m["exposure"]["vhost"]["mode"] = "none"
+    assert any("http_5xx_rate" in e for e in errors_of(m))
+
+
+def test_public_without_dns_proof_fails():
+    m = valid()
+    m["exposure"]["vhost"]["mode"] = "public"
+    assert any("dns_proof" in e for e in errors_of(m))
+
+
+def test_public_with_dns_proof_passes():
+    m = valid()
+    m["exposure"]["vhost"]["mode"] = "public"
+    m["exposure"]["vhost"]["dns_proof"] = {
+        "record_type": "A",
+        "value": "203.0.113.10",
+        "validated_at": "2026-08-05",
+        "validated_by": "test",
+    }
+    assert errors_of(m) == []
+
+
+def test_versions_yml_image_mismatch_fails():
+    m = valid()
+    versions = {"umami_image": "ghcr.io/umami-software/umami:postgresql-v2.19.0"}
+    assert any("versions.yml" in e for e in errors_of(m, versions))
+
+
+def test_versions_yml_image_match_passes():
+    m = valid()
+    versions = {"umami_image": "ghcr.io/umami-software/umami:postgresql-v2.20.0"}
+    assert errors_of(m, versions) == []
+
+
+def test_versions_yml_no_entry_is_ok():
+    assert errors_of(valid(), {"other_image": "x:1"}) == []
+
+
+def test_env_secret_key_as_literal_fails():
+    m = valid()
+    m["runtime"]["env"]["ADMIN_PASSWORD"] = "hunter2"
+    assert any("vault_ref" in e for e in errors_of(m))
+
+
+def test_env_secret_key_as_vault_ref_passes():
+    m = valid()
+    m["runtime"]["env"]["ADMIN_PASSWORD"] = {"vault_ref": "vault_umami_admin_password"}
+    assert errors_of(m) == []

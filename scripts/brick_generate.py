@@ -72,8 +72,80 @@ def validate_manifest(manifest: dict, path: Path, versions: dict) -> list[str]:
     ):
         where = ".".join(str(p) for p in err.absolute_path) or "<racine>"
         errors.append(f"{path}: [{where}] {err.message}")
-    # Les assertions conditionnelles (§5 #2/#5/#6, cross-check versions.yml)
-    # arrivent en Task 2 — ce stub garde la signature stable.
+    # --- Assertions conditionnelles §5 (hors de portée de JSON Schema seul) ---
+    # Garde de types (revue Codex 2026-08-05, HIGH TypeError) : sur un manifeste
+    # structurellement invalide (backup = string, alerts = dict...), le schéma a
+    # déjà produit les erreurs — les assertions ne doivent pas crasher par-dessus.
+    def _dict(value):
+        return value if isinstance(value, dict) else {}
+
+    def _list(value):
+        return value if isinstance(value, list) else []
+
+    backup = _dict(manifest.get("backup"))
+    if backup.get("strategy") == [] and not backup.get("disabled_reason"):
+        errors.append(
+            f"{path}: backup.strategy vide sans backup.disabled_reason — un commentaire "
+            "YAML ne suffit pas (spec §5 #2, incident 2026-08-04)"
+        )
+
+    alert_kinds = {
+        a.get("kind")
+        for a in _list(_dict(manifest.get("monitoring")).get("alerts"))
+        if isinstance(a, dict)
+    }
+    if _dict(manifest.get("runtime")).get("healthcheck") is not None:
+        missing = {"service_down", "restart_loop"} - alert_kinds
+        if missing:
+            errors.append(
+                f"{path}: monitoring.alerts doit couvrir service_down et restart_loop "
+                f"(manquent : {', '.join(sorted(missing))}) — spec §5 #5"
+            )
+
+    vhost = _dict(_dict(manifest.get("exposure")).get("vhost"))
+    vhost_mode = vhost.get("mode", "none")
+    if "http_5xx_rate" in alert_kinds and vhost_mode == "none":
+        errors.append(
+            f"{path}: alerte http_5xx_rate déclarée sans exposition HTTP "
+            "(exposure.vhost.mode absent ou none) — spec §5 #5"
+        )
+    if vhost_mode == "public" and "dns_proof" not in vhost:
+        errors.append(
+            f"{path}: exposure.vhost.mode public sans dns_proof structuré "
+            "(record_type/value/validated_at/validated_by) — spec §5 #6"
+        )
+
+    # --- Secrets : une clé env au nom sensible ne peut être qu'un vault_ref (revue
+    # Codex round 2 — la règle « jamais de secret en clair » doit être mécanique).
+    # Marqueurs volontairement larges (KEY attrape API_KEY/ACCESS_KEY/PRIVATE_KEY,
+    # PASS attrape PASSWORD/DB_PASS) : un faux positif se règle en passant par
+    # vault_ref ou en renommant la variable — l'inverse (fuite) ne se règle pas.
+    SECRET_KEY_MARKERS = ("SECRET", "PASS", "TOKEN", "KEY", "CREDENTIAL")
+    for key, value in _dict(_dict(manifest.get("runtime")).get("env")).items():
+        if (
+            isinstance(key, str)
+            and any(marker in key.upper() for marker in SECRET_KEY_MARKERS)
+            and not (isinstance(value, dict) and "vault_ref" in value)
+        ):
+            errors.append(
+                f"{path}: runtime.env.{key} ressemble à un secret et doit être un "
+                "vault_ref, jamais un littéral"
+            )
+
+    # --- Cross-check versions.yml : tant que le générateur compose n'existe pas,
+    # <name>_image dans versions.yml reste la source déployée ; le manifeste ne
+    # doit jamais diverger d'elle (double déclaration assumée, dérive interdite).
+    identity = _dict(manifest.get("identity"))
+    name = identity.get("name")
+    declared_image = identity.get("image")
+    # tirets du nom de brique → underscores : convention des noms de vars Ansible
+    # (ex. content-factory → content_factory_image)
+    versions_image = versions.get(f"{name.replace('-', '_')}_image") if name else None
+    if versions_image and declared_image and versions_image != declared_image:
+        errors.append(
+            f"{path}: identity.image ({declared_image}) diverge de {name}_image "
+            f"dans versions.yml ({versions_image}) — mettre à jour LES DEUX"
+        )
     return errors
 
 
@@ -98,13 +170,35 @@ def cmd_validate(repo: Path) -> int:
     return 1 if all_errors else 0
 
 
+def cmd_lint(repo: Path) -> int:
+    orphans = []
+    for path in find_manifests(repo):
+        try:
+            manifest = load_manifest(path)
+        except BrickError as exc:
+            print(f"ERREUR: {exc}", file=sys.stderr)
+            continue
+        if not manifest.get("deployment", {}).get("environments"):
+            orphans.append(path)
+    if orphans:
+        print("Manifestes orphelins (aucun environnement — jamais sélectionnés par --env) :")
+        for path in orphans:
+            print(f"  - {path}")
+    else:
+        print("Aucun manifeste orphelin.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validate", action="store_true")
+    parser.add_argument("--lint", action="store_true")
     parser.add_argument("--repo", type=Path, default=REPO)
     args = parser.parse_args(argv)
     if args.validate:
         return cmd_validate(args.repo)
+    if args.lint:
+        return cmd_lint(args.repo)
     parser.print_help()
     return 2
 

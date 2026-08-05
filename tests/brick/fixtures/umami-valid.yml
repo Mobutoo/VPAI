@@ -1,0 +1,64 @@
+apiVersion: optimus.brick/v1
+kind: Brick
+
+identity:
+  name: umami
+  version: "2.20.0"
+  image: "ghcr.io/umami-software/umami:postgresql-v2.20.0"
+  digest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  phase: phase3
+  category: apps
+
+deployment:
+  compose: generated
+  environments: ["sese"]
+
+runtime:
+  env:
+    DATABASE_URL: { vault_ref: vault_umami_database_url }
+    APP_SECRET: { vault_ref: vault_umami_app_secret }
+    TRACKER_SCRIPT_NAME: "stats"
+  resources:
+    memory_limit: "384m"
+    memory_reservation: "128m"
+    cpu_limit: "0.5"
+  healthcheck:
+    test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/heartbeat || exit 1"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 40s
+  networks:
+    - frontend
+    - backend
+  volumes: []
+
+exposure:
+  vhost:
+    mode: vpn_only
+    subdomain: "stats"
+    upstream_port: 3000
+
+backup:
+  strategy:
+    - kind: postgres_dump
+      database: umami
+  retention: inherit
+
+monitoring:
+  scrape: true
+  metrics_endpoint: null
+  alerts:
+    - kind: service_down
+    - kind: restart_loop
+    - kind: http_5xx_rate
+      threshold: "5%"
+      window: 5m
+
+logging:
+  driver: json-file
+  max_size: "10m"
+  max_file: "3"
+
+dependencies:
+  - postgresql

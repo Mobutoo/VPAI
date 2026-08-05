@@ -40,6 +40,11 @@
     mode: "0755"
   become: true
 
+# Répertoires briques (roles/*/brick.yml -> brick_backup_tar_jobs, généré par
+# scripts/brick_generate.py) : chaque job volume_tar écrit dans
+# {{ backup_base_dir }}/<brick> — sans ce mkdir explicite, backup_tar()
+# (pre-backup.sh.j2) le crée en root via sudo -n, ce qui redonnerait le trou de
+# disque de l'incident 2026-08-04 (répertoire root:root, cleanup impuissant).
 - name: Create backup directories
   ansible.builtin.file:
     path: "{{ item }}"
@@ -47,13 +52,10 @@
     owner: "{{ prod_user }}"
     group: "{{ prod_user }}"
     mode: "0750"
-  loop:
-    - "{{ backup_base_dir }}"
-    - "{{ backup_pg_dump_dir }}"
-    - "{{ backup_redis_dir }}"
-    - "{{ backup_qdrant_dir }}"
-    - "{{ backup_n8n_dir }}"
-    - "{{ backup_grafana_dir }}"
+  loop: >-
+    {{ [backup_base_dir, backup_pg_dump_dir, backup_redis_dir, backup_qdrant_dir, backup_n8n_dir, backup_grafana_dir]
+       + (brick_backup_tar_jobs | default([]) | map(attribute='brick') | unique
+          | map('regex_replace', '^', backup_base_dir ~ '/') | list) }}
   become: true
 
 # === PRE-BACKUP SCRIPT ===

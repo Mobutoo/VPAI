@@ -92,6 +92,7 @@ def test_prebackup_without_brick_vars_still_renders(tmp_path):
 
 def test_cleanup_covers_brick_dirs(tmp_path):
     out = render("backup-cleanup.sh.j2")
-    cleanup_line = next(line for line in out.splitlines() if line.startswith("for SUBDIR in "))
-    assert " trek" in cleanup_line
+    cleanup_line = next(line for line in out.splitlines() if line.startswith("for SUBDIR_PATH in "))
+    assert 'find "${BACKUP_DIR}"' in cleanup_line
+    assert "-maxdepth 1" in cleanup_line
     assert_bash_valid(out, tmp_path, "backup-cleanup.sh")

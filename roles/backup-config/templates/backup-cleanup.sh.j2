@@ -10,17 +10,19 @@ RETENTION_DAYS="{{ backup_local_retention_days }}"
 
 echo "[$(date)] Starting backup cleanup (retention: ${RETENTION_DAYS} days)..."
 
-{# Repertoires par-brique ajoutes depuis brick_backup_tar_jobs — meme raison que
-   pre-backup.sh.j2 : la liste statique est le mode de panne (incident 2026-08-04). #}
-for SUBDIR in pg_dump redis qdrant n8n grafana{% for b in brick_backup_tar_jobs | default([]) | map(attribute='brick') | unique %} {{ b }}{% endfor %}; do
-  if [ -d "${BACKUP_DIR}/${SUBDIR}" ]; then
-    COUNT=$(find "${BACKUP_DIR}/${SUBDIR}" -type f -mtime +${RETENTION_DAYS} | wc -l)
-    if [ "${COUNT}" -gt 0 ]; then
-      find "${BACKUP_DIR}/${SUBDIR}" -type f -mtime +${RETENTION_DAYS} -delete
-      # Also clean empty directories
-      find "${BACKUP_DIR}/${SUBDIR}" -type d -empty -mindepth 1 -delete 2>/dev/null || true
-      echo "[$(date)] Cleaned ${COUNT} file(s) from ${SUBDIR}"
-    fi
+{# Itere sur les repertoires reels — une liste statique est le mode de panne
+   (incident 2026-08-04) et couvre openclaw + briques retirees : un service
+   decommissionne ou desactive laisse son repertoire orphelin sans jamais
+   etre purge par une liste en dur, comme un service nouveau y echapperait
+   silencieusement a l'entree. #}
+for SUBDIR_PATH in $(find "${BACKUP_DIR}" -mindepth 1 -maxdepth 1 -type d); do
+  SUBDIR=$(basename "${SUBDIR_PATH}")
+  COUNT=$(find "${BACKUP_DIR}/${SUBDIR}" -type f -mtime +${RETENTION_DAYS} | wc -l)
+  if [ "${COUNT}" -gt 0 ]; then
+    find "${BACKUP_DIR}/${SUBDIR}" -type f -mtime +${RETENTION_DAYS} -delete
+    # Also clean empty directories
+    find "${BACKUP_DIR}/${SUBDIR}" -type d -empty -mindepth 1 -delete 2>/dev/null || true
+    echo "[$(date)] Cleaned ${COUNT} file(s) from ${SUBDIR}"
   fi
 done
 

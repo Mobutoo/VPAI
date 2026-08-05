@@ -57,7 +57,10 @@ echo "[$(date)] Dumping PostgreSQL databases..."
    donc ABSENTES de postgresql_databases. Constate 2026-08-04 : toutes deux vivantes en
    prod et sauvegardees NULLE PART depuis leur mise en service. La garde de derive en fin
    de bloc empeche desormais qu'un nouveau service passe entre les mailles en silence. #}
-{% set backup_pg_databases = (postgresql_databases | default([]) | map(attribute='name') | list) + ['plane_production', 'content_factory', 'prisme', 'postiz'] %}
+{# Bases declarees par manifeste brick.yml (roles/*/brick.yml -> vars/bricks_backup_<env>.yml,
+   genere par scripts/brick_generate.py). La liste en dur historique reste pour les
+   roles non migres — toute NOUVELLE base passe par un brick.yml, plus par cette liste. #}
+{% set backup_pg_databases = (postgresql_databases | default([]) | map(attribute='name') | list) + ['plane_production', 'content_factory', 'prisme', 'postiz'] + (brick_backup_pg_databases | default([])) %}
 for DB in {{ backup_pg_databases | unique | join(' ') }}; do
   # Garde par-DB : une base absente (service décommissionné) ou un dump en échec
   # ne doit PAS avorter tout le backup (set -e). WARNING visible, on continue.
@@ -177,15 +180,24 @@ backup_tar "${BACKUP_DIR}/openclaw/state-${TIMESTAMP}.tar.gz" \
 echo "[$(date)] OpenClaw backup completed"
 {% endif %}
 
-# === TREK data backup (SQLite DB + uploads, host volumes) ===
-# trip.<domain> — public service, SQLite in {{ trek_data_dir }} + uploads in {{ trek_uploads_dir }}
-echo "[$(date)] Backing up TREK data..."
-mkdir -p "{{ backup_trek_dir }}"
-backup_tar "{{ backup_trek_dir }}/data-${TIMESTAMP}.tar.gz" \
-  -C "{{ trek_data_dir }}" . || true
-backup_tar "{{ backup_trek_dir }}/uploads-${TIMESTAMP}.tar.gz" \
-  -C "{{ trek_uploads_dir }}" . || true
-echo "[$(date)] TREK backup completed"
+# === Backups tar declares par manifeste (roles/*/brick.yml) ===
+{# Genere indirectement : brick_backup_tar_jobs vient de
+   roles/backup-config/vars/bricks_backup_<env>.yml, produit par scripts/brick_generate.py.
+   NE PAS rajouter de bloc tar par-service code en dur ici — c'est la liste statique
+   qui a laisse TREK/OpenClaw sans backup (incident 2026-08-04, spec brick-manifest §1).
+   src et include passent par le filtre Ansible `quote` (shlex.quote) : le schema
+   borne la REFERENCE ecrite dans brick.yml, mais pas la valeur Ansible RESOLUE
+   ({{ trek_data_dir }} peut contenir n'importe quoi) — seul un echappement shell a
+   la resolution est fiable (revue Codex 2026-08-05 round 2). Un echec n'est plus
+   avale par || true : compte, puis le heartbeat final est saute => alerte Uptime
+   Kuma (dead-man). #}
+BRICK_TAR_FAILURES=0
+{% for job in brick_backup_tar_jobs | default([]) %}
+echo "[$(date)] Backing up {{ job.brick }}/{{ job.archive }} (brick.yml)..."
+backup_tar "{{ backup_base_dir }}/{{ job.brick }}/{{ job.archive }}-${TIMESTAMP}.tar.gz" \
+  -C {{ job.src | quote }}{% for inc in job.include %} {{ inc | quote }}{% endfor %} \
+  || BRICK_TAR_FAILURES=$((BRICK_TAR_FAILURES + 1))
+{% endfor %}
 
 # === n8n workflow export ===
 # REX 2026-07-23 : `/home/node/.n8n/backups/` n'existe PAS dans le conteneur —
@@ -226,6 +238,10 @@ else
   echo "[$(date)] WARNING: No Grafana dashboards found to export"
 fi
 
+if [ "${BRICK_TAR_FAILURES}" -gt 0 ]; then
+  echo "[$(date)] ERREUR: ${BRICK_TAR_FAILURES} backup(s) brick.yml en echec — heartbeat NON envoye"
+  exit 1
+fi
 echo "[$(date)] Pre-backup completed successfully"
 
 {% if backup_heartbeat_url | default('') | length > 0 %}

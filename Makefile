@@ -10,6 +10,7 @@ ANSIBLE_PLAYBOOK := ansible-playbook
 ANSIBLE_LINT := ansible-lint
 YAMLLINT := yamllint
 MOLECULE := molecule
+PYTHON := .venv/bin/python3
 VAULT_FILE := inventory/group_vars/all/secrets.yml
 
 # Colors
@@ -30,7 +31,7 @@ help: ## Afficher cette aide
 .PHONY: setup
 setup: ## Installation complète des dépendances
 	@echo "$(GREEN)>>> Installing Python dependencies...$(NC)"
-	pip3 install --user ansible ansible-lint yamllint molecule molecule-docker jmespath
+	pip3 install --user ansible ansible-lint yamllint molecule molecule-docker jmespath "jsonschema>=4.26,<5.0" "pytest>=9.0,<10.0"
 	@echo "$(GREEN)>>> Installing Ansible collections...$(NC)"
 	ansible-galaxy install -r requirements.yml --force
 	@echo "$(GREEN)>>> Setup complete$(NC)"
@@ -58,11 +59,27 @@ lint: ## Lancer yamllint + ansible-lint
 	find . \( -name '*.yml' -o -name '*.yaml' \) ! -path './.git/*' ! -path './.venv/*' ! -path '*/molecule/*' ! -path '*/collections/*' ! -path '*/node_modules/*' ! -name 'secrets.yml' -print0 | xargs -0 $(YAMLLINT) -c .yamllint.yml
 	@echo "$(GREEN)>>> Running ansible-lint...$(NC)"
 	$(ANSIBLE_LINT) playbooks/stacks/site.yml playbooks/hosts/workstation.yml
+	@echo "$(GREEN)>>> Running brick manifests validation...$(NC)"
+	@$(MAKE) --no-print-directory lint-bricks
 	@echo "$(GREEN)>>> All linting passed$(NC)"
 
 .PHONY: lint-yaml
 lint-yaml: ## Lancer yamllint uniquement
 	find . \( -name '*.yml' -o -name '*.yaml' \) ! -path './.git/*' ! -path './.venv/*' ! -path '*/molecule/*' ! -path '*/collections/*' ! -path '*/node_modules/*' ! -name 'secrets.yml' -print0 | xargs -0 $(YAMLLINT) -c .yamllint.yml
+
+.PHONY: lint-bricks
+lint-bricks: ## Valider les manifestes brick.yml (+ orphelins) + dérive des fichiers générés (tous les envs committés)
+	$(PYTHON) scripts/brick_generate.py --validate --lint
+	@for f in roles/backup-config/vars/bricks_backup_*.yml; do \
+		[ -e "$$f" ] || continue; \
+		env=$$(basename "$$f" .yml | sed 's/^bricks_backup_//'); \
+		echo ">>> drift check env $$env"; \
+		$(PYTHON) scripts/brick_generate.py --generate backup --env "$$env" --check || exit 1; \
+	done
+
+.PHONY: test-bricks
+test-bricks: ## Tests unitaires du générateur brick
+	$(PYTHON) -m pytest tests/brick -q
 
 .PHONY: lint-ansible
 lint-ansible: ## Lancer ansible-lint uniquement

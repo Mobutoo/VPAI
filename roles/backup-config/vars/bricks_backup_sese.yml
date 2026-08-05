@@ -1,0 +1,16 @@
+# GÉNÉRÉ DEPUIS brick.yml — NE PAS ÉDITER À LA MAIN
+# commande : python3 scripts/brick_generate.py --generate backup --env sese
+# environnement : sese — consommé par roles/backup-config (include_vars) : pre-backup.sh.j2 + backup-cleanup.sh.j2
+---
+brick_backup_pg_databases: []
+brick_backup_tar_jobs:
+- brick: trek
+  archive: data
+  src: '{{ trek_data_dir }}'
+  include:
+  - .
+- brick: trek
+  archive: uploads
+  src: '{{ trek_uploads_dir }}'
+  include:
+  - .

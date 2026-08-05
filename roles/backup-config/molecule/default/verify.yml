@@ -41,7 +41,7 @@
       ansible.builtin.assert:
         that:
           - pre_backup.stat.exists
-          - pre_backup.stat.mode == "0750"
+          - pre_backup.stat.mode == "0700"
 
     - name: Check pre-backup script starts with set -euo pipefail
       ansible.builtin.command:
@@ -61,7 +61,7 @@
       ansible.builtin.assert:
         that:
           - cleanup_script.stat.exists
-          - cleanup_script.stat.mode == "0750"
+          - cleanup_script.stat.mode == "0700"
 
     - name: Check pre-backup cron job
       ansible.builtin.command:

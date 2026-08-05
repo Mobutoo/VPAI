@@ -77,6 +77,11 @@
     notification_webhook_url: ""
     # Target environment
     target_env: prod
+    # brick.yml : bricks_backup_sese.yml est le seul fichier généré existant —
+    # réutilisé ici comme fixture molecule (roles/backup-config/vars/).
+    brick_backup_env: sese
+    trek_data_dir: /opt/molecule-test/data/trek
+    trek_uploads_dir: /opt/molecule-test/data/trek-uploads
     # Qdrant
     qdrant_cache_collection: semantic_cache
     qdrant_rag_collection: content_index

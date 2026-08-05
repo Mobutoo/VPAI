@@ -10,3 +10,7 @@ yamllint>=1.35
 molecule>=24.0,<25.0
 molecule-docker>=2.1,<3.0
 jmespath>=1.0
+
+# brick_generate (scripts/brick_generate.py + tests/brick)
+jsonschema>=4.26,<5.0
+pytest>=9.0,<10.0

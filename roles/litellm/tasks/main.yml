@@ -28,4 +28,5 @@
     group: "{{ prod_user }}"
     mode: "0600"
   become: true
+  no_log: true  # le fichier contient les clés providers — sans ça, --diff les affiche en clair (incident 2026-08-05, même classe que 21d9c01)
   notify: Restart litellm stack

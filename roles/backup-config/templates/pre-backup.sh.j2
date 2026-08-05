@@ -60,7 +60,10 @@ echo "[$(date)] Dumping PostgreSQL databases..."
 {# Bases declarees par manifeste brick.yml (roles/*/brick.yml -> vars/bricks_backup_<env>.yml,
    genere par scripts/brick_generate.py). La liste en dur historique reste pour les
    roles non migres — toute NOUVELLE base passe par un brick.yml, plus par cette liste. #}
-{% set backup_pg_databases = (postgresql_databases | default([]) | map(attribute='name') | list) + ['plane_production', 'content_factory', 'prisme', 'postiz'] + (brick_backup_pg_databases | default([])) %}
+{# openclaw : base vivante signalee par la garde de derive au run du 2026-08-05 (service
+   desactive par openclaw_enabled=false mais donnees a conserver — decision operateur).
+   sure_production et kaneo, signalees au meme run, ont ete SUPPRIMEES (dump final garde). #}
+{% set backup_pg_databases = (postgresql_databases | default([]) | map(attribute='name') | list) + ['plane_production', 'content_factory', 'prisme', 'postiz', 'openclaw'] + (brick_backup_pg_databases | default([])) %}
 for DB in {{ backup_pg_databases | unique | join(' ') }}; do
   # Garde par-DB : une base absente (service décommissionné) ou un dump en échec
   # ne doit PAS avorter tout le backup (set -e). WARNING visible, on continue.

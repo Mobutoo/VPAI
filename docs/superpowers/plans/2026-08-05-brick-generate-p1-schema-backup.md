@@ -11,7 +11,8 @@
 ## Global Constraints
 
 - Repo cible : `/home/mobuone/work/infra/VPAI` (les rôles, le backup et la CI y vivent). La spec source vit dans optimus et n'est PAS modifiée par ce plan.
-- Remote git : `git@github-seko:Mobutoo/vpai.git` — jamais `github.com`. Commits sur `main`.
+- Remote git : `git@github-seko:Mobutoo/vpai.git` — jamais `github.com`.
+- **Flux PR+CI (décision opérateur au gate du 2026-08-05, remplace le flux deploy-local)** : la dette de main est poussée d'abord (après inspection), puis TOUTES les tasks 1-6 committent sur la branche **`feat/brick-p1`** (créée depuis `main` à jour) — jamais sur `main` directement. Task 7 : push branche → PR → CI verte → merge → pull main → deploy prod → run réel.
 - `identity.digest` : pattern strict `^sha256:[a-f0-9]{64}$` (spec §5 #1).
 - `backup.strategy` absent = REFUS DUR ; liste vide acceptée uniquement avec `backup.disabled_reason` string non vide (spec §5 #2).
 - Alertes minimales `service_down` + `restart_loop` pour toute brique avec `runtime.healthcheck` ; `http_5xx_rate` interdit si `exposure.vhost.mode` absent ou `none` (spec §5 #5).
@@ -38,6 +39,21 @@
 
 **Interfaces:**
 - Produces: `load_manifest(path: Path) -> dict` (lève `BrickError` si YAML invalide) ; `validate_manifest(manifest: dict, path: Path, versions: dict) -> list[str]` (liste vide = valide, chaque erreur préfixée du chemin du manifeste) ; `find_manifests(repo: Path) -> list[Path]` ; `load_versions(repo: Path) -> dict` ; constante `GENERATED_HEADER`. CLI : `python3 scripts/brick_generate.py --validate [--repo DIR]`, exit 0 si tous valides, 1 sinon, messages sur stderr.
+
+- [ ] **Step 0: Pousser la dette de main, puis créer la branche de travail** (une seule fois, avant toute task)
+
+Run :
+```bash
+cd ~/work/infra/VPAI
+[ "$(git remote get-url origin)" = "git@github-seko:Mobutoo/vpai.git" ] || { echo "remote origin inattendu — STOP"; exit 1; }
+git log --oneline @{upstream}..HEAD
+```
+Lire la liste (dette connue : ~18 commits litellm/monitoring/backup/plans, signalés en mémoire). **Si un commit inattendu apparaît, STOP et remonter à l'opérateur.** Sinon :
+```bash
+git push origin main
+git checkout -b feat/brick-p1
+```
+Expected: `origin/main` à jour, branche `feat/brick-p1` active. Toutes les tasks suivantes committent sur cette branche.
 
 - [ ] **Step 1: Écrire la fixture valide** (l'exemple Umami de la spec §2, digest factice bien formé)
 
@@ -1509,16 +1525,45 @@ make lint et la CI (spec brick-manifest §4/§5)."
 
 ---
 
-### Task 7: Déploiement prod + preuve par run réel
+### Task 7: PR + CI verte + merge + déploiement prod + preuve par run réel
 
 **Files:**
-- Aucun nouveau — déploiement du rôle `backup-config` sur Sese-AI et vérification.
+- Aucun nouveau — push branche, PR, merge, déploiement du rôle `backup-config` sur Sese-AI et vérification.
 
 **Interfaces:**
-- Consumes: tout ce qui précède, committé sur `main`.
-- Produces: `pre-backup.sh` et `backup-cleanup.sh` régénérés en prod depuis les vars brick.yml ; run réel produisant les archives TREK ; 2e run Ansible idempotent.
+- Consumes: tout ce qui précède, committé sur `feat/brick-p1`.
+- Produces: PR mergée après CI verte ; `pre-backup.sh` et `backup-cleanup.sh` régénérés en prod depuis les vars brick.yml ; run réel produisant les archives TREK ; 2e run Ansible idempotent.
 
-- [ ] **Step 1: Check-mode d'abord**
+- [ ] **Step 0a: Pousser la branche et ouvrir la PR**
+
+Run:
+```bash
+cd ~/work/infra/VPAI
+[ "$(git remote get-url origin)" = "git@github-seko:Mobutoo/vpai.git" ] || { echo "remote origin inattendu — STOP"; exit 1; }
+git push -u origin feat/brick-p1
+gh pr create --base main --head feat/brick-p1 \
+  --title "feat(brick): schéma optimus.brick/v1 + générateur backup (P1)" \
+  --body "$(cat <<'EOF'
+Étapes 1-2 du séquencement de la spec brick-manifest (optimus docs/specs/2026-08-05-brick-manifest-design.md §8) : schéma JSON + --validate (assertions §5), générateur backup par environnement + garde de dérive CI, migration opportuniste TREK (victime de l'incident backup 2026-08-04).
+
+Plan convergé Codex (3 rounds) : docs/superpowers/plans/2026-08-05-brick-generate-p1-schema-backup.md
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+Expected: PR créée, la CI démarre (job lint incluant les nouveaux steps brick).
+
+- [ ] **Step 0b: Attendre la CI verte, puis merger**
+
+Run: `gh pr checks feat/brick-p1 --watch` puis, une fois tout vert :
+```bash
+gh pr merge feat/brick-p1 --merge --delete-branch
+git checkout main && git pull origin main
+```
+Expected: tous les checks `pass` (dont « Brick manifests (validate + drift guard, tous les envs) » et « Brick generator tests »), merge OK, `main` local = `origin/main`. **Si un check échoue : corriger sur la branche, repousser, re-attendre — ne JAMAIS merger rouge ni déployer depuis la branche.**
+
+- [ ] **Step 1: Check-mode d'abord (depuis main mergé)**
 
 Run:
 ```bash
@@ -1574,27 +1619,15 @@ Expected: `exit=0`, `Backing up trek/data (brick.yml)...` + `trek/uploads`, aucu
 Run: `set -o pipefail; ansible-playbook playbooks/stacks/site.yml --tags backup-config -e prod_ip=100.64.0.14 | tail -5; echo "play exit=$?"`
 Expected: `changed=0` au récap ET `play exit=0` (pipefail : un échec du play ne peut pas être masqué par `tail`).
 
-- [ ] **Step 6: Pousser**
+- [ ] **Step 6: Clôture**
 
-Run — en DEUX temps (revue Codex round 2 : inspection puis push, jamais enchaînés aveuglément) :
-```bash
-cd ~/work/infra/VPAI
-[ "$(git remote get-url origin)" = "git@github-seko:Mobutoo/vpai.git" ] || { echo "remote origin inattendu — STOP"; exit 1; }
-git log --oneline @{upstream}..HEAD
-```
-Lire la liste : elle doit contenir les commits de ce plan + la dette antérieure connue (~15 commits signalés en mémoire — vérifier la liste affichée, pas le chiffre). **Si un commit inattendu apparaît, STOP et remonter à l'opérateur.** Sinon :
-```bash
-git push origin main
-```
-Expected: push OK, la CI GitHub rejoue validate + drift + tests.
+Rien à pousser ici : la dette de main est partie au Step 0 (Task 1), le code du plan
+via la PR (Steps 0a/0b). Vérifier seulement que `git status` est propre et que
+`git log origin/main -1` == HEAD local.
 
-> **Finding Codex REJETÉ (à remonter au gate humain)** : le round 2 demandait « push
-> sur branche/PR + CI verte AVANT tout déploiement prod ». Rejeté pour ce plan :
-> repo mono-opérateur dont le flux établi déploie depuis le main local (historique
-> constant du projet), les gates CI (validate + drift + pytest + lint) sont
-> exécutés à l'identique en local aux Tasks 5-6 AVANT le déploiement, et la preuve
-> décisive (run réel du backup, Step 4) n'est de toute façon pas couverte par la
-> CI. Basculer le repo en flux PR est un changement de process hors périmètre.
+> **Historique du finding Codex « flux PR+CI avant deploy »** : rejeté par la session
+> aux rounds 2-3, **TRANCHÉ PAR L'OPÉRATEUR au gate du 2026-08-05 : flux PR+CI
+> ADOPTÉ** — c'est la version implémentée par cette task (Steps 0a/0b).
 
 ---
 
@@ -1605,5 +1638,5 @@ Expected: push OK, la CI GitHub rejoue validate + drift + tests.
 - **Cohérence types** : `brick_backup_tar_jobs = [{brick, archive, src, include}]` identique entre générateur (Task 3), fixture de rendu (Task 5) et templates (Task 5). `GENERATED_HEADER` partagé. `validate_manifest(manifest, path, versions)` stable de Task 1 à 3.
 - **Pièges repo intégrés** : `no_log` préservé, `--context local` docker, `include: ['.']` défaut, parité chemins `backup_trek_dir`, cleanup statique corrigé, yamllint sur fichiers générés, `-e prod_ip=100.64.0.14` pour deploy local.
 - **Revue Codex intégrée (2026-08-05, rapport `~/work/ops/loops/reviews/REVIEW-FILE-2026-08-05-brick-generate-p1-schema-backup-20260805-0955.md`, 5 HIGH confirmés + 8 MED + 1 LOW, tous traités)** : garde de types dans les assertions (HIGH TypeError) ; fichier de vars PAR environnement `bricks_backup_<env>.yml` + `brick_backup_env` (HIGH env) ; charset strict `src`/`include` au schéma + quoting par élément dans le template (HIGH injection) ; compteur `BRICK_TAR_FAILURES` + `exit 1` avant heartbeat → alerte dead-man Uptime Kuma (HIGH `|| true`) ; chemins prod résolus au lieu de globs `/opt/*` (HIGH glob) ; compteurs de tests recalculés 12/25/33/38, stratégie d'import unique (conftest + PEP 420), refus des doublons (brick, archive), grep `backup_trek_dir` sans filtre d'extension, commit Task 5 complet, paths CI incluant les vars générées, garde `git diff --quiet` au test négatif, contrôle `@{upstream}..HEAD` avant push.
-- **Revue Codex round 2 intégrée (rapport `...-20260805-1002.md`, 7 HIGH / 4 MED / 1 LOW)** : `--env` borné `[a-z0-9][a-z0-9_-]*` (traversée de chemin) ; `brick_backup_env` SANS défaut de rôle — assert + définition explicite dans l'inventaire prod ; `| quote` (shlex) sur `src`/`include` résolus + job hostile dans le test de rendu ; arrêt dur si zéro/plusieurs `pre-backup.sh` sous `/opt` ; capture du code retour hors pipe `tail` + marqueur temporel prouvant les archives du run ; `git remote get-url origin` comparé exactement ; push en deux temps avec inspection ; clés env sensibles (SECRET/PASSWORD/TOKEN/API_KEY/PRIVATE_KEY) exigent `vault_ref` ; références résiduelles au fichier unique corrigées. **1 HIGH rejeté avec justification** (flux PR + CI verte avant déploiement — voir encadré Task 7 Step 6) : à trancher au gate humain.
-- **Revue Codex round 3 intégrée (rapport `...-20260805-1011.md`, 2 HIGH / 5 MED / 1 LOW)** : refus des segments `..` dans `src`/`include` (schéma `not pattern` + test) ; marqueurs secrets élargis (SECRET/PASS/TOKEN/KEY/CREDENTIAL, faux positifs assumés) ; normalisation tirets→underscores pour le cross-check `versions.yml` ; garde de dérive CI bouclant sur TOUS les `bricks_backup_*.yml` committés ; code retour du run réel propagé via `exit ${RC}` en fin de commande ssh ; `pipefail` sur la vérification d'idempotence ; `OSError` convertie en `BrickError` dans `load_manifest`. Le 2e HIGH = re-remontée du finding PR/CI déjà rejeté au round 2 — **rejet maintenu** (règle d'arrêt convergence : pas de boucle sur un finding re-remonté), statut RESIDUAL_REJECTED à trancher au gate humain.
+- **Revue Codex round 2 intégrée (rapport `...-20260805-1002.md`, 7 HIGH / 4 MED / 1 LOW)** : `--env` borné `[a-z0-9][a-z0-9_-]*` (traversée de chemin) ; `brick_backup_env` SANS défaut de rôle — assert + définition explicite dans l'inventaire prod ; `| quote` (shlex) sur `src`/`include` résolus + job hostile dans le test de rendu ; arrêt dur si zéro/plusieurs `pre-backup.sh` sous `/opt` ; capture du code retour hors pipe `tail` + marqueur temporel prouvant les archives du run ; `git remote get-url origin` comparé exactement ; push en deux temps avec inspection ; clés env sensibles (SECRET/PASSWORD/TOKEN/API_KEY/PRIVATE_KEY) exigent `vault_ref` ; références résiduelles au fichier unique corrigées. **1 HIGH rejeté avec justification** (flux PR + CI verte avant déploiement) — **tranché par l'opérateur au gate du 2026-08-05 : PR+CI ADOPTÉ**, Task 7 et Step 0 (Task 1) réécrits en conséquence.
+- **Revue Codex round 3 intégrée (rapport `...-20260805-1011.md`, 2 HIGH / 5 MED / 1 LOW)** : refus des segments `..` dans `src`/`include` (schéma `not pattern` + test) ; marqueurs secrets élargis (SECRET/PASS/TOKEN/KEY/CREDENTIAL, faux positifs assumés) ; normalisation tirets→underscores pour le cross-check `versions.yml` ; garde de dérive CI bouclant sur TOUS les `bricks_backup_*.yml` committés ; code retour du run réel propagé via `exit ${RC}` en fin de commande ssh ; `pipefail` sur la vérification d'idempotence ; `OSError` convertie en `BrickError` dans `load_manifest`. Le 2e HIGH = re-remontée du finding PR/CI déjà rejeté au round 2 — rejet maintenu en convergence (règle d'arrêt), puis **tranché au gate humain du 2026-08-05 : l'opérateur a ADOPTÉ le flux PR+CI** (implémenté Task 1 Step 0 + Task 7 Steps 0a/0b).

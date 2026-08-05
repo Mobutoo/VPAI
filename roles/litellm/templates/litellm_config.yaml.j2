@@ -198,17 +198,20 @@ model_list:
         tier: "medium"
         tags: ["vision", "multimodal", "fallback"]
 
-  # Seedream 4.5 — Image generation via OpenRouter
+  # Image generation/edition via OpenRouter.
+  # Alias "seedream" conservé : contrat des workflows n8n Content Factory
+  # (creative-pipeline route type=image → model "seedream").
+  # bytedance/seedream-4.5 n'a jamais été un ID OpenRouter valide (LiteLLM-OR-1).
   - model_name: "seedream"
     litellm_params:
-      model: "openrouter/bytedance/seedream-4.5"
+      model: "openrouter/google/gemini-2.5-flash-image"
       api_key: "os.environ/OPENROUTER_API_KEY"
       max_tokens: 4096
     model_info:
       max_output_tokens: 4096
       metadata:
-        tier: "ultra-low"
-        tags: ["image-gen", "creative"]
+        tier: "low"
+        tags: ["image-gen", "image-edit", "creative"]
 {% endif %}
 
   # ============================================================

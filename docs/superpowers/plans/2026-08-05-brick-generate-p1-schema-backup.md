@@ -4,7 +4,7 @@
 
 **Goal:** Implémenter les étapes 1 et 2 du séquencement de la spec brick.yml (`~/work/saas/optimus/docs/specs/2026-08-05-brick-manifest-design.md` §8) : schéma JSON + `--validate`, puis générateur backup + garde CI, prouvé par la migration opportuniste de TREK.
 
-**Architecture:** Un script unique `scripts/brick_generate.py` (pattern `scripts/ci/check-prisme-role.py` : stdlib + PyYAML + jsonschema, pas de framework) lit `roles/*/brick.yml`, les valide (JSON Schema Draft 2020-12 + assertions conditionnelles §5), et génère `roles/backup-config/vars/bricks_backup.yml` — un fichier de vars Ansible committé, consommé par `pre-backup.sh.j2` et `backup-cleanup.sh.j2` via boucles Jinja2. La CI rejoue la génération et échoue sur tout diff (garde de dérive §4).
+**Architecture:** Un script unique `scripts/brick_generate.py` (pattern `scripts/ci/check-prisme-role.py` : stdlib + PyYAML + jsonschema, pas de framework) lit `roles/*/brick.yml`, les valide (JSON Schema Draft 2020-12 + assertions conditionnelles §5), et génère `roles/backup-config/vars/bricks_backup_<env>.yml` — un fichier de vars Ansible PAR environnement, committé, consommé par `pre-backup.sh.j2` et `backup-cleanup.sh.j2` via boucles Jinja2 (sélection par `brick_backup_env`, défini explicitement dans l'inventaire, jamais en défaut de rôle). La CI rejoue la génération et échoue sur tout diff (garde de dérive §4).
 
 **Tech Stack:** Python 3.12 (`.venv` VPAI), PyYAML, jsonschema 4.x, pytest 9 (tests), Jinja2 (déjà présents dans `.venv`). CI GitHub Actions (`.github/workflows/ci.yml`, job lint).
 
@@ -395,13 +395,14 @@ par pytest — le comportement CLI est identique.
 Commandes :
   --validate                    valide tous les roles/*/brick.yml (assertions §5)
   --lint                        liste les manifestes orphelins de tout environnement
-  --generate backup --env NOM   (ré)génère roles/backup-config/vars/bricks_backup.yml
+  --generate backup --env NOM   (ré)génère roles/backup-config/vars/bricks_backup_<NOM>.yml
   ... --check                   ne réécrit pas : échoue (exit 1) si le fichier committé diffère
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -611,12 +612,24 @@ def test_versions_yml_image_match_passes():
 
 def test_versions_yml_no_entry_is_ok():
     assert errors_of(valid(), {"other_image": "x:1"}) == []
+
+
+def test_env_secret_key_as_literal_fails():
+    m = valid()
+    m["runtime"]["env"]["ADMIN_PASSWORD"] = "hunter2"
+    assert any("vault_ref" in e for e in errors_of(m))
+
+
+def test_env_secret_key_as_vault_ref_passes():
+    m = valid()
+    m["runtime"]["env"]["ADMIN_PASSWORD"] = {"vault_ref": "vault_umami_admin_password"}
+    assert errors_of(m) == []
 ```
 
 - [ ] **Step 2: Vérifier qu'ils échouent**
 
 Run: `cd ~/work/infra/VPAI && .venv/bin/python3 -m pytest tests/brick -q`
-Expected: FAIL sur les 12 nouveaux tests (les assertions n'existent pas), les 12 anciens passent
+Expected: FAIL sur les 13 nouveaux tests (les assertions n'existent pas), les 11 anciens passent
 
 - [ ] **Step 3: Implémenter les assertions dans `validate_manifest`**
 
@@ -665,6 +678,18 @@ Remplacer le commentaire stub de `validate_manifest` par :
             "(record_type/value/validated_at/validated_by) — spec §5 #6"
         )
 
+    # --- Secrets : une clé env au nom sensible ne peut être qu'un vault_ref (revue
+    # Codex round 2 — la règle « jamais de secret en clair » doit être mécanique).
+    SECRET_KEY_MARKERS = ("SECRET", "PASSWORD", "TOKEN", "API_KEY", "PRIVATE_KEY")
+    for key, value in _dict(_dict(manifest.get("runtime")).get("env")).items():
+        if any(marker in key.upper() for marker in SECRET_KEY_MARKERS) and not (
+            isinstance(value, dict) and "vault_ref" in value
+        ):
+            errors.append(
+                f"{path}: runtime.env.{key} ressemble à un secret et doit être un "
+                "vault_ref, jamais un littéral"
+            )
+
     # --- Cross-check versions.yml : tant que le générateur compose n'existe pas,
     # <name>_image dans versions.yml reste la source déployée ; le manifeste ne
     # doit jamais diverger d'elle (double déclaration assumée, dérive interdite).
@@ -709,7 +734,7 @@ et le brancher : `if args.lint: return cmd_lint(args.repo)` (après le bloc `--v
 - [ ] **Step 5: Vérifier que tout passe**
 
 Run: `cd ~/work/infra/VPAI && .venv/bin/python3 -m pytest tests/brick -q`
-Expected: `22 passed`
+Expected: `24 passed`
 
 - [ ] **Step 6: Commit**
 
@@ -818,6 +843,12 @@ def test_backup_vars_path_is_per_env():
     from scripts.brick_generate import backup_vars_path
 
     assert backup_vars_path("sese") == "roles/backup-config/vars/bricks_backup_sese.yml"
+
+
+def test_cli_rejects_unsafe_env(tmp_path):
+    from scripts.brick_generate import main
+
+    assert main(["--generate", "backup", "--env", "../../etc", "--repo", str(tmp_path)]) == 1
 ```
 
 - [ ] **Step 2: Vérifier qu'ils échouent**
@@ -880,6 +911,11 @@ def generate_backup_vars(manifests: list[tuple[Path, dict]], env: str) -> str:
 
 
 def cmd_generate_backup(repo: Path, env: str, check: bool) -> int:
+    # --env borné : interpolé dans un chemin de fichier ET dans le nom chargé par
+    # include_vars — pas de séparateur, pas de traversée (revue Codex round 2, HIGH).
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", env):
+        print(f"ERREUR: --env invalide ({env!r}) : motif attendu [a-z0-9][a-z0-9_-]*", file=sys.stderr)
+        return 1
     manifests: list[tuple[Path, dict]] = []
     versions = load_versions(repo)
     errors: list[str] = []
@@ -937,7 +973,7 @@ et le dispatch :
 - [ ] **Step 4: Vérifier que tout passe**
 
 Run: `cd ~/work/infra/VPAI && .venv/bin/python3 -m pytest tests/brick -q`
-Expected: `29 passed`
+Expected: `32 passed`
 
 - [ ] **Step 5: Commit**
 
@@ -946,7 +982,7 @@ cd ~/work/infra/VPAI
 git add scripts/brick_generate.py tests/brick/test_backup_generator.py
 git commit -m "feat(brick): générateur backup → vars Ansible + --check anti-dérive
 
-Produit roles/backup-config/vars/bricks_backup.yml (déterministe, en-tête
+Produit roles/backup-config/vars/bricks_backup_<env>.yml (déterministe, en-tête
 GÉNÉRÉ). --check échoue si le fichier committé diverge des manifestes —
 la garde CI de la spec §4 contre l'édition manuelle."
 ```
@@ -1101,7 +1137,8 @@ dns_proof rempli depuis le DNS live."
 ### Task 5: Câblage des templates backup sur les vars générées
 
 **Files:**
-- Modify: `roles/backup-config/tasks/main.yml` (include_vars en tête)
+- Modify: `roles/backup-config/tasks/main.yml` (assert + include_vars en tête)
+- Modify: vars du groupe prod dans `inventory/group_vars/` (ajout `brick_backup_env: "sese"` — fichier exact découvert au Step 3)
 - Modify: `roles/backup-config/templates/pre-backup.sh.j2` (lignes 60 et 180-188)
 - Modify: `roles/backup-config/templates/backup-cleanup.sh.j2` (ligne 13)
 - Modify: `roles/backup-config/defaults/main.yml` (retrait `backup_trek_dir`)
@@ -1147,17 +1184,27 @@ VARS = {
     "brick_backup_tar_jobs": [
         {"brick": "trek", "archive": "data", "src": "/opt/testproj/data/trek", "include": ["."]},
         {"brick": "trek", "archive": "uploads", "src": "/opt/testproj/data/trek-uploads", "include": ["."]},
+        # src volontairement hostile : prouve que le filtre quote neutralise la
+        # valeur RESOLUE (espace + $()), pas seulement la référence du manifeste.
+        {"brick": "demo", "archive": "spaced", "src": "/opt/test proj/$(reboot)", "include": ["."]},
     ],
 }
 
 
-def render(template_name: str) -> str:
+def _env() -> jinja2.Environment:
+    import shlex
+
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(REPO / "roles/backup-config/templates"),
         undefined=jinja2.StrictUndefined,
         keep_trailing_newline=True,
     )
-    return env.get_template(template_name).render(**VARS)
+    env.filters["quote"] = shlex.quote  # équivalent du filtre Ansible `quote`
+    return env
+
+
+def render(template_name: str) -> str:
+    return _env().get_template(template_name).render(**VARS)
 
 
 def assert_bash_valid(script: str, tmp_path: Path, name: str):
@@ -1170,7 +1217,8 @@ def test_prebackup_renders_brick_jobs(tmp_path):
     out = render("pre-backup.sh.j2")
     assert "trek/data-${TIMESTAMP}.tar.gz" in out
     assert "trek/uploads-${TIMESTAMP}.tar.gz" in out
-    assert '-C "/opt/testproj/data/trek" "."' in out  # chaque include est quote
+    assert "-C /opt/testproj/data/trek ." in out  # chemin sain : quote no-op
+    assert "-C '/opt/test proj/$(reboot)' ." in out  # chemin hostile : neutralisé
     assert "BRICK_TAR_FAILURES=$((BRICK_TAR_FAILURES + 1))" in out
     assert 'if [ "${BRICK_TAR_FAILURES}" -gt 0 ]' in out
     assert_bash_valid(out, tmp_path, "pre-backup.sh")
@@ -1192,12 +1240,7 @@ def test_prebackup_no_hardcoded_trek_block():
 
 def test_prebackup_without_brick_vars_still_renders(tmp_path):
     bare = {k: v for k, v in VARS.items() if not k.startswith("brick_backup_")}
-    env = jinja2.Environment(
-        loader=jinja2.FileSystemLoader(REPO / "roles/backup-config/templates"),
-        undefined=jinja2.StrictUndefined,
-        keep_trailing_newline=True,
-    )
-    out = env.get_template("pre-backup.sh.j2").render(**bare)
+    out = _env().get_template("pre-backup.sh.j2").render(**bare)
     assert_bash_valid(out, tmp_path, "pre-backup-bare.sh")
 
 
@@ -1219,15 +1262,28 @@ Dans `roles/backup-config/tasks/main.yml`, insérer juste après le commentaire 
 ```yaml
 # === VARS GÉNÉRÉES (brick.yml) ===
 
+- name: Assert brick_backup_env is explicitly set
+  ansible.builtin.assert:
+    that:
+      - brick_backup_env is defined
+      - brick_backup_env is match('^[a-z0-9][a-z0-9_-]*$')
+    fail_msg: >-
+      brick_backup_env doit être défini dans l'inventaire de l'environnement cible
+      (jamais un défaut de rôle : un défaut 'sese' ferait hériter silencieusement
+      les jobs backup de sese à tout autre environnement — revue Codex 2026-08-05).
+
 - name: Load generated brick backup vars
   ansible.builtin.include_vars:
     file: "bricks_backup_{{ brick_backup_env }}.yml"
 ```
-Et dans `roles/backup-config/defaults/main.yml`, ajouter (section Directories, après `backup_base_dir`) :
+**PAS de `brick_backup_env` dans `roles/backup-config/defaults/main.yml`** (revue Codex round 2, HIGH défaut). À la place, le définir dans l'inventaire du groupe prod. D'abord découvrir la structure :
+```bash
+ls ~/work/infra/VPAI/inventory/group_vars/
+```
+puis ajouter dans le fichier de vars du groupe prod existant (`inventory/group_vars/prod.yml` ou `inventory/group_vars/prod/main.yml` selon la structure constatée — si seul `all/` existe, créer `inventory/group_vars/prod/main.yml`) :
 ```yaml
 # Environnement brick.yml : sélectionne roles/backup-config/vars/bricks_backup_<env>.yml
-# (généré par scripts/brick_generate.py --generate backup --env <env>). Un fichier PAR
-# environnement — jamais un fichier unique partagé (revue Codex 2026-08-05).
+# (généré par scripts/brick_generate.py --generate backup --env <env>).
 brick_backup_env: "sese"
 ```
 
@@ -1239,7 +1295,7 @@ Ligne 60, remplacer :
 ```
 par :
 ```jinja2
-{# Bases declarees par manifeste brick.yml (roles/*/brick.yml -> vars/bricks_backup.yml,
+{# Bases declarees par manifeste brick.yml (roles/*/brick.yml -> vars/bricks_backup_<env>.yml,
    genere par scripts/brick_generate.py). La liste en dur historique reste pour les
    roles non migres — toute NOUVELLE base passe par un brick.yml, plus par cette liste. #}
 {% set backup_pg_databases = (postgresql_databases | default([]) | map(attribute='name') | list) + ['plane_production', 'content_factory', 'prisme', 'postiz'] + (brick_backup_pg_databases | default([])) %}
@@ -1251,15 +1307,17 @@ Puis remplacer intégralement le bloc TREK (lignes 180-188, de `# === TREK data 
    roles/backup-config/vars/bricks_backup_<env>.yml, produit par scripts/brick_generate.py.
    NE PAS rajouter de bloc tar par-service code en dur ici — c'est la liste statique
    qui a laisse TREK/OpenClaw sans backup (incident 2026-08-04, spec brick-manifest §1).
-   Chaque element include est quote individuellement et son charset est borne par le
-   schema (^[A-Za-z0-9._][A-Za-z0-9._/-]*$) — pas d'injection shell possible (revue
-   Codex 2026-08-05). Un echec n'est plus avale par || true : compte, puis le
-   heartbeat final est saute => alerte Uptime Kuma (dead-man). #}
+   src et include passent par le filtre Ansible `quote` (shlex.quote) : le schema
+   borne la REFERENCE ecrite dans brick.yml, mais pas la valeur Ansible RESOLUE
+   ({{ trek_data_dir }} peut contenir n'importe quoi) — seul un echappement shell a
+   la resolution est fiable (revue Codex 2026-08-05 round 2). Un echec n'est plus
+   avale par || true : compte, puis le heartbeat final est saute => alerte Uptime
+   Kuma (dead-man). #}
 BRICK_TAR_FAILURES=0
 {% for job in brick_backup_tar_jobs | default([]) %}
 echo "[$(date)] Backing up {{ job.brick }}/{{ job.archive }} (brick.yml)..."
 backup_tar "{{ backup_base_dir }}/{{ job.brick }}/{{ job.archive }}-${TIMESTAMP}.tar.gz" \
-  -C "{{ job.src }}"{% for inc in job.include %} "{{ inc }}"{% endfor %} \
+  -C {{ job.src | quote }}{% for inc in job.include %} {{ inc | quote }}{% endfor %} \
   || BRICK_TAR_FAILURES=$((BRICK_TAR_FAILURES + 1))
 {% endfor %}
 ```
@@ -1304,13 +1362,13 @@ Run:
 cd ~/work/infra/VPAI && .venv/bin/python3 -m pytest tests/brick -q
 source .venv/bin/activate && make lint
 ```
-Expected: `34 passed` ; lint OK (yamllint + ansible-lint sur site.yml/workstation.yml)
+Expected: `37 passed` ; lint OK (yamllint + ansible-lint sur site.yml/workstation.yml)
 
 - [ ] **Step 8: Commit**
 
 ```bash
 cd ~/work/infra/VPAI
-git add roles/backup-config/ tests/brick/test_prebackup_render.py
+git add roles/backup-config/ tests/brick/test_prebackup_render.py inventory/group_vars/
 git commit -m "feat(backup): pre-backup + cleanup consomment les vars brick.yml générées
 
 Le bloc TREK codé en dur devient une boucle sur brick_backup_tar_jobs
@@ -1386,7 +1444,7 @@ Dans le bloc `on: ... paths:` du même workflow (lignes ~9-22), ajouter les entr
 - [ ] **Step 4: Vérifier localement**
 
 Run: `cd ~/work/infra/VPAI && source .venv/bin/activate && make lint && make test-bricks`
-Expected: lint complet vert (yamllint + ansible-lint + brick validate + drift OK), `34 passed`
+Expected: lint complet vert (yamllint + ansible-lint + brick validate + drift OK), `37 passed`
 
 - [ ] **Step 5: Test négatif de la garde (non committé)**
 
@@ -1444,7 +1502,10 @@ Expected: play récap sans failed ; changed sur les templates.
 Run:
 ```bash
 SCRIPT=$(ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 'ls /opt/*/scripts/pre-backup.sh')
-echo "${SCRIPT}"; [ "$(echo "${SCRIPT}" | wc -l)" = "1" ] || { echo "plusieurs candidats — choisir explicitement"; }
+# arrêt DUR si zéro ou plusieurs candidats (une sortie vide n'est pas « une ligne »)
+[ -n "${SCRIPT}" ] && [ "$(printf '%s\n' "${SCRIPT}" | wc -l)" -eq 1 ] \
+  || { echo "zéro ou plusieurs pre-backup.sh sous /opt — résoudre manuellement, STOP"; exit 1; }
+echo "${SCRIPT}"
 PROJ_DIR=$(dirname "$(dirname "${SCRIPT}")")
 ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 \
   "grep -n '(brick.yml)' ${SCRIPT}; grep -n 'data/trek' ${SCRIPT}; grep -n 'for SUBDIR' ${PROJ_DIR}/scripts/backup-cleanup.sh"
@@ -1453,12 +1514,20 @@ Expected: 2 lignes `Backing up trek/... (brick.yml)`, les appels `backup_tar` av
 
 - [ ] **Step 4: Run réel**
 
-Run (réutilise `${SCRIPT}`/`${PROJ_DIR}` du Step 3) :
+Run (réutilise `${SCRIPT}`/`${PROJ_DIR}` du Step 3 ; sortie dans un fichier pour ne pas
+masquer le code retour derrière `tail`, marqueur temporel pour prouver que les archives
+viennent de CE run — revue Codex round 2) :
 ```bash
-ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 \
-  "bash ${SCRIPT} 2>&1 | tail -30; echo exit=\$?; ls -lh ${PROJ_DIR}/backups/trek/ | tail -5"
+ssh -i ~/.ssh/seko-vpn-deploy -p 804 mobuone@100.64.0.14 "
+  touch /tmp/prebackup.marker
+  bash ${SCRIPT} > /tmp/prebackup.out 2>&1
+  echo exit=\$?
+  tail -30 /tmp/prebackup.out
+  echo '--- archives de ce run :'
+  find ${PROJ_DIR}/backups/trek -type f -newer /tmp/prebackup.marker -size +0 -exec ls -lh {} +
+"
 ```
-Expected: `Backing up trek/data (brick.yml)...` + `trek/uploads`, aucun `WARNING`/`ERREUR` sur les archives trek, `exit=0`, deux `.tar.gz` non vides datés d'aujourd'hui, `Pre-backup completed successfully`.
+Expected: `exit=0`, `Backing up trek/data (brick.yml)...` + `trek/uploads`, aucun `WARNING`/`ERREUR` sur les archives trek, `Pre-backup completed successfully`, et exactement 2 archives `.tar.gz` non vides plus récentes que le marqueur.
 
 - [ ] **Step 5: Idempotence (2e run Ansible = 0 changed)**
 
@@ -1467,14 +1536,25 @@ Expected: `changed=0` au récap.
 
 - [ ] **Step 6: Pousser**
 
-Run:
+Run — en DEUX temps (revue Codex round 2 : inspection puis push, jamais enchaînés aveuglément) :
 ```bash
 cd ~/work/infra/VPAI
-git remote -v | grep -q 'github-seko' || { echo "remote inattendu — STOP"; exit 1; }
-git log --oneline @{upstream}..HEAD   # contrôler la liste RÉELLE avant push (elle a pu évoluer)
+[ "$(git remote get-url origin)" = "git@github-seko:Mobutoo/vpai.git" ] || { echo "remote origin inattendu — STOP"; exit 1; }
+git log --oneline @{upstream}..HEAD
+```
+Lire la liste : elle doit contenir les commits de ce plan + la dette antérieure connue (~15 commits signalés en mémoire — vérifier la liste affichée, pas le chiffre). **Si un commit inattendu apparaît, STOP et remonter à l'opérateur.** Sinon :
+```bash
 git push origin main
 ```
-Expected: remote `git@github-seko:Mobutoo/vpai.git`, la liste des commits sortants inclut les commits de ce plan + la dette antérieure (~15 commits signalés en mémoire — vérifier la liste affichée, pas le chiffre), push OK, la CI GitHub rejoue validate + drift + tests.
+Expected: push OK, la CI GitHub rejoue validate + drift + tests.
+
+> **Finding Codex REJETÉ (à remonter au gate humain)** : le round 2 demandait « push
+> sur branche/PR + CI verte AVANT tout déploiement prod ». Rejeté pour ce plan :
+> repo mono-opérateur dont le flux établi déploie depuis le main local (historique
+> constant du projet), les gates CI (validate + drift + pytest + lint) sont
+> exécutés à l'identique en local aux Tasks 5-6 AVANT le déploiement, et la preuve
+> décisive (run réel du backup, Step 4) n'est de toute façon pas couverte par la
+> CI. Basculer le repo en flux PR est un changement de process hors périmètre.
 
 ---
 
@@ -1484,4 +1564,5 @@ Expected: remote `git@github-seko:Mobutoo/vpai.git`, la liste des commits sortan
 - **Générateurs alertes/compose/Caddy/tags/images** : hors périmètre de ce plan (étapes 3-5 du séquencement), plans suivants.
 - **Cohérence types** : `brick_backup_tar_jobs = [{brick, archive, src, include}]` identique entre générateur (Task 3), fixture de rendu (Task 5) et templates (Task 5). `GENERATED_HEADER` partagé. `validate_manifest(manifest, path, versions)` stable de Task 1 à 3.
 - **Pièges repo intégrés** : `no_log` préservé, `--context local` docker, `include: ['.']` défaut, parité chemins `backup_trek_dir`, cleanup statique corrigé, yamllint sur fichiers générés, `-e prod_ip=100.64.0.14` pour deploy local.
-- **Revue Codex intégrée (2026-08-05, rapport `~/work/ops/loops/reviews/REVIEW-FILE-2026-08-05-brick-generate-p1-schema-backup-20260805-0955.md`, 5 HIGH confirmés + 8 MED + 1 LOW, tous traités)** : garde de types dans les assertions (HIGH TypeError) ; fichier de vars PAR environnement `bricks_backup_<env>.yml` + `brick_backup_env` (HIGH env) ; charset strict `src`/`include` au schéma + quoting par élément dans le template (HIGH injection) ; compteur `BRICK_TAR_FAILURES` + `exit 1` avant heartbeat → alerte dead-man Uptime Kuma (HIGH `|| true`) ; chemins prod résolus au lieu de globs `/opt/*` (HIGH glob) ; compteurs de tests recalculés 11/22/29/34, stratégie d'import unique (conftest + PEP 420), refus des doublons (brick, archive), grep `backup_trek_dir` sans filtre d'extension, commit Task 5 complet, paths CI incluant les vars générées, garde `git diff --quiet` au test négatif, contrôle `@{upstream}..HEAD` avant push.
+- **Revue Codex intégrée (2026-08-05, rapport `~/work/ops/loops/reviews/REVIEW-FILE-2026-08-05-brick-generate-p1-schema-backup-20260805-0955.md`, 5 HIGH confirmés + 8 MED + 1 LOW, tous traités)** : garde de types dans les assertions (HIGH TypeError) ; fichier de vars PAR environnement `bricks_backup_<env>.yml` + `brick_backup_env` (HIGH env) ; charset strict `src`/`include` au schéma + quoting par élément dans le template (HIGH injection) ; compteur `BRICK_TAR_FAILURES` + `exit 1` avant heartbeat → alerte dead-man Uptime Kuma (HIGH `|| true`) ; chemins prod résolus au lieu de globs `/opt/*` (HIGH glob) ; compteurs de tests recalculés 11/24/32/37, stratégie d'import unique (conftest + PEP 420), refus des doublons (brick, archive), grep `backup_trek_dir` sans filtre d'extension, commit Task 5 complet, paths CI incluant les vars générées, garde `git diff --quiet` au test négatif, contrôle `@{upstream}..HEAD` avant push.
+- **Revue Codex round 2 intégrée (rapport `...-20260805-1002.md`, 7 HIGH / 4 MED / 1 LOW)** : `--env` borné `[a-z0-9][a-z0-9_-]*` (traversée de chemin) ; `brick_backup_env` SANS défaut de rôle — assert + définition explicite dans l'inventaire prod ; `| quote` (shlex) sur `src`/`include` résolus + job hostile dans le test de rendu ; arrêt dur si zéro/plusieurs `pre-backup.sh` sous `/opt` ; capture du code retour hors pipe `tail` + marqueur temporel prouvant les archives du run ; `git remote get-url origin` comparé exactement ; push en deux temps avec inspection ; clés env sensibles (SECRET/PASSWORD/TOKEN/API_KEY/PRIVATE_KEY) exigent `vault_ref` ; références résiduelles au fichier unique corrigées. **1 HIGH rejeté avec justification** (flux PR + CI verte avant déploiement — voir encadré Task 7 Step 6) : à trancher au gate humain.

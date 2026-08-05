@@ -167,6 +167,107 @@ def _require_repo(repo: Path) -> str | None:
     return None
 
 
+def backup_vars_path(env: str) -> str:
+    """Un fichier de vars PAR environnement : un déploiement d'un autre env ne
+    doit jamais hériter des jobs de sese (revue Codex 2026-08-05, HIGH env)."""
+    return f"roles/backup-config/vars/bricks_backup_{env}.yml"
+
+
+def generate_backup_vars(manifests: list[tuple[Path, dict]], env: str) -> str:
+    pg: set[str] = set()
+    tar: list[dict] = []
+    seen_archives: set[tuple[str, str]] = set()
+    for _path, manifest in manifests:
+        if env not in manifest.get("deployment", {}).get("environments", []):
+            continue
+        name = manifest["identity"]["name"]
+        for entry in manifest["backup"]["strategy"]:
+            if entry["kind"] == "postgres_dump":
+                pg.add(entry["database"])
+            elif entry["kind"] == "volume_tar":
+                key = (name, entry["archive"])
+                if key in seen_archives:
+                    raise BrickError(
+                        f"doublon volume_tar {name}/{entry['archive']} : deux jobs "
+                        "écriraient la même archive horodatée"
+                    )
+                seen_archives.add(key)
+                tar.append(
+                    {
+                        "brick": name,
+                        "archive": entry["archive"],
+                        "src": entry["src"],
+                        "include": list(entry.get("include", ["."])),
+                    }
+                )
+    tar.sort(key=lambda job: (job["brick"], job["archive"]))
+    body = yaml.safe_dump(
+        {"brick_backup_pg_databases": sorted(pg), "brick_backup_tar_jobs": tar},
+        sort_keys=False,
+        allow_unicode=True,
+        default_flow_style=False,
+        width=120,
+    )
+    return (
+        GENERATED_HEADER
+        + f"# commande : python3 scripts/brick_generate.py --generate backup --env {env}\n"
+        + f"# environnement : {env} — consommé par roles/backup-config (include_vars) : pre-backup.sh.j2 + backup-cleanup.sh.j2\n"
+        + "---\n"
+        + body
+    )
+
+
+def cmd_generate_backup(repo: Path, env: str, check: bool) -> int:
+    error = _require_repo(repo)
+    if error:
+        print(f"ERREUR: {error}", file=sys.stderr)
+        return 2
+    # --env borné : interpolé dans un chemin de fichier ET dans le nom chargé par
+    # include_vars — pas de séparateur, pas de traversée (revue Codex round 2, HIGH).
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", env):
+        print(f"ERREUR: --env invalide ({env!r}) : motif attendu [a-z0-9][a-z0-9_-]*", file=sys.stderr)
+        return 1
+    manifests: list[tuple[Path, dict]] = []
+    versions = load_versions(repo)
+    errors: list[str] = []
+    for path in find_manifests(repo):
+        try:
+            manifest = load_manifest(path)
+        except BrickError as exc:
+            errors.append(str(exc))
+            continue
+        errors.extend(validate_manifest(manifest, path, versions))
+        manifests.append((path, manifest))
+    if errors:
+        for error in errors:
+            print(f"ERREUR: {error}", file=sys.stderr)
+        print("Génération refusée : manifestes invalides (spec §5).", file=sys.stderr)
+        return 1
+
+    try:
+        rendered = generate_backup_vars(manifests, env)
+    except BrickError as exc:
+        print(f"ERREUR: {exc}", file=sys.stderr)
+        return 1
+    rel_path = backup_vars_path(env)
+    target = repo / rel_path
+    if check:
+        current = target.read_text(encoding="utf-8") if target.exists() else ""
+        if current != rendered:
+            print(
+                f"DÉRIVE: {rel_path} ne correspond plus aux brick.yml — "
+                f"régénérer avec : python3 scripts/brick_generate.py --generate backup --env {env}",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"OK: {rel_path} à jour.")
+        return 0
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(rendered, encoding="utf-8")
+    print(f"Écrit : {rel_path}")
+    return 0
+
+
 def cmd_validate(repo: Path) -> int:
     error = _require_repo(repo)
     if error:
@@ -217,8 +318,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validate", action="store_true")
     parser.add_argument("--lint", action="store_true")
+    parser.add_argument("--generate", choices=["backup"])
+    parser.add_argument("--env")
+    parser.add_argument("--check", action="store_true")
     parser.add_argument("--repo", type=Path, default=REPO)
     args = parser.parse_args(argv)
+    if args.generate == "backup":
+        if not args.env:
+            parser.error("--generate backup exige --env")
+        return cmd_generate_backup(args.repo, args.env, args.check)
     if args.validate and args.lint:
         rc_validate = cmd_validate(args.repo)
         rc_lint = cmd_lint(args.repo)

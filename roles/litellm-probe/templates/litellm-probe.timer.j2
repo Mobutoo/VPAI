@@ -1,0 +1,10 @@
+[Unit]
+Description=Lance litellm-probe 2x/jour
+
+[Timer]
+OnCalendar={{ litellm_probe_on_calendar }}
+Persistent=true
+Unit={{ litellm_probe_service_name }}.service
+
+[Install]
+WantedBy=timers.target

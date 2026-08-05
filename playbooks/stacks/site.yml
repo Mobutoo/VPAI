@@ -149,6 +149,8 @@
       tags: [uptime-config, phase5, monitoring]
     - role: disk-guard
       tags: [disk-guard, phase5, ops]
+    - role: litellm-probe
+      tags: [litellm-probe, phase5, ops]
     - role: waza-deadman
       tags: [waza-deadman, deadman, phase5, monitoring]
 

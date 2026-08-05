@@ -71,13 +71,15 @@
     enabled: true
     daemon_reload: true
   become: true
-  when: litellm_probe_enabled | bool and not ansible_check_mode
+  when: litellm_probe_enabled | bool and litellm_probe_timer_enabled | bool and not ansible_check_mode
 
-- name: Ensure litellm-probe timer is disabled when role is toggled off
+- name: Ensure litellm-probe timer is disabled when role or timer is toggled off
   ansible.builtin.systemd:
     name: "{{ litellm_probe_timer_name }}.timer"
     state: stopped
     enabled: false
   become: true
   failed_when: false
-  when: not (litellm_probe_enabled | bool) and not ansible_check_mode
+  when: >-
+    (not (litellm_probe_enabled | bool) or not (litellm_probe_timer_enabled | bool))
+    and not ansible_check_mode

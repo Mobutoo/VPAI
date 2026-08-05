@@ -22,6 +22,12 @@
 
 litellm_probe_enabled: true
 
+# Décision opérateur 2026-08-06 : PAS de sonde périodique (consommation de
+# tokens inutile). Le rôle installe le script comme outil À LA DEMANDE
+# (smoke-test post-deploy : `systemctl start litellm-probe.service` ou
+# exécution directe du script). Passer à true pour (ré)activer le timer.
+litellm_probe_timer_enabled: false
+
 litellm_probe_user: "root"
 litellm_probe_install_dir: "/opt/litellm-probe"
 litellm_probe_script: "{{ litellm_probe_install_dir }}/litellm-probe.sh"

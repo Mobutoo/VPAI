@@ -118,9 +118,21 @@ def validate_manifest(manifest: dict, path: Path, versions: dict) -> list[str]:
     # --- Secrets : une clé env au nom sensible ne peut être qu'un vault_ref (revue
     # Codex round 2 — la règle « jamais de secret en clair » doit être mécanique).
     # Marqueurs volontairement larges (KEY attrape API_KEY/ACCESS_KEY/PRIVATE_KEY,
-    # PASS attrape PASSWORD/DB_PASS) : un faux positif se règle en passant par
-    # vault_ref ou en renommant la variable — l'inverse (fuite) ne se règle pas.
-    SECRET_KEY_MARKERS = ("SECRET", "PASS", "TOKEN", "KEY", "CREDENTIAL")
+    # PASS attrape PASSWORD/DB_PASS, URL/URI/DSN/CONN attrapent DATABASE_URL/
+    # SENTRY_DSN/CONNECTION_STRING — souvent porteurs de credentials embarqués) :
+    # un faux positif se règle en passant par vault_ref ou en renommant la
+    # variable — l'inverse (fuite) ne se règle pas.
+    SECRET_KEY_MARKERS = (
+        "SECRET",
+        "PASS",
+        "TOKEN",
+        "KEY",
+        "CREDENTIAL",
+        "URL",
+        "URI",
+        "DSN",
+        "CONN",
+    )
     for key, value in _dict(_dict(manifest.get("runtime")).get("env")).items():
         if (
             isinstance(key, str)
@@ -136,7 +148,7 @@ def validate_manifest(manifest: dict, path: Path, versions: dict) -> list[str]:
     # <name>_image dans versions.yml reste la source déployée ; le manifeste ne
     # doit jamais diverger d'elle (double déclaration assumée, dérive interdite).
     identity = _dict(manifest.get("identity"))
-    name = identity.get("name")
+    name = identity.get("name") if isinstance(identity.get("name"), str) else None
     declared_image = identity.get("image")
     # tirets du nom de brique → underscores : convention des noms de vars Ansible
     # (ex. content-factory → content_factory_image)
@@ -149,9 +161,16 @@ def validate_manifest(manifest: dict, path: Path, versions: dict) -> list[str]:
     return errors
 
 
-def cmd_validate(repo: Path) -> int:
+def _require_repo(repo: Path) -> str | None:
     if not repo.is_dir():
-        print(f"ERREUR: {repo} n'est pas un répertoire", file=sys.stderr)
+        return f"{repo} n'est pas un répertoire"
+    return None
+
+
+def cmd_validate(repo: Path) -> int:
+    error = _require_repo(repo)
+    if error:
+        print(f"ERREUR: {error}", file=sys.stderr)
         return 2
     manifests = find_manifests(repo)
     if not manifests:
@@ -171,6 +190,10 @@ def cmd_validate(repo: Path) -> int:
 
 
 def cmd_lint(repo: Path) -> int:
+    error = _require_repo(repo)
+    if error:
+        print(f"ERREUR: {error}", file=sys.stderr)
+        return 2
     orphans = []
     for path in find_manifests(repo):
         try:
@@ -178,7 +201,8 @@ def cmd_lint(repo: Path) -> int:
         except BrickError as exc:
             print(f"ERREUR: {exc}", file=sys.stderr)
             continue
-        if not manifest.get("deployment", {}).get("environments"):
+        deployment = manifest.get("deployment")
+        if not (isinstance(deployment, dict) and deployment.get("environments")):
             orphans.append(path)
     if orphans:
         print("Manifestes orphelins (aucun environnement — jamais sélectionnés par --env) :")
@@ -195,6 +219,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lint", action="store_true")
     parser.add_argument("--repo", type=Path, default=REPO)
     args = parser.parse_args(argv)
+    if args.validate and args.lint:
+        rc_validate = cmd_validate(args.repo)
+        rc_lint = cmd_lint(args.repo)
+        return rc_validate or rc_lint
     if args.validate:
         return cmd_validate(args.repo)
     if args.lint:

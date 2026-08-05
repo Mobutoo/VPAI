@@ -2,7 +2,7 @@ from pathlib import Path
 
 import yaml
 
-from scripts.brick_generate import load_manifest, validate_manifest
+from scripts.brick_generate import cmd_lint, load_manifest, validate_manifest
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -198,3 +198,19 @@ def test_env_secret_key_as_vault_ref_passes():
     m = valid()
     m["runtime"]["env"]["ADMIN_PASSWORD"] = {"vault_ref": "vault_umami_admin_password"}
     assert errors_of(m) == []
+
+
+def test_non_string_name_does_not_crash():
+    m = valid()
+    m["identity"]["name"] = 123
+    errors = errors_of(m)
+    assert isinstance(errors, list)
+
+
+def test_cmd_lint_deployment_as_string_does_not_crash(tmp_path):
+    role_dir = tmp_path / "roles" / "x"
+    role_dir.mkdir(parents=True)
+    (role_dir / "brick.yml").write_text(
+        "identity:\n  name: x\ndeployment: generated\n", encoding="utf-8"
+    )
+    assert cmd_lint(tmp_path) == 0

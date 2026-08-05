@@ -10,7 +10,9 @@ RETENTION_DAYS="{{ backup_local_retention_days }}"
 
 echo "[$(date)] Starting backup cleanup (retention: ${RETENTION_DAYS} days)..."
 
-for SUBDIR in pg_dump redis qdrant n8n grafana trek; do
+{# Repertoires par-brique ajoutes depuis brick_backup_tar_jobs — meme raison que
+   pre-backup.sh.j2 : la liste statique est le mode de panne (incident 2026-08-04). #}
+for SUBDIR in pg_dump redis qdrant n8n grafana{% for b in brick_backup_tar_jobs | default([]) | map(attribute='brick') | unique %} {{ b }}{% endfor %}; do
   if [ -d "${BACKUP_DIR}/${SUBDIR}" ]; then
     COUNT=$(find "${BACKUP_DIR}/${SUBDIR}" -type f -mtime +${RETENTION_DAYS} | wc -l)
     if [ "${COUNT}" -gt 0 ]; then

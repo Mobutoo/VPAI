@@ -3,6 +3,22 @@
 # Prepares pre-backup scripts and cron on Seko-AI (production VPS)
 # Zerobyte itself runs on Seko-VPN — config is documented in RUNBOOK.md
 
+# === VARS GÉNÉRÉES (brick.yml) ===
+
+- name: Assert brick_backup_env is explicitly set
+  ansible.builtin.assert:
+    that:
+      - brick_backup_env is defined
+      - brick_backup_env is match('^[a-z0-9][a-z0-9_-]*$')
+    fail_msg: >-
+      brick_backup_env doit être défini dans l'inventaire de l'environnement cible
+      (jamais un défaut de rôle : un défaut 'sese' ferait hériter silencieusement
+      les jobs backup de sese à tout autre environnement — revue Codex 2026-08-05).
+
+- name: Load generated brick backup vars
+  ansible.builtin.include_vars:
+    file: "bricks_backup_{{ brick_backup_env }}.yml"
+
 # === DIRECTORIES ===
 
 - name: Ensure scripts directory exists

@@ -191,9 +191,24 @@
             "required": ["kind"],
             "properties": {
               "kind": { "enum": ["service_down", "restart_loop", "http_5xx_rate"] },
-              "threshold": { "type": "string" },
-              "window": { "type": "string" }
-            }
+              "threshold": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?%?$" },
+              "window": { "type": "string", "pattern": "^[0-9]+[smhd]$" }
+            },
+            "allOf": [
+              {
+                "$comment": "threshold/window ne sont honorés que par la branche http_5xx_rate de _alert_rule (scripts/brick_generate.py) — sur service_down/restart_loop le schéma acceptait ces clés sans jamais les lire (finding TV MEDIUM).",
+                "if": {
+                  "required": ["kind"],
+                  "properties": { "kind": { "enum": ["service_down", "restart_loop"] } }
+                },
+                "then": {
+                  "allOf": [
+                    { "not": { "required": ["threshold"] } },
+                    { "not": { "required": ["window"] } }
+                  ]
+                }
+              }
+            ]
           }
         }
       }

@@ -1,0 +1,133 @@
+# GÉNÉRÉ DEPUIS brick.yml — NE PAS ÉDITER À LA MAIN
+# commande : python3 scripts/brick_generate.py --generate alerts --env sese
+# environnement : sese — règles d'alerte unified-alerting dérivées de monitoring.alerts.
+# NON RELIÉ à un déploiement Ansible : producteurs absents pour cette stack
+# (cAdvisor par-conteneur cassé depuis la migration socket-proxy, REX-77
+# 2026-03-10 — cf. alerting.yaml.j2 en-tête ; aucun job Caddy dans
+# config.alloy.j2 pour http_5xx_rate). Câbler un déploiement recréerait
+# l'anti-pattern DatasourceNoData déjà purgé de alerting.yaml.j2 : ne PAS
+# ajouter de tâche de déploiement avant que ces producteurs existent.
+---
+apiVersion: 1
+groups:
+- orgId: 1
+  name: Bricks générées — sese
+  folder: Bricks
+  interval: 1m
+  rules:
+  - uid: brick-trek-service_down
+    title: 'trek: service down'
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 900
+        to: 0
+      datasourceUid: VictoriaMetrics
+      model:
+        expr: >-
+          (absent(container_last_seen{name=~".*_trek$"}) or vector(0))
+        intervalMs: 30000
+        maxDataPoints: 43200
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        type: reduce
+        expression: A
+        reducer: last
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 0
+    for: 5m
+    noDataState: Alerting
+    execErrState: Error
+    annotations:
+      summary: 'trek: service down'
+    labels:
+      severity: critical
+      brick: trek
+  - uid: brick-trek-restart_loop
+    title: 'trek: restart loop (> 3 redémarrages / 10 min)'
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 900
+        to: 0
+      datasourceUid: VictoriaMetrics
+      model:
+        expr: >-
+          (changes(container_start_time_seconds{name=~".*_trek$"}[10m]) or vector(0))
+        intervalMs: 30000
+        maxDataPoints: 43200
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        type: reduce
+        expression: A
+        reducer: last
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 3
+    for: 1m
+    noDataState: Alerting
+    execErrState: Error
+    annotations:
+      summary: 'trek: restart loop (> 3 redémarrages / 10 min)'
+    labels:
+      severity: warning
+      brick: trek
+  - uid: brick-trek-http_5xx_rate
+    title: 'trek: taux d''erreurs HTTP 5xx > 5%'
+    condition: C
+    data:
+    - refId: A
+      relativeTimeRange:
+        from: 900
+        to: 0
+      datasourceUid: VictoriaMetrics
+      model:
+        expr: >-
+          ((sum(rate(caddy_http_requests_total{server=~".*_trek$", code=~"5.."}[5m]))
+          or vector(0)) / (sum(rate(caddy_http_requests_total{server=~".*_trek$"}[5m]))
+          or vector(1))) * 100
+        intervalMs: 30000
+        maxDataPoints: 43200
+    - refId: B
+      datasourceUid: __expr__
+      model:
+        type: reduce
+        expression: A
+        reducer: last
+    - refId: C
+      datasourceUid: __expr__
+      model:
+        type: threshold
+        expression: B
+        conditions:
+        - evaluator:
+            type: gt
+            params:
+            - 5.0
+    for: 5m
+    noDataState: Alerting
+    execErrState: Error
+    annotations:
+      summary: 'trek: taux d''erreurs HTTP 5xx > 5%'
+    labels:
+      severity: warning
+      brick: trek

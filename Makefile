@@ -68,13 +68,27 @@ lint-yaml: ## Lancer yamllint uniquement
 	find . \( -name '*.yml' -o -name '*.yaml' \) ! -path './.git/*' ! -path './.venv/*' ! -path '*/molecule/*' ! -path '*/collections/*' ! -path '*/node_modules/*' ! -name 'secrets.yml' -print0 | xargs -0 $(YAMLLINT) -c .yamllint.yml
 
 .PHONY: lint-bricks
-lint-bricks: ## Valider les manifestes brick.yml (+ orphelins) + dérive des fichiers générés (tous les envs committés)
+lint-bricks: ## Valider les manifestes brick.yml (+ orphelins) + dérive des fichiers générés (tous les envs déclarés)
 	$(PYTHON) scripts/brick_generate.py --validate --lint
-	@for f in roles/backup-config/vars/bricks_backup_*.yml; do \
-		[ -e "$$f" ] || continue; \
-		env=$$(basename "$$f" .yml | sed 's/^bricks_backup_//'); \
-		echo ">>> drift check env $$env"; \
+	@# Boucle pilotée par l'union (envs déclarés par les manifestes) U (envs
+	@# déduits des artefacts déjà présents sur disque, --generator) : un env
+	@# d'inventaire réel sans manifeste qui le déclare encore (ex. preprod,
+	@# scaffold backup vide mais consommé par roles/backup-config) doit rester
+	@# gardé contre la dérive manuelle, pas juste les envs déclarés (spec §4/§5,
+	@# gate lot V ; finding TV HIGH couverture). set -e : toute substitution qui
+	@# échoue ou une liste vide inattendue doit faire échouer le gate, pas être
+	@# silencieusement avalée (finding TV HIGH substitution).
+	@set -euo pipefail; \
+	backup_envs=$$($(PYTHON) scripts/brick_generate.py --list-envs --generator backup); \
+	[ -n "$$backup_envs" ] || { echo "ERREUR: aucun env backup (déclaré ou artefact) — gate suspect" >&2; exit 1; }; \
+	for env in $$backup_envs; do \
+		echo ">>> drift check backup env $$env"; \
 		$(PYTHON) scripts/brick_generate.py --generate backup --env "$$env" --check || exit 1; \
+	done; \
+	alerts_envs=$$($(PYTHON) scripts/brick_generate.py --list-envs --generator alerts); \
+	for env in $$alerts_envs; do \
+		echo ">>> drift check alerts env $$env"; \
+		$(PYTHON) scripts/brick_generate.py --generate alerts --env "$$env" --check || exit 1; \
 	done
 
 .PHONY: test-bricks

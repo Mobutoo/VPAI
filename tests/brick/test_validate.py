@@ -219,6 +219,40 @@ def test_environments_unknown_value_fails():
     assert any("environments" in e for e in errors_of(m))
 
 
+def test_threshold_on_service_down_fails():
+    m = valid()
+    m["monitoring"]["alerts"][0]["threshold"] = "10"
+    assert errors_of(m) != []
+
+
+def test_window_on_restart_loop_fails():
+    m = valid()
+    idx = next(i for i, a in enumerate(m["monitoring"]["alerts"]) if a["kind"] == "restart_loop")
+    m["monitoring"]["alerts"][idx]["window"] = "30m"
+    assert errors_of(m) != []
+
+
+def test_window_below_minimum_fails():
+    m = valid()
+    idx = next(i for i, a in enumerate(m["monitoring"]["alerts"]) if a["kind"] == "http_5xx_rate")
+    m["monitoring"]["alerts"][idx]["window"] = "0m"
+    assert any("bornes raisonnables" in e for e in errors_of(m))
+
+
+def test_window_above_maximum_fails():
+    m = valid()
+    idx = next(i for i, a in enumerate(m["monitoring"]["alerts"]) if a["kind"] == "http_5xx_rate")
+    m["monitoring"]["alerts"][idx]["window"] = "999999d"
+    assert any("bornes raisonnables" in e for e in errors_of(m))
+
+
+def test_window_within_bounds_passes():
+    m = valid()
+    idx = next(i for i, a in enumerate(m["monitoring"]["alerts"]) if a["kind"] == "http_5xx_rate")
+    m["monitoring"]["alerts"][idx]["window"] = "7d"
+    assert errors_of(m) == []
+
+
 def test_environments_absent_fails():
     m = valid()
     del m["deployment"]["environments"]
@@ -261,3 +295,46 @@ def test_cmd_lint_deployment_as_string_does_not_crash(tmp_path):
 
 def test_cmd_lint_no_orphans_returns_zero():
     assert cmd_lint(REPO) == 0
+
+
+def test_cmd_lint_flags_orphan_alert_artifact(tmp_path):
+    """Un fichier alerting-bricks-<env>.yaml pour un env qu'aucun manifeste ne
+    déclare est un artefact mort (rien ne le câble dans les rôles) — cmd_lint
+    doit le détecter, pas seulement les manifestes sans environnement
+    (finding TV HIGH couverture)."""
+    role_dir = tmp_path / "roles" / "x"
+    role_dir.mkdir(parents=True)
+    (role_dir / "brick.yml").write_text(
+        "identity:\n  name: x\ndeployment:\n  environments: [\"sese\"]\n", encoding="utf-8"
+    )
+    alerts_dir = tmp_path / "roles" / "monitoring" / "templates" / "grafana" / "provisioning" / "bricks"
+    alerts_dir.mkdir(parents=True)
+    (alerts_dir / "alerting-bricks-preprod.yaml").write_text("apiVersion: 1\ngroups: []\n", encoding="utf-8")
+    assert cmd_lint(tmp_path) == 1
+
+
+def test_list_envs_generator_backup_includes_artifact_only_env(tmp_path):
+    """Un env d'inventaire réel (bricks_backup_<env>.yml déjà présent, ex.
+    scaffold preprod vide) doit rester dans la boucle de dérive même si aucun
+    manifeste ne le déclare encore — sinon son contenu échappe à toute garde
+    (finding TV HIGH couverture, Makefile lint-bricks)."""
+    from scripts.brick_generate import cmd_list_envs
+
+    role_dir = tmp_path / "roles" / "x"
+    role_dir.mkdir(parents=True)
+    (role_dir / "brick.yml").write_text(
+        "identity:\n  name: x\ndeployment:\n  environments: [\"sese\"]\n", encoding="utf-8"
+    )
+    backup_dir = tmp_path / "roles" / "backup-config" / "vars"
+    backup_dir.mkdir(parents=True)
+    (backup_dir / "bricks_backup_preprod.yml").write_text(
+        "brick_backup_pg_databases: []\nbrick_backup_tar_jobs: []\n", encoding="utf-8"
+    )
+    import io
+    from contextlib import redirect_stdout
+
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        assert cmd_list_envs(tmp_path, "backup") == 0
+    envs = buf.getvalue().split()
+    assert set(envs) == {"sese", "preprod"}

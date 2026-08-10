@@ -128,6 +128,26 @@ def validate_manifest(manifest: dict, path: Path, versions: dict) -> list[str]:
                 f"(manquent : {', '.join(sorted(missing))}) — spec §5 #5"
             )
 
+    # --- Borne de window (finding TV LOW voisin du MEDIUM ci-dessus) : le
+    # pattern JSON Schema ^[0-9]+[smhd]$ seul accepte `0m` (fenêtre nulle,
+    # rate() PromQL indéfini) et `999999d` (fenêtre absurde). JSON Schema ne
+    # sait pas convertir les unités pour borner numériquement une string —
+    # assertion mécanique ici, dans la même veine que les autres §5. Portée
+    # volontairement limitée à http_5xx_rate : c'est le seul kind où window
+    # est honoré (cf. if/then du schéma juste au-dessus).
+    for alert in _list(_dict(manifest.get("monitoring")).get("alerts")):
+        if not isinstance(alert, dict):
+            continue
+        window = alert.get("window")
+        if not (isinstance(window, str) and re.fullmatch(r"[0-9]+[smhd]", window)):
+            continue  # motif déjà rejeté par le schéma — pas de double message
+        seconds = _duration_seconds(window)
+        if not (_WINDOW_MIN_SECONDS <= seconds <= _WINDOW_MAX_SECONDS):
+            errors.append(
+                f"{path}: monitoring.alerts[].window {window!r} hors bornes raisonnables "
+                "(minimum 1m, maximum 7d)"
+            )
+
     vhost = _dict(_dict(manifest.get("exposure")).get("vhost"))
     vhost_mode = vhost.get("mode", "none")
     if "http_5xx_rate" in alert_kinds and vhost_mode == "none":

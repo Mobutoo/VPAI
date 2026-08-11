@@ -34,6 +34,28 @@ model_list:
         tier: "medium"
         tags: ["writing", "analysis", "default", "code"]
 
+  - model_name: "claude-sonnet-cached"
+    litellm_params:
+      # Alias DÉDIÉ smoke/factory Optimus (2026-08-11) : prompt caching
+      # Anthropic injecté côté proxy. SÉPARÉ de "claude-sonnet" car la doc
+      # LiteLLM ne liste pas openrouter/ parmi les providers prompt-caching
+      # (docs/completion/prompt_caching.md) — propagation du cache_control
+      # via OpenRouter à VALIDER EMPIRIQUEMENT (usage.cached_tokens sur 2
+      # appels identiques) avant toute généralisation aux alias claude-*.
+      # AUCUN fallback pour cet alias : attestation modèle forte voulue.
+      model: "openrouter/anthropic/claude-sonnet-4"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 8192
+      cache_control_injection_points:
+        - location: message
+          role: system
+    model_info:
+      max_input_tokens: 200000
+      max_output_tokens: 8192
+      metadata:
+        tier: "medium"
+        tags: ["code", "optimus-smoke", "prompt-caching"]
+
   - model_name: "claude-haiku"
     litellm_params:
       # Bascule OpenRouter 2026-08-11 — même raison que claude-opus.

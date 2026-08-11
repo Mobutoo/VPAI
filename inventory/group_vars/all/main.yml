@@ -162,7 +162,10 @@ litellm_salt_key: "{{ vault_litellm_salt_key }}"
 # AI Provider API Keys
 anthropic_api_key: "{{ vault_anthropic_api_key }}"
 openai_api_key: "{{ vault_openai_api_key }}"
-openrouter_api_key: "{{ vault_openrouter_api_key | default('') }}"
+# Clé active = openrouter_factory_api_key (rotation 2026-08-11, appliquée
+# manuellement sur sese-ai ; vault_openrouter_api_key = ancienne clé épuisée,
+# conservée le temps de purger ses usages — ne PAS la remettre en premier).
+openrouter_api_key: "{{ openrouter_factory_api_key | default(vault_openrouter_api_key) | default('') }}"
 google_gemini_api_key: "{{ vault_google_gemini_api_key | default('') }}"
 huggingface_token: "{{ vault_huggingface_token | default('') }}"
 byteplus_api_key: "{{ vault_byteplus_api_key | default('') }}"

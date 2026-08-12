@@ -120,6 +120,14 @@ rôle. Vérifier simplement que le run Ansible ne passe pas
 
 ## 3. Séquence de deploy exacte (geste opérateur)
 
+**Étape 0 — trancher la décision §0 AVANT toute validation** : option (a)
+statu quo (`claude-opus` reste dans `fallbacks:`) ou option (b) retrait.
+Si (b) : appliquer la modification de template MAINTENANT, la committer sur
+la branche, puis relancer lint + rendu jinja + le dry-run ci-dessous sur la
+version finale — on ne déploie jamais un template modifié après ses
+validations.
+
+**Étape 1 — dry-run et lecture du diff** :
 ```bash
 source /home/mobuone/work/infra/VPAI/.venv/bin/activate
 cd /home/mobuone/work/infra/VPAI
@@ -127,20 +135,38 @@ git checkout chantier/campagne3-aliases
 ansible-playbook playbooks/stacks/site.yml \
   --tags litellm \
   --diff \
-  --check          # 1. dry-run d'abord, lire le diff en entier (--diff)
-# si le diff est conforme (SEUL litellm_config.yaml doit changer, PAS
-# litellm.env — vérifier explicitement, no-op vault attendu comme au
-# gate B4.3) :
+  --check          # dry-run, lire le diff EN ENTIER (--diff)
+# conformité attendue : SEUL litellm_config.yaml change, PAS litellm.env
+# (no-op vault comme au gate B4.3)
+```
+
+**Étape 2 — ACK HIGH-RISK OPÉRATEUR** : c'est ICI, avant la commande
+réelle, que l'ack est donné — le deploy redémarre le conteneur litellm
+(`recreate: always`, incident transitoire connu ~2 min de 502 pendant les
+migrations, cf. gate B4.3 2026-08-11). Ne pas exécuter l'étape 3 sans cet
+ack explicite.
+
+**Étape 3 — deploy réel** :
+```bash
 ansible-playbook playbooks/stacks/site.yml \
   --tags litellm \
   --diff
-# ack high-risk opérateur ici (recreate: always va redémarrer le conteneur
-# litellm — attendre l'incident transitoire connu, ~2 min de 502 pendant
-# les migrations, cf. gate B4.3 2026-08-11)
 ```
 
-Puis merge `chantier/campagne3-aliases` → `main` (après le protocole de
-preuve §4 rendu vert), push origin + gitea.
+**Rollback** (critère : protocole §4 rouge, ou 502 persistant > 10 min, ou
+tout alias existant — `eco-1`, `eco-2`, `claude-sonnet-cached` — qui cesse
+de répondre) :
+```bash
+git checkout main   # main = fa66b19, dernier état déployé connu-bon
+ansible-playbook playbooks/stacks/site.yml --tags litellm --diff
+# puis vérif santé : appel 1-token sur eco-1 et claude-sonnet-cached,
+# attestation provider comme au §4(e). Le rollback est le même geste que
+# le deploy (template re-rendu depuis main + recreate) — pas de restauration
+# manuelle de fichier dans le conteneur.
+```
+
+Puis (si §4 vert) merge `chantier/campagne3-aliases` → `main`, push origin
++ gitea.
 
 ## 4. Protocole de preuve post-deploy (calqué sur gate TECHNIQUE B4.3)
 

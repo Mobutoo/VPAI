@@ -516,6 +516,43 @@ model_list:
       metadata:
         tier: "campagne3"
         tags: ["code", "optimus-factory", "rang3-controle", "prompt-caching", "zdr"]
+
+  - model_name: "gpt-56-sol"
+    litellm_params:
+      # GPT-5.6 Sol — candidat rang 4 "opus-class" (amendement opérateur
+      # 2026-08-12, hors périmètre initial de la campagne 3 ratifiée :
+      # Terminal-Bench 2.1 88,8-89,5 %, prix quasi identique à Opus 5, pas
+      # d'avantage coût net — docs/research/2026-08-12-b4-candidats-rangs-
+      # hauts.md §3 rang 4). DEUX endpoints Azure ZDR existent (tag "azure"
+      # base/us et tag "azure/eu", même provider_name "Azure") — slug
+      # provider commun re-vérifié GET /api/v1/providers 2026-08-12 :
+      # {"slug": "azure", "name": "Azure"} (entrée UNIQUE, pas de slug
+      # séparé par région, même situation que google-vertex). order:
+      # ["azure"] ne distingue donc PAS la région ; endpoint "azure" (base)
+      # retenu pour le model_info (moins cher, cf. table prix) mais le
+      # routage réel peut atterrir sur "azure/eu" (~+10% prix) — même
+      # résidu de précision que documenté pour google-vertex.
+      model: "openrouter/openai/gpt-5.6-sol"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 8192
+      cache_control_injection_points:
+        - location: message
+          role: system
+      extra_body:
+        provider:
+          data_collection: "deny"
+          zdr: true
+          allow_fallbacks: false
+          order: ["azure"]
+    model_info:
+      max_input_tokens: 1050000
+      max_output_tokens: 8192
+      input_cost_per_token: 0.000005
+      output_cost_per_token: 0.00003
+      cache_read_input_token_cost: 0.0000005
+      metadata:
+        tier: "campagne3"
+        tags: ["code", "optimus-factory", "rang4", "prompt-caching", "zdr"]
 {% endif %}
 
   # ============================================================

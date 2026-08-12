@@ -9,17 +9,38 @@ model_list:
   # ============================================================
   - model_name: "claude-opus"
     litellm_params:
-      # Bascule OpenRouter 2026-08-11 (crédits directs Anthropic à sec,
-      # constat smoke optimus : primaire KO -> fallback glm-5) — iso-version.
-      model: "openrouter/anthropic/claude-opus-4"
+      # Correction gen 4->gen 5 (campagne 3, 2026-08-12, dossier
+      # docs/research/2026-08-12-b4-candidats-rangs-hauts.md paragraphes 2/3) :
+      # opus-4 ($15/$75) -> opus-5 ($5/$25), gain ~3x. Pinne ZDR
+      # (google-vertex -- slug exact re-verifie GET /api/v1/providers le
+      # 2026-08-12, PAS "google" comme ecrit au doc source, cf. finding de
+      # revue) + allow_fallbacks:false, meme mecanique fail-closed
+      # qu'eco-1/eco-2.
+      # RESIDU CONNU (non corrige ici, hors perimetre instruit) : la map
+      # `fallbacks:` LiteLLM route encore claude-opus -> claude-sonnet ->
+      # gpt-codex, aucun des deux n'est pinne ZDR -- une panne du provider
+      # google-vertex romprait silencieusement la garantie ZDR pour ce
+      # rang. Sans objet pour tenant PII actuellement (OpenClaw profil
+      # "premium", pas le chemin factory tenant-data B4.3) ; a trancher
+      # si claude-opus devient un jour un chemin tenant-data.
+      model: "openrouter/anthropic/claude-opus-5"
       api_key: "os.environ/OPENROUTER_API_KEY"
       max_tokens: 16384
+      extra_body:
+        provider:
+          data_collection: "deny"
+          zdr: true
+          allow_fallbacks: false
+          order: ["google-vertex"]
     model_info:
-      max_input_tokens: 200000
+      max_input_tokens: 1000000
       max_output_tokens: 16384
+      input_cost_per_token: 0.000005
+      output_cost_per_token: 0.000025
+      cache_read_input_token_cost: 0.0000005
       metadata:
         tier: "premium"
-        tags: ["code", "architecture", "reasoning", "review-premium"]
+        tags: ["code", "architecture", "reasoning", "review-premium", "zdr"]
 
   - model_name: "claude-sonnet"
     litellm_params:
@@ -55,6 +76,70 @@ model_list:
       metadata:
         tier: "medium"
         tags: ["code", "optimus-smoke", "prompt-caching"]
+
+  - model_name: "claude-sonnet-5-cached"
+    litellm_params:
+      # Alias SÉPARÉ, campagne 3 (2026-08-12, docs/research/2026-08-12-b4-
+      # candidats-rangs-hauts.md §2). "claude-sonnet-cached" reste INTACT
+      # ci-dessus : il est consommé par l'orchestrateur/harnais smoke
+      # Optimus (scripts/rotate-smoke-key.sh, scripts/probe-prompt-cache.sh)
+      # et changer son modèle sous-jacent est un changement de comportement
+      # — variante SÛRE choisie par défaut, migration en place laissée à un
+      # geste opérateur explicite (voir plan de deploy, point de décision).
+      # Pinné ZDR google-vertex (slug re-vérifié GET /api/v1/providers
+      # 2026-08-12) + allow_fallbacks:false, AUCUN fallback niveau routeur,
+      # même discipline qu'eco-1/eco-2/claude-sonnet-cached.
+      model: "openrouter/anthropic/claude-sonnet-5"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 8192
+      cache_control_injection_points:
+        - location: message
+          role: system
+      extra_body:
+        provider:
+          data_collection: "deny"
+          zdr: true
+          allow_fallbacks: false
+          order: ["google-vertex"]
+    model_info:
+      max_input_tokens: 1000000
+      max_output_tokens: 8192
+      input_cost_per_token: 0.000002
+      output_cost_per_token: 0.00001
+      cache_read_input_token_cost: 0.0000002
+      metadata:
+        tier: "medium"
+        tags: ["code", "optimus-smoke", "prompt-caching", "zdr", "campagne3"]
+
+  - model_name: "opus-cached"
+    litellm_params:
+      # Rang 4 de l'échelle d'escalade B4 (design
+      # docs/specs/2026-08-11-b4-design-escalade-modeles-implement.md §7.1,
+      # ladder rung "dernier recours"). À CRÉER selon le design — posé ici.
+      # Pinné ZDR google-vertex (Bedrock équivalent en prix, non retenu ici
+      # pour cohérence avec les autres alias sonnet/opus-5 du même lot) +
+      # allow_fallbacks:false, AUCUN fallback niveau routeur.
+      model: "openrouter/anthropic/claude-opus-5"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 16384
+      cache_control_injection_points:
+        - location: message
+          role: system
+      extra_body:
+        provider:
+          data_collection: "deny"
+          zdr: true
+          allow_fallbacks: false
+          order: ["google-vertex"]
+    model_info:
+      max_input_tokens: 1000000
+      max_output_tokens: 16384
+      input_cost_per_token: 0.000005
+      output_cost_per_token: 0.000025
+      cache_read_input_token_cost: 0.0000005
+      metadata:
+        tier: "premium"
+        tags: ["code", "optimus-factory", "escalade-rang4", "prompt-caching", "zdr"]
 
   - model_name: "claude-haiku"
     litellm_params:
@@ -305,6 +390,169 @@ model_list:
       metadata:
         tier: "eco"
         tags: ["code", "optimus-factory", "eco-2", "prompt-caching", "zdr"]
+
+  # ============================================================
+  # TIER CAMPAGNE 3 — B4 candidats rangs hauts (sonnet-class / fable-class)
+  # docs/research/2026-08-12-b4-candidats-rangs-hauts.md (gate ratifié
+  # docs/ops/gates-journal.md 2026-08-12 midi). Même discipline fail-closed
+  # qu'eco-1/eco-2 : data_collection=deny + zdr=true + allow_fallbacks=false
+  # + provider.order verrouillé à UN fournisseur, AUCUNE entrée dans la map
+  # `fallbacks:` (attestation modèle forte). Couples (model_id,
+  # provider_name) vérifiés membres de GET /api/v1/endpoints/zdr le
+  # 2026-08-12 (722 endpoints). Prix relevés live à la même date.
+  # ============================================================
+  - model_name: "glm-52"
+    litellm_params:
+      # GLM-5.2 — rang 3 "sonnet-class" recommandé (SWE-bench Pro 62,1 % à
+      # 1,1 pt de Sonnet-5, ~3,5x moins cher). Endpoint DigitalOcean :
+      # tools confirmé présent (supported_parameters).
+      model: "openrouter/z-ai/glm-5.2"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 8192
+      cache_control_injection_points:
+        - location: message
+          role: system
+      extra_body:
+        provider:
+          data_collection: "deny"
+          zdr: true
+          allow_fallbacks: false
+          order: ["digitalocean"]
+    model_info:
+      max_input_tokens: 262144
+      max_output_tokens: 8192
+      input_cost_per_token: 0.00000063
+      output_cost_per_token: 0.00000198
+      cache_read_input_token_cost: 0.0000000945
+      metadata:
+        tier: "campagne3"
+        tags: ["code", "optimus-factory", "rang3", "prompt-caching", "zdr"]
+
+  - model_name: "deepseek-v4-pro"
+    litellm_params:
+      # DeepSeek V4 Pro — repositionné rang 3 (H2 : écart ~24 pts SWE-bench
+      # Pro sous Opus 5, PAS un candidat rang 4). Endpoint Novita : tools
+      # confirmé présent. JAMAIS DeepInfra comme fallback silencieux —
+      # provider.order verrouillé exclut ce choix par construction.
+      model: "openrouter/deepseek/deepseek-v4-pro"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 8192
+      cache_control_injection_points:
+        - location: message
+          role: system
+      extra_body:
+        provider:
+          data_collection: "deny"
+          zdr: true
+          allow_fallbacks: false
+          order: ["novita"]
+    model_info:
+      max_input_tokens: 1048576
+      max_output_tokens: 8192
+      input_cost_per_token: 0.000001168
+      output_cost_per_token: 0.000002336
+      cache_read_input_token_cost: 0.00000009855
+      metadata:
+        tier: "campagne3"
+        tags: ["code", "optimus-factory", "rang3", "prompt-caching", "zdr"]
+
+  - model_name: "kimi-k3"
+    litellm_params:
+      # Kimi K3 — seul candidat ZDR viable au rang 5 "fable-class" (Fable 5
+      # lui-même non routable ZDR, 0/722 endpoints). Endpoint DigitalOcean
+      # choisi car tools confirmé présent — DeepInfra EXCLU explicitement :
+      # seul provider ZDR de K3 SANS tools (piège identifié au dossier,
+      # provider.order verrouillé l'exclut par construction).
+      model: "openrouter/moonshotai/kimi-k3"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 8192
+      cache_control_injection_points:
+        - location: message
+          role: system
+      extra_body:
+        provider:
+          data_collection: "deny"
+          zdr: true
+          allow_fallbacks: false
+          order: ["digitalocean"]
+    model_info:
+      max_input_tokens: 1048576
+      max_output_tokens: 8192
+      input_cost_per_token: 0.00000285
+      output_cost_per_token: 0.00001425
+      cache_read_input_token_cost: 0.000000285
+      metadata:
+        tier: "campagne3"
+        tags: ["code", "optimus-factory", "rang5", "prompt-caching", "zdr"]
+
+  - model_name: "claude-sonnet-5-zdr"
+    litellm_params:
+      # Bras de contrôle OBLIGATOIRE de la campagne 3 (référent réel du
+      # rang 3, seul rang où des candidats hors-Anthropic concourent).
+      # DISTINCT de "claude-sonnet-5-cached" (alias de migration sûre de
+      # l'orchestrateur, même modèle/pin) : deux consommateurs différents
+      # gardés découplés à dessein (benchmark vs prod smoke), redite
+      # documentée — fusion possible en fil de l'eau si jugée utile.
+      # Pinné ZDR google-vertex (slug exact — PAS "google", cf. finding de
+      # revue re-vérifié GET /api/v1/providers 2026-08-12).
+      model: "openrouter/anthropic/claude-sonnet-5"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 8192
+      cache_control_injection_points:
+        - location: message
+          role: system
+      extra_body:
+        provider:
+          data_collection: "deny"
+          zdr: true
+          allow_fallbacks: false
+          order: ["google-vertex"]
+    model_info:
+      max_input_tokens: 1000000
+      max_output_tokens: 8192
+      input_cost_per_token: 0.000002
+      output_cost_per_token: 0.00001
+      cache_read_input_token_cost: 0.0000002
+      metadata:
+        tier: "campagne3"
+        tags: ["code", "optimus-factory", "rang3-controle", "prompt-caching", "zdr"]
+
+  - model_name: "gpt-56-sol"
+    litellm_params:
+      # GPT-5.6 Sol — candidat rang 4 "opus-class" (amendement opérateur
+      # 2026-08-12, hors périmètre initial de la campagne 3 ratifiée :
+      # Terminal-Bench 2.1 88,8-89,5 %, prix quasi identique à Opus 5, pas
+      # d'avantage coût net — docs/research/2026-08-12-b4-candidats-rangs-
+      # hauts.md §3 rang 4). DEUX endpoints Azure ZDR existent (tag "azure"
+      # base/us et tag "azure/eu", même provider_name "Azure") — slug
+      # provider commun re-vérifié GET /api/v1/providers 2026-08-12 :
+      # {"slug": "azure", "name": "Azure"} (entrée UNIQUE, pas de slug
+      # séparé par région, même situation que google-vertex). order:
+      # ["azure"] ne distingue donc PAS la région ; endpoint "azure" (base)
+      # retenu pour le model_info (moins cher, cf. table prix) mais le
+      # routage réel peut atterrir sur "azure/eu" (~+10% prix) — même
+      # résidu de précision que documenté pour google-vertex.
+      model: "openrouter/openai/gpt-5.6-sol"
+      api_key: "os.environ/OPENROUTER_API_KEY"
+      max_tokens: 8192
+      cache_control_injection_points:
+        - location: message
+          role: system
+      extra_body:
+        provider:
+          data_collection: "deny"
+          zdr: true
+          allow_fallbacks: false
+          order: ["azure"]
+    model_info:
+      max_input_tokens: 1050000
+      max_output_tokens: 8192
+      input_cost_per_token: 0.000005
+      output_cost_per_token: 0.00003
+      cache_read_input_token_cost: 0.0000005
+      metadata:
+        tier: "campagne3"
+        tags: ["code", "optimus-factory", "rang4", "prompt-caching", "zdr"]
 {% endif %}
 
   # ============================================================

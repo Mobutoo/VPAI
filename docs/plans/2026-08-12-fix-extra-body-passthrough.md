@@ -108,8 +108,10 @@ source) :
   profondeur vs `drop_params`) et `data["extra_body"]["provider"]`
   (le vecteur CRITIQUE), gère `extra_body` fourni en JSON string. Logging
   `logger.warning` à chaque strip (observabilité, sans exposer de secret).
-- `roles/litellm/templates/litellm_config.yaml.j2` — ajout
-  `litellm_settings.callbacks: guard_extra_body.proxy_handler_instance`.
+- `roles/litellm/templates/litellm_config.yaml.j2` — ajout de
+  `litellm_settings.callbacks` en **LISTE YAML** (`- guard_extra_body.proxy_handler_instance`,
+  template l.517-518) — jamais en scalaire (cf. §1 : un scalaire fait
+  écraser `litellm.callbacks` par `initialize_callbacks_on_proxy`).
 - `roles/litellm/tasks/main.yml` — nouvelle tâche `ansible.builtin.copy`
   (fichier statique, PAS un template Jinja) déployant
   `guard_extra_body.py` vers `{{ litellm_config_dir }}/guard_extra_body.py`,
@@ -132,7 +134,9 @@ Validations exécutées (aucune n'a nécessité de proxy vivant) :
   warning(s)**, profil `production`.
 - Rendu Jinja + `yaml.safe_load()` de `litellm_config.yaml.j2` (contexte
   reconstruit depuis `roles/litellm/defaults/main.yml`) → YAML valide,
-  `litellm_settings.callbacks == "guard_extra_body.proxy_handler_instance"`.
+  `litellm_settings.callbacks` est une **liste** contenant
+  `"guard_extra_body.proxy_handler_instance"`
+  (`isinstance(cb, list) and "guard_extra_body.proxy_handler_instance" in cb`).
 - Rendu Jinja + `yaml.safe_load()` du fragment `apps-core.yml.j2` (contexte
   reconstruit depuis `roles/docker-stack/molecule/default/converge.yml` +
   `inventory/group_vars/all/*.yml`) → YAML valide, volume
@@ -172,14 +176,29 @@ Mêmes précautions que le deploy campagne 3 (`docs/plans/
 tout `ansible-playbook` réel, rollback épinglé sur le commit courant de
 `main`.
 
+**Étape 1 — dry-run** :
 ```bash
 git log --oneline -1 main   # noter le sha ÉPINGLÉ pour le rollback
 git checkout chantier/fix-extra-body-passthrough
 ansible-playbook playbooks/stacks/site.yml \
   -e prod_ip=100.64.0.14 \
-  --diff
+  --diff \
+  --check
 # PAS de --tags litellm seul (cf. §2, dépendance docker-stack) — run
 # complet ou --tags litellm,docker-stack si le playbook le permet.
+```
+
+**Étape 2 — ACK OPÉRATEUR EXPLICITE** : point d'arrêt obligatoire. Lire le
+diff du dry-run en entier (attendu : config litellm + fichier callback +
+compose apps-core, rien d'autre). L'étape 3 ne se lance qu'après cet ack
+(`touch /tmp/claude-highrisk-ack` si le garde le demande) — jamais
+enchaînée.
+
+**Étape 3 — deploy réel** :
+```bash
+ansible-playbook playbooks/stacks/site.yml \
+  -e prod_ip=100.64.0.14 \
+  --diff
 ```
 
 **Rollback** (critère : protocole §4 rouge, ou 502 persistant > 10 min, ou
@@ -226,7 +245,8 @@ export LITELLM_MASTER_KEY="$(vault-read-litellm-master-key)"  # jamais en clair
   -b https://llm.ewutelo.cloud -m eco-1 -p <provider-pinné-eco-1> -a openai
 ./roles/litellm/files/test-extra-body-guard.sh \
   -b https://llm.ewutelo.cloud -m eco-2 -p <provider-pinné-eco-2> -a openai
-unset LITELLM_MASTER_KEY
+# NE PAS unset ici — le test de régression (d) réutilise la clé ;
+# `unset LITELLM_MASTER_KEY` se fait APRÈS (d), en fin de protocole.
 ```
 Attendu : `RESULTAT: PASS` (exit 0) sur les 3 — les 2 vecteurs (top-level
 ET `extra_body.provider`) échouent à faire dévier le fournisseur attesté

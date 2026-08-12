@@ -1,8 +1,12 @@
 # Plan de déploiement — fix extra_body passthrough (finding CRITIQUE (c) gate Optimus B4)
 
-Statut : PRÉPARÉ, NON DÉPLOYÉ. Branche `chantier/fix-extra-body-passthrough`
-(VPAI, base = `main` @ `fa66b19`). Commit(s) listés en fin de document.
-Le deploy lui-même est un geste opérateur (ack high-risk requis, même
+Statut initial de ce document (2026-08-12) : PRÉPARÉ, NON DÉPLOYÉ. La v1 du
+fix (delete-only, commit `990d129`) a depuis été déployée en prod par
+l'opérateur (branche fusionnée avec campagne3-aliases, commit `456fc34`).
+**INCIDENT POST-DEPLOI 2026-08-13, corrigé dans ce document/cette branche
+— voir §6 ci-dessous avant tout nouveau déploiement.**
+
+Le deploy lui-même reste un geste opérateur (ack high-risk requis, même
 discipline que le gate technique B4.3 du 2026-08-11 et le deploy campagne 3
 du 2026-08-12).
 
@@ -303,3 +307,178 @@ prod. Cohérent avec le critère général §3 « protocole §4 rouge → rollba
   re-vérification des 3 anchors du §1 (le comportement d'un callback custom
   n'est pas dans le contrat d'API stable documenté de LiteLLM — code
   interne, peut changer sans annonce dans un changelog public).
+- **(ajouté §6, post-incident)** Le pin serveur n'est réécrit QUE si le
+  client envoie une clé `extra_body` (override ou non). Un appel
+  strictement nominal (aucun `extra_body` client) reste protégé par le
+  comportement natif du merge Router (`litellm_params` jamais concurrencé)
+  — pas de résidu là. En revanche, `claude-opus` (seul alias pinné présent
+  dans la map `fallbacks:`) reste vulnérable à un empoisonnement de son
+  fallback (`claude-sonnet`) SI le client a envoyé un `extra_body` sur
+  l'appel primaire ET que ce dernier échoue et bascule en fallback — le
+  pin injecté pour `claude-opus` (google-vertex, `allow_fallbacks:false`)
+  rides dans la tentative `claude-sonnet` via le même dict `kwargs`
+  réutilisé. Non résolu dans ce correctif (périmètre restreint au finding
+  gate + incident 2026-08-13, tous deux définis par la présence d'un
+  `extra_body` client) ; option de fix future : retirer `claude-opus` de
+  la map `fallbacks:` (déjà discuté comme option (b) au plan campagne 3,
+  non tranchée) ou faire filtrer/nettoyer `extra_body` du côté
+  fallback-retry lui-même (nécessiterait un hook différent, pas
+  `pre_call_hook` qui ne revoit pas les tentatives de fallback).
+
+## 6. Incident post-déploiement 2026-08-13 — correction (delete → enforce)
+
+**Constat opérateur** (résumé) : garde active en prod, log de strip visible
+(`stripped client-supplied provider override(s) ['extra_body.provider']`),
+mais preuve empirique que le pin serveur est quand même cassé sur le
+chemin overridé : appel `glm-52` AVEC `extra_body.provider` client →
+fournisseur attesté **CoreWeave** (ni l'override `openai`, ni le pin
+serveur `digitalocean`) ; appel `glm-52` NOMINAL (sans `extra_body`) →
+`DigitalOcean` (pin OK) ; config effective vérifiée correcte
+(`extra_body.provider.order=[digitalocean]`, `allow_fallbacks: false`).
+
+**Cause racine confirmée dans le code du wheel PINNÉ `litellm==1.83.3`**
+(téléchargé et inspecté directement, pas seulement lu en doc) —
+`router.py::Router._acompletion()`, ~L2140-2148 :
+```python
+input_kwargs = {
+    **litellm_params,   # SERVEUR (deployment litellm_params, config.yaml)
+    "messages": messages,
+    "caching": self.cache_responses,
+    "client": model_client,
+    **kwargs,            # CLIENT (request data) — spread EN DERNIER, GAGNE
+}
+```
+Ce merge est **shallow au niveau des clés de premier niveau** de
+`input_kwargs`. La v1 du guard (commit `990d129`) supprimait uniquement la
+sous-clé `data["extra_body"]["provider"]`, laissant `data["extra_body"]`
+présent **comme clé** (même vide `{}`). Dès qu'une requête client contient
+une clé `extra_body` — avec OU SANS tentative d'override `provider`
+explicite — cette clé écrase **intégralement**
+`litellm_params["extra_body"]` (le pin serveur complet) à ce merge, AVANT
+même que la logique de merge plus fine documentée dans
+`litellm/utils.py::get_optional_params()` (le merge shallow
+`{**server_extra_body, **client_extra_body}` sur lequel reposait
+l'analyse initiale du finding gate) n'ait la moindre chance de s'exécuter
+— ce merge plus fin ne voit jamais qu'**une seule** source `extra_body` à
+ce stade, celle qui a déjà survécu au merge Router `_acompletion`
+ci-dessus. Résultat : `extra_body` vide → OpenRouter reçoit zéro
+préférence de fournisseur → routage libre (CoreWeave dans l'incident).
+
+**Note historique demandée** : l'attestation Google observée juste après
+le tout premier déploiement (avant même le fix v1) n'était **pas une
+coïncidence de routage** — c'était un chemin différent. Ce test portait
+sur un appel `claude-opus` **sans aucune clé `extra_body`** dans le corps
+client. Le merge Router `{**litellm_params, **kwargs}` ne voit alors
+aucune clé `extra_body` côté `kwargs` : `litellm_params["extra_body"]`
+(serveur) n'est jamais concurrencé et survit intact — d'où l'attestation
+correcte. Ce mécanisme (« absence de clé = pin protégé ») est réel mais
+**fragile** : n'importe quel client envoyant un `extra_body` vide pour
+toute autre raison légitime aurait rompu le pin quand même, sans même
+tenter un override. C'est exactement le trou exploité par l'incident
+2026-08-13.
+
+**Correction** (`roles/litellm/files/guard_extra_body.py`, remplace le
+comportement « delete » par « enforce conditionnel ») : au lieu de
+supprimer `data["extra_body"]["provider"]`, le callback le **réécrit**
+avec le pin serveur exact du modèle appelé, lu depuis
+`litellm.proxy.proxy_server.llm_router` (le `Router` global du proxy,
+peuplé au chargement de la config — même pattern de lazy-import que
+`litellm/proxy/hooks/batch_rate_limiter.py`). `Router.get_model_list(
+model_name=...)` retourne les deployments correspondant à l'alias avec
+leur `litellm_params` intact (vérifié empiriquement avec
+`litellm[proxy]==1.83.3` réellement installé : le dict `extra_body.
+provider` survit tel quel à l'enregistrement du Router). Comportement par
+cas :
+- Client envoie un override explicite (`extra_body.provider` présent) →
+  réécrit avec le pin serveur.
+- Client envoie un `extra_body` SANS `provider` (le trou de l'incident,
+  y compris vide `{}` ou avec un sous-champ légitime type `transforms`) →
+  la sous-clé `provider` est **ajoutée** dans le MÊME dict que celui qui
+  sera spread au merge Router, forçant le pin quel que soit le résultat du
+  merge shallow top-level ; les autres sous-clés légitimes du client
+  (`transforms`, etc.) sont préservées.
+- **Aucun `extra_body` client du tout (nominal) → NON touché, délibérément
+  (revu et corrigé après une 1re tentative qui injectait inconditionnellement).**
+  Une 1re version de ce fix (abandonnée en cours de revue, jamais
+  déployée) injectait le pin même sur les appels nominaux. Ceci a été
+  identifié comme un **empoisonnement du filet de secours** : `data`
+  (le dict post `pre_call_hook`) est le MÊME objet `kwargs` réutilisé tel
+  quel par `Router.async_function_with_fallbacks_common_utils()` pour les
+  tentatives de fallback (`input_kwargs = {..., **kwargs}`, vérifié dans le
+  wheel pinné — seule la clé `"model"` change entre l'appel primaire et un
+  fallback). Un pin `google-vertex` + `allow_fallbacks:false` injecté pour
+  un appel nominal `claude-opus` aurait survécu jusqu'à la tentative de
+  fallback `claude-sonnet` (`fallbacks: [claude-opus: [claude-sonnet,
+  gpt-codex]]`, litellm_config.yaml.j2), un modèle SANS pin configuré —
+  un fournisseur qui ne le sert probablement pas, avec fallback interdit
+  → échec dur du filet de secours lui-même. Préserver le comportement
+  « absence de clé côté client = pin serveur jamais concurrencé au merge
+  Router » (correct par construction, y compris à travers un fallback,
+  vérifié fonctionner — c'est l'observation historique claude-opus →
+  Google) pour le cas STRICTEMENT nominal évite ce risque.
+- Modèle sans pin serveur configuré (alias non pinné, ou lookup Router
+  indisponible/ambigu — aucun cas actuel dans `litellm_config.yaml.j2` où
+  un alias pinné a plus d'un deployment) → comportement conservateur
+  inchangé : la tentative d'override client est simplement supprimée (deny
+  by default, pas de valeur à reconstituer).
+
+**Résidu assumé (non résolu, à documenter §5)** : si le client envoie une
+cle `extra_body` (override ou non) ET que l'appel tombe en fallback, le
+pin injecté pour le modèle PRIMAIRE ride quand même dans la tentative de
+fallback (même mécanisme que ci-dessus, non résolu pour CE sous-cas —
+seul `claude-opus` est concerné parmi les alias pinnés, seul présent dans
+la map `fallbacks:`). Périmètre plus étroit que le risque initial
+(déclenché seulement si le client envoie explicitement un `extra_body`),
+mais réel.
+
+**Preuve** : `_enforce_provider_pin()` testé (a) offline sans litellm
+installé (repli conservateur "delete", fonction pure) ; (b) avec
+`litellm[proxy]==1.83.3` réellement installé + un `Router` réel exposé
+comme `litellm.proxy.proxy_server.llm_router`, sur les cas override
+explicite, incident reproduit à l'identique (`extra_body` vide,
+`extra_body` avec sous-clé légitime sans `provider`), nominal (confirmé
+NON touché — pas de fabrication), modèle non pinné/inconnu — tous PASS ;
+(c) **preuve empoisonnement-fallback** : simulation de la réutilisation
+exacte du dict `kwargs` par le mécanisme de fallback (seule `"model"`
+change) — confirmé qu'un appel nominal ne transporte plus aucune clé
+`extra_body` vers un fallback (poisoning évité pour ce cas) ; (d) **preuve
+la plus forte** : appel direct de `ProxyLogging.pre_call_hook()` (le vrai
+point d'entrée `proxy_server.py`) PUIS reproduction EXACTE de la formule de
+merge `router.py::_acompletion` (`{**litellm_params, "messages":…,
+"caching":…, "client":…, **kwargs}`) sur les 3 cas (override, incident,
+nominal) — le `extra_body` final qui atteindrait `litellm.acompletion()`
+est strictement égal au pin serveur pour les 2 premiers, et au
+`litellm_params` du déploiement réellement appelé (intact) pour le
+nominal. Le même harnais, appliqué au comportement v1 (delete-only),
+reproduit fidèlement l'incident (`extra_body: {}` final) — la preuve n'est
+donc pas triviale (elle discrimine bien l'ancien comportement bogué du
+nouveau).
+
+`test-extra-body-guard.sh` mis à jour : les 4 vecteurs (A top-level, B
+`extra_body.provider`, **C `extra_body` sans `provider` — le vecteur exact
+de l'incident**, D nominal) exigent tous une **égalité stricte** entre le
+fournisseur attesté et le pin serveur (c'était déjà le cas pour A/B — le
+comparateur n'a jamais accepté « différent de l'attaquant » comme critère
+suffisant ; C et D sont nouveaux et couvrent spécifiquement la classe de
+bug de cet incident). Vérifié en mode mock (curl stubé) : PASS sur les 4
+avec un guard corrigé, FAIL ciblé sur B et C (A et D restent PASS) avec un
+mock reproduisant le comportement incident — signature qui correspond
+exactement à l'observation opérateur.
+
+**Redeploy** : SEUL le contenu de `guard_extra_body.py` change dans ce
+correctif — le point de montage (`roles/docker-stack/templates/compose/
+apps-core.yml.j2`) est inchangé depuis le déploiement précédent. La task
+`Deploy LiteLLM extra_body provider-pin guard callback`
+(`ansible.builtin.copy`, `roles/litellm/tasks/main.yml`) détecte le
+changement de contenu et déclenche `notify: Restart litellm stack`, dont
+le handler (`roles/litellm/handlers/main.yml`) applique
+`community.docker.docker_compose_v2` avec `recreate: always` sur le
+service `litellm` — un recreate relit le bind mount `ro` avec le nouveau
+contenu du fichier hôte. **Un redeploy `--tags litellm` seul suffit** ;
+`docker-stack` n'a PAS besoin d'être retaggé cette fois (contrairement au
+tout premier déploiement du garde-fou, qui introduisait le mount lui-même).
+
+**Non déployé par cette session** — NE PAS déployer sans nouvel ack
+opérateur explicite et sans avoir rejoué le protocole §4 (vecteurs A-D du
+script mis à jour, en particulier C qui est le vecteur exact de
+l'incident) contre le proxy réel après redeploy.

@@ -3,17 +3,30 @@ set -euo pipefail
 
 # test-extra-body-guard.sh — preuve reproductible post-deploy du fix
 # finding CRITIQUE (c), gate technique Optimus B4 2026-08-12
-# (docs/ops/gates-journal.md ligne "2026-08-12 après-midi").
+# (docs/ops/gates-journal.md ligne "2026-08-12 après-midi"), ET de son
+# correctif post-incident 2026-08-13 (voir roles/litellm/files/
+# guard_extra_body.py, docstring module — la v1 "delete-only" supprimait
+# extra_body.provider mais laissait "extra_body": {} présent comme clé,
+# ce qui effaçait ENTIÈREMENT le pin serveur au merge Router shallow
+# `{**litellm_params, **kwargs}` — provider attesté ni l'attaquant ni le
+# pin, ex. "CoreWeave" sur glm-52 pinné DigitalOcean).
 #
-# Rejoue les DEUX vecteurs de contournement du pin fournisseur/ZDR contre
-# le proxy LiteLLM et échoue (exit != 0) si le fournisseur attesté par la
-# réponse diffère du pin serveur (litellm_params.extra_body.provider.order
-# du modèle testé dans litellm_config.yaml.j2) :
+# Chaque vecteur EXIGE une égalité stricte (substring) entre le fournisseur
+# attesté et le pin serveur — PAS seulement une inégalité avec le
+# fournisseur attaquant. Un provider ni-attaquant-ni-pin (le symptôme exact
+# de l'incident du 2026-08-13) est un FAIL, pas un pass par défaut.
+#
+# Rejoue 4 vecteurs contre le proxy LiteLLM :
 #   (A) top-level  "provider": {...}          — déjà neutralisé par
 #       drop_params:true, testé ici en défense-en-profondeur.
-#   (B) "extra_body": {"provider": {...}}     — le vecteur CRITIQUE non
-#       neutralisé avant le callback guard_extra_body.py (roles/litellm/
-#       files/guard_extra_body.py, litellm_settings.callbacks).
+#   (B) "extra_body": {"provider": {...}}     — le vecteur CRITIQUE
+#       d'origine (gate B4, extra_body.provider écrase le pin).
+#   (C) "extra_body": {...SANS "provider"...} — le vecteur de l'INCIDENT
+#       2026-08-13 : extra_body présent mais sans tentative d'override
+#       "provider" explicite (ex. juste {"transforms": [...]" ou {}) —
+#       doit quand même attester le pin serveur (pas de routage libre).
+#   (D) NOMINAL — aucun extra_body du tout dans le corps client — doit
+#       toujours attester le pin serveur (contrôle de non-régression).
 #
 # Usage:
 #   LITELLM_MASTER_KEY=... ./test-extra-body-guard.sh \
@@ -27,11 +40,12 @@ set -euo pipefail
 #   -a  provider ATTAQUANT injecté par le client dans les 2 vecteurs
 #       (doit être manifestement différent du pin — défaut: openai)
 #
-# Sortie : 0 = les 2 vecteurs échouent à contourner le pin (PASS guard).
-#          1 = au moins un vecteur a réussi à contourner le pin OU
-#              l'attestation fournisseur est ABSENTE de la réponse (une
-#              attestation manquante n'est PAS un succès du garde-fou —
-#              c'est un échec de preuve, traité comme FAIL, cf. revue).
+# Sortie : 0 = les 4 vecteurs attestent tous le pin serveur (PASS guard).
+#          1 = au moins un vecteur diverge du pin (contournement OU
+#              incident-like : ni attaquant ni pin) OU l'attestation
+#              fournisseur est ABSENTE de la réponse (une attestation
+#              manquante n'est PAS un succès du garde-fou — c'est un
+#              échec de preuve, traité comme FAIL, cf. revue).
 #
 # Ne journalise/affiche JAMAIS LITELLM_MASTER_KEY. Nécessite: curl, jq.
 
@@ -130,15 +144,28 @@ vector_b_body="$(jq -n --arg model "${MODEL}" --arg atk "${ATTACKER_PROVIDER}" \
   '{model: $model, max_tokens: 1, messages: [{role:"user", content:"1"}],
     extra_body: {provider: {order: [$atk], allow_fallbacks: true, data_collection: "allow"}}}')"
 
+# Vecteur C : reproduit exactement le corps qui a déclenché l'incident
+# 2026-08-13 (extra_body présent mais sans clé "provider" — que ce soit
+# vide ou avec un sous-champ légitime sans rapport).
+vector_c_body="$(jq -n --arg model "${MODEL}" \
+  '{model: $model, max_tokens: 1, messages: [{role:"user", content:"1"}],
+    extra_body: {transforms: ["middle-out"]}}')"
+
+# Vecteur D : nominal, aucun extra_body du tout — non-régression.
+vector_d_body="$(jq -n --arg model "${MODEL}" \
+  '{model: $model, max_tokens: 1, messages: [{role:"user", content:"1"}]}')"
+
 overall_status=0
 
 run_vector "A top-level provider" "${vector_a_body}" || overall_status=1
 run_vector "B extra_body.provider" "${vector_b_body}" || overall_status=1
+run_vector "C extra_body sans provider (incident 2026-08-13)" "${vector_c_body}" || overall_status=1
+run_vector "D nominal (aucun extra_body)" "${vector_d_body}" || overall_status=1
 
 if [[ "${overall_status}" -eq 0 ]]; then
-  echo "RESULTAT: PASS — les 2 vecteurs de contournement échouent, pin serveur '${EXPECTED_PROVIDER}' tenu pour '${MODEL}'."
+  echo "RESULTAT: PASS — les 4 vecteurs attestent tous le pin serveur '${EXPECTED_PROVIDER}' pour '${MODEL}'."
 else
-  echo "RESULTAT: FAIL — au moins un vecteur a contourné le pin ou preuve non concluante. Voir détails ci-dessus." >&2
+  echo "RESULTAT: FAIL — au moins un vecteur diverge du pin serveur (contournement ou reprise de l'incident 2026-08-13) ou preuve non concluante. Voir détails ci-dessus." >&2
 fi
 
 exit "${overall_status}"

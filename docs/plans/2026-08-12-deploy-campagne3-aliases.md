@@ -155,7 +155,11 @@ git checkout chantier/campagne3-aliases
 ansible-playbook playbooks/stacks/site.yml \
   --tags litellm \
   --diff \
-  --check          # dry-run, lire le diff EN ENTIER (--diff)
+  --check \
+  -e prod_ip=100.64.0.14   # OBLIGATOIRE : l'inventaire résout prod_ip →
+                           # IP publique qui TIMEOUT (VPN-only by-design,
+                           # R7 — piège documenté VPAI/docs/audits/
+                           # 2026-05-29-execution-plan.md, revécu 2026-08-12)
 # conformité attendue : SEUL litellm_config.yaml change, PAS litellm.env
 # (no-op vault comme au gate B4.3)
 ```
@@ -170,7 +174,8 @@ ack explicite.
 ```bash
 ansible-playbook playbooks/stacks/site.yml \
   --tags litellm \
-  --diff
+  --diff \
+  -e prod_ip=100.64.0.14   # même override tailnet qu'à l'étape 1
 ```
 
 **Étape 4 — relever `max_budget` de la clé r6 de 10$ à 15$** (amendement
@@ -232,7 +237,7 @@ de répondre) :
 git checkout fa66b19   # commit ÉPINGLÉ = dernier état déployé connu-bon
                        # (pas `main`, qui peut avoir avancé depuis)
 git log --oneline -1   # vérifier : fa66b19 attendu avant de lancer
-ansible-playbook playbooks/stacks/site.yml --tags litellm --diff
+ansible-playbook playbooks/stacks/site.yml --tags litellm --diff -e prod_ip=100.64.0.14
 # après stabilisation : git checkout chantier/campagne3-aliases (ou main)
 # puis vérif santé : appel 1-token sur eco-1 et claude-sonnet-cached,
 # attestation provider comme au §4(e). Le rollback est le même geste que

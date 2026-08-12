@@ -84,6 +84,12 @@
       - /opt/{{ project_name }}/configs/litellm/litellm.env
     volumes:
       - /opt/{{ project_name }}/configs/litellm/litellm_config.yaml:/app/config.yaml:ro
+      # Callback custom (finding CRITIQUE (c) gate Optimus B4 2026-08-12) —
+      # DOIT rester dans le même répertoire que config.yaml : LiteLLM
+      # résout "guard_extra_body.proxy_handler_instance" (litellm_settings.
+      # callbacks) relatif au chemin du config.yaml chargé (get_instance_fn,
+      # litellm/proxy/types_utils/utils.py, vérifié litellm==1.83.3 pinné).
+      - /opt/{{ project_name }}/configs/litellm/guard_extra_body.py:/app/guard_extra_body.py:ro
     command: --config /app/config.yaml --port 4000
     networks:
       - backend

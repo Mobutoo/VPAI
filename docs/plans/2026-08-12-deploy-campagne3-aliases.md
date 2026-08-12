@@ -157,8 +157,11 @@ ansible-playbook playbooks/stacks/site.yml \
 tout alias existant — `eco-1`, `eco-2`, `claude-sonnet-cached` — qui cesse
 de répondre) :
 ```bash
-git checkout main   # main = fa66b19, dernier état déployé connu-bon
+git checkout fa66b19   # commit ÉPINGLÉ = dernier état déployé connu-bon
+                       # (pas `main`, qui peut avoir avancé depuis)
+git log --oneline -1   # vérifier : fa66b19 attendu avant de lancer
 ansible-playbook playbooks/stacks/site.yml --tags litellm --diff
+# après stabilisation : git checkout chantier/campagne3-aliases (ou main)
 # puis vérif santé : appel 1-token sur eco-1 et claude-sonnet-cached,
 # attestation provider comme au §4(e). Le rollback est le même geste que
 # le deploy (template re-rendu depuis main + recreate) — pas de restauration

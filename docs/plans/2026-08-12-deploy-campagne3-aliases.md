@@ -154,7 +154,11 @@ dans le conteneur `litellm` (pas seulement le rendu local) : chaque bloc
 `claude-sonnet-5-cached`/`opus-cached`/`claude-opus` doit contenir
 `data_collection: deny` + `zdr: true` + `allow_fallbacks: false` +
 `order:` à UN seul fournisseur + `model_info` avec coûts non nuls. La map
-`fallbacks:` ne doit contenir AUCUN de ces 7 alias comme clé.
+`fallbacks:` ne doit contenir AUCUN des 6 NOUVEAUX alias comme clé.
+`claude-opus` fait exception TANT QUE la décision §0 (option a, statu quo)
+n'est pas tranchée vers (b) : sa présence dans `fallbacks:` est le résidu
+documenté §0 — si l'opérateur tranche (b) au moment de l'ack, l'entrée est
+retirée au même deploy et le contrôle redevient « aucun des 7 ».
 ```bash
 docker exec <container_litellm> cat /app/config/litellm_config.yaml | \
   yq '.model_list[] | select(.model_name | test("glm-52|deepseek-v4-pro|kimi-k3|claude-sonnet-5-zdr|claude-sonnet-5-cached|opus-cached|claude-opus$"))'
@@ -192,8 +196,10 @@ minimal par alias, vérifier le champ `provider`/`x-openrouter-provider`
   appels identiques consécutifs (même exigence de preuve empirique que
   `claude-sonnet-cached` à l'origine — propagation `cache_control` via
   OpenRouter non garantie par la doc LiteLLM, cf. commentaire du bloc)
-- `opus-cached` → Google/Amazon Bedrock (région indifférente)
-- `claude-opus` → Google/Amazon Bedrock
+- `opus-cached` → Google/`google-vertex` EXCLUSIVEMENT (l'alias est
+  verrouillé `order: ["google-vertex"]` — une attestation Amazon Bedrock
+  = ÉCHEC du contrôle, le pinning ne tient pas)
+- `claude-opus` → Google/`google-vertex` EXCLUSIVEMENT (même règle)
 
 ## 5. Reprise campagne 3 (post-deploy, hors périmètre de ce plan)
 

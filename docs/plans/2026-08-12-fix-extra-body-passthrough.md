@@ -71,14 +71,33 @@ pinné) que :
    être monté dans le MÊME répertoire conteneur que `/app/config.yaml`.
 
 Ces trois points ont été vérifiés end-to-end sur un venv Python isolé avec
-`litellm==1.83.3` réellement installé (pas seulement lu dans le source) :
-`ExtraBodyProviderGuard` hérite bien de `CustomLogger`, la condition de
-détection de `proxy/utils.py` (`"async_pre_call_hook" in vars(cls)` +
-`cls.async_pre_call_hook != CustomLogger.async_pre_call_hook`) est vraie,
-et `get_instance_fn("guard_extra_body.proxy_handler_instance",
-config_file_path=".../config.yaml")` résout correctement l'instance depuis
-un fichier `guard_extra_body.py` posé à côté d'un `config.yaml` factice
-(mime le layout `/app/`).
+`litellm[proxy]==1.83.3` réellement installé (pas seulement lu dans le
+source) :
+- `ExtraBodyProviderGuard` hérite bien de `CustomLogger`, la condition de
+  détection de `proxy/utils.py` (`"async_pre_call_hook" in vars(cls)` +
+  `cls.async_pre_call_hook != CustomLogger.async_pre_call_hook`) est vraie.
+- `get_instance_fn("guard_extra_body.proxy_handler_instance",
+  config_file_path=".../config.yaml")` résout correctement l'instance
+  depuis un fichier `guard_extra_body.py` posé à côté d'un `config.yaml`
+  factice (mime le layout `/app/`).
+- **Piège identifié en revue et corrigé** : `litellm_settings.callbacks`
+  DOIT être une liste YAML (`- guard_extra_body.proxy_handler_instance`),
+  jamais un scalaire nu. `initialize_callbacks_on_proxy()`
+  (`proxy/common_utils/callback_utils.py`) a DEUX branches selon le type
+  Python de `value` : `isinstance(value, list)` → additif
+  (`litellm.callbacks.extend(imported_list)`) ; sinon → **assignation**
+  (`litellm.callbacks = [get_instance_fn(...)]`), qui écraserait tout
+  callback déjà enregistré par une clé `litellm_settings` précédente.
+  Vérifié avec `litellm[proxy]==1.83.3` installé : un callback sentinelle
+  pré-existant dans `litellm.callbacks` survit à l'appel avec notre config
+  en liste (`.extend`, additif confirmé) — voir `roles/litellm/templates/
+  litellm_config.yaml.j2` pour la forme retenue.
+- **Preuve end-to-end la plus forte obtenue** : appel direct de
+  `ProxyLogging.pre_call_hook()` (le VRAI point d'entrée invoqué par
+  `proxy_server.py`, pas une simulation de son comportement) après
+  enregistrement du callback via `initialize_callbacks_on_proxy()` — un
+  payload contenant `extra_body.provider` malveillant ressort avec
+  `extra_body: {}` (clé retirée), sans toucher au reste du payload.
 
 ## 2. Implémentation
 
@@ -121,12 +140,24 @@ Validations exécutées (aucune n'a nécessité de proxy vivant) :
   service `litellm`.
 - `bash -n` + `shellcheck` propres sur `test-extra-body-guard.sh` (0
   finding après correction d'un bug d'apostrophe dans un message
-  `${VAR:?...}`).
+  `${VAR:?...}` — les apostrophes dans le mot d'un `${VAR:?word}` restent
+  quote-significatives même à l'intérieur de guillemets doubles englobants,
+  gotcha bash classique — et après revue, retrait d'un fallback jq
+  (`._hidden_params.custom_llm_provider`) qui aurait pu produire un FAUX
+  FAIL : ce champ porte le provider LiteLLM (`"openrouter"`), jamais le
+  fournisseur upstream pinné (`"google-vertex"`) — une valeur non-vide
+  mais fausse est pire qu'une absence, le script ne garde donc QUE
+  `.provider`.
 - Preuve offline du callback : `python3 -c "import guard_extra_body; ..."`
-  SANS litellm installé (fonction pure) puis AVEC `litellm==1.83.3`
-  installé dans un venv isolé — les deux passent, y compris l'appel
-  `async_pre_call_hook` réel qui retire `extra_body.provider` d'un payload
-  simulé.
+  SANS litellm installé (fonction pure) puis AVEC `litellm[proxy]==1.83.3`
+  installé dans un venv isolé — les deux passent. Preuve la plus forte :
+  appel direct de `ProxyLogging.pre_call_hook()` (le vrai point d'entrée
+  proxy, après enregistrement du callback via
+  `initialize_callbacks_on_proxy()` avec la config EXACTE du template en
+  forme liste) sur un payload `extra_body.provider` malveillant — la clé
+  ressort strippée. Script `test-extra-body-guard.sh` exercé en mode mock
+  (curl stubé) sur ses 3 chemins : PASS (pin tenu), FAIL (contournement
+  détecté), FAIL (attestation absente — pas un pass silencieux).
 
 Molecule NON exécuté (binaire absent de l'environnement d'exécution,
 sandbox offline) — à lancer par l'opérateur ou en CI avant merge si le

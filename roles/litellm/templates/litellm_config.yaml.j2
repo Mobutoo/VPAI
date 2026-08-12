@@ -514,7 +514,8 @@ litellm_settings:
   # extra_body) côté client AVANT le merge Router. Fichier monté à
   # /app/guard_extra_body.py, MÊME répertoire que /app/config.yaml (requis
   # par get_instance_fn qui résout le module relatif au config_file_path).
-  callbacks: guard_extra_body.proxy_handler_instance
+  callbacks:
+    - guard_extra_body.proxy_handler_instance
 
   # Fallback chains: primary -> fallback1 -> fallback2
   # Strategy: open-source/free fallbacks first, paid providers as last resort

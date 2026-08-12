@@ -62,23 +62,28 @@ done
 command -v curl >/dev/null || { echo "curl requis" >&2; exit 2; }
 command -v jq >/dev/null || { echo "jq requis" >&2; exit 2; }
 
-# Extrait l'attestation fournisseur d'une réponse chat/completions. Aucun
-# champ "provider" standard OpenAI n'existe : on tente les emplacements
-# documentés/observés côté LiteLLM+OpenRouter (réponse JSON top-level
-# "provider", puis les hidden params LiteLLM exposées par certaines
-# versions). Retourne chaîne vide si rien trouvé — traité comme échec de
-# preuve par l'appelant, PAS comme un pass silencieux.
+# Extrait l'attestation fournisseur d'une réponse chat/completions.
+# UNIQUEMENT le champ .provider (attestation OpenRouter du fournisseur
+# UPSTREAM réel, ex. "google-vertex") — délibérément PAS de fallback sur
+# ._hidden_params.custom_llm_provider : ce champ est le provider LiteLLM
+# (ex. "openrouter"), jamais le fournisseur upstream pinné. Un fallback qui
+# renvoie une valeur non vide mais FAUSSE est pire qu'une absence : le
+# comparateur en aval traiterait alors un garde-fou qui FONCTIONNE comme un
+# contournement réussi (faux FAIL), alors qu'une chaîne vide est
+# explicitement traitée comme "preuve non concluante" par l'appelant (cf.
+# run_vector). Si le champ "provider" n'existe pas sur la version déployée,
+# identifier manuellement le champ réel plutôt que d'élargir ce fallback.
 extract_provider_attestation() {
   local body="$1"
   local val
-  val="$(jq -r '.provider // ._hidden_params.custom_llm_provider // .model_extra.provider // empty' <<<"${body}" 2>/dev/null || true)"
+  val="$(jq -r '.provider // empty' <<<"${body}" 2>/dev/null || true)"
   printf '%s' "${val}"
 }
 
 run_vector() {
   local label="$1"
   local body_json="$2"
-  local http_code response
+  local http_code response response_body
 
   response="$(curl -sS -w '\n%{http_code}' \
     -X POST "${BASE_URL}/v1/chat/completions" \

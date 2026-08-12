@@ -259,10 +259,15 @@ réellement exposé par la version déployée avant de conclure.
 override client sur `claude-opus` doit toujours résoudre `google-vertex`
 (le fix ne doit pas casser le pin légitime pour un client honnête) :
 ```bash
-curl -sS -X POST https://llm.ewutelo.cloud/v1/chat/completions \
+resp=$(curl -sS --fail-with-body -X POST https://llm.ewutelo.cloud/v1/chat/completions \
   -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
   -H "Content-Type: application/json" \
-  -d '{"model":"claude-opus","max_tokens":1,"messages":[{"role":"user","content":"1"}]}'
+  -d '{"model":"claude-opus","max_tokens":1,"messages":[{"role":"user","content":"1"}]}') \
+  || { echo "FAIL (d): HTTP en erreur"; exit 1; }
+prov=$(echo "$resp" | jq -r '.provider // .model_extra.provider // empty')
+[ "$prov" = "Google" ] || [ "$prov" = "google-vertex" ] \
+  || { echo "FAIL (d): provider attesté='$prov' ≠ google-vertex"; exit 1; }
+echo "PASS (d): provider=$prov"
 ```
 
 **(e) No-op ailleurs** — la task `Deploy LiteLLM environment file` doit
@@ -271,8 +276,11 @@ rester inchangée (aucune clé nouvelle sur ce chantier) ; seules les tasks
 callback` et le recreate du service `litellm` (docker-stack) doivent
 apparaître `changed`.
 
-Si (c) ou (d) échoue : rollback immédiat (§3), pas de tentative de fix en
-place sur la branche prod.
+**Contrôles OBLIGATOIRES : (a), (b), (c), (d), (e) — TOUS.** Si N'IMPORTE
+LEQUEL échoue — y compris (a) fichier non monté ou (b) callback non chargé
+(un garde silencieusement inerte est PIRE qu'absent : fausse assurance) —
+: rollback immédiat (§3), pas de tentative de fix en place sur la branche
+prod. Cohérent avec le critère général §3 « protocole §4 rouge → rollback ».
 
 ## 5. Limites connues / résidu assumé
 

@@ -20,6 +20,16 @@
   become: true
   notify: Restart litellm stack
 
+- name: Deploy LiteLLM extra_body provider-pin guard callback
+  ansible.builtin.copy:
+    src: guard_extra_body.py
+    dest: "{{ litellm_config_dir }}/guard_extra_body.py"
+    owner: "{{ prod_user }}"
+    group: "{{ prod_user }}"
+    mode: "0644"
+  become: true
+  notify: Restart litellm stack
+
 - name: Deploy LiteLLM environment file
   ansible.builtin.template:
     src: litellm.env.j2

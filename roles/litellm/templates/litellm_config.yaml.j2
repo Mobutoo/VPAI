@@ -503,6 +503,19 @@ litellm_settings:
   num_retries: {{ litellm_num_retries }}
   request_timeout: {{ litellm_request_timeout }}
 
+  # Garde-fou finding CRITIQUE (c), gate technique Optimus B4 2026-08-12
+  # (docs/ops/gates-journal.md ligne 2026-08-12 après-midi) : un client peut
+  # ECRASER le pin fournisseur/ZDR serveur (extra_body.provider ci-dessus)
+  # en renvoyant son propre extra_body.provider — merge shallow LiteLLM,
+  # AUCUN réglage natif (allowed_openai_params, drop_params) ne filtre un
+  # sous-champ arbitraire d'extra_body. Callback custom async_pre_call_hook
+  # (seul mécanisme natif exploitable, vérifié sur litellm==1.83.3 pinné —
+  # cf. commentaire d'en-tête du fichier) : strip provider (top-level +
+  # extra_body) côté client AVANT le merge Router. Fichier monté à
+  # /app/guard_extra_body.py, MÊME répertoire que /app/config.yaml (requis
+  # par get_instance_fn qui résout le module relatif au config_file_path).
+  callbacks: guard_extra_body.proxy_handler_instance
+
   # Fallback chains: primary -> fallback1 -> fallback2
   # Strategy: open-source/free fallbacks first, paid providers as last resort
   # REX 2026-03-17: claude-haiku n'avait PAS de fallback → dead-end quand credits Anthropic $0.

@@ -179,6 +179,10 @@ tout `ansible-playbook` réel, rollback épinglé sur le commit courant de
 **Étape 1 — dry-run** :
 ```bash
 git log --oneline -1 main   # noter le sha ÉPINGLÉ pour le rollback
+git log --oneline -1 chantier/fix-extra-body-passthrough
+# ÉPINGLAGE : vérifier que ce sha == celui annoncé dans la notification
+# d'ack (source de vérité au moment du feu vert) — une branche est mutable,
+# on déploie un SHA vérifié, pas un nom de branche.
 git checkout chantier/fix-extra-body-passthrough
 ansible-playbook playbooks/stacks/site.yml \
   -e prod_ip=100.64.0.14 \
@@ -259,6 +263,7 @@ réellement exposé par la version déployée avant de conclure.
 override client sur `claude-opus` doit toujours résoudre `google-vertex`
 (le fix ne doit pas casser le pin légitime pour un client honnête) :
 ```bash
+trap 'unset LITELLM_MASTER_KEY' EXIT   # garantit l'unset même sur échec/exit 1
 resp=$(curl -sS --fail-with-body -X POST https://llm.ewutelo.cloud/v1/chat/completions \
   -H "Authorization: Bearer ${LITELLM_MASTER_KEY}" \
   -H "Content-Type: application/json" \

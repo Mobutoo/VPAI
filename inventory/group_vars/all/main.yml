@@ -384,6 +384,11 @@ typebot_builder_subdomain: "mop-build"
 typebot_viewer_subdomain: "mop"
 mailhog_subdomain: "mop-mail"
 
+# Optimus identity and client portal — TLS edges remain VPN-only in Caddy.
+# Kept in inventory so vpn-dns can publish the matching Headscale records.
+optimus_zitadel_subdomain: "auth"
+optimus_portail_subdomain: "portail"
+
 # --- Prod Apps (Hetzner CX22) ---
 app_prod_hostname: "app-prod-01"
 app_prod_location: "fsn1"

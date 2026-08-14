@@ -119,7 +119,7 @@ services:
   caddy:
 {% if caddy_acme_dns01 | default(false) | bool or caddy_vpn_only_mode | default(false) | bool %}
     # DNS-01 mode: image custom buildée localement avec plugin OVH DNS-01
-    image: caddy-ovh:{{ caddy_image | regex_replace('^caddy:([^-]+).*$', '\1') }}
+    image: caddy-ovh:{{ caddy_image | regex_search('(?<=caddy:)[0-9.]+') }}
 {% else %}
     image: {{ caddy_image }}
 {% endif %}

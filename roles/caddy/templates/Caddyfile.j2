@@ -242,6 +242,27 @@ BOOTSTRAP 200
 }
 {% endif %}
 
+# === Optimus identity and client portal — VPN only ===
+# Both names are split-DNS records pointing to the Sese mesh address.  The
+# applications never publish a Docker port; Caddy is their sole TLS edge.
+auth.ewutelo.cloud {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy optimus-zitadel:8080
+
+    import security_headers
+}
+
+portail.ewutelo.cloud {
+    import vpn_only
+    import vpn_error_page
+
+    reverse_proxy 100.64.0.14:3000
+
+    import security_headers
+}
+
 # === Qdrant - dedicated subdomain ===
 # REX: Qdrant dashboard does NOT support sub-path (qdrant-web-ui issue #94, open since 2023)
 {% if qdrant_subdomain | default('') | length > 0 %}

@@ -3,6 +3,11 @@
 
 target_env: "prod"
 
+# The production Caddy edge is VPN-only: certificates use OVH DNS-01 so no
+# public HTTP listener is required.  Keep this persistent; a one-shot flag
+# would replace the custom Caddy image on the next regular Caddy deployment.
+caddy_vpn_only_mode: true
+
 # Environnement brick.yml : sélectionne roles/backup-config/vars/bricks_backup_<env>.yml
 # (généré par scripts/brick_generate.py --generate backup --env <env>).
 brick_backup_env: "sese"

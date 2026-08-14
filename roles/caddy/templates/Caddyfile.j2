@@ -251,7 +251,14 @@ BOOTSTRAP 200
     import vpn_only
     import vpn_error_page
 
-    reverse_proxy optimus-zitadel:8080
+    # Login v2 is a separate Next.js service. Preserve its fixed base path.
+    handle /ui/v2/login* {
+        reverse_proxy optimus-zitadel-login:3000
+    }
+
+    handle {
+        reverse_proxy optimus-zitadel:8080
+    }
 
     import security_headers
 }

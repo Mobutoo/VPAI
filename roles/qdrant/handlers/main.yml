@@ -8,6 +8,7 @@
       - docker-compose-infra.yml
     services:
       - qdrant
-    state: restarted
+    state: present
+    recreate: always
   become: true
   when: not (common_molecule_mode | default(false))

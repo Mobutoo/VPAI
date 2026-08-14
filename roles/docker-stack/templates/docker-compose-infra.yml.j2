@@ -147,6 +147,12 @@ services:
       OVH_APPLICATION_KEY: "{{ ovh_application_key }}"
       OVH_APPLICATION_SECRET: "{{ ovh_application_secret }}"
       OVH_CONSUMER_KEY: "{{ ovh_consumer_key }}"
+    # The embedded Docker resolver remains the first resolver for service
+    # names; its upstreams must be public so libdns can discover the OVH zone
+    # instead of receiving Headscale split-DNS NOTIMP responses.
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
 {% endif %}
     volumes:
       - /opt/{{ project_name }}/configs/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
